@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/banner.svg" alt="promptzero - AI-powered Flipper Zero operator" width="560">
+  <img src=".github/assets/banner.png" alt="promptzero - AI-powered Flipper Zero operator" width="560">
 </p>
 
 ---

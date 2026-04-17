@@ -28,7 +28,6 @@ import (
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/web"
-	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
 
@@ -711,16 +710,14 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("raw mode: %w", err)
 		}
-		// MakeRaw disables OPOST, which also turns off ONLCR — so a plain \n
+		// MakeRaw disables OPOST, which also turns off ONLCR - so a plain \n
 		// in our output moves the cursor down without carriage-returning to
 		// column 0. That's what was causing confirm-prompt row 2 and streamed
 		// text to drift rightward across lines. Re-enable OPOST + ONLCR so
 		// \n writes behave as line breaks again. Leaves ICANON/ECHO/ISIG off
-		// (we still own input handling and Ctrl+C routing).
-		if attr, gerr := unix.IoctlGetTermios(stdinFd, unix.TCGETS); gerr == nil {
-			attr.Oflag |= unix.OPOST | unix.ONLCR
-			_ = unix.IoctlSetTermios(stdinFd, unix.TCSETS, attr)
-		}
+		// (we still own input handling and Ctrl+C routing). Platform-specific
+		// termios details live in main_termios_<goos>.go.
+		enableOPOSTONLCR(stdinFd)
 		restore := func() { _ = term.Restore(stdinFd, oldState) }
 		stdinRestore.Store(&restore)
 		defer func() {
@@ -740,21 +737,19 @@ func run() error {
 	}
 
 	// SIGWINCH: refresh dimensions, re-scroll, redraw box + input.
-	winchCh := make(chan os.Signal, 1)
-	signal.Notify(winchCh, unix.SIGWINCH)
-	defer signal.Stop(winchCh)
-	go func() {
-		for range winchCh {
-			if !ui.resize() {
-				continue
-			}
-			ed.outputMu.Lock()
-			fmt.Fprintf(os.Stderr, "\033[1;%dr", ui.Rows()-boxHeight)
-			ui.drawBoxFrame()
-			ed.renderLocked()
-			ed.outputMu.Unlock()
+	// Windows has no SIGWINCH — watchWindowSize is a no-op there (see
+	// main_os_windows.go). On Unix it registers the signal handler.
+	stopWinch := watchWindowSize(func() {
+		if !ui.resize() {
+			return
 		}
-	}()
+		ed.outputMu.Lock()
+		fmt.Fprintf(os.Stderr, "\033[1;%dr", ui.Rows()-boxHeight)
+		ui.drawBoxFrame()
+		ed.renderLocked()
+		ed.outputMu.Unlock()
+	})
+	defer stopWinch()
 
 	// Surface hot-plug reconnect phases in the output area. Keeps the user
 	// informed when the Flipper drops off USB (WSL vhci_hcd glitch, physical
