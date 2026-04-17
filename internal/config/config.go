@@ -152,9 +152,25 @@ type WatchRule struct {
 	Persona string `yaml:"persona,omitempty"`
 }
 
+// SerialConfig carries the legacy serial-port connection fields. When
+// TransportURL is non-empty it wins, so the port/baud fields become
+// dead — kept here because existing config files still populate them
+// and removing the keys would break loading.
 type SerialConfig struct {
 	Port     string `yaml:"port"`
 	BaudRate int    `yaml:"baud_rate"`
+
+	// TransportURL overrides Port + BaudRate when set. Accepts any
+	// scheme registered with internal/flipper/transport:
+	//
+	//   serial:///dev/ttyACM0?baud=230400   — explicit serial
+	//   mock:///dev/pts/5                   — test harness pty slave
+	//   ble://AA:BB:CC:DD:EE:FF             — reserved (Phase-B)
+	//
+	// Empty = default behaviour (build a serial URL from Port +
+	// BaudRate). This field is also settable via the --transport CLI
+	// flag, which overrides whatever the config file specifies.
+	TransportURL string `yaml:"transport_url,omitempty"`
 }
 
 type MarauderConfig struct {

@@ -9,10 +9,18 @@ openai_api_key: ""
 # Claude model to use
 model: "claude-sonnet-4-6"
 
-# Flipper Zero serial connection
+# Flipper Zero connection
 serial:
   port: "/dev/ttyACM0"    # Linux default; macOS: /dev/tty.usbmodemflip_*
   baud_rate: 230400
+
+  # Optional transport URL override. When set, takes precedence over
+  # port + baud_rate above. Supported schemes:
+  #   serial:///dev/ttyACM0?baud=230400   — explicit USB CDC-ACM
+  #   mock:///dev/pts/5                   — test harness pty slave
+  #   ble://AA:BB:CC:DD:EE:FF             — reserved (Phase-B; not yet implemented)
+  # The --transport CLI flag overrides this field.
+  transport_url: ""
 
 # ESP32 Marauder WiFi devboard (optional)
 marauder:

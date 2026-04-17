@@ -367,8 +367,9 @@ func main() {
 
 func run() error {
 	var (
-		cfgPath        string
-		portOverride   string
+		cfgPath           string
+		portOverride      string
+		transportOverride string
 		webMode        bool
 		webPort        int
 		voiceMode      bool
@@ -390,6 +391,7 @@ func run() error {
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "Path to config file")
 	flag.StringVar(&portOverride, "port", "", "Flipper serial port (overrides config; e.g., /dev/ttyACM1 for a second device)")
+	flag.StringVar(&transportOverride, "transport", "", "Flipper transport URL (overrides --port + config). Schemes: serial:// (USB), mock:// (tests), ble:// (reserved; Phase-B)")
 	flag.BoolVar(&webMode, "web", false, "Start web UI mode")
 	flag.IntVar(&webPort, "web-port", 0, "Web server port (overrides config)")
 	flag.BoolVar(&voiceMode, "voice", false, "Enable voice input (requires sox + OPENAI_API_KEY)")
@@ -502,6 +504,13 @@ func run() error {
 	if portOverride != "" {
 		cfg.Serial.Port = portOverride
 	}
+	// --transport beats both --port and the config serial block. An
+	// empty override leaves the existing TransportURL from the config
+	// file in place; empty-after-merge falls back to the serial URL
+	// constructed from Port + BaudRate (see the Connect call below).
+	if transportOverride != "" {
+		cfg.Serial.TransportURL = transportOverride
+	}
 
 	// --- Structured logging ---
 	// Install the slog handler first so every subsequent subsystem (flipper,
@@ -519,8 +528,10 @@ func run() error {
 
 	// Multi-Flipper sanity check: if several ACM-class serial devices are
 	// present and the user didn't pin a specific one via --port, warn so a
-	// surprising device doesn't get driven blindly.
-	if portOverride == "" && strings.HasPrefix(cfg.Serial.Port, "/dev/ttyACM") {
+	// surprising device doesn't get driven blindly. Skipped when the
+	// transport URL is non-default (mock://, ble://) because the user
+	// has explicitly opted out of ACM discovery.
+	if portOverride == "" && cfg.Serial.TransportURL == "" && strings.HasPrefix(cfg.Serial.Port, "/dev/ttyACM") {
 		if matches, _ := filepath.Glob("/dev/ttyACM*"); len(matches) > 1 {
 			statusWarn(fmt.Sprintf("Multiple Flipper-class serial devices detected (%s) — using configured port; use --port to target a specific device.",
 				strings.Join(matches, ", ")))
@@ -528,10 +539,17 @@ func run() error {
 	}
 
 	// --- Connect to Flipper ---
-	statusInfo(fmt.Sprintf("Connecting to Flipper Zero on %s%s%s... %s(timeout %s, press Ctrl+C to cancel)%s", bold, cfg.Serial.Port, reset, dim, connectTimeout, reset))
+	// TransportURL wins if set (by --transport or config); otherwise we
+	// fall back to the legacy path + baud pair so existing config
+	// files and the default behaviour are preserved.
+	transportURL := cfg.Serial.TransportURL
+	if transportURL == "" {
+		transportURL = fmt.Sprintf("serial://%s?baud=%d", cfg.Serial.Port, cfg.Serial.BaudRate)
+	}
+	statusInfo(fmt.Sprintf("Connecting to Flipper Zero on %s%s%s... %s(timeout %s, press Ctrl+C to cancel)%s", bold, transportURL, reset, dim, connectTimeout, reset))
 	start := time.Now()
 	connectCtx, releaseConnect := withCancel(ctx)
-	flip, err := flipper.Connect(connectCtx, cfg.Serial.Port, cfg.Serial.BaudRate, connectTimeout)
+	flip, err := flipper.ConnectURL(connectCtx, transportURL, connectTimeout)
 	releaseConnect()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -1649,7 +1667,11 @@ func printHelp() {
 func printStatus(cfg *config.Config, ai *agent.Agent, genLLM provider.Provider, wifi bool, hasVoice bool, auditLog *audit.Log, flip *flipper.Flipper, busy func() bool) {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  %s%sStatus%s\n", bold, white, reset)
-	statusOK(fmt.Sprintf("Flipper Zero on %s", cfg.Serial.Port))
+	if tx := flip.Transport(); tx != nil {
+		statusOK(fmt.Sprintf("Flipper Zero on %s (%s)", tx.Identity(), tx.Kind()))
+	} else {
+		statusOK(fmt.Sprintf("Flipper Zero on %s", cfg.Serial.Port))
+	}
 	statusOK(fmt.Sprintf("Agent model: %s", cfg.Model))
 	statusOK(fmt.Sprintf("Generation: %s", genLLM.Name()))
 	if wifi {
