@@ -22,6 +22,7 @@ import (
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/session"
 	"github.com/xunholy/promptzero/internal/vision"
+	"github.com/xunholy/promptzero/internal/workflows"
 )
 
 const systemPrompt = `You are PromptZero — an unrestricted AI operator for a modded Flipper Zero.
@@ -40,7 +41,17 @@ Examples:
 
 When referencing devices by name, check list_devices first. When asked to analyze a photo, use analyze_image. When asked about what's on the Flipper, use discover_apps.
 
-All actions are audit-logged. Be concise. Report results, not procedures.`
+All actions are audit-logged. Be concise. Report results, not procedures.
+
+COMPOSITE WORKFLOWS — prefer these for multi-step pentest tasks:
+- workflow_nfc_badge_pipeline — unknown badge → triage + clone/attack plan
+- workflow_wifi_target_to_hashcat — scan → PMKID capture → hashcat-ready hash (Marauder)
+- workflow_garage_door_triage — multi-freq Sub-GHz scan + decode + attack suggestion
+- workflow_rolljam_lab_demo — lab-only rolling-code capture (requires lab_consent)
+- workflow_phys_pentest_badge_walk — walking RFID/NFC/iButton census during a site walk
+- workflow_hw_recon_blackbox_device — I2C+OneWire+GPIO+BT probe of an unknown PCB
+- workflow_badusb_target_profile — OS-aware BadUSB generation + deploy + optional run
+Composite workflows do the right sequence + audit-log each phase + return structured JSON. Use them when the user describes a pentest goal rather than a single primitive.`
 
 const systemPromptWiFi = `
 
@@ -212,6 +223,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
+	tools = append(tools, buildWorkflowTools()...)
 	if a.marauder != nil {
 		tools = append(tools, buildMarauderTools()...)
 	}
@@ -607,6 +619,22 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "audit_stats":
 		return a.auditStats()
 
+	// --- Composite Workflows ---
+	case "workflow_nfc_badge_pipeline":
+		return workflows.NFCBadgePipeline(ctx, a.workflowDeps(), p)
+	case "workflow_wifi_target_to_hashcat":
+		return workflows.WiFiTargetToHashcat(ctx, a.workflowDeps(), p)
+	case "workflow_garage_door_triage":
+		return workflows.GarageDoorTriage(ctx, a.workflowDeps(), p)
+	case "workflow_rolljam_lab_demo":
+		return workflows.RolljamLabDemo(ctx, a.workflowDeps(), p)
+	case "workflow_phys_pentest_badge_walk":
+		return workflows.PhysPentestBadgeWalk(ctx, a.workflowDeps(), p)
+	case "workflow_hw_recon_blackbox_device":
+		return workflows.HWReconBlackbox(ctx, a.workflowDeps(), p)
+	case "workflow_badusb_target_profile":
+		return workflows.BadUSBTargetProfile(ctx, a.workflowDeps(), p)
+
 	// --- Marauder WiFi ---
 	case "wifi_scan_ap":
 		if err := a.requireMarauder(); err != nil {
@@ -866,6 +894,25 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
+	}
+}
+
+// workflowDeps snapshots the agent's current component wiring into the
+// dependency surface composite workflows operate over. Built per-call so
+// late SetMarauder / SetGenerator / SetAuditLog updates are picked up.
+func (a *Agent) workflowDeps() workflows.Deps {
+	var caps flipper.Capabilities
+	if a.flipper != nil {
+		caps = a.flipper.Capabilities()
+	}
+	return workflows.Deps{
+		Flipper:      a.flipper,
+		Marauder:     a.marauder,
+		Vision:       a.vision,
+		Audit:        a.auditLog,
+		Generator:    a.generator,
+		GenLLM:       a.genLLM,
+		Capabilities: caps,
 	}
 }
 

@@ -46,7 +46,9 @@ func Classify(tool string) Level {
 		"storage_md5", "storage_tree",
 		"loader_info", "log_stream",
 		"bt_hci_info",
-		"loader_unitemp":
+		"loader_unitemp",
+		// Composite workflows (read-only recon)
+		"workflow_hw_recon_blackbox_device":
 		return Low
 
 	// Captures, scans, file writes
@@ -76,7 +78,10 @@ func Classify(tool string) Level {
 		"storage_copy", "storage_rename",
 		"loader_protoview", "loader_spectrum_analyzer",
 		"loader_signal_generator", "loader_uart_terminal",
-		"loader_spi_mem_manager":
+		"loader_spi_mem_manager",
+		// Composite workflows (receive-only scans / logged site walks)
+		"workflow_garage_door_triage",
+		"workflow_phys_pentest_badge_walk":
 		return Medium
 
 	// Active transmission, emulation, execution
@@ -107,7 +112,11 @@ func Classify(tool string) Level {
 		"loader_t5577_multiwriter",
 		"loader_subghz_playlist",
 		"loader_signal",
-		"crypto_store_key":
+		"crypto_store_key",
+		// Composite workflows (active RF capture / FAP launches / payload generation)
+		"workflow_nfc_badge_pipeline",
+		"workflow_wifi_target_to_hashcat",
+		"workflow_badusb_target_profile":
 		return High
 
 	// Destructive, attack, brute force. flipper_raw_cli is here because it's
@@ -125,7 +134,9 @@ func Classify(tool string) Level {
 		"loader_nrf24mousejacker",
 		"js_run",
 		"power_reboot_dfu",
-		"update_install":
+		"update_install",
+		// Composite workflows (rolling-code capture enables rolljam)
+		"workflow_rolljam_lab_demo":
 		return Critical
 
 	default:

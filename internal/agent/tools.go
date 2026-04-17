@@ -550,6 +550,73 @@ func buildTools() []anthropic.ToolUnionParam {
 	}
 }
 
+// buildWorkflowTools returns every composite pentest workflow tool. Each
+// workflow orchestrates several primitives behind a single LLM-callable
+// interface and returns a structured JSON envelope — prefer these over
+// asking the LLM to chain primitives by hand when the user describes a
+// pentest goal rather than a specific command.
+func buildWorkflowTools() []anthropic.ToolUnionParam {
+	return []anthropic.ToolUnionParam{
+		tool("workflow_nfc_badge_pipeline",
+			"Triage an unknown NFC badge: detect protocol, decide whether it's clonable, and return a cloning or attack plan. Runs nfc_detect → protocol parser → protocol-specific follow-up (MIFARE Classic → mfkey suggestion; Ultralight → block reads; NTAG → dump; DESFire/EMV → apdu recon). Expected runtime: 15–45s. Params: attempt_dump (default false), timeout_seconds (default 30). Risk: High (may launch FAPs and read tag contents).",
+			props(
+				optProp("attempt_dump", "boolean", "When true, also launch an appropriate dumping FAP after detection (default false)"),
+				optProp("timeout_seconds", "integer", "Max time to wait for a tag (default 30)"),
+			),
+		),
+		tool("workflow_wifi_target_to_hashcat",
+			"Scan WiFi APs, pick the strongest WPA/WPA2 target, capture a PMKID, and emit a hashcat 22000-format hash file. Marauder devboard required — returns a friendly error when --wifi is not active. Expected runtime: 50–90s. Params: scan_seconds (default 20), capture_seconds (default 30), bssid (optional override), output_path (default /ext/wifi/hashcat_input.22000). Risk: High (active PMKID capture).",
+			props(
+				optProp("scan_seconds", "integer", "AP scan duration (default 20)"),
+				optProp("capture_seconds", "integer", "PMKID sniff duration (default 30)"),
+				optProp("bssid", "string", "Specific BSSID to target (overrides the strongest-AP pick)"),
+				optProp("output_path", "string", "Where to save the 22000 hash file on the SD card (default /ext/wifi/hashcat_input.22000)"),
+			),
+		),
+		tool("workflow_garage_door_triage",
+			"Scan common garage / gate / car-remote frequencies, save and decode any captured signals, and suggest attack paths (replay vs. rolling). Pure RX — does not transmit. Expected runtime: 35–70s (default 5s × 7 frequencies). Params: frequencies ([]int override), per_freq_seconds (default 5). Risk: Medium (receive only).",
+			props(
+				optProp("frequencies", "array", "Override the frequency list in Hz (default: 300/310/315/318/390/433.92/868.35 MHz)"),
+				optProp("per_freq_seconds", "integer", "How long to listen on each frequency (default 5)"),
+			),
+		),
+		tool("workflow_rolljam_lab_demo",
+			"Lab-only rolling-code capture demo: records two consecutive button presses to separate .sub files for later authorised replay. Does NOT transmit. Requires lab_consent=true or the call is refused. Expected runtime: 20–30s. Params: frequency (required), output_dir (default /ext/subghz/rolljam), capture_window_seconds (default 10), lab_consent (required true). Risk: Critical — captured files enable subsequent rolljam transmission.",
+			props(
+				reqProp("frequency", "integer", "Target frequency in Hz, e.g. 433920000"),
+				reqProp("lab_consent", "boolean", "MUST be true — acknowledges this is authorised lab/research use"),
+				optProp("output_dir", "string", "Directory on SD card for the two capture files (default /ext/subghz/rolljam)"),
+				optProp("capture_window_seconds", "integer", "Max seconds to wait for each press (default 10)"),
+			),
+			"frequency", "lab_consent",
+		),
+		tool("workflow_phys_pentest_badge_walk",
+			"Continuous RFID + NFC + iButton census for walking a site during a physical pentest. Loops per-scan ~5s between each technology, dedupes unique UIDs, writes a CSV to the SD card. Stops on ctx cancellation or duration elapsed. Expected runtime: configurable, default 5 minutes. Params: duration_seconds (default 300, clamped 30–1800), dedupe_window_seconds (default 0 = forever), csv_path (default /ext/badge_walk_<unix>.csv). Risk: Medium.",
+			props(
+				optProp("duration_seconds", "integer", "Total walk duration, clamped to 30–1800 (default 300)"),
+				optProp("dedupe_window_seconds", "integer", "Window after which a previously-seen UID can be re-logged (default 0 = suppress duplicates for the whole run)"),
+				optProp("csv_path", "string", "Path on SD card to write the CSV (default /ext/badge_walk_<unix>.csv)"),
+			),
+		),
+		tool("workflow_hw_recon_blackbox_device",
+			"Recon an unknown PCB attached to the Flipper GPIO header: i2c_scan, onewire_search, gpio_read sweep across 8 pins, bt_hci_info, system_info — aggregated into a structured report with chip-ID hints for common I²C addresses (0x3c OLED, 0x68 RTC/IMU, 0x76/0x77 BMP280, etc.). Read-only. Expected runtime: 15–25s. Params: gpios ([]string optional override of the default pin list). Risk: Low.",
+			props(
+				optProp("gpios", "array", "Optional override of the GPIO pins to sample (default: PA7, PA6, PA4, PB3, PB2, PC3, PC1, PC0)"),
+			),
+		),
+		tool("workflow_badusb_target_profile",
+			"Generate a target-OS-aware BadUSB payload via the generation pipeline, deploy to the SD card, and optionally execute it. Re-uses generate_badusb under the hood but threads OS context into the prompt (cmd vs zsh vs bash, no-UAC constraints, etc.). Expected runtime: 5–20s (LLM generation dominates). Params: description (required), target_os (required: windows|macos|linux|chromeos), output_path (optional), auto_run (default false). Risk: Critical when auto_run=true, High otherwise.",
+			props(
+				reqProp("description", "string", "Natural-language description of what the payload should do"),
+				reqProp("target_os", "string", "One of: windows, macos, linux, chromeos"),
+				optProp("output_path", "string", "Custom SD-card path (default /ext/badusb/profile_<target>_<ts>.txt)"),
+				optProp("auto_run", "boolean", "Execute after deploying (default false)"),
+			),
+			"description", "target_os",
+		),
+	}
+}
+
 // Helper constructors for clean tool definitions.
 
 func tool(name, desc string, properties map[string]interface{}, required ...string) anthropic.ToolUnionParam {
@@ -605,6 +672,7 @@ type ToolCatalogEntry struct {
 func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
+	tools = append(tools, buildWorkflowTools()...)
 	if hasMarauder {
 		tools = append(tools, buildMarauderTools()...)
 	}
