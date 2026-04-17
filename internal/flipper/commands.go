@@ -180,7 +180,7 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 			return result, fmt.Errorf("exiting nfc subshell: %w", err)
 		}
 		if _, err := f.readUntilPrompt(5 * time.Second); err != nil {
-			f.sendRaw("\x03") // force exit
+			f.sendRaw("\x03")  // force exit
 			return result, nil // return result despite exit error
 		}
 
@@ -244,7 +244,7 @@ func (f *Flipper) NFCSubcommand(subcommand string, timeout time.Duration) (strin
 		return result, fmt.Errorf("exiting nfc subshell: %w", err)
 	}
 	if _, err := f.readUntilPrompt(5 * time.Second); err != nil {
-		f.sendRaw("\x03") // force exit
+		f.sendRaw("\x03")  // force exit
 		return result, nil // return result despite exit error
 	}
 

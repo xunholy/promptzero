@@ -71,10 +71,10 @@ type Mock struct {
 	banner   string
 	handlers map[string]Handler
 
-	mu       sync.Mutex
-	counted  atomic.Int64 // commands observed so far, for test assertions
-	linesMu  sync.Mutex
-	lines    []string // raw command lines observed (for test assertions)
+	mu      sync.Mutex
+	counted atomic.Int64 // commands observed so far, for test assertions
+	linesMu sync.Mutex
+	lines   []string // raw command lines observed (for test assertions)
 
 	closed chan struct{}
 	done   chan struct{}

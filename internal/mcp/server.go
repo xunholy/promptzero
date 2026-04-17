@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/marauder"
 )
@@ -92,7 +92,9 @@ func (s *Server) registerFlipperTools() {
 			mcp.WithString("pin", mcp.Required(), mcp.Description("GPIO pin name")),
 			mcp.WithNumber("value", mcp.Required(), mcp.Description("0 or 1")),
 		},
-		func(a map[string]interface{}) (string, error) { return s.flipper.GPIOSet(sa(a, "pin"), int(na(a, "value"))) })
+		func(a map[string]interface{}) (string, error) {
+			return s.flipper.GPIOSet(sa(a, "pin"), int(na(a, "value")))
+		})
 
 	s.add("gpio_read", "Read GPIO pin state",
 		[]mcp.ToolOption{mcp.WithString("pin", mcp.Required(), mcp.Description("GPIO pin name"))},

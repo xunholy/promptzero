@@ -282,10 +282,9 @@ func (g *Generator) Deploy(result *Result, path string) error {
 	}
 
 	if idx := strings.LastIndex(path, "/"); idx > 0 {
+		// Best-effort mkdir; ignore errors (directory often already exists).
 		dir := path[:idx]
-		if _, err := g.flipper.StorageMkdir(dir); err != nil {
-			// log but don't fail — directory may already exist
-		}
+		_, _ = g.flipper.StorageMkdir(dir)
 	}
 
 	if err := g.flipper.StorageWrite(path, result.Content); err != nil {

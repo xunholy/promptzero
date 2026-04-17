@@ -773,17 +773,6 @@ func (a *Agent) generatePayload(ctx context.Context, payloadType, description, p
 	return fmt.Sprintf("Generated %s (not deployed)\n\nPreview:\n%s", payloadType, result.Preview), nil
 }
 
-func (a *Agent) deployPayload(content, payloadType, path string) (string, error) {
-	if a.generator == nil {
-		return "", fmt.Errorf("generator not configured")
-	}
-	result := &generate.Result{Type: payloadType, Content: content}
-	if err := a.generator.Deploy(result, path); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("Deployed to %s", result.Path), nil
-}
-
 func (a *Agent) runPayload(path, command string) (string, error) {
 	switch {
 	case strings.Contains(path, "evil_portal"):

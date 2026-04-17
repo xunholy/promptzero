@@ -915,28 +915,28 @@ func run() error {
 		}
 
 		lower := strings.ToLower(input)
-		switch {
-		case lower == "/quit" || lower == "/exit" || lower == "quit" || lower == "exit" || lower == "q":
+		switch lower {
+		case "/quit", "/exit", "quit", "exit", "q":
 			ed.writeOutput(func() {
 				fmt.Fprintf(os.Stderr, "\n  %sShutting down.%s\n\n", dim, reset)
 			})
 			return true
-		case lower == "/reset" || lower == "/clear" || lower == "reset" || lower == "clear":
+		case "/reset", "/clear", "reset", "clear":
 			ai.Reset()
 			ed.writeOutput(func() {
 				fmt.Fprintf(os.Stderr, "  %s● Conversation cleared.%s\n\n", green, reset)
 			})
 			return false
-		case lower == "/help" || lower == "?":
+		case "/help", "?":
 			ed.writeOutput(func() { printHelp() })
 			return false
-		case lower == "/status":
+		case "/status":
 			ed.writeOutput(func() { printStatus(cfg, genLLM, hasMarauder, voiceEngine != nil, auditLog, flip, busy) })
 			return false
-		case lower == "/sessions":
+		case "/sessions":
 			ed.writeOutput(func() { printSessions(ai) })
 			return false
-		case lower == "/reconnect":
+		case "/reconnect":
 			// Force-reconnect to the Flipper. The SetReconnectCallback
 			// above surfaces phase messages in the output area; we just
 			// need to call it. Short ctx so a stuck reconnect doesn't

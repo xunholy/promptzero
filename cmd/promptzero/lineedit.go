@@ -95,7 +95,6 @@ func readKeys(out chan<- keyEvent) {
 					i += safe
 				}
 				carry = append(carry[:0], data[i:]...)
-				i = len(data)
 				break
 			}
 			b := data[i]

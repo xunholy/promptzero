@@ -80,9 +80,9 @@ func FormatApps(apps []App) string {
 
 	var sb strings.Builder
 	for t, list := range groups {
-		sb.WriteString(fmt.Sprintf("\n[%s] (%d files)\n", strings.ToUpper(t), len(list)))
+		fmt.Fprintf(&sb, "\n[%s] (%d files)\n", strings.ToUpper(t), len(list))
 		for _, a := range list {
-			sb.WriteString(fmt.Sprintf("  %s  ->  %s\n", a.Name, a.Path))
+			fmt.Fprintf(&sb, "  %s  ->  %s\n", a.Name, a.Path)
 		}
 	}
 	return sb.String()
