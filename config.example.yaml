@@ -1,0 +1,45 @@
+# promptzero configuration
+
+# Anthropic API key (or set ANTHROPIC_API_KEY env var)
+api_key: ""
+
+# OpenAI API key for Whisper voice transcription (or set OPENAI_API_KEY env var)
+openai_api_key: ""
+
+# Claude model to use
+model: "claude-sonnet-4-6"
+
+# Flipper Zero serial connection
+serial:
+  port: "/dev/ttyACM0"    # Linux default; macOS: /dev/tty.usbmodemflip_*
+  baud_rate: 230400
+
+# ESP32 Marauder WiFi devboard (optional)
+marauder:
+  enabled: false
+  port: "/dev/ttyUSB0"    # Usually a separate USB serial port
+  baud_rate: 115200
+
+# Web UI settings
+web:
+  port: 8080
+
+# Device registry — map friendly names to signal files on the Flipper SD card
+devices:
+  garage:
+    type: subghz
+    file: "/ext/subghz/garage_door.sub"
+  living_room_tv:
+    type: ir
+    file: "/ext/infrared/living_room_tv.ir"
+    commands:
+      power: "Power"
+      volume_up: "Vol_up"
+      volume_down: "Vol_dn"
+      mute: "Mute"
+  front_door:
+    type: rfid
+    file: "/ext/lfrfid/front_door.rfid"
+  office_badge:
+    type: nfc
+    file: "/ext/nfc/office_badge.nfc"
