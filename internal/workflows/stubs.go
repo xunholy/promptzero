@@ -16,11 +16,6 @@ func RolljamLabDemo(ctx context.Context, deps Deps, params map[string]interface{
 	return "", fmt.Errorf("workflow_rolljam_lab_demo not yet implemented")
 }
 
-// PhysPentestBadgeWalk — placeholder until its commit. See badge_walk.go.
-func PhysPentestBadgeWalk(ctx context.Context, deps Deps, params map[string]interface{}) (string, error) {
-	return "", fmt.Errorf("workflow_phys_pentest_badge_walk not yet implemented")
-}
-
 // BadUSBTargetProfile — placeholder until its commit. See badusb_profile.go.
 func BadUSBTargetProfile(ctx context.Context, deps Deps, params map[string]interface{}) (string, error) {
 	return "", fmt.Errorf("workflow_badusb_target_profile not yet implemented")
