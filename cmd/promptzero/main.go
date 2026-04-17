@@ -30,6 +30,7 @@ import (
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/web"
@@ -734,9 +735,37 @@ func run() error {
 		mqttBridge.PublishEvent("session_ended", endedPayload)
 		_ = wh.Close(shutdownCtx)
 	}()
+	// --- Reactive rules engine ---
+	// Subscribe to the audit observer so declarative YAML rules react to
+	// tool calls. Actions dispatch through the same webhook/MQTT plumbing
+	// as first-class events, so the wire format stays uniform.
+	ruleEngine := rules.New(rules.Deps{
+		WebhookFire: func(name string, payload map[string]any) {
+			wh.Fire(webhook.Event(name), payload)
+		},
+		MQTTPublish: func(topic string, payload map[string]any) {
+			mqttBridge.PublishEvent(topic, payload)
+		},
+	})
+	for _, rc := range cfg.Rules {
+		if rc.Enabled != nil && !*rc.Enabled {
+			continue
+		}
+		r, parseErr := buildRule(rc)
+		if parseErr != nil {
+			statusWarn(fmt.Sprintf("rule %q: %v", rc.Name, parseErr))
+			continue
+		}
+		ruleEngine.Register(r)
+	}
+	if n := len(ruleEngine.List()); n > 0 {
+		statusOK(fmt.Sprintf("Reactive rules %s(%d loaded)%s", dim, n, reset))
+	}
+
 	if auditLog != nil {
 		auditLog.AddObserver(func(e audit.Entry) {
 			rec.RecordAudit(e.Risk, string(e.Level))
+			ruleEngine.Handle(e)
 			if e.Level == audit.LevelCritical {
 				wh.Fire(webhook.EventAuditCritical, e)
 				mqttBridge.PublishAuditCritical(e)
@@ -1290,6 +1319,11 @@ func run() error {
 			case "/mqtt":
 				ed.writeOutput(func() {
 					handleMQTTCmd(mqttBridge, fields[1:])
+				})
+				return false
+			case "/rules":
+				ed.writeOutput(func() {
+					handleRulesCmd(ruleEngine, fields[1:])
 				})
 				return false
 			case "/tools":
@@ -2207,6 +2241,120 @@ type confirmState struct {
 	req    agent.ConfirmRequest
 	result chan agent.Decision
 	typing []rune
+}
+
+// buildRule converts a config.RuleConfig to a rules.Rule. Returns an
+// error when Cooldown can't parse or the action list is empty.
+func buildRule(rc config.RuleConfig) (rules.Rule, error) {
+	if rc.Name == "" {
+		return rules.Rule{}, fmt.Errorf("rule missing name")
+	}
+	if len(rc.Then) == 0 {
+		return rules.Rule{}, fmt.Errorf("rule %q has no actions", rc.Name)
+	}
+	var cooldown time.Duration
+	if rc.Cooldown != "" {
+		d, err := time.ParseDuration(rc.Cooldown)
+		if err != nil {
+			return rules.Rule{}, fmt.Errorf("cooldown %q: %w", rc.Cooldown, err)
+		}
+		cooldown = d
+	}
+	actions := make([]rules.Action, 0, len(rc.Then))
+	for _, a := range rc.Then {
+		actions = append(actions, rules.Action{
+			Kind:    rules.ActionKind(a.Type),
+			Webhook: a.Webhook,
+			Topic:   a.Topic,
+			Tool:    a.Tool,
+			Params:  a.Params,
+		})
+	}
+	return rules.Rule{
+		Name:        rc.Name,
+		Description: rc.Description,
+		Match: rules.Match{
+			Tool:           rc.When.Tool,
+			Risk:           rc.When.Risk,
+			Level:          rc.When.Level,
+			OutputContains: rc.When.OutputContains,
+		},
+		Actions:  actions,
+		Cooldown: cooldown,
+		Enabled:  true,
+	}, nil
+}
+
+// handleRulesCmd serves the /rules REPL command: list, pause <name>,
+// resume <name>, test <name>. Writes directly to stderr through the
+// provided style fields so it plays nicely with the line-editor's
+// writeOutput batching.
+func handleRulesCmd(eng *rules.Engine, args []string) {
+	if eng == nil {
+		fmt.Fprintf(os.Stderr, "  %srules engine unavailable%s\n", dim, reset)
+		return
+	}
+	if len(args) == 0 {
+		snaps := eng.List()
+		if len(snaps) == 0 {
+			fmt.Fprintf(os.Stderr, "  %sno rules registered%s\n", dim, reset)
+			return
+		}
+		for _, s := range snaps {
+			state := green + "●" + reset
+			if !s.Enabled {
+				state = yellow + "○" + reset
+			}
+			fmt.Fprintf(os.Stderr, "  %s %s %s(fires=%d)%s", state, s.Name, dim, s.Fires, reset)
+			if s.Description != "" {
+				fmt.Fprintf(os.Stderr, " — %s", s.Description)
+			}
+			fmt.Fprintln(os.Stderr)
+		}
+		return
+	}
+	sub := strings.ToLower(args[0])
+	switch sub {
+	case "pause":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %susage: /rules pause <name>%s\n", dim, reset)
+			return
+		}
+		if !eng.Pause(args[1]) {
+			fmt.Fprintf(os.Stderr, "  %s● rule %q not found%s\n", red, args[1], reset)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  %s● paused %s%s\n", yellow, args[1], reset)
+	case "resume":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %susage: /rules resume <name>%s\n", dim, reset)
+			return
+		}
+		if !eng.Resume(args[1]) {
+			fmt.Fprintf(os.Stderr, "  %s● rule %q not found%s\n", red, args[1], reset)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  %s● resumed %s%s\n", green, args[1], reset)
+	case "test":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %susage: /rules test <name>%s\n", dim, reset)
+			return
+		}
+		sample := audit.Entry{
+			Tool: "example_tool", Risk: "high", Level: audit.LevelWarning,
+			Output: "sample output", SessionID: "test-session", TraceID: "deadbeefdeadbeef",
+		}
+		out, err := eng.Test(args[1], sample)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● %v%s\n", red, err, reset)
+			return
+		}
+		for _, line := range out {
+			fmt.Fprintf(os.Stderr, "  %s  %s%s\n", dim, line, reset)
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "  %sunknown /rules subcommand %q (want list|pause|resume|test)%s\n", dim, sub, reset)
+	}
 }
 
 // renderDebugSnapshot collects local state into an obs.DebugSnapshot and
