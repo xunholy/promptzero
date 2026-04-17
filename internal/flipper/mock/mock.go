@@ -9,7 +9,6 @@
 package mock
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -122,13 +121,14 @@ func (m *Mock) Close() error {
 // flipper.Connect. The t.Cleanup hook closes it automatically.
 func Spawn(t *testing.T, opts ...Option) *Mock {
 	t.Helper()
-	master, slavePath, err := openPty()
+	master, slave, slavePath, err := openPty()
 	if err != nil {
 		t.Fatalf("mock: open pty: %v", err)
 	}
 
 	m := &Mock{
 		master:   master,
+		slave:    slave,
 		path:     slavePath,
 		banner:   DefaultBanner,
 		handlers: defaultHandlers(),
@@ -152,17 +152,23 @@ func Spawn(t *testing.T, opts ...Option) *Mock {
 
 // serve reads bytes from the pty master (i.e. whatever the CLI-under-test
 // writes to the slave port) and dispatches each CR-terminated command.
+//
+// We deliberately avoid bufio.Reader here: buffering can hold several
+// commands in flight before processing, which interacted badly with
+// flipper.Exec's drain → sendRaw → readUntilPrompt sequence under test
+// and produced intermittent "context deadline exceeded" failures on
+// slower schedulers.
 func (m *Mock) serve() {
 	defer close(m.done)
-	r := bufio.NewReader(m.master)
 	var buf bytes.Buffer
+	rb := make([]byte, 256)
 	for {
 		select {
 		case <-m.closed:
 			return
 		default:
 		}
-		b, err := r.ReadByte()
+		n, err := m.master.Read(rb)
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, os.ErrClosed) {
 				return
@@ -170,17 +176,20 @@ func (m *Mock) serve() {
 			// Fatal error on master fd — bail quietly; tests can detect via Count.
 			return
 		}
-		switch b {
-		case '\x03':
-			// Ctrl+C — emit a fresh prompt, no echo.
-			_, _ = m.master.WriteString("\r\n>: ")
-			buf.Reset()
-		case '\r', '\n':
-			line := buf.String()
-			buf.Reset()
-			m.dispatch(line)
-		default:
-			buf.WriteByte(b)
+		for i := 0; i < n; i++ {
+			b := rb[i]
+			switch b {
+			case '\x03':
+				// Ctrl+C — emit a fresh prompt, no echo.
+				_, _ = m.master.WriteString("\r\n>: ")
+				buf.Reset()
+			case '\r', '\n':
+				line := buf.String()
+				buf.Reset()
+				m.dispatch(line)
+			default:
+				buf.WriteByte(b)
+			}
 		}
 	}
 }
@@ -213,40 +222,41 @@ func (m *Mock) dispatch(line string) {
 	_, _ = m.master.WriteString("\r\n>: ")
 }
 
-// openPty allocates a (master, slavePath) pair via the standard Unix
-// ptmx+grantpt+unlockpt+ptsname dance. Linux-only; tests using this package
+// openPty allocates a (master, slave, slavePath) triple via the standard
+// Unix ptmx+unlockpt+ptsname dance. Linux-only; tests using this package
 // must build-tag themselves appropriately if cross-platform support is ever
 // needed.
 //
-// The slave is transiently opened and put into raw mode (ECHO off, ICANON
-// off, OPOST off). Without this, the slave's tty driver would echo every
-// byte written to master back to master, and the mock's reader would see
-// its own banner bytes as incoming "commands".
-func openPty() (*os.File, string, error) {
+// The slave is opened once and KEPT OPEN for the lifetime of the mock.
+// If no slave fd is held, reads from master return EIO (the pty is "hung
+// up"), so the serve goroutine exits before the flipper-under-test has had
+// a chance to write anything. serial.Open can still open a second fd on the
+// same slavePath — pty slaves support concurrent opens.
+//
+// The slave is also put into raw mode (ECHO/ICANON/OPOST off). Without
+// disabling ECHO, the slave's tty driver echoes every byte written to
+// master back to master, and the mock's reader sees its own banner bytes
+// as incoming "commands".
+func openPty() (*os.File, *os.File, string, error) {
 	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY, 0)
 	if err != nil {
-		return nil, "", fmt.Errorf("open ptmx: %w", err)
+		return nil, nil, "", fmt.Errorf("open ptmx: %w", err)
 	}
 	if err := unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0); err != nil {
 		master.Close()
-		return nil, "", fmt.Errorf("unlockpt: %w", err)
+		return nil, nil, "", fmt.Errorf("unlockpt: %w", err)
 	}
 	n, err := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPTN)
 	if err != nil {
 		master.Close()
-		return nil, "", fmt.Errorf("ptsname: %w", err)
+		return nil, nil, "", fmt.Errorf("ptsname: %w", err)
 	}
 	slavePath := fmt.Sprintf("/dev/pts/%d", n)
 
-	// Open the slave briefly, disable echo + canonical processing. Termios
-	// settings persist for the tty, so the subsequent serial.Open on the
-	// same slavePath inherits raw state (though the serial library sets its
-	// own flags too — disabling ECHO here covers the window between Spawn
-	// and serial.Open).
 	slave, err := os.OpenFile(slavePath, os.O_RDWR|unix.O_NOCTTY, 0)
 	if err != nil {
 		master.Close()
-		return nil, "", fmt.Errorf("open slave: %w", err)
+		return nil, nil, "", fmt.Errorf("open slave: %w", err)
 	}
 	if attr, gerr := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS); gerr == nil {
 		attr.Lflag &^= unix.ECHO | unix.ECHONL | unix.ICANON | unix.ISIG | unix.IEXTEN
@@ -254,8 +264,7 @@ func openPty() (*os.File, string, error) {
 		attr.Oflag &^= unix.OPOST
 		_ = unix.IoctlSetTermios(int(slave.Fd()), unix.TCSETS, attr)
 	}
-	_ = slave.Close()
-	return master, slavePath, nil
+	return master, slave, slavePath, nil
 }
 
 func defaultHandlers() map[string]Handler {
