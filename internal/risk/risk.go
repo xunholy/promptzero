@@ -47,6 +47,8 @@ func Classify(tool string) Level {
 		"loader_info", "log_stream",
 		"bt_hci_info",
 		"loader_unitemp",
+		// File-format structural inspection (read-only on the SD card)
+		"fileformat_read", "fileformat_diff",
 		// Composite workflows (read-only recon)
 		"workflow_hw_recon_blackbox_device":
 		return Low
@@ -79,6 +81,8 @@ func Classify(tool string) Level {
 		"loader_protoview", "loader_spectrum_analyzer",
 		"loader_signal_generator", "loader_uart_terminal",
 		"loader_spi_mem_manager",
+		// File-format edit writes back to the SD card in place.
+		"fileformat_edit",
 		// Composite workflows (receive-only scans / logged site walks)
 		"workflow_garage_door_triage",
 		"workflow_phys_pentest_badge_walk":

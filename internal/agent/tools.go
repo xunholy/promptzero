@@ -617,6 +617,39 @@ func buildWorkflowTools() []anthropic.ToolUnionParam {
 	}
 }
 
+// buildFileFormatTools returns the structural read/edit/diff tools for the
+// four Flipper capture formats (.sub, .nfc, .ir, .rfid). Registered
+// unconditionally — they operate on SD-card files via the existing Flipper
+// storage CLI primitives.
+func buildFileFormatTools() []anthropic.ToolUnionParam {
+	return []anthropic.ToolUnionParam{
+		tool("fileformat_read",
+			"Read a Flipper file from the SD card, parse it according to its extension (.sub/.nfc/.ir/.rfid), and return the structural JSON (fields, blocks, signals) instead of the raw text. Use this when you need to reason about *fields* rather than string-match. Read-only.",
+			props(
+				reqProp("path", "string", "SD-card path, e.g. /ext/subghz/garage.sub"),
+			),
+			"path",
+		),
+		tool("fileformat_edit",
+			"Parse a Flipper file, apply a top-level edits map, re-serialize, and write back to the SD card (same path unless output_path is given). Allowed edit keys per format — .sub: frequency, protocol, key, te, preset — .nfc: uid, atqa, sak, device_type, block_<n> — .ir: signal_<n>_name, signal_<n>_address, signal_<n>_command — .rfid: key_type, data. Unknown keys return an error.",
+			props(
+				reqProp("path", "string", "SD-card path to read + parse"),
+				reqProp("edits", "object", "Top-level field overrides per the format's allowed keys"),
+				optProp("output_path", "string", "Optional alternate SD path to write to (defaults to input path)"),
+			),
+			"path", "edits",
+		),
+		tool("fileformat_diff",
+			"Parse two Flipper files and return a structural diff (per-field, per-block, per-signal). Read-only. Format mismatches return {same_format:false} with no entries.",
+			props(
+				reqProp("path_a", "string", "First SD-card path"),
+				reqProp("path_b", "string", "Second SD-card path"),
+			),
+			"path_a", "path_b",
+		),
+	}
+}
+
 // Helper constructors for clean tool definitions.
 
 func tool(name, desc string, properties map[string]interface{}, required ...string) anthropic.ToolUnionParam {
@@ -673,6 +706,7 @@ func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
 	tools = append(tools, buildWorkflowTools()...)
+	tools = append(tools, buildFileFormatTools()...)
 	if hasMarauder {
 		tools = append(tools, buildMarauderTools()...)
 	}

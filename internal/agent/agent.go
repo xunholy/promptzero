@@ -14,6 +14,7 @@ import (
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/discover"
+	"github.com/xunholy/promptzero/internal/fileformat"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
@@ -40,6 +41,8 @@ Examples:
 - Or use generate_deploy_run to do it all in one shot
 
 When referencing devices by name, check list_devices first. When asked to analyze a photo, use analyze_image. When asked about what's on the Flipper, use discover_apps.
+
+STRUCTURAL FILE EDITING — for .sub, .nfc, .ir, .rfid prefer fileformat_read / fileformat_edit / fileformat_diff over raw storage_read + storage_write. These tools parse the file into named fields (frequency, uid, block_N, signal_N_command, etc.), let you mutate a single field, and round-trip safely back to the SD card. Use them when the user says things like "change this capture's frequency", "blank out block 4", or "rename the volume-up signal".
 
 All actions are audit-logged. Be concise. Report results, not procedures.
 
@@ -224,6 +227,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
 	tools = append(tools, buildWorkflowTools()...)
+	tools = append(tools, buildFileFormatTools()...)
 	if a.marauder != nil {
 		tools = append(tools, buildMarauderTools()...)
 	}
@@ -618,6 +622,14 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return a.auditExport()
 	case "audit_stats":
 		return a.auditStats()
+
+	// --- File-format editors ---
+	case "fileformat_read":
+		return a.fileformatRead(str(p, "path"))
+	case "fileformat_edit":
+		return a.fileformatEdit(str(p, "path"), p["edits"], str(p, "output_path"))
+	case "fileformat_diff":
+		return a.fileformatDiff(str(p, "path_a"), str(p, "path_b"))
 
 	// --- Composite Workflows ---
 	case "workflow_nfc_badge_pipeline":
@@ -1082,6 +1094,107 @@ func (a *Agent) listDevices() (string, error) {
 		}
 	}
 	return out, nil
+}
+
+// --- File-format Handlers ---
+
+// fileformatRead pulls a Flipper capture via storage_read, parses it, and
+// returns structural JSON so the LLM sees named fields rather than one
+// giant string. The wrapper envelope ({path, format, file}) keeps the
+// format tag at the top level so the model can pivot without parsing the
+// body.
+func (a *Agent) fileformatRead(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("path required")
+	}
+	raw, err := a.flipper.StorageRead(path)
+	if err != nil {
+		return "", fmt.Errorf("storage read %s: %w", path, err)
+	}
+	model, format, err := fileformat.LoadFile(path, []byte(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse %s: %w", path, err)
+	}
+	envelope := map[string]interface{}{
+		"path":   path,
+		"format": string(format),
+		"file":   model,
+	}
+	b, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// fileformatEdit reads + parses, applies the top-level edits map, then
+// serializes + writes. outputPath defaults to the input path so callers can
+// edit-in-place without specifying it. Unknown edit keys return an error
+// from the format-specific applier rather than silently no-op'ing.
+func (a *Agent) fileformatEdit(path string, editsIn interface{}, outputPath string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("path required")
+	}
+	edits, ok := editsIn.(map[string]interface{})
+	if !ok || len(edits) == 0 {
+		return "", fmt.Errorf("edits must be a non-empty object")
+	}
+	raw, err := a.flipper.StorageRead(path)
+	if err != nil {
+		return "", fmt.Errorf("storage read %s: %w", path, err)
+	}
+	model, format, err := fileformat.LoadFile(path, []byte(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse %s: %w", path, err)
+	}
+	if err := fileformat.ApplyEdits(format, model, edits); err != nil {
+		return "", fmt.Errorf("apply edits: %w", err)
+	}
+	out, err := fileformat.SaveFile(format, model)
+	if err != nil {
+		return "", fmt.Errorf("serialize: %w", err)
+	}
+	target := outputPath
+	if target == "" {
+		target = path
+	}
+	if err := a.flipper.WriteFile(target, out); err != nil {
+		return "", fmt.Errorf("write %s: %w", target, err)
+	}
+	return fmt.Sprintf("edited %s (format=%s, %d bytes) → %s", path, format, len(out), target), nil
+}
+
+// fileformatDiff reads + parses two paths and returns the per-field diff
+// as JSON. Format mismatches surface as same_format=false, empty entries.
+func (a *Agent) fileformatDiff(pathA, pathB string) (string, error) {
+	if pathA == "" || pathB == "" {
+		return "", fmt.Errorf("path_a and path_b are both required")
+	}
+	rawA, err := a.flipper.StorageRead(pathA)
+	if err != nil {
+		return "", fmt.Errorf("storage read %s: %w", pathA, err)
+	}
+	rawB, err := a.flipper.StorageRead(pathB)
+	if err != nil {
+		return "", fmt.Errorf("storage read %s: %w", pathB, err)
+	}
+	modelA, formatA, err := fileformat.LoadFile(pathA, []byte(rawA))
+	if err != nil {
+		return "", fmt.Errorf("parse %s: %w", pathA, err)
+	}
+	modelB, formatB, err := fileformat.LoadFile(pathB, []byte(rawB))
+	if err != nil {
+		return "", fmt.Errorf("parse %s: %w", pathB, err)
+	}
+	result, err := fileformat.Diff(formatA, modelA, formatB, modelB)
+	if err != nil {
+		return "", err
+	}
+	b, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // --- Helpers ---

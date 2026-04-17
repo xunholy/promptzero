@@ -7,6 +7,8 @@ package agent
 func ToolNames(hasMarauder bool) []string {
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
+	tools = append(tools, buildWorkflowTools()...)
+	tools = append(tools, buildFileFormatTools()...)
 	if hasMarauder {
 		tools = append(tools, buildMarauderTools()...)
 	}
