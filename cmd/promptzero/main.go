@@ -30,6 +30,7 @@ import (
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/web"
+	"github.com/xunholy/promptzero/internal/webhook"
 	"golang.org/x/term"
 )
 
@@ -654,6 +655,60 @@ func run() error {
 		statusOK(fmt.Sprintf("Audit logging %s(session: %s)%s", dim, auditLog.SessionID(), reset))
 	}
 
+	// --- Outbound webhooks ---
+	// Construct unconditionally (empty config yields a no-op-ish dispatcher
+	// whose workers idle on an empty subscription list). This keeps the
+	// downstream callback wiring branch-free.
+	var webhookSubs []webhook.Subscription
+	for _, w := range cfg.Webhooks {
+		evs := make([]webhook.Event, 0, len(w.Events))
+		for _, e := range w.Events {
+			evs = append(evs, webhook.Event(e))
+		}
+		webhookSubs = append(webhookSubs, webhook.Subscription{
+			Name:    w.Name,
+			URL:     w.URL,
+			Events:  evs,
+			Headers: w.Headers,
+			Secret:  w.Secret,
+		})
+	}
+	wh := webhook.New(webhookSubs)
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		wh.Fire(webhook.EventSessionEnded, map[string]any{
+			"session_id": func() string {
+				if auditLog != nil {
+					return auditLog.SessionID()
+				}
+				return ""
+			}(),
+			"ended_at": time.Now().UTC(),
+		})
+		_ = wh.Close(shutdownCtx)
+	}()
+	if auditLog != nil {
+		auditLog.AddObserver(func(e audit.Entry) {
+			if e.Level == audit.LevelCritical {
+				wh.Fire(webhook.EventAuditCritical, e)
+			}
+		})
+	}
+	if len(webhookSubs) > 0 {
+		statusOK(fmt.Sprintf("Webhooks %s(%d subscriber%s)%s", dim, len(webhookSubs), plural(len(webhookSubs)), reset))
+	}
+	wh.Fire(webhook.EventSessionStarted, map[string]any{
+		"session_id": func() string {
+			if auditLog != nil {
+				return auditLog.SessionID()
+			}
+			return ""
+		}(),
+		"started_at": time.Now().UTC(),
+		"model":      cfg.Model,
+	})
+
 	// --- Generation provider ---
 	var genLLM provider.Provider
 	switch genProvider {
@@ -869,6 +924,23 @@ func run() error {
 				}
 			}
 		})
+		if ev.Phase == "finish" {
+			out := ev.Output
+			if len(out) > 2048 {
+				out = out[:2048] + "... [truncated]"
+			}
+			payload := map[string]any{
+				"tool":        ev.Name,
+				"input":       string(ev.Input),
+				"duration_ms": ev.Duration.Milliseconds(),
+				"error":       ev.Err,
+				"output":      out,
+			}
+			wh.Fire(webhook.EventToolFinished, payload)
+			if strings.HasPrefix(ev.Name, "workflow_") {
+				wh.Fire(webhook.EventWorkflowCompleted, payload)
+			}
+		}
 	})
 
 	// --- Risk confirmation prompt ---
@@ -879,18 +951,32 @@ func run() error {
 	var pendingConfirm atomic.Pointer[confirmState]
 	if gateEnabled {
 		ai.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.Decision {
+			wh.Fire(webhook.EventRiskPrompted, map[string]any{
+				"tool":  req.Tool,
+				"risk":  req.Risk.String(),
+				"input": string(req.Input),
+			})
 			resultCh := make(chan agent.Decision, 1)
 			pendingConfirm.Store(&confirmState{req: req, result: resultCh})
 			ed.writeOutput(func() {
 				renderConfirmPrompt(req, ui.Cols())
 			})
 			defer pendingConfirm.Store(nil)
+			var decision agent.Decision
 			select {
 			case d := <-resultCh:
-				return d
+				decision = d
 			case <-ctx.Done():
-				return agent.DecisionDeny
+				decision = agent.DecisionDeny
 			}
+			if decision == agent.DecisionDeny {
+				wh.Fire(webhook.EventRiskDenied, map[string]any{
+					"tool":  req.Tool,
+					"risk":  req.Risk.String(),
+					"input": string(req.Input),
+				})
+			}
+			return decision
 		})
 	}
 
@@ -1114,6 +1200,11 @@ func run() error {
 			case "/watch":
 				ed.writeOutput(func() {
 					handleWatchCmd(watchMgr, fields[1:])
+				})
+				return false
+			case "/webhooks":
+				ed.writeOutput(func() {
+					handleWebhooksCmd(wh, fields[1:])
 				})
 				return false
 			case "/tools":
@@ -1372,6 +1463,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "\n  %sOperator%s\n", dim, reset)
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/webhooks [test <name>]%s List outbound webhooks with recent deliveries\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sDevice%s\n", dim, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sInput%s\n", dim, reset)
@@ -2403,5 +2495,64 @@ func handleWatchCmd(w *watch.Watcher, args []string) {
 		}
 		fmt.Fprintf(os.Stderr, "    %s%s%s  %s  %s(%s)%s%s\n",
 			dim, ts, reset, ev.Path, dim, ev.Rule.Pattern, reset, errMark)
+	}
+}
+
+// handleWebhooksCmd implements /webhooks. No args lists configured
+// subscriptions, their event filters, and the most recent delivery
+// attempts. `/webhooks test <name>` fires a synthetic session_started
+// payload so operators can verify endpoint reachability without waiting
+// for a real event.
+func handleWebhooksCmd(wh webhook.Dispatcher, args []string) {
+	if len(args) > 0 && strings.EqualFold(args[0], "test") {
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %susage: /webhooks test <name>%s\n", dim, reset)
+			return
+		}
+		name := args[1]
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := wh.TestSubscription(ctx, name); err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● test %s failed: %v%s\n", red, name, err, reset)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  %s●%s test %s%s%s delivered\n", green, reset, bold, name, reset)
+		return
+	}
+	subs := wh.Subscriptions()
+	if len(subs) == 0 {
+		fmt.Fprintf(os.Stderr, "  %sno webhooks configured%s\n", dim, reset)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  %s●%s %d subscription%s\n", green, reset, len(subs), plural(len(subs)))
+	for _, s := range subs {
+		filter := "all events"
+		if len(s.Events) > 0 {
+			names := make([]string, 0, len(s.Events))
+			for _, e := range s.Events {
+				names = append(names, string(e))
+			}
+			filter = strings.Join(names, ",")
+		}
+		signed := ""
+		if s.Secret != "" {
+			signed = " " + dim + "(signed)" + reset
+		}
+		fmt.Fprintf(os.Stderr, "    %s•%s %s%s%s → %s %s[%s]%s%s\n",
+			dim, reset, bold, s.Name, reset, s.URL, dim, filter, reset, signed)
+		for _, r := range wh.RecentResults(s.Name) {
+			ts := r.At.Local().Format("15:04:05")
+			if r.Err != nil {
+				fmt.Fprintf(os.Stderr, "      %s%s%s  %s  %s✗%s %v\n",
+					dim, ts, reset, r.Event, red, reset, r.Err)
+				continue
+			}
+			icon := green + "◦" + reset
+			if r.StatusCode >= 400 {
+				icon = red + "✗" + reset
+			}
+			fmt.Fprintf(os.Stderr, "      %s%s%s  %s  %s %d\n",
+				dim, ts, reset, r.Event, icon, r.StatusCode)
+		}
 	}
 }

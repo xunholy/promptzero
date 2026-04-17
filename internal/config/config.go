@@ -19,6 +19,19 @@ type Config struct {
 	ConfirmRisk string            `yaml:"confirm_risk,omitempty"`
 	Persona     string            `yaml:"persona,omitempty"`
 	Watch       WatchConfig       `yaml:"watch,omitempty"`
+	Webhooks    []WebhookConfig   `yaml:"webhooks,omitempty"`
+}
+
+// WebhookConfig is one HTTP webhook subscription. Empty Events means "all
+// events". Secret, when non-empty, enables HMAC-SHA256 body signing via
+// the X-PromptZero-Signature header. See internal/webhook for the runtime
+// surface this feeds.
+type WebhookConfig struct {
+	Name    string            `yaml:"name"`
+	URL     string            `yaml:"url"`
+	Events  []string          `yaml:"events,omitempty"`
+	Headers map[string]string `yaml:"headers,omitempty"`
+	Secret  string            `yaml:"secret,omitempty"`
 }
 
 // WatchConfig configures the --watch filesystem-trigger mode. Paths is the
@@ -112,7 +125,6 @@ func Load(path string) (*Config, error) {
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
 		cfg.OpenAIKey = key
 	}
-
 	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("API key required: set api_key in config or ANTHROPIC_API_KEY env var")
 	}

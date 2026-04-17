@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -38,6 +39,9 @@ type Entry struct {
 type Log struct {
 	db        *sql.DB
 	sessionID string
+
+	obsMu     sync.RWMutex
+	observers []func(Entry)
 }
 
 func Open(dbPath string) (*Log, error) {
@@ -105,10 +109,11 @@ func (l *Log) Record(tool string, input interface{}, output string, risk string,
 		output = output[:10000] + "... [truncated]"
 	}
 
+	ts := time.Now().UTC()
 	_, err := l.db.Exec(`
 		INSERT INTO audit_log (timestamp, tool, input, output, risk, level, session_id, duration_ms, success)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		time.Now().UTC().Format(time.RFC3339),
+		ts.Format(time.RFC3339),
 		tool,
 		string(inputJSON),
 		output,
@@ -120,6 +125,52 @@ func (l *Log) Record(tool string, input interface{}, output string, risk string,
 	)
 	if err != nil {
 		log.Printf("audit: failed to record %s: %v", tool, err)
+		return
+	}
+	l.notify(Entry{
+		Timestamp: ts,
+		Tool:      tool,
+		Input:     string(inputJSON),
+		Output:    output,
+		Risk:      risk,
+		Level:     level,
+		SessionID: l.sessionID,
+		Duration:  duration.Milliseconds(),
+		Success:   success,
+	})
+}
+
+// AddObserver registers a callback fired after every successful Record
+// insert. Observers run synchronously on the caller goroutine, so keep
+// them fast — for anything network-bound (webhooks, MQTT) the observer
+// should enqueue and return immediately. Adding during iteration is safe;
+// observers added mid-notify are picked up on the next event.
+func (l *Log) AddObserver(fn func(Entry)) {
+	if fn == nil {
+		return
+	}
+	l.obsMu.Lock()
+	defer l.obsMu.Unlock()
+	l.observers = append(l.observers, fn)
+}
+
+// notify fans out an Entry to every registered observer. RLock so
+// AddObserver does not block the Record path; observers panicking would
+// crash audit recording, so they are run in a deferred-recover block.
+func (l *Log) notify(e Entry) {
+	l.obsMu.RLock()
+	obs := make([]func(Entry), len(l.observers))
+	copy(obs, l.observers)
+	l.obsMu.RUnlock()
+	for _, fn := range obs {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("audit: observer panicked: %v", r)
+				}
+			}()
+			fn(e)
+		}()
 	}
 }
 
