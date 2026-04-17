@@ -1,27 +1,12 @@
-```
- ██████╗ ██████╗  ██████╗ ███╗   ███╗██████╗ ████████╗
- ██╔══██╗██╔══██╗██╔═══██╗████╗ ████║██╔══██╗╚══██╔══╝
- ██████╔╝██████╔╝██║   ██║██╔████╔██║██████╔╝   ██║
- ██╔═══╝ ██╔══██╗██║   ██║██║╚██╔╝██║██╔═══╝    ██║
- ██║     ██║  ██║╚██████╔╝██║ ╚═╝ ██║██║        ██║
- ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝        ╚═╝
-
- ███████╗███████╗██████╗  ██████╗
- ╚══███╔╝██╔════╝██╔══██╗██╔═══██╗
-   ███╔╝ █████╗  ██████╔╝██║   ██║
-  ███╔╝  ██╔══╝  ██╔══██╗██║   ██║
- ███████╗███████╗██║  ██║╚██████╔╝
- ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝
-
-      [ AI-POWERED FLIPPER ZERO OPERATOR ]
-           no limits  //  no filters
-```
+<p align="center">
+  <img src=".github/assets/banner.svg" alt="promptzero - AI-powered Flipper Zero operator" width="560">
+</p>
 
 ---
 
 > **"Describe it. Generate it. Deploy it. Run it."**
 
-PromptZero is a natural language AI operator for the [Flipper Zero](https://flipperzero.one). Talk to your Flipper like you'd talk to a person. It generates payloads, deploys them, and executes them — all from a single sentence.
+PromptZero is a natural language AI operator for the [Flipper Zero](https://flipperzero.one). Talk to your Flipper like you'd talk to a person. It generates payloads, deploys them, and executes them - all from a single sentence.
 
 ---
 
@@ -61,7 +46,7 @@ promptzero> scan for nearby WiFi networks and deauth the strongest one
 
 promptzero> create a BadUSB payload that opens a reverse shell on Windows
   Generated and deployed badusb to /ext/badusb/generated_payload.txt
-  Ready to execute — plug into target and run
+  Ready to execute - plug into target and run
 
 promptzero> what's this?  [photo of a remote control]
   That's a Samsung BN59 series TV remote using the Samsung32 IR protocol.
@@ -74,7 +59,7 @@ promptzero> what's this?  [photo of a remote control]
 |-----------|-------|-------------|
 | **Flipper Zero** | 34 | Sub-GHz TX/RX, IR TX/RX, NFC detect/emulate, RFID read/write/emulate, iButton, GPIO, BadUSB, storage, app launcher |
 | **ESP32 Marauder** | 51 | WiFi scan, deauth, beacon spam, probe flood, PMKID capture, evil portal, BLE spam, BT scanning, skimmer detection, network recon, wardriving, MAC spoofing |
-| **AI Generation** | 7 | Evil portal HTML, BadUSB DuckyScript, Sub-GHz .sub files, IR .ir remotes, NFC .nfc tags — all from natural language descriptions |
+| **AI Generation** | 7 | Evil portal HTML, BadUSB DuckyScript, Sub-GHz .sub files, IR .ir remotes, NFC .nfc tags - all from natural language descriptions |
 | **Intelligence** | 3 | Vision analysis (photo -> device ID + attack vector), SD card app/signal discovery, device registry |
 | **Audit** | 3 | SQLite audit log, session export (JSON), statistics |
 
@@ -139,7 +124,7 @@ make build
 
 ```bash
 cp config.example.yaml config.yaml
-# Edit config.yaml — set your API key and serial port
+# Edit config.yaml - set your API key and serial port
 ```
 
 Or use environment variables:
@@ -230,11 +215,11 @@ The core differentiator. Describe what you want in plain English and PromptZero 
 
 ### Supported payload types
 
-- **Evil Portal** — Single-file HTML captive portals (form action `/get`, fields `email`/`password`, max 20KB, no external resources)
-- **BadUSB** — Flipper-compatible DuckyScript with extended commands (`STRINGLN`, `HOLD`/`RELEASE`, `MOUSEMOVE`, `MEDIA`, `SYSRQ`, `ID` spoofing)
-- **Sub-GHz** — `.sub` files in both parsed key format (52 protocols) and RAW format (timing data)
-- **Infrared** — `.ir` files with 14 protocols (NEC, Samsung32, RC5, RC6, SIRC, etc.) and raw signals
-- **NFC** — `.nfc` files (Mifare Classic, NTAG/Ultralight, ISO14443)
+- **Evil Portal** - Single-file HTML captive portals (form action `/get`, fields `email`/`password`, max 20KB, no external resources)
+- **BadUSB** - Flipper-compatible DuckyScript with extended commands (`STRINGLN`, `HOLD`/`RELEASE`, `MOUSEMOVE`, `MEDIA`, `SYSRQ`, `ID` spoofing)
+- **Sub-GHz** - `.sub` files in both parsed key format (52 protocols) and RAW format (timing data)
+- **Infrared** - `.ir` files with 14 protocols (NEC, Samsung32, RC5, RC6, SIRC, etc.) and raw signals
+- **NFC** - `.nfc` files (Mifare Classic, NTAG/Ultralight, ISO14443)
 
 ### Multi-provider generation
 
@@ -265,7 +250,7 @@ Tested against modded firmware with all features unlocked:
 | **Momentum** (formerly Xtreme) | Primary target |
 | **Unleashed** | Supported |
 | **RogueMaster** | Supported |
-| **Official (OFW) 1.x** | Supported (reduced feature set — locked frequencies, no extra protocols) |
+| **Official (OFW) 1.x** | Supported (reduced feature set - locked frequencies, no extra protocols) |
 
 > [!NOTE]
 > Official firmware locks Sub-GHz TX to region-specific ISM bands and blocks rolling code protocols. Modded firmware unlocks the full CC1101 range (300-348 MHz, 387-464 MHz, 779-928 MHz) and enables TX for all 52 supported protocols.
