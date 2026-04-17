@@ -16,11 +16,6 @@ func RolljamLabDemo(ctx context.Context, deps Deps, params map[string]interface{
 	return "", fmt.Errorf("workflow_rolljam_lab_demo not yet implemented")
 }
 
-// BadUSBTargetProfile — placeholder until its commit. See badusb_profile.go.
-func BadUSBTargetProfile(ctx context.Context, deps Deps, params map[string]interface{}) (string, error) {
-	return "", fmt.Errorf("workflow_badusb_target_profile not yet implemented")
-}
-
 // WiFiTargetToHashcat — placeholder until its commit. See wifi_hashcat.go.
 func WiFiTargetToHashcat(ctx context.Context, deps Deps, params map[string]interface{}) (string, error) {
 	return "", fmt.Errorf("workflow_wifi_target_to_hashcat not yet implemented")
