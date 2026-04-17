@@ -11,11 +11,6 @@ import (
 // function signatures are stable: callers (agent.dispatch) bind to
 // them via name.
 
-// NFCBadgePipeline — placeholder until commit #2. See nfc_badge.go.
-func NFCBadgePipeline(ctx context.Context, deps Deps, params map[string]interface{}) (string, error) {
-	return "", fmt.Errorf("workflow_nfc_badge_pipeline not yet implemented")
-}
-
 // GarageDoorTriage — placeholder until its commit. See garage_door.go.
 func GarageDoorTriage(ctx context.Context, deps Deps, params map[string]interface{}) (string, error) {
 	return "", fmt.Errorf("workflow_garage_door_triage not yet implemented")
