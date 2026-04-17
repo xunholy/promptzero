@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" role="img" aria-label="marauder dish">
+  <path d="M3 14c4-10 10-10 14 0"/>
+  <path d="M6 14l4-10"/>
+  <path d="M14 14l-4-10"/>
+  <circle cx="10" cy="4" r="1" fill="currentColor" stroke="none"/>
+  <path d="M10 14v3M7 17h6"/>
+</svg>
