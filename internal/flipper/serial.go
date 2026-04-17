@@ -1,21 +1,29 @@
 package flipper
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"go.bug.st/serial"
+	"github.com/xunholy/promptzero/internal/flipper/transport"
 )
+
+// This file owns everything ABOVE the byte channel: prompt framing,
+// command dispatch, per-op timeouts, hot-plug recovery, and the
+// capability-aware Flipper struct. The byte channel itself lives in
+// internal/flipper/transport; serial-specific concerns (DTR,
+// /dev/ttyACM* scan, baud) moved with it.
+//
+// Phase-6 refactor preserves every method signature on *Flipper — the
+// 90+ wrappers in commands.go call into f.Exec / f.ExecLong / f.StreamCtx
+// / f.WriteFile / f.Capabilities unchanged.
 
 func dbg(format string, args ...any) {
 	if os.Getenv("PROMPTZERO_SERIAL_DEBUG") != "" {
@@ -46,25 +54,28 @@ const defaultMaxAccumBytes = 8 * 1024 * 1024 // 8 MiB
 // error so callers can inspect what arrived before the overflow.
 var ErrResponseTruncated = errors.New("flipper response truncated: exceeded max accumulator size")
 
+// Flipper is the command-layer handle for a connected device. It wraps a
+// transport.Transport and layers prompt framing, capability detection,
+// and hot-plug reconnect on top. All command wrappers (commands.go) go
+// through Exec / ExecLong / StreamCtx / WriteFile — none touch the
+// transport directly.
 type Flipper struct {
-	port   serial.Port
-	mu     sync.Mutex
-	reader *bufio.Reader
+	transport transport.Transport
+	mu        sync.Mutex
 
 	// caps holds firmware-detected capabilities. Populated by DetectCapabilities
 	// shortly after Connect; nil before that. Read via Capabilities(). Using
 	// atomic.Pointer so wrappers can read it concurrently without the mu lock.
 	caps atomic.Pointer[Capabilities]
 
-	// Connection parameters remembered for hot-plug reconnect. Populated by
-	// Connect; used by reconnectIfNeededLocked when the device disappears.
-	portName       string
-	baudRate       int
+	// connectTimeout is remembered for reconnect attempts — the deadline
+	// for the full scan+handshake cycle. The per-port open+read timeout
+	// is set inside the transport implementation.
 	connectTimeout time.Duration
 
-	// disconnected is flipped by Exec/ExecLong/StreamCtx when a port
+	// disconnected is flipped by Exec/ExecLong/StreamCtx when a transport
 	// read/write returns a disconnect-class error. The next call sees it,
-	// takes the mutex, and attempts to reattach.
+	// takes the mutex, and attempts to reattach via transport.Reconnect.
 	disconnected atomic.Bool
 
 	// reconnectCb receives "start"/"success"/"fail" phase updates so the
@@ -95,11 +106,16 @@ func (f *Flipper) accumCap() int {
 	return defaultMaxAccumBytes
 }
 
-// Reconnect forces a fresh reconnect cycle: closes the current port, then
-// scans for the Flipper (original path first, then /dev/ttyACM*), re-opens,
-// re-handshakes, and re-detects capabilities. Useful from a /reconnect slash
-// command when the user has replugged and auto-detect didn't fire (e.g., the
-// agent was idle and no IO error surfaced the drop).
+// Transport returns the underlying byte channel. Exposed read-only so
+// /status output and telemetry can read Identity/Kind without the
+// command-layer mutex.
+func (f *Flipper) Transport() transport.Transport { return f.transport }
+
+// Reconnect forces a fresh reconnect cycle: closes the current transport,
+// asks the transport to rescan + reopen, re-handshakes, and re-detects
+// capabilities. Useful from a /reconnect slash command when the user has
+// replugged and auto-detect didn't fire (e.g., the agent was idle and no
+// IO error surfaced the drop).
 func (f *Flipper) Reconnect(ctx context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -125,7 +141,7 @@ func (f *Flipper) notifyReconnect(phase, message string) {
 }
 
 // markDisconnectedIfRelevant sets the disconnected flag when err looks like
-// a physical-disconnect signal from the serial driver. Timeout reads and
+// a physical-disconnect signal from the transport. Timeout reads and
 // harmless errors are ignored.
 func (f *Flipper) markDisconnectedIfRelevant(err error) {
 	if err == nil {
@@ -138,6 +154,7 @@ func (f *Flipper) markDisconnectedIfRelevant(err error) {
 		"input/output error",
 		"device not configured",
 		"bad file descriptor",
+		"file already closed",
 	} {
 		if strings.Contains(s, needle) {
 			f.disconnected.Store(true)
@@ -147,16 +164,16 @@ func (f *Flipper) markDisconnectedIfRelevant(err error) {
 }
 
 // reconnectIfNeededLocked is called by every op-start path. When the
-// disconnected flag is set, it closes the dead port, scans for the Flipper
-// (preferring its original path and verifying hardware_uid when possible),
-// reopens + re-handshakes, and restores capabilities. Caller must hold f.mu.
+// disconnected flag is set, it asks the transport to Reconnect (which
+// handles the physical-layer scan), re-handshakes, and — if the original
+// capabilities had a hardware_uid — verifies the replugged device is
+// the same one.
 func (f *Flipper) reconnectIfNeededLocked(ctx context.Context) error {
 	if !f.disconnected.Load() {
 		return nil
 	}
 
-	origPath := f.portName
-	baud := f.baudRate
+	origIdent := f.transport.Identity()
 	to := f.connectTimeout
 	if to == 0 {
 		to = 5 * time.Second
@@ -166,129 +183,49 @@ func (f *Flipper) reconnectIfNeededLocked(ctx context.Context) error {
 		origUID = caps.HardwareUID
 	}
 
-	f.notifyReconnect("start", fmt.Sprintf("Flipper disconnected — reconnecting (last seen on %s)…", origPath))
+	f.notifyReconnect("start", fmt.Sprintf("Flipper disconnected — reconnecting (last seen on %s)…", origIdent))
 
-	// Tear down the old port. Any blocked read was already unblocked by the
-	// disconnect; this just releases the fd cleanly.
-	if f.port != nil {
-		_ = f.port.Close()
-		f.port = nil
-		f.reader = nil
-	}
-
-	// Candidate list: original path first, then other ttyACM* nodes. Keeps
-	// the common case (same port re-appears) fast.
-	candidates := []string{origPath}
-	if matches, _ := filepath.Glob("/dev/ttyACM*"); matches != nil {
-		seen := map[string]bool{origPath: true}
-		for _, m := range matches {
-			if !seen[m] {
-				candidates = append(candidates, m)
-				seen[m] = true
-			}
-		}
-	}
-
-	// Poll: give each candidate up to the connect timeout; retry every 250ms
-	// in case the kernel hasn't finished re-enumeration yet.
 	deadline := time.Now().Add(to)
 	for time.Now().Before(deadline) {
-		for _, path := range candidates {
-			if err := ctx.Err(); err != nil {
-				f.notifyReconnect("fail", "reconnect cancelled")
-				return err
-			}
-			if err := f.openAndHandshakeLocked(ctx, path, baud, 2*time.Second); err != nil {
+		if err := ctx.Err(); err != nil {
+			f.notifyReconnect("fail", "reconnect cancelled")
+			return err
+		}
+		// Transport.Reconnect is responsible for the physical-layer
+		// dance (close old fd, rescan candidate ports, reopen).
+		if err := f.transport.Reconnect(ctx); err != nil {
+			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+		// Run the CLI handshake on the freshly reopened transport.
+		hsCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		err := f.handshake(hsCtx)
+		cancel()
+		if err != nil {
+			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+		// Verify identity if we knew it before.
+		if origUID != "" {
+			info, ierr := f.execLocked("device_info", 5*time.Second)
+			if ierr != nil {
+				time.Sleep(250 * time.Millisecond)
 				continue
 			}
-			// If we knew the original UID, verify this is the same device.
-			// Parse inline to avoid recursing through DetectCapabilities
-			// (which re-takes the CLI path and is fine, but this is simpler).
-			if origUID != "" {
-				info, ierr := f.execLocked("device_info", 5*time.Second)
-				if ierr != nil {
-					_ = f.port.Close()
-					f.port = nil
-					f.reader = nil
-					continue
-				}
-				c := detectCapabilities(info)
-				if c.HardwareUID != origUID {
-					_ = f.port.Close()
-					f.port = nil
-					f.reader = nil
-					continue
-				}
-				f.caps.Store(&c)
-				f.portName = path
-				f.disconnected.Store(false)
-				f.notifyReconnect("success", fmt.Sprintf("Flipper reconnected on %s (%s)", path, c.HardwareName))
-				return nil
+			c := detectCapabilities(info)
+			if c.HardwareUID != origUID {
+				time.Sleep(250 * time.Millisecond)
+				continue
 			}
-			// No original UID — trust the handshake + accept.
-			f.portName = path
-			f.disconnected.Store(false)
-			f.notifyReconnect("success", fmt.Sprintf("Flipper reconnected on %s", path))
-			return nil
+			f.caps.Store(&c)
 		}
-		time.Sleep(250 * time.Millisecond)
+		f.disconnected.Store(false)
+		f.notifyReconnect("success", fmt.Sprintf("Flipper reconnected on %s", f.transport.Identity()))
+		return nil
 	}
 
 	f.notifyReconnect("fail", fmt.Sprintf("Flipper not found after %s — unplug/replug or run /reconnect", to))
 	return fmt.Errorf("flipper reconnect timed out after %s", to)
-}
-
-// openAndHandshakeLocked opens portName, sets DTR + short read timeout, and
-// runs the CLI handshake. Stores the port + new bufio reader on f. Caller
-// must hold f.mu. Used by both initial Connect and reconnectIfNeededLocked.
-func (f *Flipper) openAndHandshakeLocked(ctx context.Context, portName string, baudRate int, timeout time.Duration) error {
-	port, err := serial.Open(portName, &serial.Mode{
-		BaudRate: baudRate,
-		DataBits: 8,
-		Parity:   serial.NoParity,
-		StopBits: serial.OneStopBit,
-	})
-	if err != nil {
-		return err
-	}
-	// SetDTR is required on real Flipper hardware (CLI is gated on DTR
-	// asserting), but it ioctl-fails on pseudo-terminals which the mock
-	// test harness relies on. Log + continue — on real hardware the
-	// handshake will just time out if DTR really is needed.
-	if err := port.SetDTR(true); err != nil {
-		dbg("openAndHandshakeLocked: SetDTR failed (likely pty, continuing): %v", err)
-	}
-	if err := port.SetReadTimeout(500 * time.Millisecond); err != nil {
-		port.Close()
-		return err
-	}
-
-	f.port = port
-	f.reader = bufio.NewReader(port)
-
-	hsCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- f.handshake(hsCtx) }()
-	select {
-	case err := <-done:
-		if err != nil {
-			port.Close()
-			f.port = nil
-			f.reader = nil
-			return err
-		}
-		return nil
-	case <-hsCtx.Done():
-		port.Close()
-		<-done
-		f.port = nil
-		f.reader = nil
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return ErrConnectTimeout
-	}
 }
 
 // execLocked runs a single CLI command and returns the response. Must be
@@ -331,50 +268,41 @@ func (f *Flipper) DetectCapabilities() (Capabilities, error) {
 // that has taken over the CLI — press Back on the device and retry.
 var ErrConnectTimeout = errors.New("timeout waiting for Flipper CLI prompt")
 
-// Connect opens the serial port and performs the CLI handshake.
+// Connect opens a serial port and performs the CLI handshake.
+//
+// Preserves the pre-Phase-6 signature — the tree has ~5 callers (cmd
+// main, tests in flipper_mock_test.go / primitives_mock_test.go) that
+// pass a path + baud + timeout directly. Internally, Connect builds a
+// serial:// URL and hands it to ConnectURL; new callers that want to
+// pick a non-serial transport should use ConnectURL directly.
+func Connect(ctx context.Context, portName string, baudRate int, timeout time.Duration) (*Flipper, error) {
+	url := fmt.Sprintf("serial://%s?baud=%d", portName, baudRate)
+	return ConnectURL(ctx, url, timeout)
+}
+
+// ConnectURL opens the transport identified by rawURL and performs the
+// CLI handshake. rawURL is any scheme registered with the transport
+// package; a bare device path (e.g. "/dev/ttyACM0") is accepted as
+// shorthand for serial://.
 //
 // The handshake is cancelable: if ctx is cancelled or timeout elapses before
-// the prompt arrives, Connect closes the port (which unblocks any pending read)
-// and returns ctx.Err() or ErrConnectTimeout respectively.
-func Connect(ctx context.Context, portName string, baudRate int, timeout time.Duration) (*Flipper, error) {
-	dbg("Connect: opening %s @ %d", portName, baudRate)
-	mode := &serial.Mode{
-		BaudRate: baudRate,
-		DataBits: 8,
-		Parity:   serial.NoParity,
-		StopBits: serial.OneStopBit,
-	}
-
-	port, err := serial.Open(portName, mode)
+// the prompt arrives, Connect closes the transport and returns ctx.Err() or
+// ErrConnectTimeout respectively.
+func ConnectURL(ctx context.Context, rawURL string, timeout time.Duration) (*Flipper, error) {
+	dbg("ConnectURL: opening %s", rawURL)
+	tx, err := transport.Open(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("opening serial port %s: %w", portName, err)
+		return nil, fmt.Errorf("resolving transport: %w", err)
 	}
-	dbg("Connect: port opened")
-
-	// DTR must be asserted — the Flipper shell only activates when DTR goes
-	// high. Best-effort: pseudo-terminals (used by the mock test harness)
-	// don't support the TIOCM* ioctls, and failing here would make the code
-	// path untestable without hardware. On real hardware the subsequent
-	// handshake will time out if DTR was actually needed, so the failure
-	// mode is still observable.
-	if err := port.SetDTR(true); err != nil {
-		dbg("Connect: SetDTR failed (likely pty, continuing): %v", err)
+	dialCtx, cancelDial := context.WithTimeout(ctx, timeout)
+	defer cancelDial()
+	if err := tx.Dial(dialCtx); err != nil {
+		return nil, fmt.Errorf("opening transport %s: %w", rawURL, err)
 	}
-	dbg("Connect: DTR set")
-
-	// Short per-read timeout so the handshake loop polls rather than blocks
-	// indefinitely. The overall deadline is enforced by the watcher below.
-	if err := port.SetReadTimeout(500 * time.Millisecond); err != nil {
-		port.Close()
-		return nil, fmt.Errorf("setting read timeout: %w", err)
-	}
-	dbg("Connect: ReadTimeout set")
+	dbg("ConnectURL: transport dialled (%s)", tx.Identity())
 
 	f := &Flipper{
-		port:           port,
-		reader:         bufio.NewReader(port),
-		portName:       portName,
-		baudRate:       baudRate,
+		transport:      tx,
 		connectTimeout: timeout,
 	}
 
@@ -391,18 +319,16 @@ func Connect(ctx context.Context, portName string, baudRate int, timeout time.Du
 
 	select {
 	case err := <-done:
-		dbg("Connect: got from done, err=%v", err)
 		if err != nil {
-			port.Close()
+			_ = tx.Close()
 			return nil, err
 		}
 		return f, nil
 	case <-handshakeCtx.Done():
-		dbg("Connect: handshakeCtx fired, closing port")
-		// Closing the port unblocks any read pending inside handshake().
-		port.Close()
+		// Closing the transport unblocks any read pending inside
+		// handshake().
+		_ = tx.Close()
 		<-done
-		dbg("Connect: handshake goroutine drained")
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -411,11 +337,12 @@ func Connect(ctx context.Context, portName string, baudRate int, timeout time.Du
 }
 
 // handshake breaks any running app with Ctrl+C + CR and reads until the first
-// CLI prompt. We bypass bufio and read raw bytes from the port with a short
-// timeout, because the final Flipper prompt ">: " has no trailing newline —
-// bufio.ReadString('\n') would block forever waiting for one. The short
+// CLI prompt. We bypass bufio and read raw bytes from the transport with a
+// short timeout, because the final Flipper prompt ">: " has no trailing newline —
+// a line-based read would block forever waiting for one. The short
 // per-read timeout also lets us poll ctx every ~500ms so Ctrl+C and the
-// connect timeout take effect even if port.Close doesn't unblock the read.
+// connect timeout take effect even if the transport doesn't unblock the
+// read immediately.
 func (f *Flipper) handshake(ctx context.Context) error {
 	// Ctrl+C drops out of any running CLI app; the CR forces a fresh prompt
 	// even if the CLI was already idle when we opened the port.
@@ -431,7 +358,7 @@ func (f *Flipper) handshake(ctx context.Context) error {
 			dbg("handshake: ctx done before Read: %v", err)
 			return err
 		}
-		n, err := f.port.Read(buf)
+		n, err := f.transport.Read(buf)
 		dbg("handshake: Read n=%d err=%v", n, err)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -455,7 +382,7 @@ func (f *Flipper) handshake(ctx context.Context) error {
 }
 
 func (f *Flipper) Close() error {
-	return f.port.Close()
+	return f.transport.Close()
 }
 
 // Exec sends a CLI command and returns the full response. Preserved for
@@ -554,7 +481,7 @@ func (f *Flipper) StreamCtx(ctx context.Context, command string, onLine func(lin
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		n, err := f.port.Read(buf)
+		n, err := f.transport.Read(buf)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
@@ -638,7 +565,7 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 	// Write data, ensuring all bytes are sent.
 	written := 0
 	for written < len(data) {
-		n, err := f.port.Write(data[written:])
+		n, err := f.transport.Write(data[written:])
 		if err != nil {
 			f.markDisconnectedIfRelevant(err)
 			return fmt.Errorf("writing file data at offset %d: %w", written, err)
@@ -654,7 +581,7 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 }
 
 func (f *Flipper) sendRaw(data string) error {
-	_, err := f.port.Write([]byte(data))
+	_, err := f.transport.Write([]byte(data))
 	return err
 }
 
@@ -676,9 +603,10 @@ func (f *Flipper) readUntilPrompt(timeout time.Duration) (string, error) {
 // readUntilPromptCtx reads raw bytes until a ">: " prompt is seen or ctx is
 // done. We bypass bufio because the Flipper's terminal prompt ">: " has no
 // trailing newline — line-based reads (ReadString('\n')) would block forever.
-// Raw reads with a short port-level timeout also let us poll ctx regularly.
-// When the accumulator exceeds the configured cap, partial output is returned
-// alongside ErrResponseTruncated so the caller can still inspect it.
+// Raw reads with a short transport-level timeout also let us poll ctx
+// regularly. When the accumulator exceeds the configured cap, partial output
+// is returned alongside ErrResponseTruncated so the caller can still inspect
+// it.
 func (f *Flipper) readUntilPromptCtx(ctx context.Context) (string, error) {
 	var accum []byte
 	buf := make([]byte, 512)
@@ -687,7 +615,7 @@ func (f *Flipper) readUntilPromptCtx(ctx context.Context) (string, error) {
 		if err := ctx.Err(); err != nil {
 			return parseResponse(accum, false), err
 		}
-		n, err := f.port.Read(buf)
+		n, err := f.transport.Read(buf)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return parseResponse(accum, false), ctxErr
@@ -737,13 +665,13 @@ func parseResponse(b []byte, sawPrompt bool) string {
 }
 
 func (f *Flipper) drain() {
-	f.port.SetReadTimeout(100 * time.Millisecond)
+	_ = f.transport.SetReadTimeout(f.transport.DrainTimeout())
 	buf := make([]byte, 1024)
 	for {
-		n, _ := f.port.Read(buf)
+		n, _ := f.transport.Read(buf)
 		if n == 0 {
 			break
 		}
 	}
-	f.port.SetReadTimeout(5 * time.Second)
+	_ = f.transport.SetReadTimeout(5 * time.Second)
 }
