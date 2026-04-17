@@ -49,6 +49,8 @@ func Classify(tool string) Level {
 		"loader_unitemp",
 		// File-format structural inspection (read-only on the SD card)
 		"fileformat_read", "fileformat_diff",
+		// BadUSB payload validator — reads the script, never transmits
+		"badusb_validate",
 		// Composite workflows (read-only recon)
 		"workflow_hw_recon_blackbox_device":
 		return Low

@@ -23,6 +23,7 @@ import (
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/session"
+	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/vision"
 	"github.com/xunholy/promptzero/internal/workflows"
 )
@@ -446,7 +447,24 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 
 	// --- Flipper: BadUSB ---
 	case "badusb_run":
-		return a.flipper.BadUSBRun(str(p, "file"))
+		path := str(p, "file")
+		if rep, err := a.validateBadUSB(path); err == nil {
+			if rep.Severity == validator.SeverityCritical && !a.cfg.Validator.BadUSB.AllowCritical {
+				return "", fmt.Errorf("badusb_run blocked by sandbox validator:\n%s\nSet validator.badusb.allow_critical=true to override, or call badusb_validate to triage", rep.RenderText())
+			}
+			if rep.Severity == validator.SeverityWarn && a.cfg.Validator.BadUSB.WarnAction == "block" {
+				return "", fmt.Errorf("badusb_run blocked (warn-action=block):\n%s", rep.RenderText())
+			}
+		}
+		return a.flipper.BadUSBRun(path)
+	case "badusb_validate":
+		path := str(p, "file")
+		rep, err := a.validateBadUSB(path)
+		if err != nil {
+			return "", err
+		}
+		out, _ := json.Marshal(rep)
+		return string(out), nil
 
 	// --- Flipper: Loader ---
 	case "list_apps":
@@ -1103,6 +1121,26 @@ func (a *Agent) listDevices() (string, error) {
 }
 
 // --- File-format Handlers ---
+
+// validateBadUSB reads the script off the Flipper SD card and runs it
+// through the BadUSB sandbox validator. Returns the Report or an error
+// if the file can't be read. The enabled check is honored here so the
+// caller can branch on "validator disabled" without duplicating the
+// config lookup.
+func (a *Agent) validateBadUSB(path string) (validator.Report, error) {
+	if path == "" {
+		return validator.Report{}, fmt.Errorf("path required")
+	}
+	// Enabled *bool is tri-state: nil = default on, false = explicit off.
+	if en := a.cfg.Validator.BadUSB.Enabled; en != nil && !*en {
+		return validator.Report{Name: path}, nil
+	}
+	raw, err := a.flipper.StorageRead(path)
+	if err != nil {
+		return validator.Report{}, fmt.Errorf("storage read %s: %w", path, err)
+	}
+	return validator.Validate(path, raw), nil
+}
 
 // fileformatRead pulls a Flipper capture via storage_read, parses it, and
 // returns structural JSON so the LLM sees named fields rather than one

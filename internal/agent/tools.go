@@ -167,6 +167,13 @@ func buildTools() []anthropic.ToolUnionParam {
 			),
 			"file",
 		),
+		tool("badusb_validate",
+			"Dry-run a BadUSB/DuckyScript payload through the pre-flight validator without executing it. Flags rm -rf /, reverse shells, persistence, defense-disable, and other dangerous patterns. Returns a Severity (info|warn|critical) and the list of findings with line numbers. Use before badusb_run to preview what a script will do.",
+			props(
+				reqProp("file", "string", "Path to .txt BadUSB script on SD card"),
+			),
+			"file",
+		),
 
 		// --- Loader ---
 		tool("list_apps",
