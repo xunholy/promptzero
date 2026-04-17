@@ -24,6 +24,7 @@ import (
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/mcp"
+	"github.com/xunholy/promptzero/internal/mqtt"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
@@ -674,10 +675,27 @@ func run() error {
 		})
 	}
 	wh := webhook.New(webhookSubs)
+
+	// --- MQTT bridge ---
+	// Enabled=false in config yields a no-op Bridge, so the downstream wiring
+	// doesn't need to branch on nil. Connect is best-effort; a broker that
+	// isn't up right now will keep retrying in the background.
+	mqttBridge := mqtt.New(cfg.MQTT)
+	if mqttBridge.Enabled() {
+		go func() {
+			if err := mqttBridge.Connect(); err != nil {
+				statusWarn(fmt.Sprintf("MQTT broker unreachable: %v (auto-reconnect running)", err))
+				return
+			}
+			statusOK(fmt.Sprintf("MQTT bridge %s(%s → %s/…)%s", dim, cfg.MQTT.Broker, mqttBridge.BasePath(), reset))
+		}()
+		defer mqttBridge.Close()
+	}
+
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		wh.Fire(webhook.EventSessionEnded, map[string]any{
+		endedPayload := map[string]any{
 			"session_id": func() string {
 				if auditLog != nil {
 					return auditLog.SessionID()
@@ -685,20 +703,23 @@ func run() error {
 				return ""
 			}(),
 			"ended_at": time.Now().UTC(),
-		})
+		}
+		wh.Fire(webhook.EventSessionEnded, endedPayload)
+		mqttBridge.PublishEvent("session_ended", endedPayload)
 		_ = wh.Close(shutdownCtx)
 	}()
 	if auditLog != nil {
 		auditLog.AddObserver(func(e audit.Entry) {
 			if e.Level == audit.LevelCritical {
 				wh.Fire(webhook.EventAuditCritical, e)
+				mqttBridge.PublishAuditCritical(e)
 			}
 		})
 	}
 	if len(webhookSubs) > 0 {
 		statusOK(fmt.Sprintf("Webhooks %s(%d subscriber%s)%s", dim, len(webhookSubs), plural(len(webhookSubs)), reset))
 	}
-	wh.Fire(webhook.EventSessionStarted, map[string]any{
+	sessionStartPayload := map[string]any{
 		"session_id": func() string {
 			if auditLog != nil {
 				return auditLog.SessionID()
@@ -707,7 +728,9 @@ func run() error {
 		}(),
 		"started_at": time.Now().UTC(),
 		"model":      cfg.Model,
-	})
+	}
+	wh.Fire(webhook.EventSessionStarted, sessionStartPayload)
+	mqttBridge.PublishEvent("session_started", sessionStartPayload)
 
 	// --- Generation provider ---
 	var genLLM provider.Provider
@@ -937,8 +960,11 @@ func run() error {
 				"output":      out,
 			}
 			wh.Fire(webhook.EventToolFinished, payload)
+			mqttBridge.PublishEvent("tool_finished", payload)
+			mqttBridge.PublishToolLast(ev.Name, payload)
 			if strings.HasPrefix(ev.Name, "workflow_") {
 				wh.Fire(webhook.EventWorkflowCompleted, payload)
+				mqttBridge.PublishEvent("workflow_completed", payload)
 			}
 		}
 	})
@@ -951,11 +977,13 @@ func run() error {
 	var pendingConfirm atomic.Pointer[confirmState]
 	if gateEnabled {
 		ai.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.Decision {
-			wh.Fire(webhook.EventRiskPrompted, map[string]any{
+			promptPayload := map[string]any{
 				"tool":  req.Tool,
 				"risk":  req.Risk.String(),
 				"input": string(req.Input),
-			})
+			}
+			wh.Fire(webhook.EventRiskPrompted, promptPayload)
+			mqttBridge.PublishEvent("risk_prompted", promptPayload)
 			resultCh := make(chan agent.Decision, 1)
 			pendingConfirm.Store(&confirmState{req: req, result: resultCh})
 			ed.writeOutput(func() {
@@ -970,11 +998,13 @@ func run() error {
 				decision = agent.DecisionDeny
 			}
 			if decision == agent.DecisionDeny {
-				wh.Fire(webhook.EventRiskDenied, map[string]any{
+				denyPayload := map[string]any{
 					"tool":  req.Tool,
 					"risk":  req.Risk.String(),
 					"input": string(req.Input),
-				})
+				}
+				wh.Fire(webhook.EventRiskDenied, denyPayload)
+				mqttBridge.PublishEvent("risk_denied", denyPayload)
 			}
 			return decision
 		})
@@ -1205,6 +1235,11 @@ func run() error {
 			case "/webhooks":
 				ed.writeOutput(func() {
 					handleWebhooksCmd(wh, fields[1:])
+				})
+				return false
+			case "/mqtt":
+				ed.writeOutput(func() {
+					handleMQTTCmd(mqttBridge, fields[1:])
 				})
 				return false
 			case "/tools":
@@ -1464,6 +1499,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/webhooks [test <name>]%s List outbound webhooks with recent deliveries\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/mqtt [test]%s           Show MQTT bridge status (and publish a synthetic ping)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sDevice%s\n", dim, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sInput%s\n", dim, reset)
@@ -2554,5 +2590,33 @@ func handleWebhooksCmd(wh webhook.Dispatcher, args []string) {
 			fmt.Fprintf(os.Stderr, "      %s%s%s  %s  %s %d\n",
 				dim, ts, reset, r.Event, icon, r.StatusCode)
 		}
+	}
+}
+
+// handleMQTTCmd implements /mqtt. With no args it shows the bridge's
+// enabled/connected state plus the most recent connection error (if any).
+// `/mqtt test` fires a synthetic event on <base>/events/test so operators
+// can verify topic routing from the broker side.
+func handleMQTTCmd(br *mqtt.Bridge, args []string) {
+	if br == nil || !br.Enabled() {
+		fmt.Fprintf(os.Stderr, "  %sMQTT bridge disabled%s\n", dim, reset)
+		return
+	}
+	if len(args) > 0 && strings.EqualFold(args[0], "test") {
+		br.PublishEvent("test", map[string]any{
+			"ts":   time.Now().UTC(),
+			"note": "synthetic ping from /mqtt test",
+		})
+		fmt.Fprintf(os.Stderr, "  %s●%s test event published to %s/events/test\n", green, reset, br.BasePath())
+		return
+	}
+	state := red + "disconnected" + reset
+	if br.Connected() {
+		state = green + "connected" + reset
+	}
+	fmt.Fprintf(os.Stderr, "  %s●%s MQTT %s %s(base: %s/)%s\n",
+		green, reset, state, dim, br.BasePath(), reset)
+	if err := br.LastError(); err != nil {
+		fmt.Fprintf(os.Stderr, "    %slast error:%s %v\n", dim, reset, err)
 	}
 }

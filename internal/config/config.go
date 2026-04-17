@@ -20,6 +20,7 @@ type Config struct {
 	Persona     string            `yaml:"persona,omitempty"`
 	Watch       WatchConfig       `yaml:"watch,omitempty"`
 	Webhooks    []WebhookConfig   `yaml:"webhooks,omitempty"`
+	MQTT        MQTTConfig        `yaml:"mqtt,omitempty"`
 }
 
 // WebhookConfig is one HTTP webhook subscription. Empty Events means "all
@@ -32,6 +33,21 @@ type WebhookConfig struct {
 	Events  []string          `yaml:"events,omitempty"`
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Secret  string            `yaml:"secret,omitempty"`
+}
+
+// MQTTConfig configures the optional outbound MQTT bridge. Password is
+// overridden by env var MQTT_PASSWORD when the config field is empty.
+// Leave Enabled=false (or the whole block absent) to skip. BasePath
+// defaults to "promptzero" when empty.
+type MQTTConfig struct {
+	Enabled  bool   `yaml:"enabled,omitempty"`
+	Broker   string `yaml:"broker,omitempty"`
+	ClientID string `yaml:"client_id,omitempty"`
+	Username string `yaml:"username,omitempty"`
+	Password string `yaml:"password,omitempty"`
+	BasePath string `yaml:"base_path,omitempty"`
+	QoS      byte   `yaml:"qos,omitempty"`
+	Retained bool   `yaml:"retained,omitempty"`
 }
 
 // WatchConfig configures the --watch filesystem-trigger mode. Paths is the
@@ -125,6 +141,10 @@ func Load(path string) (*Config, error) {
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
 		cfg.OpenAIKey = key
 	}
+	if pw := os.Getenv("MQTT_PASSWORD"); pw != "" && cfg.MQTT.Password == "" {
+		cfg.MQTT.Password = pw
+	}
+
 	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("API key required: set api_key in config or ANTHROPIC_API_KEY env var")
 	}
