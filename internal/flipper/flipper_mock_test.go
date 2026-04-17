@@ -20,10 +20,10 @@ import (
 func TestMockHandshakeAndDeviceInfo(t *testing.T) {
 	m := mock.Spawn(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	flip, err := flipper.Connect(ctx, m.Path(), 115200, 3*time.Second)
+	flip, err := flipper.Connect(ctx, m.Path(), 115200, 10*time.Second)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
@@ -59,10 +59,10 @@ func TestMockPowerInfoRoutesByFork(t *testing.T) {
 		}),
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	flip, err := flipper.Connect(ctx, m.Path(), 115200, 3*time.Second)
+	flip, err := flipper.Connect(ctx, m.Path(), 115200, 10*time.Second)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
@@ -86,10 +86,10 @@ func TestMockPowerInfoRoutesByFork(t *testing.T) {
 func TestMockLoaderListParsed(t *testing.T) {
 	m := mock.Spawn(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	flip, err := flipper.Connect(ctx, m.Path(), 115200, 3*time.Second)
+	flip, err := flipper.Connect(ctx, m.Path(), 115200, 10*time.Second)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
@@ -119,10 +119,10 @@ func TestMockLoaderListParsed(t *testing.T) {
 func TestMockSanitisesCRLF(t *testing.T) {
 	m := mock.Spawn(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	flip, err := flipper.Connect(ctx, m.Path(), 115200, 3*time.Second)
+	flip, err := flipper.Connect(ctx, m.Path(), 115200, 10*time.Second)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}

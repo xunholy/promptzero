@@ -113,7 +113,6 @@ func readKeys(out chan<- keyEvent) {
 				// Possibly a partial escape at end of buffer — stash for next read.
 				if len(data)-i < 6 {
 					carry = append(carry[:0], data[i:]...)
-					i = len(data)
 					break
 				}
 				// Bare ESC — swallow. Partial sequences are rare over a local TTY;
