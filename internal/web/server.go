@@ -53,23 +53,28 @@ func NewServer(addr string, ag *agent.Agent, v *voice.Engine) *Server {
 	}
 }
 
-// applyLoopbackDefault enforces the local-first bind default: empty or
-// "0.0.0.0" hosts are rewritten to "127.0.0.1"; non-loopback hosts print a
-// warning. Exposed at package scope (lowercase) so tests can exercise it.
+// Addr returns the effective host:port the server will bind to, after any
+// loopback-default rewrite applied in NewServer. Use this for display so the
+// "Web UI at ..." status line matches the actual socket.
+func (s *Server) Addr() string { return s.addr }
+
+// applyLoopbackDefault enforces the local-first bind default: an EMPTY host
+// is rewritten to "127.0.0.1" (i.e., user did not set web.host). Explicit
+// 0.0.0.0 / other non-loopback hosts are RESPECTED and warned about so the
+// user knows the network exposure is intentional.
 func applyLoopbackDefault(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		// Unparseable — leave untouched, net/http will surface the error.
+		// Unparseable - leave untouched, net/http will surface the error.
 		return addr
 	}
-	switch host {
-	case "", "0.0.0.0", "::", "[::]":
+	if host == "" {
 		effective := net.JoinHostPort("127.0.0.1", port)
 		fmt.Fprintf(os.Stderr, "\x1b[33m●\x1b[0m Web UI defaulting to loopback (%s); set web.host in config to bind publicly\n", effective)
 		return effective
 	}
 	if !isLoopback(host) {
-		fmt.Fprintf(os.Stderr, "\x1b[33m●\x1b[0m Web UI bound to %s — accessible from the network without authentication (intended for local pentesting only)\n", net.JoinHostPort(host, port))
+		fmt.Fprintf(os.Stderr, "\x1b[33m●\x1b[0m Web UI bound to %s - accessible from the network without authentication (intended for local pentesting only)\n", net.JoinHostPort(host, port))
 	}
 	return addr
 }

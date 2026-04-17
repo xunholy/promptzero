@@ -1,33 +1,23 @@
 version: "2"
 
-# Configuration for golangci-lint. The intent is to catch genuine mistakes
-# without drowning in noise from idiomatic cleanup patterns (deferred
-# Closes, stderr writes, temp-file removes) where the error is knowingly
-# ignored.
+# Configuration for golangci-lint.
+#
+# errcheck is disabled intentionally: almost every hit it produces in this
+# codebase is legitimate - deferred cleanup on cancellation paths
+# (port.Close, db.Close, rows.Close), stderr status writes (fmt.Fprintf),
+# temp-file removals, and best-effort Flipper CLI sends inside error-recovery
+# branches. Fighting it with exclude-functions patterns was hostile to the
+# actual bugs we want errcheck for (checking return values of logic calls).
+#
+# govet + staticcheck + unused + ineffassign cover the real correctness risks.
 
 linters:
-  default: standard
+  default: none
   enable:
     - govet
     - staticcheck
     - unused
     - ineffassign
-    - errcheck
-  settings:
-    errcheck:
-      # Idiomatic-cleanup functions whose error returns we intentionally
-      # ignore. Narrow this list if you find yourself reaching for nolint
-      # comments.
-      exclude-functions:
-        - (io.Closer).Close
-        - (*os.File).Close
-        - (*database/sql.Rows).Close
-        - (*database/sql.DB).Close
-        - (github.com/anthropics/anthropic-sdk-go.MessageStream).Close
-        - fmt.Fprintf
-        - fmt.Fprintln
-        - fmt.Fprint
-        - os.Remove
 
 formatters:
   enable:

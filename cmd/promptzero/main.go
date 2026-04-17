@@ -671,12 +671,13 @@ func run() error {
 
 	// --- Web mode ---
 	if webMode {
-		// Empty Host is intentional: web.NewServer rewrites empty / 0.0.0.0
-		// to loopback by default and warns loudly if the user set a
-		// non-loopback host explicitly in config.
+		// Empty Host defaults to loopback inside web.NewServer, which also
+		// warns if the user picked a non-loopback bind explicitly. We read
+		// the EFFECTIVE addr back so the "Web UI at ..." status line
+		// doesn't contradict the warning.
 		addr := fmt.Sprintf("%s:%d", cfg.Web.Host, cfg.Web.Port)
 		srv := web.NewServer(addr, ai, voiceEngine)
-		statusOK(fmt.Sprintf("Web UI at %s%shttp://%s%s", bold, cyan, addr, reset))
+		statusOK(fmt.Sprintf("Web UI at %s%shttp://%s%s", bold, cyan, srv.Addr(), reset))
 		fmt.Fprintf(os.Stderr, "\n")
 		webCtx, releaseWeb := withCancel(ctx)
 		defer releaseWeb()
