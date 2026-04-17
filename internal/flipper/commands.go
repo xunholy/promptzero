@@ -543,3 +543,328 @@ func (f *Flipper) Vibro(on bool) (string, error) {
 func (f *Flipper) LED(channel string, value int) (string, error) {
 	return f.Exec(fmt.Sprintf("led %s %d", sanitizeArg(channel), value))
 }
+
+// --- Sub-GHz (capability-gap primitives) ---
+
+// SubGHzRxRaw starts a raw Sub-GHz capture that is written to a .sub file.
+// Useful for protocol-level reverse engineering when decode_raw isn't enough.
+// Xtreme firmware appends a trailing `<device>` arg (0 = internal CC1101,
+// 1 = external); honored when the capability flag is set.
+// CLI: subghz rx_raw <file_path> [<frequency>] [<device>]
+func (f *Flipper) SubGHzRxRaw(filePath string, frequency uint32, duration time.Duration) (string, error) {
+	cmd := fmt.Sprintf("subghz rx_raw %s", sanitizeArg(filePath))
+	if frequency > 0 {
+		cmd += fmt.Sprintf(" %d", frequency)
+	}
+	if f.Capabilities().SubGHzNeedsDev {
+		cmd += " 0"
+	}
+	return f.ExecLong(cmd, duration)
+}
+
+// SubGHzChat joins an interactive Sub-GHz text chat on the given frequency.
+// Long-running and actively transmits — the caller bounds it with a duration.
+// Xtreme firmware requires the trailing `<device>` arg.
+// CLI: subghz chat <frequency> [<device>]
+func (f *Flipper) SubGHzChat(frequency uint32, duration time.Duration) (string, error) {
+	cmd := fmt.Sprintf("subghz chat %d", frequency)
+	if f.Capabilities().SubGHzNeedsDev {
+		cmd += " 0"
+	}
+	return f.ExecLong(cmd, duration)
+}
+
+// --- Infrared (capability-gap primitives) ---
+
+// IRDecodeFile parses a saved .ir file and returns the decoded entries.
+// Read-only and local to the SD card — no transmit.
+// CLI: ir decode <path>
+func (f *Flipper) IRDecodeFile(path string) (string, error) {
+	return f.Exec(fmt.Sprintf("ir decode %s", sanitizeArg(path)))
+}
+
+// IRUniversalList lists entries in a universal remote library file so the
+// agent can see which buttons are available before calling IRUniversal.
+// CLI: ir universal <library> list
+func (f *Flipper) IRUniversalList(library string) (string, error) {
+	return f.Exec(fmt.Sprintf("ir universal %s list", sanitizeArg(library)))
+}
+
+// --- NFC (capability-gap primitives via subshell) ---
+
+// NFCRawFrame sends a raw ISO14443 frame to a tag via the nfc subshell and
+// returns the tag's response. Fork-gated: not available on Xtreme (no NFC CLI
+// subshell).
+// Subshell verb: raw <hex>
+func (f *Flipper) NFCRawFrame(hexData string, timeout time.Duration) (string, error) {
+	return f.NFCSubcommand(fmt.Sprintf("raw %s", sanitizeArg(hexData)), timeout)
+}
+
+// NFCAPDU sends an APDU command to a contactless smart card (ISO7816) via
+// the nfc subshell. Fork-gated.
+// Subshell verb: apdu <hex>
+func (f *Flipper) NFCAPDU(apduHex string, timeout time.Duration) (string, error) {
+	return f.NFCSubcommand(fmt.Sprintf("apdu %s", sanitizeArg(apduHex)), timeout)
+}
+
+// NFCMFURead reads a single MIFARE Ultralight page/block. Fork-gated.
+// Subshell verb: mfu rdbl <page>
+func (f *Flipper) NFCMFURead(page int, timeout time.Duration) (string, error) {
+	return f.NFCSubcommand(fmt.Sprintf("mfu rdbl %d", page), timeout)
+}
+
+// NFCMFUWrite writes 4 bytes of hex data to a MIFARE Ultralight page/block.
+// Destructive — overwrites whatever the tag currently holds. Fork-gated.
+// Subshell verb: mfu wrbl <page> <hex>
+func (f *Flipper) NFCMFUWrite(page int, hexData string, timeout time.Duration) (string, error) {
+	return f.NFCSubcommand(fmt.Sprintf("mfu wrbl %d %s", page, sanitizeArg(hexData)), timeout)
+}
+
+// NFCDumpProtocol dumps tag contents for a specific MIFARE protocol via the
+// nfc subshell (e.g. "Mifare_Classic", "Mifare_Ultralight"). Fork-gated.
+// Subshell verb: dump <protocol>
+func (f *Flipper) NFCDumpProtocol(protocol string, timeout time.Duration) (string, error) {
+	return f.NFCSubcommand(fmt.Sprintf("dump %s", sanitizeArg(protocol)), timeout)
+}
+
+// --- RFID (capability-gap primitives) ---
+
+// RFIDRawRead performs a raw 125 kHz capture to a file for later analysis.
+// Mode is "ask" or "psk" (pass "" for auto); filePath is where the raw
+// capture is written. Read-only from the RF perspective — no transmit.
+// CLI: rfid raw_read [<mode>] <file_path>
+func (f *Flipper) RFIDRawRead(mode, filePath string, duration time.Duration) (string, error) {
+	return f.withSuccessBuzz(func() (string, error) {
+		cmd := "rfid raw_read"
+		if mode != "" {
+			cmd += " " + sanitizeArg(mode)
+		}
+		if filePath != "" {
+			cmd += " " + sanitizeArg(filePath)
+		}
+		return f.ExecLong(cmd, duration)
+	})
+}
+
+// RFIDRawAnalyze post-processes a raw LF capture, attempting to decode the
+// contained protocol. Pure local analysis — no RF activity.
+// CLI: rfid raw_analyze <file_path>
+func (f *Flipper) RFIDRawAnalyze(filePath string) (string, error) {
+	return f.Exec(fmt.Sprintf("rfid raw_analyze %s", sanitizeArg(filePath)))
+}
+
+// RFIDRawEmulate replays a raw 125 kHz capture against a reader. Active
+// transmission — use with authorisation.
+// CLI: rfid raw_emulate <file_path>
+func (f *Flipper) RFIDRawEmulate(filePath string, duration time.Duration) (string, error) {
+	return f.ExecLong(fmt.Sprintf("rfid raw_emulate %s", sanitizeArg(filePath)), duration)
+}
+
+// --- OneWire / iButton helpers ---
+
+// OneWireSearch enumerates devices on the 1-Wire bus. Read-only; buzzes on
+// success so the user knows something was found.
+// CLI: onewire search
+func (f *Flipper) OneWireSearch(duration time.Duration) (string, error) {
+	return f.withSuccessBuzz(func() (string, error) {
+		return f.ExecLong("onewire search", duration)
+	})
+}
+
+// --- GPIO / hardware recon ---
+
+// looksLikeUnknownCommand reports whether out reads like the Flipper CLI's
+// "command not found" error. Keyed on the error strings seen in the firmware
+// sources across forks.
+func looksLikeUnknownCommand(out string) bool {
+	l := strings.ToLower(out)
+	return strings.Contains(l, "not a recognized") ||
+		strings.Contains(l, "unknown command") ||
+		strings.Contains(l, "command not found")
+}
+
+// I2CScan scans the I²C bus for connected devices. Tries the built-in `i2c
+// scan` CLI first (available on Xtreme and forks that ship it); if the
+// firmware rejects the command, falls back to launching the "I2C Scanner"
+// FAP via loader_open. Buzzes on success.
+// CLI: i2c scan  →  loader open "I2C Scanner"
+func (f *Flipper) I2CScan() (string, error) {
+	return f.withSuccessBuzz(func() (string, error) {
+		out, err := f.RawCLI("i2c scan")
+		if err == nil && !looksLikeUnknownCommand(out) {
+			return out, nil
+		}
+		return f.Exec(`loader open "I2C Scanner"`)
+	})
+}
+
+// --- Scripting ---
+
+// JSRun executes a saved JavaScript file on the Flipper's JS runtime.
+// Fork-gated: only the Xtreme, Momentum, and RogueMaster forks ship a JS
+// engine. On stock the call returns a friendly-fork error rather than
+// issuing a no-op CLI command that hangs.
+// CLI: js <path>
+func (f *Flipper) JSRun(path string, duration time.Duration) (string, error) {
+	caps := f.Capabilities()
+	switch strings.ToLower(caps.FirmwareFork) {
+	case "xtreme", "momentum", "roguemaster":
+		// supported
+	default:
+		return "", fmt.Errorf("JS runtime not available on %s firmware — switch to Xtreme/Momentum/RogueMaster or run the script from the on-device JS Runner app", caps.FriendlyFork())
+	}
+	return f.ExecLong(fmt.Sprintf("js %s", sanitizeArg(path)), duration)
+}
+
+// --- Storage (capability-gap primitives) ---
+
+// StorageCopy copies a file or directory on the Flipper SD card.
+// CLI: storage copy <src> <dst>
+func (f *Flipper) StorageCopy(src, dst string) (string, error) {
+	return f.Exec(fmt.Sprintf("storage copy %s %s", sanitizeArg(src), sanitizeArg(dst)))
+}
+
+// StorageRename renames/moves a file or directory on the SD card.
+// CLI: storage rename <src> <dst>
+func (f *Flipper) StorageRename(src, dst string) (string, error) {
+	return f.Exec(fmt.Sprintf("storage rename %s %s", sanitizeArg(src), sanitizeArg(dst)))
+}
+
+// StorageMD5 returns the MD5 hash of a file on the SD card.
+// CLI: storage md5 <path>
+func (f *Flipper) StorageMD5(path string) (string, error) {
+	return f.Exec(fmt.Sprintf("storage md5 %s", sanitizeArg(path)))
+}
+
+// StorageTree walks a directory recursively and returns its tree listing.
+// CLI: storage tree <path>
+func (f *Flipper) StorageTree(path string) (string, error) {
+	return f.Exec(fmt.Sprintf("storage tree %s", sanitizeArg(path)))
+}
+
+// --- Loader FAP shortcuts ---
+//
+// These thin wrappers launch a specific FAP via `loader open`. They quote
+// multi-word app names explicitly so the CLI parses them as a single
+// argument. If the FAP is not installed the Flipper surfaces a "Not
+// found" error through the returned string.
+
+// LoaderNFCMagic launches the "NFC Magic" FAP used to write MIFARE magic tags.
+func (f *Flipper) LoaderNFCMagic() (string, error) { return f.Exec(`loader open "NFC Magic"`) }
+
+// LoaderMFKey launches the "MFKey32" FAP for MIFARE Classic key recovery.
+func (f *Flipper) LoaderMFKey() (string, error) { return f.Exec(`loader open MFKey32`) }
+
+// LoaderMifareNested launches the "Mifare Nested" FAP (nested attack recovery).
+func (f *Flipper) LoaderMifareNested() (string, error) { return f.Exec(`loader open "Mifare Nested"`) }
+
+// LoaderPicopass launches the "PicoPass" FAP (HID iClass/Picopass tooling).
+func (f *Flipper) LoaderPicopass() (string, error) { return f.Exec(`loader open PicoPass`) }
+
+// LoaderSeader launches the "SEADER" FAP (HID iClass SE advanced tooling).
+func (f *Flipper) LoaderSeader() (string, error) { return f.Exec(`loader open SEADER`) }
+
+// LoaderT5577MultiWriter launches the "T5577 Multiwriter" FAP for batch
+// writing of 125 kHz T5577 tags.
+func (f *Flipper) LoaderT5577MultiWriter() (string, error) {
+	return f.Exec(`loader open "T5577 Multiwriter"`)
+}
+
+// LoaderSubGHzBruteforcer launches the "Sub-GHz BF" brute-force FAP.
+// Destructive by design — runs enormous code sweeps.
+func (f *Flipper) LoaderSubGHzBruteforcer() (string, error) {
+	return f.Exec(`loader open "Sub-GHz BF"`)
+}
+
+// LoaderSubGHzPlaylist launches the "Playlist" FAP that replays a sequence of
+// .sub captures.
+func (f *Flipper) LoaderSubGHzPlaylist() (string, error) { return f.Exec(`loader open Playlist`) }
+
+// LoaderProtoView launches the "ProtoView" FAP for raw Sub-GHz signal visualisation.
+func (f *Flipper) LoaderProtoView() (string, error) { return f.Exec(`loader open ProtoView`) }
+
+// LoaderSpectrumAnalyzer launches the "Spectrum Analyzer" FAP.
+func (f *Flipper) LoaderSpectrumAnalyzer() (string, error) {
+	return f.Exec(`loader open "Spectrum Analyzer"`)
+}
+
+// LoaderSignalGenerator launches the "Signal Generator" FAP.
+func (f *Flipper) LoaderSignalGenerator() (string, error) {
+	return f.Exec(`loader open "Signal Generator"`)
+}
+
+// LoaderNRF24Mousejacker launches the "NRF24 Mousejacker" FAP. Requires an
+// external NRF24 devboard on the GPIO header.
+func (f *Flipper) LoaderNRF24Mousejacker() (string, error) {
+	return f.Exec(`loader open "NRF24 Mousejacker"`)
+}
+
+// LoaderUARTTerminal launches the "UART Terminal" FAP for serial comms on the
+// Flipper's GPIO header.
+func (f *Flipper) LoaderUARTTerminal() (string, error) {
+	return f.Exec(`loader open "UART Terminal"`)
+}
+
+// LoaderSPIMemManager launches the "SPI Mem Manager" FAP for reading and
+// writing SPI flash chips via the GPIO header.
+func (f *Flipper) LoaderSPIMemManager() (string, error) {
+	return f.Exec(`loader open "SPI Mem Manager"`)
+}
+
+// LoaderUnitemp launches the "Unitemp" FAP for reading external temperature
+// sensors over the GPIO header.
+func (f *Flipper) LoaderUnitemp() (string, error) { return f.Exec(`loader open Unitemp`) }
+
+// --- System (capability-gap primitives) ---
+
+// LoaderInfo returns metadata about the currently running app (name, flags).
+// CLI: loader info
+func (f *Flipper) LoaderInfo() (string, error) {
+	return f.Exec("loader info")
+}
+
+// LoaderSignal sends a numeric signal to the currently running app. The
+// signal number's meaning is app-specific (many apps document a few custom
+// opcodes).
+// CLI: loader signal <n>
+func (f *Flipper) LoaderSignal(signal int) (string, error) {
+	return f.Exec(fmt.Sprintf("loader signal %d", signal))
+}
+
+// LogStream opens a live log stream from the Flipper for the supplied
+// duration, returning the captured text. Read-only; the Flipper keeps
+// running after the stream ends.
+// CLI: log
+func (f *Flipper) LogStream(duration time.Duration) (string, error) {
+	return f.ExecLong("log", duration)
+}
+
+// PowerRebootDFU reboots the Flipper into the STM32 DFU bootloader. Leaves
+// the device without a running firmware until a host reflashes or the user
+// power-cycles — recovery is physical. Guarded as Critical at the risk layer.
+// CLI: power reboot2dfu
+func (f *Flipper) PowerRebootDFU() (string, error) {
+	return f.Exec("power reboot2dfu")
+}
+
+// UpdateInstall applies a firmware update from an already-staged manifest on
+// the SD card. Long-running — uses a 5-minute deadline. Critical.
+// CLI: update install <manifest_path>
+func (f *Flipper) UpdateInstall(manifestPath string) (string, error) {
+	return f.ExecLong(fmt.Sprintf("update install %s", sanitizeArg(manifestPath)), 5*time.Minute)
+}
+
+// CryptoStoreKey stores a key in one of the Flipper's secure-storage slots.
+// Overwrites whatever was in that slot.
+// CLI: crypto store_key <slot> <hex>
+func (f *Flipper) CryptoStoreKey(slot int, keyHex string) (string, error) {
+	return f.Exec(fmt.Sprintf("crypto store_key %d %s", slot, sanitizeArg(keyHex)))
+}
+
+// BTHCIInfo returns local Bluetooth controller info (chip, firmware version,
+// MAC). Read-only; does not bring up a BLE stack — native BLE operations
+// still require an external devboard.
+// CLI: bt hci_info
+func (f *Flipper) BTHCIInfo() (string, error) {
+	return f.Exec("bt hci_info")
+}

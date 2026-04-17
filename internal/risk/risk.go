@@ -37,7 +37,16 @@ func Classify(tool string) Level {
 		"audit_query", "audit_export", "audit_stats",
 		"discover_apps",
 		"analyze_image",
-		"loader_list", "list_apps":
+		"loader_list", "list_apps",
+		// Phase-1 capability primitives
+		"ir_decode_file", "ir_universal_list",
+		"rfid_raw_analyze",
+		"onewire_search",
+		"i2c_scan",
+		"storage_md5", "storage_tree",
+		"loader_info", "log_stream",
+		"bt_hci_info",
+		"loader_unitemp":
 		return Low
 
 	// Captures, scans, file writes
@@ -59,7 +68,15 @@ func Classify(tool string) Level {
 		"generate_evil_portal", "generate_badusb", "generate_subghz", "generate_ir", "generate_nfc",
 		"deploy_payload",
 		"input_send",
-		"storage_write", "storage_mkdir", "storage_delete":
+		"storage_write", "storage_mkdir", "storage_delete",
+		// Phase-1 capability primitives
+		"subghz_rx_raw",
+		"nfc_mfu_rdbl", "nfc_dump_protocol",
+		"rfid_raw_read",
+		"storage_copy", "storage_rename",
+		"loader_protoview", "loader_spectrum_analyzer",
+		"loader_signal_generator", "loader_uart_terminal",
+		"loader_spi_mem_manager":
 		return Medium
 
 	// Active transmission, emulation, execution
@@ -80,7 +97,17 @@ func Classify(tool string) Level {
 		"wifi_ping_scan", "wifi_arp_scan", "wifi_port_scan",
 		"run_payload",
 		"generate_deploy_run",
-		"loader_open":
+		"loader_open",
+		// Phase-1 capability primitives
+		"subghz_tx_key", "subghz_chat",
+		"nfc_raw_frame", "nfc_apdu", "nfc_mfu_wrbl",
+		"loader_nfc_magic", "loader_mfkey", "loader_mifare_nested",
+		"loader_picopass", "loader_seader",
+		"rfid_raw_emulate",
+		"loader_t5577_multiwriter",
+		"loader_subghz_playlist",
+		"loader_signal",
+		"crypto_store_key":
 		return High
 
 	// Destructive, attack, brute force. flipper_raw_cli is here because it's
@@ -92,7 +119,13 @@ func Classify(tool string) Level {
 		"subghz_bruteforce",
 		"ir_bruteforce",
 		"device_reboot", "wifi_reboot",
-		"flipper_raw_cli":
+		"flipper_raw_cli",
+		// Phase-1 capability primitives
+		"loader_subghz_bruteforcer",
+		"loader_nrf24mousejacker",
+		"js_run",
+		"power_reboot_dfu",
+		"update_install":
 		return Critical
 
 	default:

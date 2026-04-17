@@ -440,6 +440,110 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "list_devices":
 		return a.listDevices()
 
+	// --- Flipper: Sub-GHz (extended) ---
+	case "subghz_tx_key":
+		return a.flipper.SubGHzTxKey(str(p, "key_hex"), uint32(intOr(p, "frequency", 0)), uint32(intOr(p, "te", 0)), intOr(p, "repeat", 0))
+	case "subghz_rx_raw":
+		return a.flipper.SubGHzRxRaw(str(p, "file"), uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
+	case "subghz_chat":
+		return a.flipper.SubGHzChat(uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
+
+	// --- Flipper: IR (extended) ---
+	case "ir_decode_file":
+		return a.flipper.IRDecodeFile(str(p, "path"))
+	case "ir_universal_list":
+		return a.flipper.IRUniversalList(str(p, "library"))
+
+	// --- Flipper: NFC (extended subshell) ---
+	case "nfc_raw_frame":
+		return a.flipper.NFCRawFrame(str(p, "hex"), time.Duration(intOr(p, "timeout_seconds", 10))*time.Second)
+	case "nfc_apdu":
+		return a.flipper.NFCAPDU(str(p, "hex"), time.Duration(intOr(p, "timeout_seconds", 10))*time.Second)
+	case "nfc_mfu_rdbl":
+		return a.flipper.NFCMFURead(intOr(p, "page", 0), time.Duration(intOr(p, "timeout_seconds", 10))*time.Second)
+	case "nfc_mfu_wrbl":
+		return a.flipper.NFCMFUWrite(intOr(p, "page", 0), str(p, "hex"), time.Duration(intOr(p, "timeout_seconds", 10))*time.Second)
+	case "nfc_dump_protocol":
+		return a.flipper.NFCDumpProtocol(str(p, "protocol"), time.Duration(intOr(p, "timeout_seconds", 30))*time.Second)
+	case "loader_nfc_magic":
+		return a.flipper.LoaderNFCMagic()
+	case "loader_mfkey":
+		return a.flipper.LoaderMFKey()
+	case "loader_mifare_nested":
+		return a.flipper.LoaderMifareNested()
+	case "loader_picopass":
+		return a.flipper.LoaderPicopass()
+	case "loader_seader":
+		return a.flipper.LoaderSeader()
+
+	// --- Flipper: RFID (extended) ---
+	case "rfid_raw_read":
+		return a.flipper.RFIDRawRead(str(p, "mode"), str(p, "file"), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
+	case "rfid_raw_analyze":
+		return a.flipper.RFIDRawAnalyze(str(p, "file"))
+	case "rfid_raw_emulate":
+		return a.flipper.RFIDRawEmulate(str(p, "file"), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
+	case "loader_t5577_multiwriter":
+		return a.flipper.LoaderT5577MultiWriter()
+
+	// --- Flipper: OneWire / iButton ---
+	case "onewire_search":
+		return a.flipper.OneWireSearch(time.Duration(intOr(p, "duration_seconds", 10)) * time.Second)
+
+	// --- Flipper: GPIO / hardware recon ---
+	case "i2c_scan":
+		return a.flipper.I2CScan()
+
+	// --- Flipper: Scripting ---
+	case "js_run":
+		return a.flipper.JSRun(str(p, "path"), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
+
+	// --- Flipper: Storage (extended) ---
+	case "storage_copy":
+		return a.flipper.StorageCopy(str(p, "src"), str(p, "dst"))
+	case "storage_rename":
+		return a.flipper.StorageRename(str(p, "src"), str(p, "dst"))
+	case "storage_md5":
+		return a.flipper.StorageMD5(str(p, "path"))
+	case "storage_tree":
+		return a.flipper.StorageTree(str(p, "path"))
+
+	// --- Flipper: Loader FAP shortcuts (Sub-GHz / misc) ---
+	case "loader_subghz_bruteforcer":
+		return a.flipper.LoaderSubGHzBruteforcer()
+	case "loader_subghz_playlist":
+		return a.flipper.LoaderSubGHzPlaylist()
+	case "loader_protoview":
+		return a.flipper.LoaderProtoView()
+	case "loader_spectrum_analyzer":
+		return a.flipper.LoaderSpectrumAnalyzer()
+	case "loader_signal_generator":
+		return a.flipper.LoaderSignalGenerator()
+	case "loader_nrf24mousejacker":
+		return a.flipper.LoaderNRF24Mousejacker()
+	case "loader_uart_terminal":
+		return a.flipper.LoaderUARTTerminal()
+	case "loader_spi_mem_manager":
+		return a.flipper.LoaderSPIMemManager()
+	case "loader_unitemp":
+		return a.flipper.LoaderUnitemp()
+
+	// --- Flipper: System (extended) ---
+	case "loader_info":
+		return a.flipper.LoaderInfo()
+	case "loader_signal":
+		return a.flipper.LoaderSignal(intOr(p, "signal", 0))
+	case "log_stream":
+		return a.flipper.LogStream(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
+	case "power_reboot_dfu":
+		return a.flipper.PowerRebootDFU()
+	case "update_install":
+		return a.flipper.UpdateInstall(str(p, "manifest"))
+	case "crypto_store_key":
+		return a.flipper.CryptoStoreKey(intOr(p, "slot", 0), str(p, "hex"))
+	case "bt_hci_info":
+		return a.flipper.BTHCIInfo()
+
 	// --- Generation Pipeline ---
 	case "generate_evil_portal":
 		return a.generatePayload(ctx, "evil_portal", str(p, "description"), str(p, "path"), str(p, "target_os"), boolOr(p, "deploy", true))
