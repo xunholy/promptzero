@@ -21,6 +21,7 @@ import (
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/config"
+	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
@@ -587,6 +588,34 @@ func run() error {
 	client := anthropic.NewClient()
 	ai := agent.New(&client, flip, cfg)
 	statusOK(fmt.Sprintf("Agent ready %s(model: %s)%s", dim, cfg.Model, reset))
+
+	// --- Cost tracker + offline detection ---
+	// The tracker accumulates token usage per stream response and trips the
+	// offline banner after three consecutive stream errors <60s apart.
+	overrides := make(map[string]cost.Rate, len(cfg.Cost.Rates))
+	for k, v := range cfg.Cost.Rates {
+		overrides[k] = cost.Rate{InputPerMTok: v.Input, OutputPerMTok: v.Output}
+	}
+	costTracker := cost.NewTracker(cost.NewPricer(overrides), cfg.Model, func(offline bool) {
+		if rec != nil {
+			rec.SetAnthropicReachable(!offline)
+		}
+		if offline {
+			statusWarn("OFFLINE — Anthropic API unreachable (3 consecutive stream errors)")
+		} else {
+			statusOK("Back online — Anthropic API reachable")
+		}
+	})
+	ai.SetUsageCallback(func(in, out int64) {
+		costTracker.AddUsage(in, out)
+		if rec != nil {
+			rec.RecordTokens("input", in)
+			rec.RecordTokens("output", out)
+		}
+	})
+	ai.SetStreamErrorCallback(func(_ error) {
+		costTracker.RecordStreamError()
+	})
 
 	// --- Persona registry ---
 	// Built-ins plus any user YAML in ~/.promptzero/personas. --persona wins
@@ -1264,7 +1293,13 @@ func run() error {
 			return false
 		case "/debug":
 			ed.writeOutput(func() {
-				renderDebugSnapshot(os.Stderr, cfg, rec, activePersona, flip, hasMarauder, auditLog, ai)
+				renderDebugSnapshot(os.Stderr, cfg, rec, activePersona, flip, hasMarauder, auditLog, ai, costTracker)
+			})
+			return false
+		case "/cost":
+			ed.writeOutput(func() {
+				s := costTracker.Snapshot()
+				fmt.Fprintf(os.Stderr, "  %s\n", s.Format())
 			})
 			return false
 		case "/reconnect":
@@ -2361,7 +2396,7 @@ func handleRulesCmd(eng *rules.Engine, args []string) {
 // writes the boxed /debug view to w. Fields that the caller can't populate
 // (offline recorder, missing audit log) fall through as zero values and are
 // hidden by the renderer.
-func renderDebugSnapshot(w io.Writer, cfg *config.Config, rec *obs.Recorder, p *persona.Persona, flip *flipper.Flipper, hasMarauder bool, auditLog *audit.Log, ai *agent.Agent) {
+func renderDebugSnapshot(w io.Writer, cfg *config.Config, rec *obs.Recorder, p *persona.Persona, flip *flipper.Flipper, hasMarauder bool, auditLog *audit.Log, ai *agent.Agent, tracker *cost.Tracker) {
 	goroutines, heapMB, sysMB, lastGC, goVer, plat := obs.CollectRuntime()
 	snap := obs.DebugSnapshot{
 		BuildVersion: version,
@@ -2377,6 +2412,9 @@ func renderDebugSnapshot(w io.Writer, cfg *config.Config, rec *obs.Recorder, p *
 	if rec != nil {
 		snap.Uptime = time.Since(rec.UptimeStart())
 		snap.LastTools = rec.LastTools()
+	}
+	if tracker != nil {
+		snap.OfflineMode = tracker.Snapshot().Offline
 	}
 	if p != nil {
 		snap.PersonaName = p.Name

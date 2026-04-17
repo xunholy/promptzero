@@ -123,6 +123,8 @@ type Agent struct {
 	genLLM           provider.Provider
 	toolStatusCb     func(ToolEvent)
 	textDeltaCb      func(TextDelta)
+	usageCb          func(inTokens, outTokens int64)
+	streamErrCb      func(err error)
 	confirmCb        ConfirmFunc
 	confirmThreshold risk.Level
 	sessionStore     *session.Store
@@ -151,6 +153,16 @@ func (a *Agent) SetGenerator(g *generate.Generator)      { a.generator = g }
 func (a *Agent) SetGenLLM(p provider.Provider)           { a.genLLM = p }
 func (a *Agent) SetToolStatusCallback(f func(ToolEvent)) { a.toolStatusCb = f }
 func (a *Agent) SetTextDeltaCallback(f func(TextDelta))  { a.textDeltaCb = f }
+
+// SetUsageCallback registers a per-response token counter. Fires once per
+// successful streamOnce with the message's Usage.InputTokens and
+// Usage.OutputTokens. Pass nil to disable.
+func (a *Agent) SetUsageCallback(f func(inTokens, outTokens int64)) { a.usageCb = f }
+
+// SetStreamErrorCallback registers a hook that fires when the upstream
+// Messages.NewStreaming call returns an error. Wired to the cost
+// Tracker so consecutive network failures flip the offline banner.
+func (a *Agent) SetStreamErrorCallback(f func(err error)) { a.streamErrCb = f }
 
 // SetConfirmCallback registers an interactive gate consulted before any
 // tool whose classified risk meets or exceeds the confirm threshold runs.
@@ -362,7 +374,13 @@ func (a *Agent) streamOnce(ctx context.Context, sysPrompt string, tools []anthro
 		}
 	}
 	if err := stream.Err(); err != nil {
+		if a.streamErrCb != nil {
+			a.streamErrCb(err)
+		}
 		return nil, err
+	}
+	if a.usageCb != nil {
+		a.usageCb(msg.Usage.InputTokens, msg.Usage.OutputTokens)
 	}
 	return &msg, nil
 }
