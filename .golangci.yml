@@ -1,0 +1,34 @@
+version: "2"
+
+# Configuration for golangci-lint. The intent is to catch genuine mistakes
+# without drowning in noise from idiomatic cleanup patterns (deferred
+# Closes, stderr writes, temp-file removes) where the error is knowingly
+# ignored.
+
+linters:
+  default: standard
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - errcheck
+  settings:
+    errcheck:
+      # Idiomatic-cleanup functions whose error returns we intentionally
+      # ignore. Narrow this list if you find yourself reaching for nolint
+      # comments.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.DB).Close
+        - (github.com/anthropics/anthropic-sdk-go.MessageStream).Close
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - os.Remove
+
+formatters:
+  enable:
+    - gofmt
