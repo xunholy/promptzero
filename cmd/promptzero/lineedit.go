@@ -261,6 +261,10 @@ type lineEditor struct {
 	// running is true while a turn is in flight. Read by submit() to
 	// decide queue-vs-dispatch; written by the REPL around ai.Run.
 	running atomic.Bool
+
+	// streaming is true while writeDelta is shepherding LLM text into the
+	// scroll region. Protected by outputMu. See writeDelta/endDelta.
+	streaming bool
 }
 
 const maxHistory = 50
@@ -542,14 +546,82 @@ func (e *lineEditor) renderLocked() {
 
 // writeOutput runs fn with outputMu held and redraws the input line
 // afterwards so any terminal output lands in the scroll region without
-// leaving the input box in a stale state.
+// leaving the input box in a stale state. Use for atomic, one-shot writes
+// (status lines, tool-call start/finish, slash-command output). For
+// streamed LLM text deltas use writeDelta instead — writeOutput would
+// reset the cursor to column 1 on every chunk, overwriting the previous
+// one.
 func (e *lineEditor) writeOutput(fn func()) {
 	e.outputMu.Lock()
 	defer e.outputMu.Unlock()
+	// An in-flight stream reserves the cursor position at the bottom of
+	// the scroll region; flush a newline and close the stream before any
+	// atomic write so the two don't collide on the same row.
+	if e.streaming {
+		fmt.Fprint(os.Stderr, "\033[u\n\033[s")
+		e.streaming = false
+	}
 	if e.ui.enabled {
 		e.ui.positionOutput()
 	}
 	fn()
+	e.renderLocked()
+}
+
+// writeDelta appends a chunk of streamed assistant text to the scroll
+// region, preserving the cursor position between chunks so successive
+// tokens flow across lines naturally instead of clobbering each other at
+// column 1 (writeOutput's behaviour). Uses DEC save-cursor (\033[s) and
+// restore-cursor (\033[u) to round-trip through the input-line redraw.
+//
+// Invariants:
+//   - Caller should not interleave writeDelta with writeOutput for the
+//     same logical stream. writeOutput's streaming check handles that
+//     case defensively but the rendering will show a line break.
+//   - endDelta must be called at stream end so a subsequent atomic write
+//     starts on a fresh row.
+func (e *lineEditor) writeDelta(text string) {
+	e.outputMu.Lock()
+	defer e.outputMu.Unlock()
+	if !e.ui.enabled {
+		// Non-TTY path: just write, no cursor games.
+		fmt.Fprint(os.Stderr, text)
+		return
+	}
+	if !e.streaming {
+		// First chunk of a new stream: park cursor at the bottom of the
+		// scroll region, then immediately save that as our anchor.
+		e.ui.positionOutput()
+		fmt.Fprint(os.Stderr, "\033[s")
+		e.streaming = true
+	} else {
+		// Restore cursor to the end of the previous chunk.
+		fmt.Fprint(os.Stderr, "\033[u")
+	}
+	fmt.Fprint(os.Stderr, text)
+	// Save the new end-of-stream position, then redraw the input line
+	// (which moves the cursor off to row-1; the next delta will restore).
+	fmt.Fprint(os.Stderr, "\033[s")
+	e.renderLocked()
+}
+
+// endDelta finalises a streaming run: emits a newline so the next atomic
+// write starts cleanly, clears the streaming flag, redraws the input
+// line. Safe to call when no stream is active — it's a no-op.
+func (e *lineEditor) endDelta() {
+	e.outputMu.Lock()
+	defer e.outputMu.Unlock()
+	if !e.streaming {
+		return
+	}
+	if e.ui.enabled {
+		// Restore to end of last chunk, emit newline, save (so any stray
+		// writer that checks streaming won't overwrite), then redraw box.
+		fmt.Fprint(os.Stderr, "\033[u\n\033[s")
+	} else {
+		fmt.Fprintln(os.Stderr)
+	}
+	e.streaming = false
 	e.renderLocked()
 }
 

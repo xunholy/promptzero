@@ -1,8 +1,35 @@
 package main
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 )
+
+// captureStderr runs fn with os.Stderr redirected into a pipe and returns
+// everything written during the call. Used by the streaming tests which
+// need to inspect the actual byte sequence going to the terminal.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		b, _ := io.ReadAll(r)
+		done <- string(b)
+	}()
+	fn()
+	os.Stderr = old
+	_ = w.Close()
+	out := <-done
+	_ = r.Close()
+	return out
+}
 
 func newTestEditor() *lineEditor {
 	return newLineEditor(&termUI{enabled: false})
@@ -338,5 +365,92 @@ func TestMultibyteRuneInsert(t *testing.T) {
 	e.backspace()
 	if got, want := string(e.buf), "é"; got != want {
 		t.Fatalf("buf after backspace = %q, want %q", got, want)
+	}
+}
+
+// TestWriteDeltaStreamingOrder is the regression guard for the rendering
+// bug where streamed text deltas were clobbering each other at column 1
+// because writeOutput unconditionally re-positioned the cursor to
+// positionOutput on every chunk. The fix (writeDelta) uses DEC save /
+// restore cursor so successive chunks append naturally.
+//
+// We assert the save/restore dance is present between chunks and that no
+// chunk is preceded by the column-1 reset sequence that caused the bug.
+func TestWriteDeltaStreamingOrder(t *testing.T) {
+	ui := &termUI{enabled: true}
+	ui.rows.Store(24)
+	ui.cols.Store(80)
+	e := newLineEditor(ui)
+
+	out := captureStderr(t, func() {
+		e.writeDelta("Here")
+		e.writeDelta("'s a full ")
+		e.writeDelta("breakdown")
+		e.endDelta()
+	})
+
+	// Chunks appear in the correct order.
+	idx := 0
+	for _, chunk := range []string{"Here", "'s a full ", "breakdown"} {
+		pos := strings.Index(out[idx:], chunk)
+		if pos < 0 {
+			t.Fatalf("chunk %q missing from output (or out of order)\nfull=%q", chunk, out)
+		}
+		idx += pos + len(chunk)
+	}
+
+	// Between the first and second chunk, we expect exactly one restore
+	// (\033[u) to pick up where the previous chunk left off. No \r (CR)
+	// should appear there — that was the regression that caused column-1
+	// overwrites.
+	first := strings.Index(out, "Here")
+	second := strings.Index(out, "'s a full ")
+	between := out[first+len("Here") : second]
+	if !strings.Contains(between, "\x1b[u") {
+		t.Fatalf("expected \\033[u between chunks, got %q", between)
+	}
+	if strings.Contains(between, "\r") {
+		t.Fatalf("unexpected CR between chunks — would reset to column 1: between=%q", between)
+	}
+}
+
+// TestWriteDeltaNonTTYConcatenates verifies the non-TTY fallback path
+// preserves text order without using ANSI cursor games.
+func TestWriteDeltaNonTTYConcatenates(t *testing.T) {
+	e := newLineEditor(&termUI{enabled: false})
+	out := captureStderr(t, func() {
+		e.writeDelta("a")
+		e.writeDelta("bc")
+		e.writeDelta("def")
+		e.endDelta()
+	})
+	if !strings.HasPrefix(out, "abcdef") {
+		t.Fatalf("expected 'abcdef' prefix, got %q", out)
+	}
+	if !strings.HasSuffix(strings.TrimRight(out, "\n"), "f") {
+		t.Fatalf("expected content to end with 'f' before final newline, got %q", out)
+	}
+}
+
+// TestWriteOutputClosesActiveStream verifies that if a caller accidentally
+// fires an atomic write (tool status, slash command) while a delta stream
+// is in flight, writeOutput flushes a newline and clears the streaming
+// flag so the two don't collide on the same row.
+func TestWriteOutputClosesActiveStream(t *testing.T) {
+	ui := &termUI{enabled: true}
+	ui.rows.Store(24)
+	ui.cols.Store(80)
+	e := newLineEditor(ui)
+
+	_ = captureStderr(t, func() {
+		e.writeDelta("streaming")
+		// No endDelta — simulate a tool event arriving mid-stream.
+		e.writeOutput(func() {
+			// caller would Fprintf a status line here
+		})
+	})
+
+	if e.streaming {
+		t.Fatalf("writeOutput should clear the streaming flag when it closes an in-flight stream")
 	}
 }

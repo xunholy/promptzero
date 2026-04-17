@@ -783,32 +783,31 @@ func run() error {
 	var turnToolCount atomic.Int32
 	setNote := func(s string) { turnNote.Store(&s) }
 
-	// P8 wiring — stream assistant text as it arrives.
+	// P8 wiring — stream assistant text as it arrives. writeDelta preserves
+	// the cursor position between chunks using DEC save/restore, so
+	// successive tokens flow naturally across the scroll region instead of
+	// clobbering each other at column 1 (which writeOutput would do).
 	ai.SetTextDeltaCallback(func(td agent.TextDelta) {
-		ed.writeOutput(func() {
-			if streaming.CompareAndSwap(false, true) {
-				// First delta of a streaming run: wipe any stale status on
-				// the current row so deltas start at column 1.
-				fmt.Fprint(os.Stderr, "\r\033[K")
-				setNote("Responding")
-			}
-			fmt.Fprint(os.Stderr, td.Text)
-		})
+		if streaming.CompareAndSwap(false, true) {
+			setNote("Responding")
+		}
+		ed.writeDelta(td.Text)
 	})
 
 	// Tool-call status: routed through the editor so concurrent keystroke
 	// redraws and tool events don't trample each other. P1 adds an inline
 	// one-line output preview after each tool finish.
 	ai.SetToolStatusCallback(func(ev agent.ToolEvent) {
+		// End any in-flight delta stream cleanly before writing a status
+		// line — the line editor's endDelta emits the closing newline.
+		if streaming.Swap(false) {
+			ed.endDelta()
+		}
 		ed.writeOutput(func() {
-			// Close any streaming text line before overwriting this row.
-			if streaming.Swap(false) {
-				fmt.Fprintln(os.Stderr)
-			}
 			switch ev.Phase {
 			case "start":
 				setNote("Running " + ev.Name)
-				fmt.Fprintf(os.Stderr, "\r\033[K  %s▸%s %s %s%s%s\n", cyan, reset, ev.Name, dim, truncateArgs(ev.Input), reset)
+				fmt.Fprintf(os.Stderr, "  %s▸%s %s %s%s%s\n", cyan, reset, ev.Name, dim, truncateArgs(ev.Input), reset)
 			case "finish":
 				setNote("Thinking")
 				turnToolCount.Add(1)
@@ -1111,19 +1110,19 @@ func run() error {
 			ed.running.Store(false)
 			_ = flip.SetLED("b", 0)
 			streamed := streaming.Swap(false)
+			// Close any in-flight delta stream first so subsequent atomic
+			// writes land on a fresh row instead of racing writeDelta's
+			// save/restore cursor.
+			if streamed {
+				ed.endDelta()
+			}
 			ed.writeOutput(func() {
 				if r.err != nil {
-					if streamed {
-						fmt.Fprintln(os.Stderr)
-					} else {
-						fmt.Fprintf(os.Stderr, "\r\033[K")
-					}
 					fmt.Fprintf(os.Stderr, "  %s● Error: %v%s\n\n", red, r.err, reset)
 				} else if streamed {
-					// Response already rendered via text deltas.
-					fmt.Fprintf(os.Stderr, "\n\n")
+					// Response already rendered via text deltas; separator.
+					fmt.Fprintf(os.Stderr, "\n")
 				} else {
-					fmt.Fprintf(os.Stderr, "\r\033[K")
 					fmt.Fprintf(os.Stdout, "\n%s\n\n", r.response)
 				}
 			})
