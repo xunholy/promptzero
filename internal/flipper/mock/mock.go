@@ -94,6 +94,15 @@ func (m *Mock) Lines() []string {
 // flipper.Connect.
 func (m *Mock) Path() string { return m.path }
 
+// URL returns the mock:// transport URL for this mock. Prefer this over
+// Path when calling flipper.ConnectURL, so the test exercises the
+// dedicated mockTransport dialer in internal/flipper/transport rather
+// than the serial dialer's go.bug.st/serial fallback path. Both work
+// against a pty slave today, but routing through the mock scheme keeps
+// test intent obvious and mirrors how a future BLE-backed mock would
+// be wired.
+func (m *Mock) URL() string { return "mock://" + m.path }
+
 // Count returns the number of commands the mock has processed since Spawn.
 func (m *Mock) Count() int64 { return m.counted.Load() }
 

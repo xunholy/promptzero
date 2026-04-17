@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -46,6 +47,12 @@ type mockTransport struct {
 	f  *os.File
 
 	path string
+
+	// readTimeout is the per-Read deadline applied via os.File.SetDeadline.
+	// Zero means "no deadline" — a blocking read. The flipper layer
+	// starts with a short timeout during handshake and bumps it between
+	// commands via SetReadTimeout, mirroring the serial transport.
+	readTimeout time.Duration
 }
 
 func (t *mockTransport) Dial(ctx context.Context) error {
@@ -87,11 +94,25 @@ func (t *mockTransport) Reconnect(ctx context.Context) error {
 func (t *mockTransport) Read(p []byte) (int, error) {
 	t.mu.Lock()
 	f := t.f
+	timeout := t.readTimeout
 	t.mu.Unlock()
 	if f == nil {
 		return 0, os.ErrClosed
 	}
-	return f.Read(p)
+	if timeout > 0 {
+		_ = f.SetReadDeadline(time.Now().Add(timeout))
+	} else {
+		_ = f.SetReadDeadline(time.Time{})
+	}
+	n, err := f.Read(p)
+	// Deadline exceeded surfaces as os.ErrDeadlineExceeded. Translate
+	// to the "n=0, err=nil" idiom the flipper layer expects from a
+	// timed-out read (serial.Port.Read follows the same convention
+	// via go.bug.st/serial).
+	if err != nil && errors.Is(err, os.ErrDeadlineExceeded) {
+		return 0, nil
+	}
+	return n, err
 }
 
 func (t *mockTransport) Write(p []byte) (int, error) {
@@ -115,11 +136,16 @@ func (t *mockTransport) Close() error {
 	return err
 }
 
-// SetReadTimeout is a no-op on the mock transport because pty slaves
-// don't support TIOCSSETA-style per-read timeouts. Tests that need to
-// unblock a pending Read should Close() the transport instead — the
-// interface contract test exercises this path.
-func (t *mockTransport) SetReadTimeout(d time.Duration) error { return nil }
+// SetReadTimeout stashes the duration applied via os.File.SetDeadline on
+// the next Read. Pty slaves don't support TIOCSSETA-style termios VMIN/
+// VTIME timing, but their fds are pollable, so deadlines round-trip
+// through the Go runtime just fine. Zero means "no deadline" (blocking).
+func (t *mockTransport) SetReadTimeout(d time.Duration) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.readTimeout = d
+	return nil
+}
 
 func (t *mockTransport) Identity() string           { return "mock://" + t.path }
 func (t *mockTransport) DrainTimeout() time.Duration { return mockDrainTimeout }
