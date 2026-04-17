@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/anthropics/anthropic-sdk-go v1.36.0
 	github.com/coder/websocket v1.8.14
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/mark3labs/mcp-go v0.48.0
 	go.bug.st/serial v1.6.4
 	golang.org/x/sys v0.43.0

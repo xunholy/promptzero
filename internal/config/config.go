@@ -18,6 +18,27 @@ type Config struct {
 	Devices     map[string]Device `yaml:"devices"`
 	ConfirmRisk string            `yaml:"confirm_risk,omitempty"`
 	Persona     string            `yaml:"persona,omitempty"`
+	Watch       WatchConfig       `yaml:"watch,omitempty"`
+}
+
+// WatchConfig configures the --watch filesystem-trigger mode. Paths is the
+// list of directories (or specific files) to observe. Rules describe how
+// individual files within those paths map to prompts fed into the agent.
+type WatchConfig struct {
+	Enabled bool        `yaml:"enabled,omitempty"`
+	Paths   []string    `yaml:"paths,omitempty"`
+	Rules   []WatchRule `yaml:"rules,omitempty"`
+}
+
+// WatchRule is a single pattern -> prompt mapping. Pattern uses
+// filepath.Match syntax ("*.sub", "*.png", etc.) matched against the file's
+// basename. Prompt is templated with {{path}}, {{dir}}, {{name}}, {{ext}}
+// at fire time. Persona, when set, overrides the active persona for the
+// duration of the FS-triggered turn.
+type WatchRule struct {
+	Pattern string `yaml:"pattern"`
+	Prompt  string `yaml:"prompt"`
+	Persona string `yaml:"persona,omitempty"`
 }
 
 type SerialConfig struct {

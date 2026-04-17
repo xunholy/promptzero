@@ -28,6 +28,7 @@ import (
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/voice"
+	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/web"
 	"golang.org/x/term"
 )
@@ -38,6 +39,14 @@ type turnResult struct {
 	response string
 	err      error
 }
+
+// stringSlice is a flag.Value that collects repeated string flags into a
+// slice — used by --watch so operators can aim multiple paths at one
+// invocation without quoting a comma-separated list.
+type stringSlice []string
+
+func (s *stringSlice) String() string     { return strings.Join(*s, ",") }
+func (s *stringSlice) Set(v string) error { *s = append(*s, v); return nil }
 
 var version = "dev"
 
@@ -370,6 +379,7 @@ func run() error {
 		yoloMode       bool
 		confirmRisk    string
 		personaName    string
+		watchPaths     stringSlice
 	)
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "Path to config file")
@@ -389,6 +399,7 @@ func run() error {
 	flag.BoolVar(&yoloMode, "yolo", false, "Skip risk confirmations (shorthand for --confirm-risk=none)")
 	flag.StringVar(&confirmRisk, "confirm-risk", "", "Confirmation threshold: none|low|medium|high|critical (default: high)")
 	flag.StringVar(&personaName, "persona", "", "Operator persona (default: value from config or 'default')")
+	flag.Var(&watchPaths, "watch", "Watch a directory for FS events; repeat to watch several")
 	flag.BoolVar(&showVersion, "version", false, "Show version")
 	flag.Parse()
 
@@ -913,6 +924,95 @@ func run() error {
 
 	busy := func() bool { return ed.running.Load() }
 
+	// --- Filesystem watch (optional) ---
+	// --watch flags take precedence over config.watch.paths; both fold into
+	// the same rule set. A goroutine consumes the handler channel and forwards
+	// events as REPL turns when the agent is idle, so an FS-triggered prompt
+	// never collides with a user prompt mid-flight. Queue depth is bounded —
+	// bursts beyond the cap drop events rather than growing unbounded.
+	var watchMgr *watch.Watcher
+	{
+		paths := append([]string(nil), watchPaths...)
+		paths = append(paths, cfg.Watch.Paths...)
+		var rules []watch.Rule
+		for _, r := range cfg.Watch.Rules {
+			rules = append(rules, watch.Rule{Pattern: r.Pattern, Prompt: r.Prompt, Persona: r.Persona})
+		}
+		// Default rule set only applies when the operator asked for --watch
+		// but didn't supply config rules — gives the feature sensible defaults
+		// without surprising users who configured it explicitly.
+		if len(paths) > 0 && len(rules) == 0 {
+			rules = []watch.Rule{
+				{Pattern: "*.sub", Prompt: "A new Sub-GHz capture landed at {{path}}. Decode it and summarise protocol + key data."},
+				{Pattern: "*.nfc", Prompt: "A new NFC capture landed at {{path}}. Identify type, UID, sectors."},
+				{Pattern: "*.rfid", Prompt: "A new RFID capture landed at {{path}}. Report protocol and UID."},
+				{Pattern: "*.png", Prompt: "Analyze {{path}} — what Flipper-relevant thing is this?"},
+				{Pattern: "*.jpg", Prompt: "Analyze {{path}} — what Flipper-relevant thing is this?"},
+				{Pattern: "*.txt", Prompt: "Validate {{path}} as a BadUSB payload and summarise what it does."},
+			}
+		}
+		if len(paths) > 0 {
+			watchMgr = watch.New(paths, rules)
+			events := make(chan struct {
+				rule watch.Rule
+				path string
+			}, 16)
+			watchCtx, cancelWatch := context.WithCancel(ctx)
+			defer cancelWatch()
+			go func() {
+				if err := watchMgr.Run(watchCtx, func(r watch.Rule, p string) error {
+					select {
+					case events <- struct {
+						rule watch.Rule
+						path string
+					}{r, p}:
+					default:
+						// Queue full — record and move on rather than blocking
+						// the fsnotify goroutine. Bursts of 16+ events in the
+						// debounce window are the only way this trips.
+						ed.writeOutput(func() {
+							fmt.Fprintf(os.Stderr, "  %s● watch queue full; dropping %s%s\n", yellow, p, reset)
+						})
+					}
+					return nil
+				}); err != nil {
+					ed.writeOutput(func() {
+						fmt.Fprintf(os.Stderr, "  %s● watch error: %v%s\n", red, err, reset)
+					})
+				}
+			}()
+			go func() {
+				for {
+					select {
+					case <-watchCtx.Done():
+						return
+					case ev := <-events:
+						// Wait until the REPL is idle before dispatching so
+						// user turns and watch turns don't interleave.
+						for ed.running.Load() {
+							select {
+							case <-watchCtx.Done():
+								return
+							case <-time.After(250 * time.Millisecond):
+							}
+						}
+						if ev.rule.Persona != "" {
+							if p, ok := personas.Get(ev.rule.Persona); ok {
+								ai.SetPersona(p)
+							}
+						}
+						ed.writeOutput(func() {
+							fmt.Fprintf(os.Stderr, "  %s● watch fired:%s %s %s→%s %s\n",
+								yellow, reset, ev.path, dim, reset, collapseWS(ev.rule.Prompt))
+						})
+						dispatchTurn(ev.rule.Prompt)
+					}
+				}
+			}()
+			statusOK(fmt.Sprintf("Watch active on %s%d path%s%s", bold, len(paths), plural(len(paths)), reset))
+		}
+	}
+
 	// handleSubmit is invoked when the user presses Enter. Returns true
 	// when the REPL should exit.
 	handleSubmit := func(raw string) bool {
@@ -1009,6 +1109,11 @@ func run() error {
 			case "/persona":
 				ed.writeOutput(func() {
 					handlePersona(ai, personas, fields[1:])
+				})
+				return false
+			case "/watch":
+				ed.writeOutput(func() {
+					handleWatchCmd(watchMgr, fields[1:])
 				})
 				return false
 			case "/tools":
@@ -1259,9 +1364,14 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/tools [filter]%s        Enumerate registered tools (grouped)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/history [N]%s           Show last N audit rows (default 20)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit stats%s           Session audit summary\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/audit find k=v ...%s    Query rows (tool, risk, since, until, contains, success, limit, offset)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/audit tail%s            Live tail of new audit rows (Ctrl+C or Enter to stop)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/audit top tools|risks%s Top-N aggregations (since=24h etc.)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/audit session <id>%s    Dump a specific session\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit export <path>%s   Write session audit JSON to <path>\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sOperator%s\n", dim, reset)
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sDevice%s\n", dim, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sInput%s\n", dim, reset)
@@ -1915,6 +2025,15 @@ func outputPreview(out string, isErr bool) string {
 	return "    " + dim + line + reset
 }
 
+// plural returns "s" for counts other than 1 — keeps log lines grammatical
+// without pulling in an inflection library.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
 // handlePersona implements /persona. With no args it prints the active
 // persona's summary plus the catalogue of alternatives. With a name it
 // switches personas and resets the conversation so the new system prompt
@@ -1956,3 +2075,59 @@ func handlePersona(ai *agent.Agent, reg *persona.Registry, args []string) {
 		green, reset, bold, p.Name, reset, dim, scope, reset)
 }
 
+// handleWatchCmd implements /watch. With no args it summarises watched
+// paths, rule count, and the last few events. "pause" / "resume" toggle
+// dispatch without tearing down the watcher.
+func handleWatchCmd(w *watch.Watcher, args []string) {
+	if w == nil {
+		fmt.Fprintf(os.Stderr, "  %swatch not active — pass --watch <path>%s\n", dim, reset)
+		return
+	}
+	if len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "pause":
+			w.Pause()
+			fmt.Fprintf(os.Stderr, "  %s●%s watch paused\n", yellow, reset)
+			return
+		case "resume":
+			w.Resume()
+			fmt.Fprintf(os.Stderr, "  %s●%s watch resumed\n", green, reset)
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "  %susage: /watch [pause|resume]%s\n", dim, reset)
+			return
+		}
+	}
+	state := "active"
+	if w.Paused() {
+		state = "paused"
+	}
+	fmt.Fprintf(os.Stderr, "  %s●%s watch %s\n", green, reset, state)
+	for _, p := range w.Paths() {
+		fmt.Fprintf(os.Stderr, "    %s•%s %s\n", dim, reset, p)
+	}
+	rules := w.Rules()
+	fmt.Fprintf(os.Stderr, "  %s%d rule%s configured%s\n", dim, len(rules), plural(len(rules)), reset)
+	for _, r := range rules {
+		prefix := r.Pattern
+		if r.Persona != "" {
+			prefix += " @" + r.Persona
+		}
+		fmt.Fprintf(os.Stderr, "    %s•%s %s → %s\n", dim, reset, prefix, collapseWS(r.Prompt))
+	}
+	recent := w.Recent(5)
+	if len(recent) == 0 {
+		fmt.Fprintf(os.Stderr, "  %sno events yet%s\n", dim, reset)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  %srecent events:%s\n", dim, reset)
+	for _, ev := range recent {
+		ts := ev.At.Local().Format("15:04:05")
+		errMark := ""
+		if ev.Error != nil {
+			errMark = " " + red + "✗" + reset
+		}
+		fmt.Fprintf(os.Stderr, "    %s%s%s  %s  %s(%s)%s%s\n",
+			dim, ts, reset, ev.Path, dim, ev.Rule.Pattern, reset, errMark)
+	}
+}
