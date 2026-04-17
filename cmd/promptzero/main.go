@@ -368,8 +368,9 @@ func main() {
 func run() error {
 	var (
 		cfgPath           string
-		portOverride      string
-		transportOverride string
+		portOverride         string
+		transportOverride    string
+		marauderPortOverride string
 		webMode        bool
 		webPort        int
 		voiceMode      bool
@@ -396,6 +397,7 @@ func run() error {
 	flag.IntVar(&webPort, "web-port", 0, "Web server port (overrides config)")
 	flag.BoolVar(&voiceMode, "voice", false, "Enable voice input (requires sox + OPENAI_API_KEY)")
 	flag.BoolVar(&wifiEnabled, "wifi", false, "Connect to ESP32 Marauder WiFi devboard")
+	flag.StringVar(&marauderPortOverride, "marauder-port", "", "Marauder serial port (overrides config; e.g. /dev/ttyUSB0 for CP210x-bridged Marauders, /dev/ttyACM1 for ESP32-S2 native USB)")
 	flag.BoolVar(&mcpMode, "mcp", false, "Run as MCP server (stdin/stdout)")
 	flag.BoolVar(&doInit, "init", false, "Scaffold ~/.promptzero/config.yaml and exit")
 	flag.StringVar(&resumeID, "resume", "", "Resume a saved session by id")
@@ -510,6 +512,9 @@ func run() error {
 	// constructed from Port + BaudRate (see the Connect call below).
 	if transportOverride != "" {
 		cfg.Serial.TransportURL = transportOverride
+	}
+	if marauderPortOverride != "" {
+		cfg.Marauder.Port = marauderPortOverride
 	}
 
 	// --- Structured logging ---

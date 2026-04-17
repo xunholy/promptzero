@@ -2,8 +2,23 @@ package marauder
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
+
+// sanitizeArg strips characters that would break out of a single Marauder CLI
+// command line when interpolated into a command string: '\r', '\n', '\x00',
+// and the double-quote we use as a delimiter on quoted fields. Mirrors the
+// equivalent helper in the flipper package.
+func sanitizeArg(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\r', '\n', '\x00', '"':
+			return -1
+		}
+		return r
+	}, s)
+}
 
 // --- WiFi Scanning ---
 
@@ -213,9 +228,11 @@ func (m *Marauder) GetChannel() (string, error) {
 
 // --- SSID Management ---
 
-// AddSSID adds a named SSID to the SSID list.
+// AddSSID adds a named SSID to the SSID list. Double-quotes, CR, LF and NUL
+// in `name` are stripped so the argument cannot break out of the quoted form
+// the Marauder CLI expects.
 func (m *Marauder) AddSSID(name string) (string, error) {
-	return m.Exec(fmt.Sprintf(`ssid -a -n "%s"`, name), 5*time.Second)
+	return m.Exec(fmt.Sprintf(`ssid -a -n "%s"`, sanitizeArg(name)), 5*time.Second)
 }
 
 // GenerateSSIDs generates count random SSIDs and adds them to the list.
@@ -231,8 +248,10 @@ func (m *Marauder) RemoveSSID(index int) (string, error) {
 // --- Network Recon (requires WiFi join) ---
 
 // Join connects to the AP at the given index using the provided password.
+// The password is quoted and sanitised so embedded spaces / special chars
+// survive the Marauder CLI parser; CR/LF/NUL/quote are stripped.
 func (m *Marauder) Join(apIndex int, password string) (string, error) {
-	return m.Exec(fmt.Sprintf("join -a %d -p %s", apIndex, password), 15*time.Second)
+	return m.Exec(fmt.Sprintf(`join -a %d -p "%s"`, apIndex, sanitizeArg(password)), 15*time.Second)
 }
 
 // PingScan performs an ICMP ping sweep of the joined network.
@@ -292,9 +311,11 @@ func (m *Marauder) Settings() (string, error) {
 	return m.Exec("settings", 5*time.Second)
 }
 
-// SetSetting updates a single device setting by name and value.
+// SetSetting updates a single device setting by name and value. Both args
+// are sanitised (CR/LF/NUL/quote stripped) so a value with embedded control
+// characters can't inject additional CLI commands.
 func (m *Marauder) SetSetting(name, value string) (string, error) {
-	return m.Exec(fmt.Sprintf("settings -s %s %s", name, value), 5*time.Second)
+	return m.Exec(fmt.Sprintf("settings -s %s %s", sanitizeArg(name), sanitizeArg(value)), 5*time.Second)
 }
 
 // --- System ---
