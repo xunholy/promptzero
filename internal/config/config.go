@@ -17,6 +17,7 @@ type Config struct {
 	Web         WebConfig         `yaml:"web"`
 	Devices     map[string]Device `yaml:"devices"`
 	ConfirmRisk string            `yaml:"confirm_risk,omitempty"`
+	Persona     string            `yaml:"persona,omitempty"`
 }
 
 type SerialConfig struct {

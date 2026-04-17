@@ -24,6 +24,7 @@ import (
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/mcp"
+	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/voice"
@@ -368,6 +369,7 @@ func run() error {
 		connectTimeout time.Duration
 		yoloMode       bool
 		confirmRisk    string
+		personaName    string
 	)
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "Path to config file")
@@ -386,6 +388,7 @@ func run() error {
 	flag.DurationVar(&connectTimeout, "connect-timeout", 10*time.Second, "Max time to wait for Flipper CLI prompt (Ctrl+C cancels sooner)")
 	flag.BoolVar(&yoloMode, "yolo", false, "Skip risk confirmations (shorthand for --confirm-risk=none)")
 	flag.StringVar(&confirmRisk, "confirm-risk", "", "Confirmation threshold: none|low|medium|high|critical (default: high)")
+	flag.StringVar(&personaName, "persona", "", "Operator persona (default: value from config or 'default')")
 	flag.BoolVar(&showVersion, "version", false, "Show version")
 	flag.Parse()
 
@@ -545,6 +548,32 @@ func run() error {
 	ai := agent.New(&client, flip, cfg)
 	statusOK(fmt.Sprintf("Agent ready %s(model: %s)%s", dim, cfg.Model, reset))
 
+	// --- Persona registry ---
+	// Built-ins plus any user YAML in ~/.promptzero/personas. --persona wins
+	// over config.persona. Unknown names short-circuit the run so the operator
+	// doesn't silently get the default when they asked for rf-recon.
+	personas := persona.NewRegistry()
+	if dir, dErr := persona.UserDir(); dErr == nil {
+		if loadErr := personas.LoadDir(dir); loadErr != nil {
+			statusWarn(fmt.Sprintf("Persona directory %s: %v", dir, loadErr))
+		}
+	}
+	personaChoice := cfg.Persona
+	if personaName != "" {
+		personaChoice = personaName
+	}
+	if personaChoice == "" {
+		personaChoice = "default"
+	}
+	activePersona, ok := personas.Get(personaChoice)
+	if !ok {
+		return fmt.Errorf("unknown persona %q; available: %s", personaChoice, strings.Join(personas.Names(), ", "))
+	}
+	ai.SetPersona(activePersona)
+	statusOK(fmt.Sprintf("Persona %s%s%s %s· %d tools allowed%s",
+		bold, activePersona.Name, reset,
+		dim, len(activePersona.Tools), reset))
+
 	// --- Risk confirmation threshold ---
 	// Flags override config; --yolo is shorthand for --confirm-risk=none.
 	// Callback registration happens later (interactive REPL only); MCP/web
@@ -552,6 +581,14 @@ func run() error {
 	threshold, gateEnabled, resolveErr := resolveConfirmRisk(cfg.ConfirmRisk, confirmRisk, yoloMode)
 	if resolveErr != nil {
 		statusWarn(resolveErr.Error())
+	}
+	// Persona default threshold kicks in only when the operator has not asked
+	// for something specific via flag/config/yolo — we treat an absent
+	// override as "take the persona's opinion".
+	if activePersona.DefaultRiskThreshold != "" && cfg.ConfirmRisk == "" && confirmRisk == "" && !yoloMode {
+		if pt, _, pErr := resolveConfirmRisk(activePersona.DefaultRiskThreshold, "", false); pErr == nil {
+			threshold, gateEnabled = pt, true
+		}
 	}
 	ai.SetConfirmThreshold(threshold)
 	if gateEnabled {
@@ -930,7 +967,7 @@ func run() error {
 			ed.writeOutput(func() { printHelp() })
 			return false
 		case "/status":
-			ed.writeOutput(func() { printStatus(cfg, genLLM, hasMarauder, voiceEngine != nil, auditLog, flip, busy) })
+			ed.writeOutput(func() { printStatus(cfg, ai, genLLM, hasMarauder, voiceEngine != nil, auditLog, flip, busy) })
 			return false
 		case "/sessions":
 			ed.writeOutput(func() { printSessions(ai) })
@@ -968,6 +1005,11 @@ func run() error {
 				return false
 			case "/audit":
 				ed.writeOutput(func() { handleAudit(auditLog, fields[1:]) })
+				return false
+			case "/persona":
+				ed.writeOutput(func() {
+					handlePersona(ai, personas, fields[1:])
+				})
 				return false
 			case "/tools":
 				filter := ""
@@ -1218,6 +1260,8 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/history [N]%s           Show last N audit rows (default 20)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit stats%s           Session audit summary\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit export <path>%s   Write session audit JSON to <path>\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "\n  %sOperator%s\n", dim, reset)
+	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sDevice%s\n", dim, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sInput%s\n", dim, reset)
@@ -1245,7 +1289,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "\n")
 }
 
-func printStatus(cfg *config.Config, genLLM provider.Provider, wifi bool, hasVoice bool, auditLog *audit.Log, flip *flipper.Flipper, busy func() bool) {
+func printStatus(cfg *config.Config, ai *agent.Agent, genLLM provider.Provider, wifi bool, hasVoice bool, auditLog *audit.Log, flip *flipper.Flipper, busy func() bool) {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  %s%sStatus%s\n", bold, white, reset)
 	statusOK(fmt.Sprintf("Flipper Zero on %s", cfg.Serial.Port))
@@ -1265,6 +1309,15 @@ func printStatus(cfg *config.Config, genLLM provider.Provider, wifi bool, hasVoi
 		statusOK(fmt.Sprintf("Audit session: %s", auditLog.SessionID()))
 	} else {
 		statusWarn("Audit logging disabled")
+	}
+	if p := ai.Persona(); p != nil {
+		if len(p.Tools) == 0 {
+			statusOK(fmt.Sprintf("Persona: %s (all tools)", p.Name))
+		} else {
+			statusOK(fmt.Sprintf("Persona: %s (%d tools allowed)", p.Name, len(p.Tools)))
+		}
+	} else {
+		statusInfo("Persona: default")
 	}
 
 	fmt.Fprintf(os.Stderr, "\n  %s%sDevice%s\n", bold, white, reset)
@@ -1861,3 +1914,45 @@ func outputPreview(out string, isErr bool) string {
 	}
 	return "    " + dim + line + reset
 }
+
+// handlePersona implements /persona. With no args it prints the active
+// persona's summary plus the catalogue of alternatives. With a name it
+// switches personas and resets the conversation so the new system prompt
+// starts a fresh context.
+func handlePersona(ai *agent.Agent, reg *persona.Registry, args []string) {
+	if len(args) == 0 {
+		cur := ai.Persona()
+		if cur == nil {
+			fmt.Fprintf(os.Stderr, "  %sno persona active%s\n", dim, reset)
+		} else {
+			count := len(cur.Tools)
+			scope := fmt.Sprintf("%d tools allowed", count)
+			if count == 0 {
+				scope = "all tools"
+			}
+			fmt.Fprintf(os.Stderr, "  %s●%s active: %s%s%s %s(%s)%s\n",
+				green, reset, bold, cur.Name, reset, dim, scope, reset)
+			if cur.Description != "" {
+				fmt.Fprintf(os.Stderr, "  %s%s%s\n", dim, cur.Description, reset)
+			}
+		}
+		fmt.Fprintf(os.Stderr, "  %savailable:%s %s\n", dim, reset, strings.Join(reg.Names(), ", "))
+		return
+	}
+	name := args[0]
+	p, ok := reg.Get(name)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "  %s● unknown persona %q%s — available: %s\n", red, name, reset, strings.Join(reg.Names(), ", "))
+		return
+	}
+	ai.SetPersona(p)
+	ai.Reset()
+	count := len(p.Tools)
+	scope := fmt.Sprintf("%d tools", count)
+	if count == 0 {
+		scope = "all tools"
+	}
+	fmt.Fprintf(os.Stderr, "  %s●%s persona switched to %s%s%s %s(%s)%s\n",
+		green, reset, bold, p.Name, reset, dim, scope, reset)
+}
+

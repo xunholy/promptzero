@@ -17,6 +17,7 @@ import (
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
+	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/session"
@@ -110,6 +111,7 @@ type Agent struct {
 	confirmThreshold risk.Level
 	sessionStore     *session.Store
 	sessionID        string
+	persona          *persona.Persona
 }
 
 func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *Agent {
@@ -167,6 +169,26 @@ func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) 
 // to risk.High.
 func (a *Agent) SetConfirmThreshold(l risk.Level) { a.confirmThreshold = l }
 
+// SetPersona swaps the active operator persona. The persona's SystemPrompt
+// replaces the default preamble on the next streamed request and its tool
+// allowlist filters the advertised tool set. Passing nil clears any active
+// persona and restores default behaviour. Callers typically pair this with
+// Reset() so a mid-turn handoff doesn't sandwich two system prompts inside
+// the same assistant context.
+func (a *Agent) SetPersona(p *persona.Persona) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.persona = p
+}
+
+// Persona returns the currently active persona, or nil when the default
+// (unrestricted) behaviour is in effect.
+func (a *Agent) Persona() *persona.Persona {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.persona
+}
+
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -184,14 +206,23 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	}
 
 	sysPrompt := systemPrompt
-	if a.marauder != nil {
-		sysPrompt += systemPromptWiFi
+	if a.persona != nil && a.persona.SystemPrompt != "" {
+		sysPrompt = a.persona.SystemPrompt
 	}
 
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
 	if a.marauder != nil {
 		tools = append(tools, buildMarauderTools()...)
+	}
+	if a.persona != nil && len(a.persona.Tools) > 0 {
+		tools = persona.FilterTools(tools, a.persona.Tools)
+	}
+	// Append the WiFi framing only when the filtered tool set still exposes
+	// WiFi capabilities — personas that prune them (defender, rf-recon, etc.)
+	// should not hear about an ESP32 they can't address.
+	if a.marauder != nil && hasWiFiTool(tools) {
+		sysPrompt += systemPromptWiFi
 	}
 
 	for {
@@ -1047,6 +1078,22 @@ func boolOr(p map[string]interface{}, key string, fallback bool) bool {
 		}
 	}
 	return fallback
+}
+
+// hasWiFiTool reports whether the filtered tool set still exposes any
+// Marauder (wifi_*) capability. Used to decide whether appending the WiFi
+// system-prompt addendum makes sense — a read-only persona that has pruned
+// every transmit/emulate tool doesn't benefit from WiFi framing.
+func hasWiFiTool(tools []anthropic.ToolUnionParam) bool {
+	for _, t := range tools {
+		if t.OfTool == nil {
+			continue
+		}
+		if strings.HasPrefix(t.OfTool.Name, "wifi_") {
+			return true
+		}
+	}
+	return false
 }
 
 func toUnionBlocks(blocks []anthropic.ContentBlockUnion) []anthropic.ContentBlockParamUnion {
