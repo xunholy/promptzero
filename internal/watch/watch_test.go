@@ -19,9 +19,9 @@ func TestWatcherFiresOnceWithSubstitutedPrompt(t *testing.T) {
 	}})
 
 	var (
-		mu       sync.Mutex
-		rules    []Rule
-		paths    []string
+		mu    sync.Mutex
+		rules []Rule
+		paths []string
 	)
 	handler := func(r Rule, p string) error {
 		mu.Lock()

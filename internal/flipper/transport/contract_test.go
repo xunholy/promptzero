@@ -258,4 +258,3 @@ func setReadDeadline(w io.ReadWriter, d time.Time) error {
 	}
 	return nil
 }
-

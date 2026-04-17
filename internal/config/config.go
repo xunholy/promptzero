@@ -9,22 +9,22 @@ import (
 )
 
 type Config struct {
-	APIKey        string               `yaml:"api_key"`
-	OpenAIKey     string               `yaml:"openai_api_key"`
-	Model         string               `yaml:"model"`
-	Serial        SerialConfig         `yaml:"serial"`
-	Marauder      MarauderConfig       `yaml:"marauder"`
-	Web           WebConfig            `yaml:"web"`
-	Devices       map[string]Device    `yaml:"devices"`
-	ConfirmRisk   string               `yaml:"confirm_risk,omitempty"`
-	Persona       string               `yaml:"persona,omitempty"`
-	Watch         WatchConfig          `yaml:"watch,omitempty"`
-	Webhooks      []WebhookConfig      `yaml:"webhooks,omitempty"`
-	MQTT          MQTTConfig           `yaml:"mqtt,omitempty"`
-	Observability ObservabilityConfig  `yaml:"observability,omitempty"`
-	Validator     ValidatorConfig      `yaml:"validator,omitempty"`
-	Rules         []RuleConfig         `yaml:"rules,omitempty"`
-	Cost          CostConfig           `yaml:"cost,omitempty"`
+	APIKey        string              `yaml:"api_key"`
+	OpenAIKey     string              `yaml:"openai_api_key"`
+	Model         string              `yaml:"model"`
+	Serial        SerialConfig        `yaml:"serial"`
+	Marauder      MarauderConfig      `yaml:"marauder"`
+	Web           WebConfig           `yaml:"web"`
+	Devices       map[string]Device   `yaml:"devices"`
+	ConfirmRisk   string              `yaml:"confirm_risk,omitempty"`
+	Persona       string              `yaml:"persona,omitempty"`
+	Watch         WatchConfig         `yaml:"watch,omitempty"`
+	Webhooks      []WebhookConfig     `yaml:"webhooks,omitempty"`
+	MQTT          MQTTConfig          `yaml:"mqtt,omitempty"`
+	Observability ObservabilityConfig `yaml:"observability,omitempty"`
+	Validator     ValidatorConfig     `yaml:"validator,omitempty"`
+	Rules         []RuleConfig        `yaml:"rules,omitempty"`
+	Cost          CostConfig          `yaml:"cost,omitempty"`
 }
 
 // ObservabilityConfig tunes the slog handler and Prometheus /metrics
@@ -54,31 +54,31 @@ type ValidatorConfig struct {
 // BadUSBValidatorConfig is the per-validator knob set for DuckyScript
 // static analysis.
 type BadUSBValidatorConfig struct {
-	Enabled        *bool  `yaml:"enabled,omitempty"`
-	AllowCritical  bool   `yaml:"allow_critical,omitempty"`
-	WarnAction     string `yaml:"warn_action,omitempty"`
+	Enabled       *bool  `yaml:"enabled,omitempty"`
+	AllowCritical bool   `yaml:"allow_critical,omitempty"`
+	WarnAction    string `yaml:"warn_action,omitempty"`
 }
 
 // RuleConfig is the YAML round-trip shape for one reactive rule. See
 // internal/rules for the runtime surface. Cooldown uses the standard
 // Go duration format ("30s", "1m", "2h"); empty means no cooldown.
 type RuleConfig struct {
-	Name        string            `yaml:"name"`
-	Description string            `yaml:"description,omitempty"`
-	When        RuleMatchConfig   `yaml:"when"`
+	Name        string             `yaml:"name"`
+	Description string             `yaml:"description,omitempty"`
+	When        RuleMatchConfig    `yaml:"when"`
 	Then        []RuleActionConfig `yaml:"then"`
-	Cooldown    string            `yaml:"cooldown,omitempty"`
-	Enabled     *bool             `yaml:"enabled,omitempty"`
+	Cooldown    string             `yaml:"cooldown,omitempty"`
+	Enabled     *bool              `yaml:"enabled,omitempty"`
 }
 
 // RuleMatchConfig defines audit-entry matching. Non-empty fields are
 // ANDed; empty fields are wildcards. Tool supports a trailing "*" glob
 // ("workflow_*") as a common convenience.
 type RuleMatchConfig struct {
-	Tool            string `yaml:"tool,omitempty"`
-	Risk            string `yaml:"risk,omitempty"`
-	Level           string `yaml:"level,omitempty"`
-	OutputContains  string `yaml:"output_contains,omitempty"`
+	Tool           string `yaml:"tool,omitempty"`
+	Risk           string `yaml:"risk,omitempty"`
+	Level          string `yaml:"level,omitempty"`
+	OutputContains string `yaml:"output_contains,omitempty"`
 }
 
 // RuleActionConfig is one step in a rule's Then list. Type picks the

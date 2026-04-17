@@ -201,6 +201,6 @@ func (t *serialTransport) SetReadTimeout(d time.Duration) error {
 	return port.SetReadTimeout(d)
 }
 
-func (t *serialTransport) Identity() string           { return t.path }
+func (t *serialTransport) Identity() string            { return t.path }
 func (t *serialTransport) DrainTimeout() time.Duration { return serialDrainTimeout }
-func (t *serialTransport) Kind() string               { return "serial" }
+func (t *serialTransport) Kind() string                { return "serial" }

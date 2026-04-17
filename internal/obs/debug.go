@@ -13,28 +13,28 @@ import (
 // — callers fill what they can from their local surface. The Render
 // method turns this into the boxed multi-line text the REPL prints.
 type DebugSnapshot struct {
-	BuildVersion    string
-	GoVersion       string
-	Platform        string
-	Uptime          time.Duration
-	TraceID         string
-	PersonaName     string
-	PersonaTools    int
-	PersonaAllow    int
-	FlipperPort     string
-	FlipperUp       bool
-	FlipperModel    string
-	MarauderPort    string
-	MarauderUp      bool
-	AuditDBPath     string
-	AuditRows       int64
-	SessionID       string
-	Goroutines      int
-	HeapMB          float64
-	SysMB           float64
-	LastGCAgo       time.Duration
-	LastTools       []ToolSample
-	OfflineMode     bool
+	BuildVersion string
+	GoVersion    string
+	Platform     string
+	Uptime       time.Duration
+	TraceID      string
+	PersonaName  string
+	PersonaTools int
+	PersonaAllow int
+	FlipperPort  string
+	FlipperUp    bool
+	FlipperModel string
+	MarauderPort string
+	MarauderUp   bool
+	AuditDBPath  string
+	AuditRows    int64
+	SessionID    string
+	Goroutines   int
+	HeapMB       float64
+	SysMB        float64
+	LastGCAgo    time.Duration
+	LastTools    []ToolSample
+	OfflineMode  bool
 }
 
 // Render draws the snapshot as a box of rows. Width is the inner box
@@ -162,7 +162,7 @@ func humanDuration(d time.Duration) string {
 	return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
-func runeLen(s string) int   { return len([]rune(s)) }
+func runeLen(s string) int { return len([]rune(s)) }
 
 // truncateRunes preserves multibyte boundaries when clipping to n runes.
 func truncateRunes(s string, n int) string {

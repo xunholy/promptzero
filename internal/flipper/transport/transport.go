@@ -90,9 +90,9 @@ type Transport interface {
 //
 // Supported URL schemes:
 //
-//   serial:///dev/ttyACM0?baud=230400   — USB CDC-ACM
-//   mock:///dev/pts/5                   — test harness pty slave
-//   ble://AA:BB:CC:DD:EE:FF             — reserved; Phase-B follow-up
+//	serial:///dev/ttyACM0?baud=230400   — USB CDC-ACM
+//	mock:///dev/pts/5                   — test harness pty slave
+//	ble://AA:BB:CC:DD:EE:FF             — reserved; Phase-B follow-up
 //
 // A Dialer must NOT block; network I/O belongs in Transport.Dial. Dialer
 // failure indicates a malformed URL, not a connection problem.

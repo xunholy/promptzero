@@ -3,7 +3,7 @@
 // actions: webhook calls, MQTT publishes, slog lines — and, optionally,
 // agent tool invocations when the engine is wired with a runner.
 //
-// Design
+// # Design
 //
 // Each Rule has a Match predicate (AND over non-empty fields) and a list
 // of Actions. An Engine owns a registry of rules plus per-rule state
@@ -78,10 +78,10 @@ type Rule struct {
 // fire time. This keeps the engine usable in tests without webhook/MQTT
 // plumbing.
 type Deps struct {
-	WebhookFire  func(name string, payload map[string]any)
-	MQTTPublish  func(topic string, payload map[string]any)
-	RunTool      func(ctx context.Context, tool string, params map[string]interface{}) (string, error)
-	Now          func() time.Time
+	WebhookFire func(name string, payload map[string]any)
+	MQTTPublish func(topic string, payload map[string]any)
+	RunTool     func(ctx context.Context, tool string, params map[string]interface{}) (string, error)
+	Now         func() time.Time
 }
 
 // Engine holds the rule registry, per-rule cooldown state, and deps.

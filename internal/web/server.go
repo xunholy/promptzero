@@ -1,7 +1,7 @@
 // Package web serves the PromptZero browser UI and bridges the agent's
 // streaming callbacks onto a WebSocket.
 //
-// Event model
+// # Event model
 //
 // The agent exposes three hooks — SetTextDeltaCallback, SetToolStatusCallback,
 // SetConfirmCallback — that fire from the goroutine running agent.Run. The

@@ -134,8 +134,8 @@ func WiFiTargetToHashcat(ctx context.Context, deps Deps, params map[string]inter
 	pmkid := parsePMKID(sniffPhase.Output)
 	if pmkid == nil {
 		return encode(Result{
-			Summary:   fmt.Sprintf("no PMKID captured for %s in %ds", target.SSID, sniffSecs),
-			Phases:    phases,
+			Summary: fmt.Sprintf("no PMKID captured for %s in %ds", target.SSID, sniffSecs),
+			Phases:  phases,
 			NextSteps: []string{
 				"Increase sniff_seconds (PMKID only fires on fresh associations)",
 				"Deauth a connected client with workflow_wifi_deauth then retry to force re-association",

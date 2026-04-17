@@ -63,9 +63,9 @@ func defaultFactory(opts *paho.ClientOptions) Client {
 // compatible structurally, but wrapping keeps imports scoped to this file.
 type pahoAdapter struct{ c paho.Client }
 
-func (a pahoAdapter) Connect() Token                { return a.c.Connect() }
-func (a pahoAdapter) Disconnect(quiesceMs uint)     { a.c.Disconnect(quiesceMs) }
-func (a pahoAdapter) IsConnected() bool             { return a.c.IsConnected() }
+func (a pahoAdapter) Connect() Token            { return a.c.Connect() }
+func (a pahoAdapter) Disconnect(quiesceMs uint) { a.c.Disconnect(quiesceMs) }
+func (a pahoAdapter) IsConnected() bool         { return a.c.IsConnected() }
 func (a pahoAdapter) Publish(topic string, qos byte, retained bool, payload interface{}) Token {
 	return a.c.Publish(topic, qos, retained, payload)
 }
@@ -80,9 +80,9 @@ type Bridge struct {
 	qos      byte
 	retained bool
 
-	mu       sync.Mutex
-	enabled  bool
-	lastErr  error
+	mu      sync.Mutex
+	enabled bool
+	lastErr error
 }
 
 // defaultBase is used when MQTTConfig.BasePath is empty.
@@ -117,11 +117,11 @@ func NewWithFactory(cfg config.MQTTConfig, factory Factory) *Bridge {
 		SetUsername(cfg.Username).
 		SetPassword(cfg.Password).
 		SetAutoReconnect(true).
-		SetKeepAlive(30 * time.Second).
+		SetKeepAlive(30*time.Second).
 		SetCleanSession(true).
 		SetConnectRetry(true).
-		SetConnectRetryInterval(5 * time.Second).
-		SetMaxReconnectInterval(2 * time.Minute).
+		SetConnectRetryInterval(5*time.Second).
+		SetMaxReconnectInterval(2*time.Minute).
 		SetWill(b.base+"/state/online", "false", cfg.QoS, true).
 		SetOnConnectHandler(func(_ paho.Client) {
 			b.publishRaw(b.base+"/state/online", []byte("true"), true)

@@ -52,14 +52,14 @@ type Event struct {
 // Watcher debounces and dispatches fsnotify events through the configured
 // rule set. Zero value is not usable — construct via New.
 type Watcher struct {
-	paths   []string
-	rules   []Rule
+	paths    []string
+	rules    []Rule
 	debounce time.Duration
 
-	mu       sync.Mutex
-	paused   atomic.Bool
-	history  []Event
-	pending  map[string]*time.Timer
+	mu      sync.Mutex
+	paused  atomic.Bool
+	history []Event
+	pending map[string]*time.Timer
 }
 
 // debounceWindow collapses writes to the same path inside this interval
@@ -100,7 +100,7 @@ func (w *Watcher) Rules() []Rule {
 
 // Pause silences the watcher without stopping it; queued and subsequent
 // events are still observed but handlers are not invoked until Resume.
-func (w *Watcher) Pause()  { w.paused.Store(true) }
+func (w *Watcher) Pause() { w.paused.Store(true) }
 
 // Resume re-enables dispatch after a Pause.
 func (w *Watcher) Resume() { w.paused.Store(false) }

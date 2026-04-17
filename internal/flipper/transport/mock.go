@@ -147,6 +147,6 @@ func (t *mockTransport) SetReadTimeout(d time.Duration) error {
 	return nil
 }
 
-func (t *mockTransport) Identity() string           { return "mock://" + t.path }
+func (t *mockTransport) Identity() string            { return "mock://" + t.path }
 func (t *mockTransport) DrainTimeout() time.Duration { return mockDrainTimeout }
-func (t *mockTransport) Kind() string               { return "mock" }
+func (t *mockTransport) Kind() string                { return "mock" }

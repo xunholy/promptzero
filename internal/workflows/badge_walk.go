@@ -170,12 +170,12 @@ func recordIfNew(seen map[string]badgeRecord, rec badgeRecord, csv *strings.Buil
 	seen[key] = rec
 	// CSV escaping: quote anything with commas/quotes; replace embedded
 	// quotes with "".
-	csv.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s\n",
+	fmt.Fprintf(csv, "%s,%s,%s,%s,%s\n",
 		rec.firstSeen.UTC().Format(time.RFC3339),
 		csvField(rec.radio),
 		csvField(rec.protocol),
 		csvField(rec.identifier),
-		csvField(rec.raw)))
+		csvField(rec.raw))
 }
 
 func csvField(v string) string {
@@ -191,7 +191,7 @@ var (
 
 	// iButton output: "Key: 01 23 45 67 89 AB CD EF" preceded by a
 	// protocol line like "Dallas" or "Cyfral".
-	ibuttonKeyPattern  = regexp.MustCompile(`(?i)Key[:\s]+((?:[0-9A-F]{2}[: ]?){4,16})`)
+	ibuttonKeyPattern   = regexp.MustCompile(`(?i)Key[:\s]+((?:[0-9A-F]{2}[: ]?){4,16})`)
 	ibuttonProtoPattern = regexp.MustCompile(`(?i)(Dallas|Cyfral|Metakom)`)
 )
 

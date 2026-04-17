@@ -18,13 +18,13 @@ import (
 // runFn is invoked from Run inside a goroutine so tests can drive the three
 // registered callbacks (textDelta, toolStatus, confirm) mid-turn.
 type fakeAgent struct {
-	mu            sync.Mutex
-	textDeltaCb   func(agent.TextDelta)
-	toolStatusCb  func(agent.ToolEvent)
-	confirmCb     agent.ConfirmFunc
-	runFn         func(ctx context.Context, input string, f *fakeAgent) (string, error)
-	resetCalls    int
-	lastRunInput  string
+	mu           sync.Mutex
+	textDeltaCb  func(agent.TextDelta)
+	toolStatusCb func(agent.ToolEvent)
+	confirmCb    agent.ConfirmFunc
+	runFn        func(ctx context.Context, input string, f *fakeAgent) (string, error)
+	resetCalls   int
+	lastRunInput string
 }
 
 func (f *fakeAgent) Run(ctx context.Context, input string) (string, error) {

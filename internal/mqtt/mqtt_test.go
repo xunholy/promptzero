@@ -48,7 +48,7 @@ func (m *mockClient) Connect() Token {
 	}
 	return &mockToken{err: err}
 }
-func (m *mockClient) Disconnect(uint) { m.connected.Store(false) }
+func (m *mockClient) Disconnect(uint)   { m.connected.Store(false) }
 func (m *mockClient) IsConnected() bool { return m.connected.Load() }
 func (m *mockClient) Publish(topic string, qos byte, retained bool, payload interface{}) Token {
 	m.mu.Lock()

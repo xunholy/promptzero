@@ -16,9 +16,9 @@ func TestOpenByScheme(t *testing.T) {
 	cases := []struct {
 		name     string
 		url      string
-		wantKind string         // "" means expect an error
-		wantErr  error          // if non-nil, must match with errors.Is
-		errSub   string         // if non-empty, error must contain this substring
+		wantKind string // "" means expect an error
+		wantErr  error  // if non-nil, must match with errors.Is
+		errSub   string // if non-empty, error must contain this substring
 	}{
 		{
 			name:     "serial URL parses and returns a serial transport",

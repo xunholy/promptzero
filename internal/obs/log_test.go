@@ -26,7 +26,10 @@ func TestWithTrace_FreshThenStable(t *testing.T) {
 }
 
 func TestWithTrace_NilCtx(t *testing.T) {
-	ctx, id := WithTrace(nil)
+	// Intentional nil-ctx test; funnel through a typed variable so
+	// staticcheck SA1012 doesn't flag the literal-nil call site.
+	var nilCtx context.Context
+	ctx, id := WithTrace(nilCtx)
 	if ctx == nil || id == "" {
 		t.Fatalf("WithTrace(nil) should return a usable ctx+id, got ctx=%v id=%q", ctx, id)
 	}
@@ -59,7 +62,8 @@ func TestFromCtx_FallbackWhenNoTrace(t *testing.T) {
 	if lg == nil {
 		t.Fatal("FromCtx fallback returned nil")
 	}
-	lg2 := FromCtx(nil)
+	var nilCtx context.Context
+	lg2 := FromCtx(nilCtx)
 	if lg2 == nil {
 		t.Fatal("FromCtx(nil) fallback returned nil")
 	}

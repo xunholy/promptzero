@@ -63,11 +63,11 @@ func RolljamLabDemo(ctx context.Context, deps Deps, params map[string]interface{
 
 	var phases []PhaseResult
 	extra := map[string]interface{}{
-		"frequency":       freq,
-		"press1_capture":  press1,
-		"press2_capture":  press2,
-		"output_dir":      outputDir,
-		"lab_consent":     true,
+		"frequency":      freq,
+		"press1_capture": press1,
+		"press2_capture": press2,
+		"output_dir":     outputDir,
+		"lab_consent":    true,
 	}
 
 	// --- Press #1 ---
@@ -120,7 +120,7 @@ func RolljamLabDemo(ctx context.Context, deps Deps, params map[string]interface{
 
 	next := []string{
 		fmt.Sprintf("Compare the two captures byte-by-byte: `storage_read %s` and `%s`", press1, press2),
-		fmt.Sprintf("Decode each with `subghz_decode <file>` to inspect the rolling counter step"),
+		"Decode each with `subghz_decode <file>` to inspect the rolling counter step",
 		"Study how the rolling code increments between presses — this is the material a live rolljam would replay",
 		"Keep captures on SD; they are only useful paired with an external jammer which is OUT OF SCOPE for this CLI",
 	}

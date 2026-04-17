@@ -242,16 +242,6 @@ func clamp(v, lo, hi int) int {
 	return v
 }
 
-// shortExcerpt returns the first n characters of s with a suffix marker
-// when truncated. Used in summary/preview fields so JSON results stay
-// bounded.
-func shortExcerpt(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
-}
-
 // firstLine returns the first non-empty line of s, trimmed, for cases
 // where an underlying primitive emits a header line + body and the
 // summary only wants the header.

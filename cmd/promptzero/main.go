@@ -367,27 +367,27 @@ func main() {
 
 func run() error {
 	var (
-		cfgPath           string
+		cfgPath              string
 		portOverride         string
 		transportOverride    string
 		marauderPortOverride string
-		webMode        bool
-		webPort        int
-		voiceMode      bool
-		wifiEnabled    bool
-		mcpMode        bool
-		showVersion    bool
-		doInit         bool
-		resumeID       string
-		autoResume     bool
-		genProvider    string
-		ollamaURL      string
-		ollamaModel    string
-		connectTimeout time.Duration
-		yoloMode       bool
-		confirmRisk    string
-		personaName    string
-		watchPaths     stringSlice
+		webMode              bool
+		webPort              int
+		voiceMode            bool
+		wifiEnabled          bool
+		mcpMode              bool
+		showVersion          bool
+		doInit               bool
+		resumeID             string
+		autoResume           bool
+		genProvider          string
+		ollamaURL            string
+		ollamaModel          string
+		connectTimeout       time.Duration
+		yoloMode             bool
+		confirmRisk          string
+		personaName          string
+		watchPaths           stringSlice
 	)
 
 	flag.StringVar(&cfgPath, "config", "config.yaml", "Path to config file")

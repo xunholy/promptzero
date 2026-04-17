@@ -87,7 +87,7 @@ func (r *Registry) LoadDir(dir string) error {
 			continue
 		}
 		name := entry.Name()
-		if !(strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml")) {
+		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
 			continue
 		}
 		if err := r.Load(filepath.Join(dir, name)); err != nil {

@@ -25,20 +25,20 @@ import (
 type Recorder struct {
 	registry *prometheus.Registry
 
-	toolCalls        *prometheus.CounterVec
-	toolDuration     *prometheus.HistogramVec
-	workflowRuns     *prometheus.CounterVec
-	workflowDuration *prometheus.HistogramVec
-	auditEntries     *prometheus.CounterVec
-	riskPrompts      *prometheus.CounterVec
-	sessionMessages  *prometheus.CounterVec
-	tokenUsage       *prometheus.CounterVec
-	flipperConnected prometheus.Gauge
-	marauderConnected prometheus.Gauge
-	webhookDeliveries *prometheus.CounterVec
-	mqttPublishes    *prometheus.CounterVec
+	toolCalls          *prometheus.CounterVec
+	toolDuration       *prometheus.HistogramVec
+	workflowRuns       *prometheus.CounterVec
+	workflowDuration   *prometheus.HistogramVec
+	auditEntries       *prometheus.CounterVec
+	riskPrompts        *prometheus.CounterVec
+	sessionMessages    *prometheus.CounterVec
+	tokenUsage         *prometheus.CounterVec
+	flipperConnected   prometheus.Gauge
+	marauderConnected  prometheus.Gauge
+	webhookDeliveries  *prometheus.CounterVec
+	mqttPublishes      *prometheus.CounterVec
 	anthropicReachable prometheus.Gauge
-	uptimeStart      time.Time
+	uptimeStart        time.Time
 
 	// lastToolMu guards the rolling ring of recent tool completions used
 	// by /debug. The ring itself is fixed-size so a noisy session doesn't
