@@ -1561,7 +1561,7 @@ func handleAudit(auditLog *audit.Log, args []string) {
 		return
 	}
 	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "  %susage: /audit stats | /audit export <path>%s\n", dim, reset)
+		fmt.Fprintf(os.Stderr, "  %susage: /audit stats|find|tail|top|session|query|export%s\n", dim, reset)
 		return
 	}
 	switch strings.ToLower(args[0]) {
@@ -1574,6 +1574,101 @@ func handleAudit(auditLog *audit.Log, args []string) {
 		for _, line := range strings.Split(s, "\n") {
 			fmt.Fprintf(os.Stderr, "  %s\n", line)
 		}
+	case "find":
+		f, err := parseAuditFilter(mergeQuoted(args[1:]))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● find: %v%s\n", red, err, reset)
+			return
+		}
+		entries, err := auditLog.QueryFiltered(f)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● find: %v%s\n", red, err, reset)
+			return
+		}
+		if len(entries) == 0 {
+			fmt.Fprintf(os.Stderr, "  %sno matches%s\n", dim, reset)
+			return
+		}
+		for _, e := range entries {
+			printAuditEntry(e)
+		}
+	case "tail":
+		tailAudit(auditLog)
+	case "top":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %susage: /audit top tools|risks [since=24h]%s\n", dim, reset)
+			return
+		}
+		var since time.Time
+		for _, a := range args[2:] {
+			if strings.HasPrefix(a, "since=") {
+				t, err := parseWhen(strings.TrimPrefix(a, "since="))
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "  %s● top: %v%s\n", red, err, reset)
+					return
+				}
+				since = t
+			}
+		}
+		switch strings.ToLower(args[1]) {
+		case "tools":
+			rows, err := auditLog.TopTools(since, 10)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %s● top tools: %v%s\n", red, err, reset)
+				return
+			}
+			if len(rows) == 0 {
+				fmt.Fprintf(os.Stderr, "  %sno data%s\n", dim, reset)
+				return
+			}
+			for _, r := range rows {
+				fmt.Fprintf(os.Stderr, "  %s%-24s%s  %d\n", cyan, r.Tool, reset, r.Count)
+			}
+		case "risks":
+			rows, err := auditLog.TopRisks(since)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %s● top risks: %v%s\n", red, err, reset)
+				return
+			}
+			if len(rows) == 0 {
+				fmt.Fprintf(os.Stderr, "  %sno data%s\n", dim, reset)
+				return
+			}
+			for _, r := range rows {
+				label := r.Risk
+				if label == "" {
+					label = "-"
+				}
+				fmt.Fprintf(os.Stderr, "  %s[%-8s]%s  %d\n", riskColor(r.Risk), label, reset, r.Count)
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "  %sunknown /audit top target %q (want tools|risks)%s\n", dim, args[1], reset)
+		}
+	case "session":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %susage: /audit session <id>%s\n", dim, reset)
+			return
+		}
+		entries, err := auditLog.QueryBySession(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● session: %v%s\n", red, err, reset)
+			return
+		}
+		if len(entries) == 0 {
+			fmt.Fprintf(os.Stderr, "  %sno entries for session %s%s\n", dim, args[1], reset)
+			return
+		}
+		for _, e := range entries {
+			printAuditEntry(e)
+		}
+	case "query":
+		n := 20
+		if len(args) >= 2 {
+			if v, err := strconv.Atoi(args[1]); err == nil && v > 0 {
+				n = v
+			}
+		}
+		printHistory(auditLog, n)
 	case "export":
 		if len(args) < 2 {
 			fmt.Fprintf(os.Stderr, "  %susage: /audit export <path>%s\n", dim, reset)
@@ -1592,6 +1687,185 @@ func handleAudit(auditLog *audit.Log, args []string) {
 		fmt.Fprintf(os.Stderr, "  %s●%s wrote %s\n", green, reset, path)
 	default:
 		fmt.Fprintf(os.Stderr, "  %sunknown /audit subcommand %q%s\n", dim, args[0], reset)
+	}
+}
+
+// mergeQuoted re-stitches tokens that were split inside a double-quoted
+// value. The REPL splits on whitespace, so `contains="bank card"` arrives
+// as `contains="bank` and `card"` — this rejoins them and strips the
+// wrapping quotes once the closing quote is seen.
+func mergeQuoted(in []string) []string {
+	var out []string
+	var buf []string
+	inside := false
+	for _, tok := range in {
+		if !inside {
+			if strings.Count(tok, "\"")%2 == 1 {
+				inside = true
+				buf = append(buf[:0], tok)
+				continue
+			}
+			out = append(out, strings.ReplaceAll(tok, "\"", ""))
+			continue
+		}
+		buf = append(buf, tok)
+		if strings.Count(tok, "\"")%2 == 1 {
+			inside = false
+			joined := strings.Join(buf, " ")
+			out = append(out, strings.ReplaceAll(joined, "\"", ""))
+			buf = buf[:0]
+		}
+	}
+	if len(buf) > 0 {
+		out = append(out, strings.ReplaceAll(strings.Join(buf, " "), "\"", ""))
+	}
+	return out
+}
+
+// parseAuditFilter turns `k=v` tokens into an audit.Filter. Unknown keys
+// error out so typos don't silently match nothing. Caller should pass
+// tokens already run through mergeQuoted so quoted values survive.
+func parseAuditFilter(tokens []string) (audit.Filter, error) {
+	var f audit.Filter
+	for _, t := range tokens {
+		eq := strings.IndexByte(t, '=')
+		if eq <= 0 {
+			return f, fmt.Errorf("expected k=v, got %q", t)
+		}
+		k := strings.ToLower(strings.TrimSpace(t[:eq]))
+		v := strings.TrimSpace(t[eq+1:])
+		switch k {
+		case "tool":
+			f.Tool = v
+		case "risk":
+			f.Risk = v
+		case "session":
+			f.Session = v
+		case "contains":
+			f.Contains = v
+		case "since":
+			when, err := parseWhen(v)
+			if err != nil {
+				return f, fmt.Errorf("since: %w", err)
+			}
+			f.Since = when
+		case "until":
+			when, err := parseWhen(v)
+			if err != nil {
+				return f, fmt.Errorf("until: %w", err)
+			}
+			f.Until = when
+		case "success":
+			switch strings.ToLower(v) {
+			case "true", "1", "yes":
+				b := true
+				f.Success = &b
+			case "false", "0", "no":
+				b := false
+				f.Success = &b
+			default:
+				return f, fmt.Errorf("success=%s: want true|false", v)
+			}
+		case "limit":
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				return f, fmt.Errorf("limit=%s: want positive int", v)
+			}
+			f.Limit = n
+		case "offset":
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				return f, fmt.Errorf("offset=%s: want non-negative int", v)
+			}
+			f.Offset = n
+		default:
+			return f, fmt.Errorf("unknown key %q", k)
+		}
+	}
+	return f, nil
+}
+
+// parseWhen accepts either a relative duration expression like "30m",
+// "2h", "7d" (interpreted as "time ago from now") or a full RFC3339
+// timestamp. Returned times are always UTC-normalised by the caller
+// before being bound to the SQL query.
+func parseWhen(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty timestamp")
+	}
+	// Relative shortcut: a trailing d gets expanded to N*24h before
+	// handing off to time.ParseDuration.
+	if n := len(s); n > 1 && (s[n-1] == 'd' || s[n-1] == 'D') {
+		days, err := strconv.Atoi(s[:n-1])
+		if err == nil && days >= 0 {
+			return time.Now().Add(-time.Duration(days) * 24 * time.Hour), nil
+		}
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		return time.Now().Add(-d), nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as duration or RFC3339 timestamp", s)
+}
+
+// printAuditEntry renders one audit row in the same compact format used
+// by /history but prefixed with the row id so /audit find output is
+// self-referential for follow-up queries.
+func printAuditEntry(e audit.Entry) {
+	ts := e.Timestamp.Local().Format("2006-01-02 15:04:05")
+	input := collapseWS(e.Input)
+	if len(input) > 40 {
+		input = input[:39] + "…"
+	}
+	errMark := ""
+	if !e.Success {
+		errMark = " " + red + "✗" + reset
+	}
+	risk := e.Risk
+	if risk == "" {
+		risk = "-"
+	}
+	fmt.Fprintf(os.Stderr, "  %s#%-5d%s  %s  %s[%s]%s  %s  %s(%dms)%s%s  %s%s%s\n",
+		dim, e.ID, reset, ts, riskColor(e.Risk), risk, reset,
+		e.Tool, dim, e.Duration, reset, errMark, dim, input, reset)
+}
+
+// tailAudit polls for new audit rows and streams them. Stops when the
+// operator hits Enter (handled by the REPL's inner raw-mode reader here)
+// or Ctrl+C. Poll cadence matches the 500ms target spec.
+func tailAudit(auditLog *audit.Log) {
+	start, err := auditLog.MaxID()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● tail: %v%s\n", red, err, reset)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  %stailing audit from id %d (Ctrl+C to stop)…%s\n", dim, start, reset)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	after := start
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintf(os.Stderr, "  %stail stopped%s\n", dim, reset)
+			return
+		case <-ticker.C:
+			entries, err := auditLog.QuerySince(after)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %s● tail: %v%s\n", red, err, reset)
+				return
+			}
+			for _, e := range entries {
+				printAuditEntry(e)
+				if e.ID > after {
+					after = e.ID
+				}
+			}
+		}
 	}
 }
 
