@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 type Level string
@@ -34,6 +37,12 @@ type Entry struct {
 	SessionID string    `json:"session_id"`
 	Duration  int64     `json:"duration_ms"`
 	Success   bool      `json:"success"`
+
+	// TraceID correlates this entry with one REPL turn. Not persisted to
+	// the DB (schema predates the field); carried in-memory so observers
+	// (rules engine, webhooks, slog) can surface the turn that produced
+	// it. Empty when the caller did not route through obs.WithTrace.
+	TraceID string `json:"trace_id,omitempty"`
 }
 
 type Log struct {
@@ -102,6 +111,14 @@ func (l *Log) SessionID() string {
 }
 
 func (l *Log) Record(tool string, input interface{}, output string, risk string, level Level, duration time.Duration, success bool) {
+	l.RecordCtx(context.Background(), tool, input, output, risk, level, duration, success)
+}
+
+// RecordCtx is the ctx-aware Record path. When ctx carries a trace (via
+// obs.WithTrace) the trace ID is attached to the emitted Entry and the
+// structured log line so observers can correlate the audit row with the
+// REPL turn that produced it.
+func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, output string, risk string, level Level, duration time.Duration, success bool) {
 	inputJSON, _ := json.Marshal(input)
 
 	// Truncate long outputs for storage
@@ -127,6 +144,15 @@ func (l *Log) Record(tool string, input interface{}, output string, risk string,
 		log.Printf("audit: failed to record %s: %v", tool, err)
 		return
 	}
+	traceID := obs.TraceID(ctx)
+	obs.FromCtx(ctx).Info("audit_record",
+		"tool", tool,
+		"risk", risk,
+		"level", string(level),
+		"success", success,
+		"duration_ms", duration.Milliseconds(),
+		"session_id", l.sessionID,
+	)
 	l.notify(Entry{
 		Timestamp: ts,
 		Tool:      tool,
@@ -137,6 +163,7 @@ func (l *Log) Record(tool string, input interface{}, output string, risk string,
 		SessionID: l.sessionID,
 		Duration:  duration.Milliseconds(),
 		Success:   success,
+		TraceID:   traceID,
 	})
 }
 

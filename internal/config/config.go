@@ -9,18 +9,100 @@ import (
 )
 
 type Config struct {
-	APIKey      string            `yaml:"api_key"`
-	OpenAIKey   string            `yaml:"openai_api_key"`
-	Model       string            `yaml:"model"`
-	Serial      SerialConfig      `yaml:"serial"`
-	Marauder    MarauderConfig    `yaml:"marauder"`
-	Web         WebConfig         `yaml:"web"`
-	Devices     map[string]Device `yaml:"devices"`
-	ConfirmRisk string            `yaml:"confirm_risk,omitempty"`
-	Persona     string            `yaml:"persona,omitempty"`
-	Watch       WatchConfig       `yaml:"watch,omitempty"`
-	Webhooks    []WebhookConfig   `yaml:"webhooks,omitempty"`
-	MQTT        MQTTConfig        `yaml:"mqtt,omitempty"`
+	APIKey        string               `yaml:"api_key"`
+	OpenAIKey     string               `yaml:"openai_api_key"`
+	Model         string               `yaml:"model"`
+	Serial        SerialConfig         `yaml:"serial"`
+	Marauder      MarauderConfig       `yaml:"marauder"`
+	Web           WebConfig            `yaml:"web"`
+	Devices       map[string]Device    `yaml:"devices"`
+	ConfirmRisk   string               `yaml:"confirm_risk,omitempty"`
+	Persona       string               `yaml:"persona,omitempty"`
+	Watch         WatchConfig          `yaml:"watch,omitempty"`
+	Webhooks      []WebhookConfig      `yaml:"webhooks,omitempty"`
+	MQTT          MQTTConfig           `yaml:"mqtt,omitempty"`
+	Observability ObservabilityConfig  `yaml:"observability,omitempty"`
+	Validator     ValidatorConfig      `yaml:"validator,omitempty"`
+	Rules         []RuleConfig         `yaml:"rules,omitempty"`
+	Cost          CostConfig           `yaml:"cost,omitempty"`
+}
+
+// ObservabilityConfig tunes the slog handler and Prometheus /metrics
+// endpoint. LogFile, when non-empty, is opened append-mode alongside the
+// stderr handler so operators keep local tailing while landing a log on
+// disk. MetricsEnabled + MetricsPath control the /metrics route on the
+// web server — note the surface is not auth-gated, same as the rest of
+// the web UI.
+type ObservabilityConfig struct {
+	LogLevel       string `yaml:"log_level,omitempty"`
+	LogFormat      string `yaml:"log_format,omitempty"`
+	LogFile        string `yaml:"log_file,omitempty"`
+	MetricsEnabled bool   `yaml:"metrics_enabled,omitempty"`
+	MetricsPath    string `yaml:"metrics_path,omitempty"`
+}
+
+// ValidatorConfig gates the BadUSB sandbox validator. Disable with
+// Enabled=false to run scripts unchecked (not recommended). AllowCritical
+// lets critical findings through after logging — mainly for operators
+// who know what they're doing and accept the risk. WarnAction picks
+// between "warn" (log + run) and "block" (refuse) when warn findings
+// surface.
+type ValidatorConfig struct {
+	BadUSB BadUSBValidatorConfig `yaml:"badusb,omitempty"`
+}
+
+// BadUSBValidatorConfig is the per-validator knob set for DuckyScript
+// static analysis.
+type BadUSBValidatorConfig struct {
+	Enabled        *bool  `yaml:"enabled,omitempty"`
+	AllowCritical  bool   `yaml:"allow_critical,omitempty"`
+	WarnAction     string `yaml:"warn_action,omitempty"`
+}
+
+// RuleConfig is the YAML round-trip shape for one reactive rule. See
+// internal/rules for the runtime surface. Cooldown uses the standard
+// Go duration format ("30s", "1m", "2h"); empty means no cooldown.
+type RuleConfig struct {
+	Name        string            `yaml:"name"`
+	Description string            `yaml:"description,omitempty"`
+	When        RuleMatchConfig   `yaml:"when"`
+	Then        []RuleActionConfig `yaml:"then"`
+	Cooldown    string            `yaml:"cooldown,omitempty"`
+	Enabled     *bool             `yaml:"enabled,omitempty"`
+}
+
+// RuleMatchConfig defines audit-entry matching. Non-empty fields are
+// ANDed; empty fields are wildcards. Tool supports a trailing "*" glob
+// ("workflow_*") as a common convenience.
+type RuleMatchConfig struct {
+	Tool            string `yaml:"tool,omitempty"`
+	Risk            string `yaml:"risk,omitempty"`
+	Level           string `yaml:"level,omitempty"`
+	OutputContains  string `yaml:"output_contains,omitempty"`
+}
+
+// RuleActionConfig is one step in a rule's Then list. Type picks the
+// handler; the other fields are consumed depending on the type.
+type RuleActionConfig struct {
+	Type    string                 `yaml:"type"`
+	Tool    string                 `yaml:"tool,omitempty"`
+	Params  map[string]interface{} `yaml:"params,omitempty"`
+	Webhook string                 `yaml:"webhook,omitempty"`
+	Topic   string                 `yaml:"topic,omitempty"`
+}
+
+// CostConfig lets operators override the built-in per-model USD rate
+// table. Missing entries fall back to the package defaults in
+// internal/cost; entries present here shadow those.
+type CostConfig struct {
+	Rates map[string]CostRateConfig `yaml:"rates,omitempty"`
+}
+
+// CostRateConfig is one pricing entry. InputPerMTok and OutputPerMTok
+// are USD per million tokens.
+type CostRateConfig struct {
+	Input  float64 `yaml:"input"`
+	Output float64 `yaml:"output"`
 }
 
 // WebhookConfig is one HTTP webhook subscription. Empty Events means "all
@@ -109,6 +191,17 @@ func Load(path string) (*Config, error) {
 		},
 		Web: WebConfig{
 			Port: 8080,
+		},
+		Observability: ObservabilityConfig{
+			LogLevel:       "info",
+			LogFormat:      "text",
+			MetricsEnabled: true,
+			MetricsPath:    "/metrics",
+		},
+		Validator: ValidatorConfig{
+			BadUSB: BadUSBValidatorConfig{
+				WarnAction: "warn",
+			},
 		},
 	}
 

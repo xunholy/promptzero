@@ -25,6 +25,7 @@ import (
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/mcp"
 	"github.com/xunholy/promptzero/internal/mqtt"
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
@@ -498,6 +499,20 @@ func run() error {
 	if portOverride != "" {
 		cfg.Serial.Port = portOverride
 	}
+
+	// --- Structured logging ---
+	// Install the slog handler first so every subsequent subsystem (flipper,
+	// audit, agent) shares a configured default. Env PROMPTZERO_LOG_LEVEL is
+	// an additional operator-only override: it beats the config file so a
+	// debug-level spike does not need a config edit.
+	if lvl := os.Getenv("PROMPTZERO_LOG_LEVEL"); lvl != "" {
+		cfg.Observability.LogLevel = lvl
+	}
+	obs.Setup(obs.LogConfig{
+		Level:  cfg.Observability.LogLevel,
+		Format: cfg.Observability.LogFormat,
+		File:   cfg.Observability.LogFile,
+	})
 
 	// Multi-Flipper sanity check: if several ACM-class serial devices are
 	// present and the user didn't pin a specific one via --port, warn so a

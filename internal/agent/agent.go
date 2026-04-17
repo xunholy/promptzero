@@ -18,6 +18,7 @@ import (
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
@@ -207,6 +208,11 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	// Attach a fresh trace ID (or reuse the caller's) so every log line,
+	// audit row, and tool event emitted inside this turn shares one ID.
+	ctx, _ = obs.WithTrace(ctx)
+	obs.FromCtx(ctx).Info("turn_started", "input_len", len(userInput))
+
 	a.history = append(a.history, anthropic.NewUserMessage(
 		anthropic.NewTextBlock(userInput),
 	))
@@ -284,7 +290,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 						a.toolStatusCb(ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: denyMsg, Err: true})
 					}
 					if a.auditLog != nil {
-						a.auditLog.Record(tc.Name, input, denyMsg, toolRisk.String(), audit.LevelAction, 0, false)
+						a.auditLog.RecordCtx(ctx, tc.Name, input, denyMsg, toolRisk.String(), audit.LevelAction, 0, false)
 					}
 					toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, denyMsg, true))
 					continue
@@ -315,7 +321,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 			// Audit log
 			if a.auditLog != nil {
-				a.auditLog.Record(tc.Name, input, output, toolRisk.String(), audit.LevelAction, duration, !toolErr)
+				a.auditLog.RecordCtx(ctx, tc.Name, input, output, toolRisk.String(), audit.LevelAction, duration, !toolErr)
 			}
 
 			toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, output, toolErr))
