@@ -45,6 +45,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/voice"
 )
 
@@ -70,6 +71,11 @@ type Server struct {
 	agent agentDriver
 	voice *voice.Engine
 	addr  string
+
+	// metrics, when non-nil, drives the /metrics Prom scrape route.
+	// metricsPath is the mount path; defaults to "/metrics" when empty.
+	metrics     *obs.Recorder
+	metricsPath string
 
 	// Timing knobs. Initialised by NewServer; tests override these fields on
 	// the struct (not package-level vars) to stay race-safe across tests.
@@ -136,6 +142,14 @@ func NewServer(addr string, ag agentDriver, v *voice.Engine) *Server {
 	return s
 }
 
+// SetMetrics wires a Prometheus Recorder onto the server. When non-nil
+// the server mounts the scrape handler at path (or "/metrics" when path
+// is empty). Must be called before Start.
+func (s *Server) SetMetrics(rec *obs.Recorder, path string) {
+	s.metrics = rec
+	s.metricsPath = path
+}
+
 // Addr returns the effective host:port the server will bind to, after any
 // loopback-default rewrite applied in NewServer. Use this for display so the
 // "Web UI at ..." status line matches the actual socket.
@@ -179,6 +193,13 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("static files: %w", err)
 	}
 
+	if s.metrics != nil {
+		path := s.metricsPath
+		if path == "" {
+			path = "/metrics"
+		}
+		mux.Handle(path, s.metrics.Handler())
+	}
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 	mux.HandleFunc("/ws", s.handleWebSocket)
 

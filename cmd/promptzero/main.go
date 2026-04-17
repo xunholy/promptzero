@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -540,6 +541,16 @@ func run() error {
 	}
 	defer flip.Close()
 
+	// --- Metrics recorder ---
+	// Built before any subsystem so connect-time gauges and audit observers
+	// can feed it without nil-checks (Recorder methods are nil-safe, but we
+	// want the early state changes captured when enabled).
+	var rec *obs.Recorder
+	if cfg.Observability.MetricsEnabled {
+		rec = obs.NewRecorder()
+		rec.SetFlipperConnected(true)
+	}
+
 	caps, capsErr := flip.DetectCapabilities()
 	elapsed := time.Since(start).Round(time.Millisecond)
 	if capsErr != nil || caps.HardwareName == "" {
@@ -725,6 +736,7 @@ func run() error {
 	}()
 	if auditLog != nil {
 		auditLog.AddObserver(func(e audit.Entry) {
+			rec.RecordAudit(e.Risk, string(e.Level))
 			if e.Level == audit.LevelCritical {
 				wh.Fire(webhook.EventAuditCritical, e)
 				mqttBridge.PublishAuditCritical(e)
@@ -781,6 +793,7 @@ func run() error {
 			defer m.Close()
 			ai.SetMarauder(m)
 			hasMarauder = true
+			rec.SetMarauderConnected(true)
 			statusOK("Marauder WiFi devboard connected")
 		}
 	}
@@ -818,7 +831,15 @@ func run() error {
 		// doesn't contradict the warning.
 		addr := fmt.Sprintf("%s:%d", cfg.Web.Host, cfg.Web.Port)
 		srv := web.NewServer(addr, ai, voiceEngine)
+		srv.SetMetrics(rec, cfg.Observability.MetricsPath)
 		statusOK(fmt.Sprintf("Web UI at %s%shttp://%s%s", bold, cyan, srv.Addr(), reset))
+		if rec != nil {
+			path := cfg.Observability.MetricsPath
+			if path == "" {
+				path = "/metrics"
+			}
+			statusOK(fmt.Sprintf("Metrics at %shttp://%s%s%s", cyan, srv.Addr(), path, reset))
+		}
 		fmt.Fprintf(os.Stderr, "\n")
 		webCtx, releaseWeb := withCancel(ctx)
 		defer releaseWeb()
@@ -963,6 +984,14 @@ func run() error {
 			}
 		})
 		if ev.Phase == "finish" {
+			status := "ok"
+			if ev.Err {
+				status = "error"
+			}
+			rec.RecordToolCall(ev.Name, risk.Classify(ev.Name).String(), status, ev.Duration)
+			if strings.HasPrefix(ev.Name, "workflow_") {
+				rec.RecordWorkflowRun(ev.Name, status, ev.Duration)
+			}
 			out := ev.Output
 			if len(out) > 2048 {
 				out = out[:2048] + "... [truncated]"
@@ -1012,6 +1041,7 @@ func run() error {
 			case <-ctx.Done():
 				decision = agent.DecisionDeny
 			}
+			rec.RecordRiskPrompt(req.Tool, decisionLabel(decision))
 			if decision == agent.DecisionDeny {
 				denyPayload := map[string]any{
 					"tool":  req.Tool,
@@ -1202,6 +1232,11 @@ func run() error {
 			return false
 		case "/sessions":
 			ed.writeOutput(func() { printSessions(ai) })
+			return false
+		case "/debug":
+			ed.writeOutput(func() {
+				renderDebugSnapshot(os.Stderr, cfg, rec, activePersona, flip, hasMarauder, auditLog, ai)
+			})
 			return false
 		case "/reconnect":
 			// Force-reconnect to the Flipper. The SetReconnectCallback
@@ -2172,6 +2207,70 @@ type confirmState struct {
 	req    agent.ConfirmRequest
 	result chan agent.Decision
 	typing []rune
+}
+
+// renderDebugSnapshot collects local state into an obs.DebugSnapshot and
+// writes the boxed /debug view to w. Fields that the caller can't populate
+// (offline recorder, missing audit log) fall through as zero values and are
+// hidden by the renderer.
+func renderDebugSnapshot(w io.Writer, cfg *config.Config, rec *obs.Recorder, p *persona.Persona, flip *flipper.Flipper, hasMarauder bool, auditLog *audit.Log, ai *agent.Agent) {
+	goroutines, heapMB, sysMB, lastGC, goVer, plat := obs.CollectRuntime()
+	snap := obs.DebugSnapshot{
+		BuildVersion: version,
+		GoVersion:    goVer,
+		Platform:     plat,
+		Goroutines:   goroutines,
+		HeapMB:       heapMB,
+		SysMB:        sysMB,
+		LastGCAgo:    lastGC,
+		FlipperPort:  cfg.Serial.Port,
+		FlipperUp:    flip != nil,
+	}
+	if rec != nil {
+		snap.Uptime = time.Since(rec.UptimeStart())
+		snap.LastTools = rec.LastTools()
+	}
+	if p != nil {
+		snap.PersonaName = p.Name
+		snap.PersonaTools = len(agent.ToolNames(hasMarauder))
+		snap.PersonaAllow = len(p.Tools)
+		if snap.PersonaAllow == 0 {
+			snap.PersonaAllow = snap.PersonaTools
+		}
+	}
+	if caps, err := flip.DetectCapabilities(); err == nil {
+		snap.FlipperModel = strings.TrimSpace(caps.FriendlyFork() + " " + caps.FirmwareVersion)
+	}
+	if hasMarauder {
+		snap.MarauderPort = cfg.Marauder.Port
+		snap.MarauderUp = true
+	} else if cfg.Marauder.Port != "" {
+		snap.MarauderPort = cfg.Marauder.Port
+	}
+	if auditLog != nil {
+		snap.AuditDBPath = filepath.Join(os.Getenv("HOME"), ".promptzero", "audit.db")
+		if max, err := auditLog.MaxID(); err == nil {
+			snap.AuditRows = max
+		}
+		snap.SessionID = auditLog.SessionID()
+	} else if ai != nil {
+		snap.SessionID = ai.SessionID()
+	}
+	snap.Render(w, 72)
+}
+
+// decisionLabel maps agent.Decision onto the label the Prom counter expects.
+func decisionLabel(d agent.Decision) string {
+	switch d {
+	case agent.DecisionApprove:
+		return "approve"
+	case agent.DecisionApproveAll:
+		return "approve_all"
+	case agent.DecisionDeny:
+		return "deny"
+	default:
+		return "unknown"
+	}
 }
 
 // resolveConfirmRisk collapses the config value, the --confirm-risk flag,
