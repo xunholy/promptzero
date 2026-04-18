@@ -1,0 +1,54 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":automergeBranch",
+    ":automergeDigest",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
+    ":timezone(Australia/Sydney)"
+  ],
+  "dependencyDashboardTitle": "Renovate Dashboard 🤖",
+  "suppressNotifications": ["prEditedNotification", "prIgnoreNotification"],
+  "schedule": ["before 6am on monday"],
+  "lockFileMaintenance": { "enabled": false },
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "packageRules": [
+    {
+      "description": "Group non-major Go module updates into one weekly PR.",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "go modules (non-major)",
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Surface Go module major bumps individually for review.",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["major"],
+      "groupName": null,
+      "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "Group GitHub Actions updates into one monthly PR.",
+      "matchManagers": ["github-actions"],
+      "matchPackagePatterns": ["^actions/"],
+      "groupName": "github-actions",
+      "schedule": ["before 6am on the first day of the month"]
+    },
+    {
+      "description": "Pin and auto-merge GitHub Actions digest bumps.",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["digest", "pinDigest"],
+      "automerge": true,
+      "automergeType": "branch"
+    },
+    {
+      "description": "Flag Go toolchain majors — homelab runs Go 1.25 today.",
+      "matchManagers": ["gomod"],
+      "matchDepNames": ["go"],
+      "matchUpdateTypes": ["major"],
+      "labels": ["dependencies", "go-toolchain", "major"]
+    }
+  ]
+}
