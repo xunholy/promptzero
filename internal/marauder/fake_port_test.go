@@ -129,14 +129,6 @@ func (f *fakePort) SetReadTimeout(d time.Duration) error {
 	return nil
 }
 
-// setBlocking disables the Read timeout so the port returns only when real
-// data is available; used to prove the Stream cancelation path.
-func (f *fakePort) setBlocking() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.timeout = time.Hour
-}
-
 // linesSeen returns a copy of every command line observed so far.
 func (f *fakePort) linesSeen() []string {
 	f.mu.Lock()
