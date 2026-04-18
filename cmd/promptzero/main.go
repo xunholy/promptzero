@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -165,57 +164,9 @@ func run() error {
 	// We intercept SIGINT ourselves so the first press cancels the currently
 	// in-flight operation (connect, API call, tool run) and a second press
 	// within 2s exits hard — same feel as Claude Code / modern CLIs.
-	mainCtx := context.Background()
-	var currentCancel atomic.Pointer[context.CancelFunc]
-	var lastSIGINT atomic.Int64
-	var uiRef atomic.Pointer[termUI]
-	var stdinRestore atomic.Pointer[func()]
-
-	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, os.Interrupt)
-	defer signal.Stop(sigCh)
-
-	go func() {
-		const doubleTapWindow = 2 * time.Second
-		for range sigCh {
-			now := time.Now().UnixNano()
-			prev := lastSIGINT.Swap(now)
-			within := prev != 0 && time.Duration(now-prev) < doubleTapWindow
-
-			if within {
-				if fn := stdinRestore.Load(); fn != nil {
-					(*fn)()
-				}
-				if u := uiRef.Load(); u != nil {
-					u.teardown()
-				}
-				fmt.Fprintf(os.Stderr, "\n  %sGoodbye.%s\n\n", dim, reset)
-				os.Exit(0)
-			}
-			if cfp := currentCancel.Load(); cfp != nil {
-				(*cfp)()
-			}
-			if u := uiRef.Load(); u != nil {
-				u.positionOutput()
-			}
-			fmt.Fprintf(os.Stderr, "\n  %s(Ctrl+C again within 2s to exit)%s\n", dim, reset)
-			if u := uiRef.Load(); u != nil {
-				u.drawInputLineEmpty()
-				u.positionInput()
-			}
-		}
-	}()
-
-	withCancel := func(parent context.Context) (context.Context, func()) {
-		opCtx, cancel := context.WithCancel(parent)
-		cf := context.CancelFunc(cancel)
-		currentCancel.Store(&cf)
-		return opCtx, func() {
-			currentCancel.Store(nil)
-			cancel()
-		}
-	}
-	ctx := mainCtx
+	sh := &signalHandler{}
+	defer sh.install()()
+	ctx := context.Background()
 
 	// --- Banner ---
 	if !mcpMode {
@@ -282,7 +233,7 @@ func run() error {
 	}
 	statusInfo(fmt.Sprintf("Connecting to Flipper Zero on %s%s%s... %s(timeout %s, press Ctrl+C to cancel)%s", bold, transportURL, reset, dim, connectTimeout, reset))
 	start := time.Now()
-	connectCtx, releaseConnect := withCancel(ctx)
+	connectCtx, releaseConnect := sh.withCancel(ctx)
 	flip, err := flipper.ConnectURL(connectCtx, transportURL, connectTimeout)
 	releaseConnect()
 	if err != nil {
@@ -651,7 +602,7 @@ func run() error {
 			statusOK(fmt.Sprintf("Metrics at %shttp://%s%s%s", cyan, srv.Addr(), path, reset))
 		}
 		fmt.Fprintf(os.Stderr, "\n")
-		webCtx, releaseWeb := withCancel(ctx)
+		webCtx, releaseWeb := sh.withCancel(ctx)
 		defer releaseWeb()
 		return srv.Start(webCtx)
 	}
@@ -672,7 +623,7 @@ func run() error {
 
 	// --- Persistent input box at bottom of terminal ---
 	ui := newTermUI()
-	uiRef.Store(ui)
+	sh.setUI(ui)
 	ui.setup()
 	defer ui.teardown()
 
@@ -692,9 +643,9 @@ func run() error {
 		// termios details live in main_termios_<goos>.go.
 		enableOPOSTONLCR(stdinFd)
 		restore := func() { _ = term.Restore(stdinFd, oldState) }
-		stdinRestore.Store(&restore)
+		sh.setStdinRestore(&restore)
 		defer func() {
-			stdinRestore.Store(nil)
+			sh.setStdinRestore(nil)
 			restore()
 		}()
 	}
@@ -885,7 +836,7 @@ func run() error {
 		setNote("Thinking")
 		ed.running.Store(true)
 		go runTurnStatusBar(ed, &turnStartedAt, &turnNote, &turnToolCount)
-		turnCtx, releaseTurn := withCancel(ctx)
+		turnCtx, releaseTurn := sh.withCancel(ctx)
 		go func() {
 			resp, runErr := ai.Run(turnCtx, input)
 			releaseTurn()
@@ -1127,9 +1078,7 @@ func run() error {
 					})
 					return nil
 				}
-				if cfp := currentCancel.Load(); cfp != nil {
-					(*cfp)()
-				}
+				sh.cancelCurrent()
 				ed.writeOutput(func() {
 					fmt.Fprintf(os.Stderr, "\n  %s(Ctrl+C again within 2s to exit)%s\n", dim, reset)
 				})
