@@ -120,6 +120,37 @@ func TestPersonasListReturnsRegistry(t *testing.T) {
 	if _, ok := body["current"]; !ok {
 		t.Errorf("expected 'current' key in response")
 	}
+	// Each entry must carry the unrestricted bool introduced in task #1.
+	for _, entry := range avail {
+		e, _ := entry.(map[string]any)
+		if _, ok := e["unrestricted"].(bool); !ok {
+			t.Errorf("entry %v missing unrestricted bool", e["name"])
+		}
+	}
+
+	// Verify known contracts: "default" has no tool allowlist (unrestricted=true);
+	// "rf-recon" has an explicit allowlist (unrestricted=false).
+	byName := make(map[string]map[string]any, len(avail))
+	for _, entry := range avail {
+		e, _ := entry.(map[string]any)
+		if n, ok := e["name"].(string); ok {
+			byName[n] = e
+		}
+	}
+	if def, ok := byName["default"]; ok {
+		if def["unrestricted"] != true {
+			t.Errorf("default persona unrestricted = %v, want true", def["unrestricted"])
+		}
+	} else {
+		t.Errorf("'default' persona not found in available list")
+	}
+	if rf, ok := byName["rf-recon"]; ok {
+		if rf["unrestricted"] != false {
+			t.Errorf("rf-recon persona unrestricted = %v, want false", rf["unrestricted"])
+		}
+	} else {
+		t.Errorf("'rf-recon' persona not found in available list")
+	}
 }
 
 func TestPersonasSwitchApplies(t *testing.T) {
@@ -141,6 +172,19 @@ func TestPersonasSwitchApplies(t *testing.T) {
 	if fa.Persona() == nil || fa.Persona().Name != target {
 		t.Errorf("agent persona = %v, want %s", fa.Persona(), target)
 	}
+
+	// Response must include switch_id (non-empty string) and unrestricted (bool).
+	var respBody map[string]any
+	if err := json.Unmarshal(raw, &respBody); err != nil {
+		t.Fatalf("unmarshal switch response: %v", err)
+	}
+	switchID, ok := respBody["switch_id"].(string)
+	if !ok || switchID == "" {
+		t.Errorf("switch_id = %v, want non-empty string", respBody["switch_id"])
+	}
+	if _, ok := respBody["unrestricted"].(bool); !ok {
+		t.Errorf("unrestricted = %v, want bool", respBody["unrestricted"])
+	}
 }
 
 func TestPersonasSwitchUnknownReturns404(t *testing.T) {
@@ -150,6 +194,22 @@ func TestPersonasSwitchUnknownReturns404(t *testing.T) {
 	code, _ := postJSON(t, ts, "/api/personas/switch", map[string]string{"name": "no-such-persona"})
 	if code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Device
+// ---------------------------------------------------------------------------
+
+func TestDeviceReturns503WithoutFlipper(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	// No SetFlipper call — flipper is nil.
+	code, body := getJSON(t, ts, "/api/device")
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body=%v", code, body)
+	}
+	if body["error"] == "" {
+		t.Errorf("expected error string in body, got %v", body)
 	}
 }
 

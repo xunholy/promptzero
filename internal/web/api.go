@@ -70,7 +70,12 @@ func writeError(w http.ResponseWriter, status int, reason string) {
 type personaEntry struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Tools       int    `json:"tools"`
+	// Tools is the length of the persona's explicit tool allowlist. An
+	// empty (or nil) allowlist is treated as "no restriction" by
+	// persona.FilterTools, so Tools==0 without Unrestricted is a
+	// zero-capability persona rather than an all-access one.
+	Tools        int  `json:"tools"`
+	Unrestricted bool `json:"unrestricted"`
 }
 
 func (s *Server) handlePersonasList(w http.ResponseWriter, r *http.Request) {
@@ -86,9 +91,10 @@ func (s *Server) handlePersonasList(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		out = append(out, personaEntry{
-			Name:        p.Name,
-			Description: p.Description,
-			Tools:       len(p.Tools),
+			Name:         p.Name,
+			Description:  p.Description,
+			Tools:        len(p.Tools),
+			Unrestricted: p.IsUnrestricted(),
 		})
 	}
 	current := ""
@@ -123,17 +129,22 @@ func (s *Server) handlePersonasSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.agent.SetPersona(p)
+	switchID := newID()
 	// Announce the change on the broadcast channel so peer tabs that aren't
-	// the one that clicked still know the operator mode moved.
+	// the one that clicked still know the operator mode moved. switch_id lets
+	// the originating tab suppress its own echo.
 	s.broadcast(map[string]any{
-		"type":    "persona_switched",
-		"name":    p.Name,
-		"content": "persona switched to " + p.Name,
+		"type":      "persona_switched",
+		"name":      p.Name,
+		"content":   "persona switched to " + p.Name,
+		"switch_id": switchID,
 	})
 	respondJSON(w, http.StatusOK, map[string]any{
-		"current":     p.Name,
-		"description": p.Description,
-		"tools":       len(p.Tools),
+		"current":      p.Name,
+		"description":  p.Description,
+		"tools":        len(p.Tools),
+		"unrestricted": p.IsUnrestricted(),
+		"switch_id":    switchID,
 	})
 }
 
@@ -467,11 +478,24 @@ func bytesToMB(b uint64) uint64 {
 // `device_info` + `power_info` and returned as both a structured JSON with
 // grouped sections AND the raw key→value map so the UI can render fields
 // we haven't explicitly modelled yet.
+const deviceCacheTTL = 5 * time.Second
+
 func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 	if s.flipper == nil {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
 		return
 	}
+
+	// Serialize concurrent fetches so multiple tabs polling at the same time
+	// do not stack serial commands — only one fetch runs per TTL window.
+	s.deviceCacheMu.Lock()
+	defer s.deviceCacheMu.Unlock()
+
+	if time.Since(s.deviceCacheAt) < deviceCacheTTL && s.deviceCacheResp != nil {
+		respondJSON(w, http.StatusOK, s.deviceCacheResp)
+		return
+	}
+
 	devInfo, err := s.flipper.DeviceInfoMap()
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("device_info: %v", err))
@@ -479,13 +503,38 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	// power_info may duplicate fields already present in device_info on
 	// Momentum firmware; that's fine — the final raw map just overlays.
+	// Errors are non-fatal but surfaced in the response so the UI can
+	// distinguish "command failed" from "command ran but returned no
+	// battery fields".
+	var powerInfoErrors []string
 	powerInfo, perr := s.flipper.PowerInfoMap()
-	if perr == nil {
+	if perr != nil {
+		powerInfoErrors = []string{perr.Error()}
+	} else {
 		for k, v := range powerInfo {
 			if _, ok := devInfo[k]; !ok {
 				devInfo[k] = v
 			}
 		}
+	}
+
+	// device_info doesn't carry storage fields on any fork — the canonical
+	// source is `storage info /ext` and `storage info /int`. Errors are
+	// non-fatal: missing keys render as em-dash in the UI.
+	var storageErrors []string
+	if sd, err := s.flipper.StorageFSInfoMap("/ext"); err == nil {
+		for k, v := range sd {
+			devInfo["storage_sdcard_"+k] = v
+		}
+	} else {
+		storageErrors = append(storageErrors, "/ext: "+err.Error())
+	}
+	if intFS, err := s.flipper.StorageFSInfoMap("/int"); err == nil {
+		for k, v := range intFS {
+			devInfo["storage_internal_"+k] = v
+		}
+	} else {
+		storageErrors = append(storageErrors, "/int: "+err.Error())
 	}
 
 	// Group into logical sections the UI can render as panels. Every key
@@ -516,11 +565,13 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 	battery := pickFields(devInfo, []string{
 		"charge_level", "charge_state", "charge_voltage_limit",
 		"battery_voltage", "battery_current", "battery_temp", "battery_health",
-		"capacity_remain", "capacity_full", "capacity_design",
+		"capacity_remaining", "capacity_full", "capacity_design",
+		"gauge_is_ok",
 	})
 	storage := pickFields(devInfo, []string{
-		"storage_sdcard_present", "storage_sdcard_totalSpace", "storage_sdcard_freeSpace",
-		"storage_databases_present",
+		"storage_sdcard_present", "storage_sdcard_label", "storage_sdcard_type",
+		"storage_sdcard_totalSpace", "storage_sdcard_freeSpace", "storage_sdcard_error",
+		"storage_internal_present", "storage_internal_label", "storage_internal_type",
 		"storage_internal_totalSpace", "storage_internal_freeSpace",
 	})
 	system := pickFields(devInfo, []string{
@@ -529,7 +580,7 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 		"system_debug", "system_lock", "system_log_level",
 	})
 
-	respondJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"firmware": firmware,
 		"hardware": hardware,
 		"radio":    radio,
@@ -537,7 +588,18 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 		"storage":  storage,
 		"system":   system,
 		"raw":      devInfo,
-	})
+	}
+	if len(powerInfoErrors) > 0 {
+		resp["power_info_errors"] = powerInfoErrors
+	}
+	if len(storageErrors) > 0 {
+		resp["storage_info_errors"] = storageErrors
+	}
+
+	s.deviceCacheAt = time.Now()
+	s.deviceCacheResp = resp
+
+	respondJSON(w, http.StatusOK, resp)
 }
 
 // pickFields returns a submap containing only the requested keys that

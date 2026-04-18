@@ -116,6 +116,12 @@ func (r *Registry) Names() []string {
 	return out
 }
 
+// IsUnrestricted reports whether the persona carries no tool allowlist —
+// the empty-Tools case that FilterTools treats as "all tools pass through".
+func (p *Persona) IsUnrestricted() bool {
+	return len(p.Tools) == 0
+}
+
 // FilterTools returns the subset of all whose tool name is present in
 // allowlist. An empty (or nil) allowlist is treated as "no restriction" and
 // all is returned unchanged. Unknown names in the allowlist are silently

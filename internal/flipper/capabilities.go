@@ -63,17 +63,23 @@ func detectCapabilities(deviceInfo string) Capabilities {
 		}
 	}
 
-	// Apply fork-specific quirks. Keep the defaults conservative: when we
-	// don't recognise a fork, assume the classic stock/Unleashed surface.
+	// Set the stock/Unleashed baseline before the switch so new fork cases
+	// only need to override the fields that actually differ.
+	c.PowerInfoCmd = "power_info"
+	c.HasNFCSubshell = true
+	c.SubGHzNeedsDev = false
+
 	switch strings.ToLower(c.FirmwareFork) {
 	case "xtreme":
 		c.PowerInfoCmd = "info power"
 		c.HasNFCSubshell = false
 		c.SubGHzNeedsDev = true
-	default: // "", "unleashed", "roguemaster", "momentum", etc.
-		c.PowerInfoCmd = "power_info"
-		c.HasNFCSubshell = true
-		c.SubGHzNeedsDev = false
+	case "momentum":
+		// Momentum dropped the legacy `power_info` alias — only `info power`
+		// is registered (see applications/services/cli/cli_main_commands.c
+		// in Next-Flip/Momentum-Firmware). NFC/SubGHz surface otherwise
+		// tracks the stock/Unleashed side.
+		c.PowerInfoCmd = "info power"
 	}
 	return c
 }

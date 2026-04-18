@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -488,6 +489,99 @@ func (f *Flipper) StorageStat(path string) (string, error) {
 	return f.Exec(fmt.Sprintf("storage stat %s", sanitizeArg(path)))
 }
 
+// StorageFSInfo returns filesystem info for a storage root.
+// CLI: storage info <path>
+//
+// A real Flipper emits a multi-line block like:
+//
+//	Label: Flipper SD
+//	Type: FAT32
+//	60194KiB total
+//	42088KiB free
+//
+// Or, when the filesystem isn't ready (no SD card inserted):
+//
+//	Storage error: not ready
+func (f *Flipper) StorageFSInfo(path string) (string, error) {
+	return f.Exec(fmt.Sprintf("storage info %s", sanitizeArg(path)))
+}
+
+// StorageFSInfoMap runs `storage info <path>` and parses it into a flat
+// key→value map. Known keys:
+//
+//	present     — "true" / "false"
+//	error       — error text when present=false
+//	label       — filesystem label (ext) or device name (int)
+//	type        — filesystem type ("FAT32", "exFAT", "Virtual", ...)
+//	totalSpace  — total bytes (decimal)
+//	freeSpace   — free bytes (decimal)
+//
+// device_info does NOT carry storage fields on any fork; this CLI is
+// the canonical source both for the mobile app and /status.
+func (f *Flipper) StorageFSInfoMap(path string) (map[string]string, error) {
+	raw, err := f.StorageFSInfo(path)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, 6)
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "Storage error:") {
+		out["present"] = "false"
+		msg := strings.TrimSpace(strings.TrimPrefix(trimmed, "Storage error:"))
+		if msg != "" {
+			out["error"] = msg
+		}
+		return out, nil
+	}
+	out["present"] = "true"
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "Label:"):
+			out["label"] = strings.TrimSpace(strings.TrimPrefix(line, "Label:"))
+		case strings.HasPrefix(line, "Type:"):
+			out["type"] = strings.TrimSpace(strings.TrimPrefix(line, "Type:"))
+		default:
+			// "<N>KiB total" / "<N>KiB free". Parse via a split to avoid
+			// pulling in regexp for two suffix forms.
+			if n, suffix, ok := parseKiBLine(line); ok {
+				if suffix == "total" {
+					out["totalSpace"] = n
+				} else if suffix == "free" {
+					out["freeSpace"] = n
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// parseKiBLine parses "<N>KiB total" or "<N>KiB free" (with optional
+// whitespace between the digits and "KiB") into a byte-count string (decimal)
+// and the trailing kind ("total" or "free").
+func parseKiBLine(line string) (bytes, kind string, ok bool) {
+	i := strings.Index(line, "KiB")
+	if i <= 0 {
+		return "", "", false
+	}
+	numStr := strings.TrimSpace(line[:i])
+	rest := strings.TrimSpace(line[i+len("KiB"):])
+	if rest != "total" && rest != "free" {
+		return "", "", false
+	}
+	if numStr == "" {
+		return "", "", false
+	}
+	n, err := strconv.ParseUint(numStr, 10, 64)
+	if err != nil {
+		return "", "", false
+	}
+	return fmt.Sprintf("%d", n*1024), rest, true
+}
+
 // --- System ---
 
 // DeviceInfo returns device information.
@@ -513,15 +607,26 @@ func (f *Flipper) DeviceInfoMap() (map[string]string, error) {
 
 // PowerInfoMap runs the fork-appropriate power_info command and
 // returns the parsed key→value map (charge_level, battery_voltage,
-// capacity_*, etc.). Separate from DeviceInfoMap because Momentum's
-// device_info already includes the power fields; Xtreme and stock
-// keep them behind power_info.
+// capacity_*, etc.).
+//
+// Separate from DeviceInfoMap because none of the forks expose power
+// fields via device_info: Xtreme and Momentum serve them via
+// `info power` (dot-separated keys — normalised to underscore here),
+// stock/Unleashed/RogueMaster via the legacy `power_info` (already
+// underscore-separated).
 func (f *Flipper) PowerInfoMap() (map[string]string, error) {
 	raw, err := f.PowerInfo()
 	if err != nil {
 		return nil, err
 	}
-	return parseKVBlock(raw), nil
+	kv := parseKVBlock(raw)
+	out := make(map[string]string, len(kv))
+	for k, v := range kv {
+		// "." → "_" normalisation can collide if firmware ever emits both
+		// "foo.bar" and "foo_bar" forms; not currently observed in the wild.
+		out[strings.ReplaceAll(k, ".", "_")] = v
+	}
+	return out, nil
 }
 
 // parseKVBlock is the shared parser for Flipper "key: value" line

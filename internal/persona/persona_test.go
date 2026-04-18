@@ -140,6 +140,27 @@ func TestRegistryLoadMissingName(t *testing.T) {
 	}
 }
 
+func TestIsUnrestricted(t *testing.T) {
+	tests := []struct {
+		name  string
+		tools []string
+		want  bool
+	}{
+		{"nil tools", nil, true},
+		{"empty tools slice", []string{}, true},
+		{"single tool", []string{"nfc_detect"}, false},
+		{"multiple tools", []string{"nfc_detect", "rfid_read", "subghz_receive"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Persona{Name: "test", Tools: tt.tools}
+			if got := p.IsUnrestricted(); got != tt.want {
+				t.Errorf("IsUnrestricted() = %v, want %v (tools=%v)", got, tt.want, tt.tools)
+			}
+		})
+	}
+}
+
 func mockTool(name string) anthropic.ToolUnionParam {
 	return anthropic.ToolUnionParam{
 		OfTool: &anthropic.ToolParam{Name: name},

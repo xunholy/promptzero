@@ -76,7 +76,7 @@
       connection: 'connecting',
       session: {
         id: shortId(''),
-        device: { name: 'Yonigida', fork: 'MOMENTUM', version: '0.5.1', battery: 87 },
+        device: { name: '', fork: '', version: '', battery: null },
         phase: 'Idle',
         verb: 'Thinking',
         turnStartedAt: null,
@@ -120,6 +120,8 @@
       _elapsedTimer: null,
       _heartbeatWatchdog: null,
       _costTimer: null,
+      _deviceTimer: null,
+      _knownPersonaSwitchIds: [],
       _lastPingAt: 0,
       _reduced: false,
       _autoScrollPaused: false,
@@ -145,7 +147,17 @@
       },
       get showTicker() { return this.session.phase !== 'Idle'; },
       get sessionPillText() { return '#s-' + (this.session.id || '').slice(0, 6); },
-      get firmwareLabel()   { return (this.session.device.fork || '') + ' v' + (this.session.device.version || ''); },
+      get firmwareLabel() {
+        var fork = this.session.device.fork || '';
+        var ver  = this.session.device.version || '';
+        if (!fork && !ver) return '—';
+        if (!ver) return fork;
+        return fork ? fork + ' ' + ver : ver;
+      },
+      get batteryLabel() {
+        var n = this.session.device.battery;
+        return (n === null || n === undefined) ? '—' : (n + '%');
+      },
       get inlineConfirm()   { return this.confirmRequest && this.confirmRequest.risk !== 'critical' ? this.confirmRequest : null; },
       get criticalConfirm() { return this.confirmRequest && this.confirmRequest.risk === 'critical' ? this.confirmRequest : null; },
       get criticalReady()   { return this.criticalConfirmText.trim().toLowerCase() === 'all'; },
@@ -168,6 +180,8 @@
         this.loadPersonas();
         this.loadCost();
         this._costTimer = setInterval(() => this.loadCost(), 5000);
+        this.loadSessionDevice();
+        this._deviceTimer = setInterval(() => this.loadSessionDevice(), 30000);
 
         document.addEventListener('keydown', (e) => this._globalKey(e));
 
@@ -418,6 +432,13 @@
 
           case 'persona_switched':
             this.personaUI.current = msg.name || '';
+            if (msg.switch_id) {
+              var idx = this._knownPersonaSwitchIds.indexOf(msg.switch_id);
+              if (idx !== -1) {
+                this._knownPersonaSwitchIds.splice(idx, 1);
+                break;
+              }
+            }
             this._addAgent('● ' + (msg.content || ('persona switched to ' + msg.name)), null, { streaming: false, system: true });
             break;
         }
@@ -710,11 +731,15 @@
           .then((r) => (r.ok ? r.json() : Promise.reject(r)))
           .then((data) => {
             this.personaUI.current = data.current || name;
-            /* The server also broadcasts a persona_switched event; the toast
-               is emitted there so peer tabs see it too. */
+            if (data.switch_id) {
+              this._knownPersonaSwitchIds.push(data.switch_id);
+              if (this._knownPersonaSwitchIds.length > 8) this._knownPersonaSwitchIds.shift();
+            }
+            this.personaUI.open = false;
           })
-          .catch(() => { /* fall back silently; the menu stays open for retry */ })
-          .finally(() => { this.personaUI.open = false; });
+          .catch(() => {
+            this.errorBanner = { kind: 'api', message: 'persona switch failed' };
+          });
       },
 
       /* ---------- sidebar tabs (Watch / Rules) ---------- */
@@ -842,6 +867,8 @@
       /* ---------- device profile modal (full device_info surface) ---------- */
       openDevice() {
         this.deviceUI.open = true;
+        if (this._deviceTimer) { clearInterval(this._deviceTimer); }
+        this._deviceTimer = setInterval(() => this.loadSessionDevice(), 30000);
         this.loadDevice();
       },
       closeDevice() {
@@ -859,12 +886,34 @@
             var sections = ['firmware', 'hardware', 'radio', 'battery', 'storage', 'system'];
             sections.forEach((k) => { if (!body[k] || typeof body[k] !== 'object') body[k] = {}; });
             this.deviceUI.snapshot = body;
-            /* Title: "DEVICE · Yonigida · Momentum" */
+            this._applyDeviceToSession(body);
+            /* Title: "DEVICE · <name> · <fork>" */
             var name = (body.hardware && body.hardware.hardware_name) || 'flipper';
             var fork = (body.firmware && body.firmware.firmware_origin_fork) || 'stock';
             this.deviceUI.title = 'DEVICE · ' + name + ' · ' + fork;
           })
           .catch((e) => { this.deviceUI.loaded = true; this.deviceUI.error = String(e); });
+      },
+      /* Background refresh for the header chips + battery indicator. Shares
+         the /api/device endpoint with the modal so a single round-trip
+         drives both surfaces. Silent on failure — we'd rather show empty
+         chips than a banner for every transient serial hiccup. */
+      loadSessionDevice() {
+        fetch('api/device')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((body) => { if (body) this._applyDeviceToSession(body); })
+          .catch(() => {});
+      },
+      _applyDeviceToSession(body) {
+        if (!body) return;
+        var hw = body.hardware || {};
+        var fw = body.firmware || {};
+        var bat = body.battery || {};
+        if (hw.hardware_name) this.session.device.name = hw.hardware_name;
+        if (fw.firmware_origin_fork) this.session.device.fork = fw.firmware_origin_fork.toUpperCase();
+        if (fw.firmware_version) this.session.device.version = fw.firmware_version;
+        var n = parseInt(bat.charge_level, 10);
+        if (isFinite(n)) this.session.device.battery = Math.max(0, Math.min(100, n));
       },
       get deviceChargePct() {
         var b = this.deviceUI.snapshot && this.deviceUI.snapshot.battery;
@@ -881,6 +930,17 @@
         var used = Math.max(0, total - free);
         return Math.min(100, Math.round((used / total) * 100));
       },
+      get deviceRawText() {
+        var raw = this.deviceUI.snapshot && this.deviceUI.snapshot.raw;
+        if (!raw || typeof raw !== 'object') return '(empty)';
+        var keys = Object.keys(raw).sort();
+        if (keys.length === 0) return '(empty)';
+        var lines = new Array(keys.length);
+        for (var i = 0; i < keys.length; i++) {
+          lines[i] = keys[i] + ': ' + raw[keys[i]];
+        }
+        return lines.join('\n');
+      },
       get deviceStorageLabel() {
         var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
         if (!s) return '—';
@@ -890,6 +950,23 @@
         var used = Math.max(0, total - free);
         return this._fmtBytes(used) + ' used · ' + this._fmtBytes(total) + ' total';
       },
+      get deviceSdFreeLabel() {
+        var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
+        if (!s) return '—';
+        var total = Number(s.storage_sdcard_totalSpace || 0);
+        var free  = Number(s.storage_sdcard_freeSpace  || 0);
+        if (!total) return '—';
+        return this._fmtBytes(free) + ' / ' + this._fmtBytes(total);
+      },
+      get deviceIntFreeLabel() {
+        var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
+        if (!s) return '—';
+        var total = Number(s.storage_internal_totalSpace || 0);
+        var free  = Number(s.storage_internal_freeSpace  || 0);
+        if (!total) return '—';
+        return this._fmtBytes(free) + ' / ' + this._fmtBytes(total);
+      },
+      _val(v) { return (v != null && v !== '') ? v : '—'; },
       formatVoltage(mv) {
         var n = Number(mv);
         if (!isFinite(n) || n <= 0) return '—';

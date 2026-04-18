@@ -115,6 +115,13 @@ type Server struct {
 	// connection lifecycle the operator sees in the cockpit.
 	startedAt time.Time
 
+	// deviceCacheMu guards deviceCacheResp and deviceCacheAt. Held during
+	// the flipper fetch so concurrent tab polls serialize rather than
+	// stacking serial commands.
+	deviceCacheMu  sync.Mutex
+	deviceCacheAt  time.Time
+	deviceCacheResp map[string]any
+
 	// Device state surfaced in /api/debug. Updated by the host via
 	// SetFlipperConnected / SetMarauderConnected on transport events.
 	flipperOn  atomic.Bool

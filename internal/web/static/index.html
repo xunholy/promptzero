@@ -35,7 +35,7 @@
       </div>
       <span class="pz-dot-sep" aria-hidden="true">·</span>
       <span class="pz-chip pz-chip-firmware" x-text="firmwareLabel"></span>
-      <span class="pz-chip pz-chip-device"   x-text="session.device.name"></span>
+      <span class="pz-chip pz-chip-device"   x-text="session.device.name || '—'"></span>
     </div>
 
     <div class="pz-header-right">
@@ -76,7 +76,7 @@
                 @click="switchPersona(p.name)">
               <div class="pz-persona-item-head">
                 <span class="pz-persona-item-name" x-text="p.name"></span>
-                <span class="pz-persona-item-tools pz-tabular" x-text="(p.tools || 0) + ' tools'"></span>
+                <span class="pz-persona-item-tools pz-tabular" x-text="p.unrestricted ? 'all tools' : ((p.tools || 0) + ' tools')"></span>
               </div>
               <div class="pz-persona-item-desc" x-text="p.description"></div>
             </li>
@@ -106,9 +106,9 @@
         <span x-text="costPillText"></span>
       </button>
 
-      <span class="pz-battery" :title="'battery ' + session.device.battery + '%'">
+      <span class="pz-battery" :title="'battery ' + batteryLabel" role="status" aria-live="polite">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="16" height="10" rx="1"/><path d="M22 11v2"/></svg>
-        <span class="pz-tabular" x-text="session.device.battery + '%'"></span>
+        <span class="pz-tabular" x-text="batteryLabel"></span>
       </span>
 
       <button type="button"
@@ -631,6 +631,16 @@
 
         <template x-if="deviceUI.loaded && !deviceUI.error && deviceUI.snapshot">
           <div class="pz-device-body">
+            <template x-if="(deviceUI.snapshot.power_info_errors && deviceUI.snapshot.power_info_errors.length) || (deviceUI.snapshot.storage_info_errors && deviceUI.snapshot.storage_info_errors.length)">
+              <div class="pz-validate-err">
+                <template x-for="(e, i) in (deviceUI.snapshot.power_info_errors || [])" :key="'p' + i">
+                  <div x-text="'power_info: ' + e"></div>
+                </template>
+                <template x-for="(e, i) in (deviceUI.snapshot.storage_info_errors || [])" :key="'s' + i">
+                  <div x-text="'storage_info: ' + e"></div>
+                </template>
+              </div>
+            </template>
             <!-- Battery: big, visual because it's what operators look at first -->
             <section class="pz-device-section pz-device-battery">
               <div class="pz-device-section-head">BATTERY</div>
@@ -640,35 +650,47 @@
                       x-text="deviceChargePct + '% · ' + (deviceUI.snapshot.battery.charge_state || '—')"></span>
               </div>
               <div class="pz-device-grid">
+                <div><span class="pz-debug-label">gauge ok</span>
+                  <span class="pz-debug-val pz-mono"
+                        :class="deviceUI.snapshot.battery.gauge_is_ok === 'true' ? 'pz-validate-ok' : 'pz-validate-blocked'"
+                        x-text="deviceUI.snapshot.battery.gauge_is_ok === 'true' ? 'true' : (deviceUI.snapshot.battery.gauge_is_ok || '—')"></span></div>
                 <div><span class="pz-debug-label">voltage</span>
                   <span class="pz-debug-val pz-tabular" x-text="formatVoltage(deviceUI.snapshot.battery.battery_voltage)"></span></div>
                 <div><span class="pz-debug-label">current</span>
                   <span class="pz-debug-val pz-tabular" x-text="formatCurrent(deviceUI.snapshot.battery.battery_current)"></span></div>
                 <div><span class="pz-debug-label">temp</span>
-                  <span class="pz-debug-val pz-tabular" x-text="(deviceUI.snapshot.battery.battery_temp || '—') + '°C'"></span></div>
+                  <span class="pz-debug-val pz-tabular" x-text="_val(deviceUI.snapshot.battery.battery_temp) + '°C'"></span></div>
                 <div><span class="pz-debug-label">health</span>
-                  <span class="pz-debug-val pz-tabular" x-text="(deviceUI.snapshot.battery.battery_health || '—') + '%'"></span></div>
+                  <span class="pz-debug-val pz-tabular" x-text="_val(deviceUI.snapshot.battery.battery_health) + '%'"></span></div>
                 <div><span class="pz-debug-label">capacity</span>
                   <span class="pz-debug-val pz-tabular"
-                        x-text="(deviceUI.snapshot.battery.capacity_remain || '—') + ' / ' + (deviceUI.snapshot.battery.capacity_full || '—') + ' mAh'"></span></div>
+                        x-text="_val(deviceUI.snapshot.battery.capacity_remaining) + ' / ' + _val(deviceUI.snapshot.battery.capacity_full) + ' mAh'"></span></div>
                 <div><span class="pz-debug-label">design</span>
                   <span class="pz-debug-val pz-tabular"
-                        x-text="(deviceUI.snapshot.battery.capacity_design || '—') + ' mAh'"></span></div>
+                        x-text="_val(deviceUI.snapshot.battery.capacity_design) + ' mAh'"></span></div>
               </div>
             </section>
 
             <!-- Storage -->
             <section class="pz-device-section">
-              <div class="pz-device-section-head">STORAGE (SD)</div>
+              <div class="pz-device-section-head">STORAGE</div>
               <div class="pz-device-storage-bar" :style="`--pz-stor:${deviceStorageUsedPct}%`">
                 <div class="pz-device-storage-fill"></div>
                 <span class="pz-device-storage-label pz-tabular" x-text="deviceStorageLabel"></span>
               </div>
               <div class="pz-device-grid">
                 <div><span class="pz-debug-label">sd card</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.storage.storage_sdcard_present || '—'"></span></div>
-                <div><span class="pz-debug-label">databases</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.storage.storage_databases_present || '—'"></span></div>
+                  <span class="pz-debug-val pz-mono"
+                        x-text="deviceUI.snapshot.storage.storage_sdcard_present === 'true'
+                          ? ((deviceUI.snapshot.storage.storage_sdcard_label || '—') + ' · ' + (deviceUI.snapshot.storage.storage_sdcard_type || '—'))
+                          : (deviceUI.snapshot.storage.storage_sdcard_error || 'not inserted')"></span></div>
+                <div><span class="pz-debug-label">sd free</span>
+                  <span class="pz-debug-val pz-tabular" x-text="deviceSdFreeLabel"></span></div>
+                <div><span class="pz-debug-label">internal</span>
+                  <span class="pz-debug-val pz-mono"
+                        x-text="(deviceUI.snapshot.storage.storage_internal_label || '—') + ' · ' + (deviceUI.snapshot.storage.storage_internal_type || '—')"></span></div>
+                <div><span class="pz-debug-label">int free</span>
+                  <span class="pz-debug-val pz-tabular" x-text="deviceIntFreeLabel"></span></div>
               </div>
             </section>
 
@@ -754,6 +776,13 @@
                   <span class="pz-debug-val pz-mono"
                         x-text="deviceUI.snapshot.system.system_lock === '1' ? 'enabled' : 'disabled'"></span></div>
               </div>
+            </section>
+
+            <!-- Raw dump: every key parsed from device_info + power_info, so
+                 field-name mismatches or missing keys are visible directly. -->
+            <section class="pz-device-section">
+              <div class="pz-device-section-head">RAW</div>
+              <pre class="pz-debug-raw pz-mono" aria-label="raw device data" x-text="deviceRawText"></pre>
             </section>
           </div>
         </template>

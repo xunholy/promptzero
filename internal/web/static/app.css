@@ -238,6 +238,8 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   font-family: var(--pz-font-mono);
   font-size: var(--pz-text-xs);
   color: var(--pz-text-dim);
+  min-width: 5ch;
+  text-align: right;
 }
 .pz-persona-item-desc {
   margin-top: 2px;
