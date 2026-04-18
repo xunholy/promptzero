@@ -12,8 +12,8 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=VT323&display=swap">
   <link rel="stylesheet" href="app.css">
 
-  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
   <script src="app.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
 </head>
 <body x-data="pzApp()" x-init="init()" x-cloak>
 
@@ -76,7 +76,7 @@
                 @click="switchPersona(p.name)">
               <div class="pz-persona-item-head">
                 <span class="pz-persona-item-name" x-text="p.name"></span>
-                <span class="pz-persona-item-tools pz-tabular" x-text="p.tools + ' tools'"></span>
+                <span class="pz-persona-item-tools pz-tabular" x-text="(p.tools || 0) + ' tools'"></span>
               </div>
               <div class="pz-persona-item-desc" x-text="p.description"></div>
             </li>

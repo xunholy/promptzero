@@ -354,3 +354,54 @@ func writeJSON(ctx context.Context, c *websocket.Conn, m map[string]any) error {
 	}
 	return c.Write(ctx, websocket.MessageText, data)
 }
+
+// TestIndexScriptOrder guards against a subtle Alpine bootstrap failure:
+// Alpine's CDN build auto-starts during its script tag's execution when the
+// document is no longer in the 'loading' state (which is the case when it is
+// one of two deferred scripts — the first defer already moved readyState to
+// 'interactive'). If app.js is loaded AFTER alpine, Alpine traverses the DOM
+// and evaluates x-data="pzApp()" before window.pzApp exists, producing a
+// cascade of ReferenceErrors and a UI full of broken bindings.
+func TestIndexScriptOrder(t *testing.T) {
+	html, err := staticFiles.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+	body := string(html)
+
+	appIdx := strings.Index(body, `src="app.js"`)
+	alpineIdx := strings.Index(body, "alpinejs")
+	if appIdx < 0 {
+		t.Fatal("index.html is missing a <script src=\"app.js\"> tag")
+	}
+	if alpineIdx < 0 {
+		t.Fatal("index.html is missing an alpinejs <script> tag")
+	}
+	if appIdx > alpineIdx {
+		t.Fatalf("app.js must load before alpinejs (app.js at %d, alpinejs at %d) — "+
+			"otherwise Alpine's auto-start evaluates x-data=\"pzApp()\" before window.pzApp is defined",
+			appIdx, alpineIdx)
+	}
+}
+
+// TestNoLiteralUndefinedInTemplates catches common Alpine-template regressions
+// where a binding concatenates an unchecked property (e.g. `p.tools + ' tools'`)
+// that renders the literal string "undefined" when the source field is absent.
+// The allow-list below pins known-safe occurrences; anything else fails so a
+// defensive fallback (e.g. `(p.tools || 0)`) is added before merging.
+func TestNoLiteralUndefinedInTemplates(t *testing.T) {
+	html, err := staticFiles.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+	// The only legitimate occurrences are the two type-check guards in the
+	// tool-output template (`item.output !== null && item.output !== undefined`).
+	body := string(html)
+	count := strings.Count(body, "undefined")
+	const allowed = 1
+	if count != allowed {
+		t.Fatalf("index.html contains %d occurrences of the literal \"undefined\" (want %d). "+
+			"Review added bindings — unchecked `x + ' label'` concatenations render "+
+			"the string \"undefined\" at runtime when x is absent.", count, allowed)
+	}
+}
