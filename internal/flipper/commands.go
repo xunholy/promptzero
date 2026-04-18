@@ -73,14 +73,18 @@ func (f *Flipper) SubGHzTx(filePath string) (string, error) {
 // SubGHzRx receives Sub-GHz signals on the given frequency (Hz). Xtreme
 // firmware's `subghz rx` requires a trailing <device> arg (0=internal CC1101,
 // 1=external); we append "0" when capabilities report that quirk.
+//
+// Note: withSuccessBuzz is intentionally omitted here. ExecLong returns nil
+// on timeout (streaming semantics), so the buzz would always fire. On
+// firmware that does not honour Ctrl+C (e.g. Momentum's subghz rx), the
+// device may still be executing the command when the vibro Exec is sent,
+// causing the buzz Exec calls to hang for their full safety-net deadline.
 func (f *Flipper) SubGHzRx(frequency uint32, duration time.Duration) (string, error) {
-	return f.withSuccessBuzz(func() (string, error) {
-		cmd := fmt.Sprintf("subghz rx %d", frequency)
-		if f.Capabilities().SubGHzNeedsDev {
-			cmd += " 0"
-		}
-		return f.ExecLong(cmd, duration)
-	})
+	cmd := fmt.Sprintf("subghz rx %d", frequency)
+	if f.Capabilities().SubGHzNeedsDev {
+		cmd += " 0"
+	}
+	return f.ExecLong(cmd, duration)
 }
 
 // SubGHzDecode decodes a previously captured raw Sub-GHz file.
@@ -167,8 +171,9 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 		}
 		result, err := f.readUntilPrompt(timeout)
 		if err != nil {
-			// Scanner timed out or was interrupted — stop the firmware, drain to
-			// restore the NFC subshell prompt, then exit cleanly.
+			// Scanner ran for the full budget without detecting a tag — treat as
+			// streaming success (same semantics as ExecLongCtx). Stop the firmware,
+			// drain back to the [nfc] subshell prompt, then exit cleanly.
 			_ = f.sendRaw("\x03")
 			drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
 			_, drainErr := f.readUntilPromptCtx(drainCtx)
@@ -180,7 +185,7 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 			exitCtx, exitCancel := context.WithTimeout(context.Background(), 2*time.Second)
 			_, _ = f.readUntilPromptCtx(exitCtx)
 			exitCancel()
-			return result, fmt.Errorf("nfc scanner: %w", err)
+			return result, nil
 		}
 
 		// Exit the NFC subshell.

@@ -186,3 +186,88 @@ func TestExecLongTimeoutSendsCtrlC(t *testing.T) {
 		t.Errorf("DeviceInfo output missing expected content after timeout: %q", info)
 	}
 }
+
+// TestSubGHzRxTimeoutSendsCtrlC verifies hypothesis (a) for SubGHzRx: Ctrl+C
+// IS sent when the duration budget fires. The test also validates that the
+// call completes within a reasonable total bound (no hang from buzz follow-ups
+// since withSuccessBuzz was removed from SubGHzRx).
+func TestSubGHzRxTimeoutSendsCtrlC(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("subghz"),
+		mock.WithHandler("subghz", func(args []string) string {
+			if len(args) >= 1 && args[0] == "rx" {
+				return "Receiving at 433.92 MHz..."
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 300 * time.Millisecond
+	start := time.Now()
+	_, err := flip.SubGHzRx(433920000, budget)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Errorf("SubGHzRx: expected nil error on timeout, got %v", err)
+	}
+	// Without withSuccessBuzz there are no trailing vibro Exec calls, so total
+	// is: drain(~100ms) + budget(300ms) + poll overshoot(≤100ms) + instant drain.
+	if elapsed > 700*time.Millisecond {
+		t.Errorf("SubGHzRx took %v, want ≤700ms", elapsed)
+	}
+
+	rx := m.BytesReceived()
+	if !bytes.Contains(rx, []byte{'\x03'}) {
+		t.Errorf("mock did not receive Ctrl+C (\\x03) after SubGHzRx timeout; bytes: %q", rx)
+	}
+
+	// Subsequent call must succeed — no poison left on the session.
+	if _, execErr := flip.DeviceInfo(); execErr != nil {
+		t.Errorf("DeviceInfo after SubGHzRx timeout: %v", execErr)
+	}
+}
+
+// TestNFCDetectTimeoutReturnsNilError verifies that when the scanner budget
+// expires inside the NFC subshell:
+//   - NFCDetect returns nil error (streaming-success semantics)
+//   - The mock observed a Ctrl+C byte (scanner was stopped)
+//   - A subsequent DeviceInfo call succeeds (session is clean)
+func TestNFCDetectTimeoutReturnsNilError(t *testing.T) {
+	// stockDeviceInfo (defined in primitives_mock_test.go) omits
+	// firmware_origin_fork, so DetectCapabilities returns HasNFCSubshell=true.
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(_ []string) string { return stockDeviceInfo }),
+		// "nfc" enters the subshell: mock emits regular >: prompt which
+		// readUntilPrompt accepts (">: " is a substring of "[nfc]>: " match target).
+		mock.WithHandler("nfc", func(_ []string) string { return "" }),
+		// "scanner" streams forever — no prompt emitted.
+		mock.WithSuppressPrompt("scanner"),
+		mock.WithHandler("scanner", func(_ []string) string { return "" }),
+		mock.WithHandler("exit", func(_ []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 300 * time.Millisecond
+	start := time.Now()
+	_, err := flip.NFCDetect(budget)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Errorf("NFCDetect: expected nil error on scanner timeout, got %v", err)
+	}
+	// Budget fires at ~300ms. Overhead: drain(100ms) + nfc subshell(instant) +
+	// scanner poll overshoot(≤100ms) + Ctrl+C drain + exit + vibro buzz.
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("NFCDetect took %v, want ≤1500ms", elapsed)
+	}
+
+	rx := m.BytesReceived()
+	if !bytes.Contains(rx, []byte{'\x03'}) {
+		t.Errorf("mock did not receive Ctrl+C (\\x03) after NFCDetect scanner timeout; bytes: %q", rx)
+	}
+
+	if _, execErr := flip.DeviceInfo(); execErr != nil {
+		t.Errorf("DeviceInfo after NFCDetect timeout: %v", execErr)
+	}
+}
