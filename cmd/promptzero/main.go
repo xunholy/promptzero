@@ -55,7 +55,6 @@ type stringSlice []string
 func (s *stringSlice) String() string     { return strings.Join(*s, ",") }
 func (s *stringSlice) Set(v string) error { *s = append(*s, v); return nil }
 
-
 // Style carries ANSI colour escapes. When stderr is not a TTY, or NO_COLOR
 // is set in the environment, all fields are empty strings so callers emit
 // plain text without per-site branching.
