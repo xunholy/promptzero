@@ -301,7 +301,8 @@ GOOS=windows GOARCH=amd64 go build -o promptzero-windows-amd64.exe ./cmd/promptz
 
 ## License
 
-MIT
+[AGPL-3.0-or-later](LICENSE). If you host a modified promptzero as a network
+service, you must publish your source changes under the same license.
 
 ---
 

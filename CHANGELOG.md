@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Flipper package refactored onto a `Transport` interface with a concrete
   serial implementation.
 - Pty-based mock migrated to the new `Transport` interface.
+- **License: MIT → AGPL-3.0-or-later.** Aligns with the offensive-security
+  tooling norm (Metasploit, Nuclei, etc.) so downstream hosted services
+  must publish modifications. No change for end users running locally.
 
 ### Fixed
 
