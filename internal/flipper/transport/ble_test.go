@@ -21,10 +21,10 @@ func TestBLEDialerURLParsing(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name    string
-		url     string
-		wantID  string
-		errSub  string
+		name   string
+		url    string
+		wantID string
+		errSub string
 	}{
 		{
 			name:   "lowercase MAC is normalised to uppercase in Identity",

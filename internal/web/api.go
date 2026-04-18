@@ -351,9 +351,9 @@ func (s *Server) handleRuleTest(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 type validateReportDTO struct {
-	Name        string              `json:"name"`
-	OverallRisk string              `json:"overall_risk"`
-	Approved    bool                `json:"approved"`
+	Name        string               `json:"name"`
+	OverallRisk string               `json:"overall_risk"`
+	Approved    bool                 `json:"approved"`
 	Findings    []validateFindingDTO `json:"findings"`
 }
 

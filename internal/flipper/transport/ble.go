@@ -1,11 +1,20 @@
 // Package transport — BLE implementation for the Flipper Zero.
 //
+// Build constraint: this file is excluded on darwin because
+// tinygo.org/x/bluetooth pulls in github.com/tinygo-org/cbgo on darwin,
+// which needs CGO + the macOS SDK to compile. The cross-compile CI
+// matrix builds darwin from a Linux host without CGO, which errors out
+// with "undefined: CentralManager". A sibling ble_darwin.go provides a
+// stub dialer that returns a clear "build promptzero on macOS with CGO
+// to enable BLE" error; real BLE on macOS is unlocked by building on a
+// Mac (GOOS=darwin CGO_ENABLED=1 go build).
+//
 // Testing note: BLE does not work under WSL2. The Windows Subsystem for
 // Linux does not expose Bluetooth to the Linux guest, so this transport
 // is not exercised in a WSL session. To test against real hardware,
-// run the contract test from a native Linux desktop, macOS, or Windows
-// session with FLIPPER_BLE_MAC set to the target Flipper's MAC address.
-// The contract test in contract_test.go is gated on that env var and is
+// run the contract test from a native Linux desktop or Windows session
+// with FLIPPER_BLE_MAC set to the target Flipper's MAC address. The
+// contract test in contract_test.go is gated on that env var and is
 // skipped when unset, so CI (which runs without paired hardware) is
 // unaffected.
 //
@@ -14,6 +23,8 @@
 // one-time `bluetoothctl pair <MAC>` (or pairing via the desktop
 // Bluetooth manager) is typically enough. The first-time setup is not
 // attempted by this transport.
+
+//go:build !darwin
 
 package transport
 
@@ -340,7 +351,7 @@ func scanForMAC(ctx context.Context, adapter *bluetooth.Adapter, mac string) (bl
 			if stopped.Load() {
 				return
 			}
-			addrStr := sr.Address.MAC.String()
+			addrStr := sr.Address.String()
 			slog.Debug("transport/ble: scan result",
 				"mac", addrStr, "rssi", sr.RSSI, "name", sr.LocalName())
 			if !strings.EqualFold(addrStr, mac) {
