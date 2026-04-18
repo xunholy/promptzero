@@ -50,53 +50,6 @@ type stringSlice []string
 func (s *stringSlice) String() string     { return strings.Join(*s, ",") }
 func (s *stringSlice) Set(v string) error { *s = append(*s, v); return nil }
 
-// Style carries ANSI colour escapes. When stderr is not a TTY, or NO_COLOR
-// is set in the environment, all fields are empty strings so callers emit
-// plain text without per-site branching.
-type Style struct {
-	reset, bold, dim, red, green, yellow, blue, magenta, cyan, white, gray string
-}
-
-func newStyles() Style {
-	if os.Getenv("NO_COLOR") != "" || !term.IsTerminal(int(os.Stderr.Fd())) {
-		return Style{}
-	}
-	return Style{
-		reset:   "\033[0m",
-		bold:    "\033[1m",
-		dim:     "\033[2m",
-		red:     "\033[31m",
-		green:   "\033[32m",
-		yellow:  "\033[33m",
-		blue:    "\033[34m",
-		magenta: "\033[35m",
-		cyan:    "\033[36m",
-		white:   "\033[37m",
-		gray:    "\033[90m",
-	}
-}
-
-var styles = newStyles()
-
-// Package-level shortcuts for the active Style. Declared as vars (not
-// consts) so they reflect the NO_COLOR / TTY decision made at process
-// start. Consumed by both main.go and lineedit.go.
-var (
-	reset   = styles.reset
-	bold    = styles.bold
-	dim     = styles.dim
-	red     = styles.red
-	green   = styles.green
-	yellow  = styles.yellow
-	blue    = styles.blue
-	magenta = styles.magenta
-	cyan    = styles.cyan
-	white   = styles.white
-	gray    = styles.gray
-)
-
-func hasColor() bool { return styles.red != "" }
-
 // configTemplate is written by --init when no user config exists. Kept in
 // sync with config.example.yaml by hand; embedding the repo file isn't
 // possible because //go:embed only accepts paths at or below this package.
@@ -129,46 +82,6 @@ web:
 # Device registry — map friendly names to signal files on the Flipper SD card
 devices: {}
 `
-
-func printBanner() {
-	if !hasColor() {
-		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "  promptzero — AI operator for Flipper Zero")
-		fmt.Fprintln(os.Stderr)
-		return
-	}
-	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "%s%s", bold, red)
-	fmt.Fprintf(os.Stderr, "  ██████╗ ██████╗  ██████╗ ███╗   ███╗██████╗ ████████╗\n")
-	fmt.Fprintf(os.Stderr, "  ██╔══██╗██╔══██╗██╔═══██╗████╗ ████║██╔══██╗╚══██╔══╝\n")
-	fmt.Fprintf(os.Stderr, "  ██████╔╝██████╔╝██║   ██║██╔████╔██║██████╔╝   ██║   \n")
-	fmt.Fprintf(os.Stderr, "  ██╔═══╝ ██╔══██╗██║   ██║██║╚██╔╝██║██╔═══╝    ██║   \n")
-	fmt.Fprintf(os.Stderr, "  ██║     ██║  ██║╚██████╔╝██║ ╚═╝ ██║██║        ██║   \n")
-	fmt.Fprintf(os.Stderr, "  ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝        ╚═╝   \n")
-	fmt.Fprintf(os.Stderr, "%s%s", reset, cyan)
-	fmt.Fprintf(os.Stderr, "  ███████╗███████╗██████╗  ██████╗ \n")
-	fmt.Fprintf(os.Stderr, "  ╚══███╔╝██╔════╝██╔══██╗██╔═══██╗\n")
-	fmt.Fprintf(os.Stderr, "    ███╔╝ █████╗  ██████╔╝██║   ██║\n")
-	fmt.Fprintf(os.Stderr, "   ███╔╝  ██╔══╝  ██╔══██╗██║   ██║\n")
-	fmt.Fprintf(os.Stderr, "  ███████╗███████╗██║  ██║╚██████╔╝\n")
-	fmt.Fprintf(os.Stderr, "  ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ \n")
-	fmt.Fprintf(os.Stderr, "%s\n", reset)
-	fmt.Fprintf(os.Stderr, "  %s%sAI-Powered Flipper Zero Operator%s\n", dim, white, reset)
-	fmt.Fprintf(os.Stderr, "  %s%sno limits // no filters%s\n\n", dim, gray, reset)
-}
-
-func status(icon string, msg string) {
-	fmt.Fprintf(os.Stderr, "  %s %s\n", icon, msg)
-}
-
-func statusOK(msg string)   { status(green+"●"+reset, msg) }
-func statusWarn(msg string) { status(yellow+"●"+reset, msg) }
-func statusErr(msg string)  { status(red+"●"+reset, msg) }
-func statusInfo(msg string) { status(blue+"●"+reset, msg) }
-
-func printSeparator() {
-	fmt.Fprintf(os.Stderr, "  %s%s%s\n", dim, strings.Repeat("─", 52), reset)
-}
 
 // Input box glyphs — a full rounded rectangle around the current prompt.
 // Typed input lives inside; past prompts demote to a single dim "> ..." line.
