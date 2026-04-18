@@ -25,6 +25,7 @@ import (
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
+	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/webhook"
 )
@@ -33,26 +34,40 @@ import (
 // and its slash-command dispatcher share. Populated in run() once every
 // subsystem is wired, then passed by pointer so dispatchSlashCommand and
 // enterREPL don't need 20-arg signatures.
+//
+// Fields split into two groups by lifetime: the inputs (ctx..watchPaths)
+// are set before enterREPL is entered, and the REPL-owned fields
+// (ed, watchMgr, busy) are populated by enterREPL itself once the
+// editor and watch goroutines are live.
 type REPLDeps struct {
 	ctx           context.Context
+	sh            *signalHandler
 	cfg           *config.Config
 	ai            *agent.Agent
 	flip          *flipper.Flipper
 	genLLM        provider.Provider
 	hasMarauder   bool
-	hasVoice      bool
+	voiceEngine   *voice.Engine
+	voiceMode     bool
 	auditLog      *audit.Log
 	rec           *obs.Recorder
 	activePersona *persona.Persona
 	personas      *persona.Registry
 	costTracker   *cost.Tracker
-	watchMgr      *watch.Watcher
 	wh            webhook.Dispatcher
 	mqttBridge    *mqtt.Bridge
 	ruleEngine    *rules.Engine
-	ed            *lineEditor
-	busy          func() bool
+	gateEnabled   bool
+	watchPaths    []string
+
+	// REPL-owned (populated inside enterREPL).
+	ed       *lineEditor
+	watchMgr *watch.Watcher
+	busy     func() bool
 }
+
+// hasVoice reports whether the voice engine is configured.
+func (d *REPLDeps) hasVoice() bool { return d.voiceEngine != nil }
 
 // dispatchSlashCommand routes an already-trimmed REPL line to the matching
 // slash-command handler. Returns (handled, shouldExit): handled=true means
@@ -78,7 +93,7 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 		return true, false
 	case "/status":
 		ed.writeOutput(func() {
-			printStatus(deps.cfg, deps.ai, deps.genLLM, deps.hasMarauder, deps.hasVoice, deps.auditLog, deps.flip, deps.busy)
+			printStatus(deps.cfg, deps.ai, deps.genLLM, deps.hasMarauder, deps.hasVoice(), deps.auditLog, deps.flip, deps.busy)
 		})
 		return true, false
 	case "/sessions":
