@@ -4,6 +4,7 @@ package flipper_test
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -47,19 +48,32 @@ func TestConnectURLViaMockScheme(t *testing.T) {
 	}
 }
 
-// TestConnectURLRejectsBLE proves the BLE scheme is reserved but
-// unimplemented: a ble:// URL must fail with transport.ErrNotImplemented
-// so operators who try it get a clear "not yet" signal rather than
-// "unknown scheme".
-func TestConnectURLRejectsBLE(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+// TestConnectURLViaBLEScheme exercises the ble:// entry point end-to-
+// end against a real paired Flipper whose MAC address is in
+// FLIPPER_BLE_MAC. Gated on that env var so CI and WSL2 (which has no
+// BLE stack) skip the test by default. When unset the test is skipped
+// rather than failing — matching the FLIPPER_DEV pattern in the
+// transport package's contract test.
+func TestConnectURLViaBLEScheme(t *testing.T) {
+	mac := os.Getenv("FLIPPER_BLE_MAC")
+	if mac == "" {
+		t.Skip("FLIPPER_BLE_MAC unset; hardware-gated BLE test skipped")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	_, err := flipper.ConnectURL(ctx, "ble://AA:BB:CC:DD:EE:FF", 1*time.Second)
-	if err == nil {
-		t.Fatalf("ConnectURL(ble://...) returned nil error; want ErrNotImplemented")
+	flip, err := flipper.ConnectURL(ctx, "ble://"+mac, 45*time.Second)
+	if err != nil {
+		t.Fatalf("ConnectURL(ble://%s): %v", mac, err)
 	}
-	if !strings.Contains(err.Error(), "not implemented") {
-		t.Errorf("ConnectURL(ble://...) error = %q, want to contain 'not implemented'", err.Error())
+	defer flip.Close()
+
+	tx := flip.Transport()
+	if tx.Kind() != "ble" {
+		t.Errorf("Transport().Kind() = %q, want ble", tx.Kind())
+	}
+	if !strings.HasPrefix(tx.Identity(), "ble://") {
+		t.Errorf("Transport().Identity() = %q, want ble:// prefix", tx.Identity())
 	}
 }
