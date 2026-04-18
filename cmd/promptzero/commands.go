@@ -373,10 +373,15 @@ func cachedDeviceSummary(flip *flipper.Flipper, busy func() bool) string {
 
 func deviceSummary(flip *flipper.Flipper) string {
 	var parts []string
-	if raw, err := flip.PowerInfo(); err == nil {
-		if pct := parseKVField(raw, "charge_level"); pct != "" {
+	// PowerInfoMap normalises dot-separated keys (info power on
+	// Xtreme/Momentum emits `charge.level`; stock/Unleashed's power_info
+	// uses `charge_level`). Reading from the map means the REPL battery
+	// line works on every fork, whereas scanning raw text only matched
+	// stock-style underscores.
+	if kv, err := flip.PowerInfoMap(); err == nil {
+		if pct := kv["charge_level"]; pct != "" {
 			parts = append(parts, "Battery "+pct+"%")
-		} else if pct := parseKVField(raw, "battery_charge"); pct != "" {
+		} else if pct := kv["battery_charge"]; pct != "" {
 			parts = append(parts, "Battery "+pct+"%")
 		}
 	}

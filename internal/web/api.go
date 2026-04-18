@@ -565,7 +565,10 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 	battery := pickFields(devInfo, []string{
 		"charge_level", "charge_state", "charge_voltage_limit",
 		"battery_voltage", "battery_current", "battery_temp", "battery_health",
-		"capacity_remaining", "capacity_full", "capacity_design",
+		// Flipper firmware emits `capacity.remain` (normalised to
+		// capacity_remain) — verified against Momentum's
+		// furi_hal_power_info_get. `capacity_remaining` is never emitted.
+		"capacity_remain", "capacity_full", "capacity_design",
 		"gauge_is_ok",
 	})
 	storage := pickFields(devInfo, []string{

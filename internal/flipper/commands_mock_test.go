@@ -105,9 +105,11 @@ func TestStorageFSInfoMapCRLF(t *testing.T) {
 // to underscore form ("charge_level"). The mock default is Xtreme, so
 // PowerInfo() issues "info power" which the handler answers.
 func TestPowerInfoMapDotNormalisation(t *testing.T) {
+	// Sample output mirrors real Momentum firmware: the "capacity" group
+	// emits `remain` (not `remaining`) per furi_hal_power_info_get.
 	m := mock.Spawn(t, mock.WithHandler("info", func(args []string) string {
 		if len(args) >= 1 && args[0] == "power" {
-			return "charge.level                  : 75\nbattery.voltage               : 4050\ncapacity.remaining            : 1800"
+			return "charge.level                  : 75\nbattery.voltage               : 4050\ncapacity.remain               : 1800"
 		}
 		return ""
 	}))
@@ -119,16 +121,16 @@ func TestPowerInfoMapDotNormalisation(t *testing.T) {
 	}
 
 	// Dot-form keys must not appear in the output map.
-	for _, dotKey := range []string{"charge.level", "battery.voltage", "capacity.remaining"} {
+	for _, dotKey := range []string{"charge.level", "battery.voltage", "capacity.remain"} {
 		if _, ok := got[dotKey]; ok {
 			t.Errorf("dot key %q was not normalised to underscore form", dotKey)
 		}
 	}
 	// Underscore-form keys must be present with correct values.
 	want := map[string]string{
-		"charge_level":      "75",
-		"battery_voltage":   "4050",
-		"capacity_remaining": "1800",
+		"charge_level":    "75",
+		"battery_voltage": "4050",
+		"capacity_remain": "1800",
 	}
 	for k, wantV := range want {
 		if got[k] != wantV {
