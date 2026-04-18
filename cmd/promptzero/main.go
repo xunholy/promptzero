@@ -136,7 +136,15 @@ func run() error {
 	printCapabilitySummary(hasMarauder, voiceEngine != nil)
 
 	if f.webMode {
-		return runWebMode(ctx, sh, cfg, ai, voiceEngine, rec)
+		return runWebMode(ctx, sh, cfg, WebDeps{
+			Ai:             ai,
+			Voice:          voiceEngine,
+			Rec:            rec,
+			Personas:       personas,
+			CostTracker:    costTracker,
+			RulesEngine:    ruleEngine,
+			MarauderOnline: hasMarauder,
+		})
 	}
 
 	return enterREPL(&REPLDeps{

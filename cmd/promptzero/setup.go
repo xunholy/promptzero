@@ -689,16 +689,44 @@ func sessionIDOf(log *audit.Log) string {
 
 // --- Web mode ------------------------------------------------------------
 
+// WebDeps bundles every subsystem the HTTP UI can surface. Each field is
+// optional — panels in the cockpit hide cleanly when their backing
+// subsystem is nil, matching the REPL's behaviour. Passed through from
+// run() so the web mode doesn't need to reach back into the deps graph.
+type WebDeps struct {
+	Ai             *agent.Agent
+	Voice          *voice.Engine
+	Rec            *obs.Recorder
+	Personas       *persona.Registry
+	CostTracker    *cost.Tracker
+	RulesEngine    *rules.Engine
+	MarauderOnline bool
+}
+
 // runWebMode binds the HTTP UI on the configured address and serves
 // until the context is cancelled. web.NewServer warns internally when
 // the bind is non-loopback; we re-read srv.Addr() so the status line
 // matches the effective bind.
-func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, ai *agent.Agent, voiceEngine *voice.Engine, rec *obs.Recorder) error {
+func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps WebDeps) error {
 	addr := fmt.Sprintf("%s:%d", cfg.Web.Host, cfg.Web.Port)
-	srv := web.NewServer(addr, ai, voiceEngine)
-	srv.SetMetrics(rec, cfg.Observability.MetricsPath)
+	srv := web.NewServer(addr, deps.Ai, deps.Voice)
+	srv.SetMetrics(deps.Rec, cfg.Observability.MetricsPath)
+	// Wire the Phase-14 panel surface. Flipper is always connected here
+	// (run() bailed earlier if the serial connect failed); Marauder and
+	// the others may be nil, and the panels handle that.
+	if deps.Personas != nil {
+		srv.SetPersonaRegistry(deps.Personas)
+	}
+	if deps.CostTracker != nil {
+		srv.SetCostTracker(deps.CostTracker)
+	}
+	if deps.RulesEngine != nil {
+		srv.SetRulesEngine(deps.RulesEngine)
+	}
+	srv.SetFlipperConnected(true)
+	srv.SetMarauderConnected(deps.MarauderOnline)
 	statusOK(fmt.Sprintf("Web UI at %s%shttp://%s%s", bold, cyan, srv.Addr(), reset))
-	if rec != nil {
+	if deps.Rec != nil {
 		path := cfg.Observability.MetricsPath
 		if path == "" {
 			path = "/metrics"
