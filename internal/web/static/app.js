@@ -109,6 +109,7 @@
       watchUI:   { loaded: false, error: '', enabled: false, paused: false, paths: [], rules: [], events: [] },
       rulesUI:   { loaded: false, error: '', list: [], testResults: {} },
       costUI:    { loaded: false, error: '', usd: 0, inputTokens: 0, outputTokens: 0, offline: false, byModel: [], modalOpen: false },
+      validateUI: { open: false, path: '', content: '', loading: false, error: '', report: null },
 
       /* internals */
       _ws: null,
@@ -780,6 +781,39 @@
           .catch((e) => {
             this.rulesUI.testResults = Object.assign({}, this.rulesUI.testResults, { [name]: String(e) });
           });
+      },
+
+      /* ---------- validate modal (REPL /validate parity) ---------- */
+      openValidateModal() {
+        this.validateUI.open = true;
+        this.validateUI.error = '';
+        this.validateUI.report = null;
+      },
+      closeValidateModal() {
+        this.validateUI.open = false;
+      },
+      runValidate() {
+        var path = (this.validateUI.path || '').trim();
+        var content = this.validateUI.content || '';
+        if (!path && !content) {
+          this.validateUI.error = 'enter a path or paste script content';
+          return;
+        }
+        this.validateUI.loading = true;
+        this.validateUI.error = '';
+        this.validateUI.report = null;
+        fetch('api/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: path, content: content }),
+        })
+          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
+          .then(({ ok, body }) => {
+            if (!ok) { this.validateUI.error = (body && body.error) || 'validate failed'; return; }
+            this.validateUI.report = body;
+          })
+          .catch((e) => { this.validateUI.error = String(e); })
+          .finally(() => { this.validateUI.loading = false; });
       },
 
       /* ---------- cost pill (REPL /cost parity) ---------- */

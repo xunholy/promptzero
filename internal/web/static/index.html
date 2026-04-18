@@ -381,6 +381,11 @@
                 @click="selectSidebarTab('rules')">RULES</button>
       </nav>
       <button type="button"
+              class="pz-sidebar-action"
+              @click="openValidateModal()"
+              title="validate a BadUSB script"
+              aria-label="validate script">VALIDATE</button>
+      <button type="button"
               class="pz-sidebar-close"
               @click="sidebar.open = false"
               aria-label="close panels">✕</button>
@@ -502,6 +507,91 @@
       </template>
     </section>
   </aside>
+
+  <!-- Validate modal (REPL /validate parity) -->
+  <template x-if="validateUI.open">
+    <div class="pz-modal-backdrop"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="pz-validate-modal-title"
+         @click.self="closeValidateModal()"
+         @keydown.escape.window="closeValidateModal()">
+      <div class="pz-modal pz-modal-validate">
+        <div class="pz-modal-title" id="pz-validate-modal-title">VALIDATE SCRIPT</div>
+        <p class="pz-validate-desc">
+          Scan a BadUSB Ducky payload for destructive patterns before running it.
+          Paste content below, or point at a file on the server.
+        </p>
+
+        <label class="pz-modal-confirm-label" for="pz-validate-path">path (optional)</label>
+        <input id="pz-validate-path"
+               class="pz-modal-confirm-input pz-mono"
+               type="text"
+               autocomplete="off"
+               spellcheck="false"
+               placeholder="/path/to/payload.txt"
+               x-model="validateUI.path">
+
+        <label class="pz-modal-confirm-label" for="pz-validate-content">content</label>
+        <textarea id="pz-validate-content"
+                  class="pz-validate-textarea pz-mono"
+                  rows="6"
+                  spellcheck="false"
+                  placeholder="DELAY 500&#10;STRING echo hello&#10;ENTER"
+                  x-model="validateUI.content"></textarea>
+
+        <template x-if="validateUI.error">
+          <div class="pz-validate-err" x-text="validateUI.error"></div>
+        </template>
+
+        <template x-if="validateUI.report">
+          <div class="pz-validate-result">
+            <div class="pz-validate-summary">
+              <span class="pz-validate-badge"
+                    :class="'pz-sev-' + validateUI.report.overall_risk"
+                    x-text="validateUI.report.overall_risk.toUpperCase()"></span>
+              <span class="pz-validate-summary-name pz-mono" x-text="validateUI.report.name"></span>
+              <span class="pz-panel-spacer"></span>
+              <span class="pz-validate-summary-verdict pz-tabular"
+                    :class="validateUI.report.approved ? 'pz-validate-ok' : 'pz-validate-blocked'"
+                    x-text="validateUI.report.approved ? 'APPROVED' : 'BLOCKED'"></span>
+            </div>
+            <template x-if="(validateUI.report.findings || []).length === 0">
+              <div class="pz-panel-empty">no findings — payload looks clean</div>
+            </template>
+            <template x-for="(f, i) in (validateUI.report.findings || [])" :key="i">
+              <div class="pz-validate-finding">
+                <div class="pz-validate-finding-head">
+                  <span class="pz-validate-badge"
+                        :class="'pz-sev-' + f.severity"
+                        x-text="f.severity.toUpperCase()"></span>
+                  <span class="pz-validate-rule pz-mono" x-text="f.rule"></span>
+                  <span class="pz-panel-spacer"></span>
+                  <span class="pz-validate-line pz-tabular"
+                        x-text="'L' + (f.line || 0)"></span>
+                </div>
+                <div class="pz-validate-msg" x-text="f.message"></div>
+                <template x-if="f.excerpt">
+                  <pre class="pz-validate-excerpt" x-text="f.excerpt"></pre>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <div class="pz-modal-actions">
+          <button type="button"
+                  class="pz-panel-btn"
+                  @click="closeValidateModal()">Close</button>
+          <button type="button"
+                  class="pz-panel-btn pz-panel-btn-primary"
+                  :disabled="validateUI.loading"
+                  @click="runValidate()"
+                  x-text="validateUI.loading ? 'Validating…' : 'Validate'"></button>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <!-- Cost breakdown modal (REPL /cost parity) -->
   <template x-if="costUI.modalOpen">

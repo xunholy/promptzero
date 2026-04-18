@@ -1165,6 +1165,106 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .pz-modal-confirm-input:focus { border-color: var(--pz-flipper-amber); }
 
 /* ==========================================================================
+   Validate modal (REPL /validate parity)
+   ========================================================================== */
+
+.pz-sidebar-action {
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-strong);
+  color: var(--pz-text-dim);
+  padding: 2px 8px;
+  font-family: var(--pz-font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.pz-sidebar-action:hover,
+.pz-sidebar-action:focus-visible {
+  color: var(--pz-flipper-amber);
+  border-color: var(--pz-flipper-amber);
+  outline: none;
+}
+
+.pz-modal.pz-modal-validate {
+  min-width: 480px;
+  max-width: 720px;
+}
+.pz-validate-desc {
+  color: var(--pz-text-dim);
+  font-size: var(--pz-text-sm);
+  line-height: 1.4;
+  margin: 6px 0 8px;
+}
+.pz-validate-textarea {
+  width: 100%;
+  resize: vertical;
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-strong);
+  color: var(--pz-text-primary);
+  padding: 6px 8px;
+  font-size: var(--pz-text-sm);
+  outline: none;
+  line-height: 1.4;
+}
+.pz-validate-textarea:focus { border-color: var(--pz-flipper-amber); }
+.pz-validate-err {
+  margin-top: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--pz-alert-red);
+  color: var(--pz-alert-red);
+  font-size: var(--pz-text-sm);
+}
+.pz-validate-result {
+  margin-top: 10px;
+  border-top: 1px dashed var(--pz-border-subtle);
+  padding-top: 8px;
+}
+.pz-validate-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+}
+.pz-validate-summary-name  { color: var(--pz-text-primary); font-size: var(--pz-text-sm); }
+.pz-validate-summary-verdict { font-family: var(--pz-font-mono); font-size: 11px; letter-spacing: 0.08em; }
+.pz-validate-ok      { color: var(--pz-ok-green,   #6fcf97); }
+.pz-validate-blocked { color: var(--pz-alert-red); }
+
+.pz-validate-badge {
+  padding: 1px 6px;
+  font-family: var(--pz-font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  border: 1px solid currentColor;
+}
+.pz-sev-info       { color: var(--pz-text-dim); }
+.pz-sev-warn       { color: var(--pz-flipper-amber, #f1b947); }
+.pz-sev-critical   { color: var(--pz-alert-red); }
+.pz-sev-unknown    { color: var(--pz-text-dim); }
+
+.pz-validate-finding {
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--pz-border-subtle);
+}
+.pz-validate-finding:last-child { border-bottom: none; }
+.pz-validate-finding-head {
+  display: flex; align-items: center; gap: 8px;
+}
+.pz-validate-rule  { color: var(--pz-text-primary); font-size: var(--pz-text-sm); }
+.pz-validate-line  { color: var(--pz-text-dim); font-size: var(--pz-text-xs); }
+.pz-validate-msg   { margin: 3px 0; font-size: var(--pz-text-sm); color: var(--pz-text-secondary); }
+.pz-validate-excerpt {
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-subtle);
+  font-size: var(--pz-text-xs);
+  color: var(--pz-text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ==========================================================================
    Cost pill + breakdown modal (REPL /cost parity)
    ========================================================================== */
 
