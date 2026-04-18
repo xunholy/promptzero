@@ -167,7 +167,20 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 		}
 		result, err := f.readUntilPrompt(timeout)
 		if err != nil {
-			return "", fmt.Errorf("nfc scanner: %w", err)
+			// Scanner timed out or was interrupted — stop the firmware, drain to
+			// restore the NFC subshell prompt, then exit cleanly.
+			_ = f.sendRaw("\x03")
+			drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_, drainErr := f.readUntilPromptCtx(drainCtx)
+			drainCancel()
+			if drainErr != nil && !errors.Is(drainErr, context.DeadlineExceeded) && !errors.Is(drainErr, context.Canceled) {
+				return result, fmt.Errorf("nfc scanner drain: %w", drainErr)
+			}
+			_ = f.sendRaw("exit\r")
+			exitCtx, exitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_, _ = f.readUntilPromptCtx(exitCtx)
+			exitCancel()
+			return result, fmt.Errorf("nfc scanner: %w", err)
 		}
 
 		// Exit the NFC subshell.
@@ -232,7 +245,20 @@ func (f *Flipper) NFCSubcommand(subcommand string, timeout time.Duration) (strin
 	}
 	result, err := f.readUntilPrompt(timeout)
 	if err != nil {
-		return "", fmt.Errorf("nfc subcommand %q: %w", verb, err)
+		// Subcommand timed out — stop firmware, drain to restore subshell prompt,
+		// then exit cleanly so the next call starts from a known-good state.
+		_ = f.sendRaw("\x03")
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_, drainErr := f.readUntilPromptCtx(drainCtx)
+		drainCancel()
+		if drainErr != nil && !errors.Is(drainErr, context.DeadlineExceeded) && !errors.Is(drainErr, context.Canceled) {
+			return result, fmt.Errorf("nfc subcommand %q drain: %w", verb, drainErr)
+		}
+		_ = f.sendRaw("exit\r")
+		exitCtx, exitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_, _ = f.readUntilPromptCtx(exitCtx)
+		exitCancel()
+		return result, fmt.Errorf("nfc subcommand %q: %w", verb, err)
 	}
 
 	if err := f.sendRaw("exit\r"); err != nil {

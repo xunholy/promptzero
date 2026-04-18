@@ -55,6 +55,17 @@ func WithHandler(command string, h Handler) Option {
 	}
 }
 
+// WithSuppressPrompt suppresses the automatic "\r\n>: " prompt that dispatch
+// appends after handling the named command. Use this to simulate commands that
+// stream indefinitely without emitting a closing prompt (like `subghz rx` or
+// `log`). The handler's returned body is still written; only the trailing
+// prompt is withheld until a Ctrl+C arrives.
+func WithSuppressPrompt(command string) Option {
+	return func(m *Mock) {
+		m.suppressPromptFor[command] = true
+	}
+}
+
 // WithBanner overrides the one-shot welcome banner.
 func WithBanner(s string) Option {
 	return func(m *Mock) { m.banner = s }
@@ -67,16 +78,31 @@ type Mock struct {
 	slave  *os.File
 	path   string
 
-	banner   string
-	handlers map[string]Handler
+	banner            string
+	handlers          map[string]Handler
+	suppressPromptFor map[string]bool
 
 	mu      sync.Mutex
 	counted atomic.Int64 // commands observed so far, for test assertions
 	linesMu sync.Mutex
 	lines   []string // raw command lines observed (for test assertions)
 
+	rxMu    sync.Mutex
+	rxBytes []byte // every raw byte received from CLI-under-test (includes \x03)
+
 	closed chan struct{}
 	done   chan struct{}
+}
+
+// BytesReceived returns a snapshot of every raw byte received from the
+// CLI-under-test since Spawn. Unlike Lines, this includes control bytes such
+// as \x03 (Ctrl+C) that are consumed without becoming complete command lines.
+func (m *Mock) BytesReceived() []byte {
+	m.rxMu.Lock()
+	defer m.rxMu.Unlock()
+	out := make([]byte, len(m.rxBytes))
+	copy(out, m.rxBytes)
+	return out
 }
 
 // Lines returns a copy of every non-empty command line the mock has
@@ -136,13 +162,14 @@ func Spawn(t *testing.T, opts ...Option) *Mock {
 	}
 
 	m := &Mock{
-		master:   master,
-		slave:    slave,
-		path:     slavePath,
-		banner:   DefaultBanner,
-		handlers: defaultHandlers(),
-		closed:   make(chan struct{}),
-		done:     make(chan struct{}),
+		master:            master,
+		slave:             slave,
+		path:              slavePath,
+		banner:            DefaultBanner,
+		handlers:          defaultHandlers(),
+		suppressPromptFor: make(map[string]bool),
+		closed:            make(chan struct{}),
+		done:              make(chan struct{}),
 	}
 	for _, o := range opts {
 		o(m)
@@ -185,6 +212,9 @@ func (m *Mock) serve() {
 			// Fatal error on master fd — bail quietly; tests can detect via Count.
 			return
 		}
+		m.rxMu.Lock()
+		m.rxBytes = append(m.rxBytes, rb[:n]...)
+		m.rxMu.Unlock()
 		for i := 0; i < n; i++ {
 			b := rb[i]
 			switch b {
@@ -228,7 +258,9 @@ func (m *Mock) dispatch(line string) {
 			_, _ = m.master.WriteString("\r\n")
 		}
 	}
-	_, _ = m.master.WriteString("\r\n>: ")
+	if !m.suppressPromptFor[head] {
+		_, _ = m.master.WriteString("\r\n>: ")
+	}
 }
 
 // openPty allocates a (master, slave, slavePath) triple via the standard

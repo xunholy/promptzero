@@ -413,6 +413,23 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 	readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	out, err := f.readUntilPromptCtx(readCtx)
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		// 10 s safety net fired — command hung. Stop the firmware, drain, then
+		// surface a distinct error so callers can distinguish "hung" from a
+		// real disconnect.
+		_ = f.sendRaw("\x03")
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer drainCancel()
+		_, drainErr := f.readUntilPromptCtx(drainCtx)
+		if drainErr != nil && !errors.Is(drainErr, context.DeadlineExceeded) && !errors.Is(drainErr, context.Canceled) {
+			f.markDisconnectedIfRelevant(drainErr)
+			return out, drainErr
+		}
+		if ctx.Err() != nil {
+			return out, ctx.Err()
+		}
+		return out, fmt.Errorf("command hung: no prompt within 10s")
+	}
 	f.markDisconnectedIfRelevant(err)
 	return out, err
 }
@@ -448,6 +465,19 @@ func (f *Flipper) ExecLongCtx(ctx context.Context, command string, timeout time.
 	readCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	out, err := f.readUntilPromptCtx(readCtx)
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		// Timeout is the caller's budget — stop the firmware command, drain the
+		// in-flight response, and return accumulated output as success.
+		_ = f.sendRaw("\x03")
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer drainCancel()
+		_, drainErr := f.readUntilPromptCtx(drainCtx)
+		if drainErr != nil && !errors.Is(drainErr, context.DeadlineExceeded) && !errors.Is(drainErr, context.Canceled) {
+			f.markDisconnectedIfRelevant(drainErr)
+			return out, drainErr
+		}
+		return out, nil
+	}
 	f.markDisconnectedIfRelevant(err)
 	return out, err
 }
@@ -665,7 +695,8 @@ func parseResponse(b []byte, sawPrompt bool) string {
 }
 
 func (f *Flipper) drain() {
-	_ = f.transport.SetReadTimeout(f.transport.DrainTimeout())
+	drainTO := f.transport.DrainTimeout()
+	_ = f.transport.SetReadTimeout(drainTO)
 	buf := make([]byte, 1024)
 	for {
 		n, _ := f.transport.Read(buf)
@@ -673,5 +704,7 @@ func (f *Flipper) drain() {
 			break
 		}
 	}
-	_ = f.transport.SetReadTimeout(5 * time.Second)
+	// Keep the same short poll interval so readUntilPromptCtx notices
+	// context cancellation within one interval rather than waiting 5 s.
+	_ = f.transport.SetReadTimeout(drainTO)
 }

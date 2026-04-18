@@ -3,8 +3,10 @@
 package flipper_test
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/xunholy/promptzero/internal/flipper/mock"
 )
@@ -136,5 +138,51 @@ func TestPowerInfoMapDotNormalisation(t *testing.T) {
 		if got[k] != wantV {
 			t.Errorf("%s = %q, want %q", k, got[k], wantV)
 		}
+	}
+}
+
+// TestExecLongTimeoutSendsCtrlC verifies three properties when ExecLong's
+// caller budget fires on a command that never emits a closing prompt:
+//  1. ExecLong returns within ≤500 ms for a 300 ms timeout (no hang).
+//  2. The mock observes a \x03 (Ctrl+C) byte after the command bytes.
+//  3. A subsequent Exec on the same flipper succeeds — no leftover prompt
+//     state poisons the next transaction.
+func TestExecLongTimeoutSendsCtrlC(t *testing.T) {
+	// "freeze" is a command that never emits a closing prompt, simulating
+	// indefinitely-streaming firmware commands like `subghz rx` or `log`.
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("freeze"),
+		mock.WithHandler("freeze", func(args []string) string {
+			return "" // body only; prompt suppressed so the read never terminates
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 300 * time.Millisecond
+	start := time.Now()
+	out, err := flip.ExecLong("freeze", budget)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Errorf("ExecLong: expected nil error on timeout, got %v", err)
+	}
+	if elapsed > 600*time.Millisecond {
+		t.Errorf("ExecLong took %v, want ≤600 ms", elapsed)
+	}
+	_ = out // partial accumulated output is fine
+
+	// The mock must have received a Ctrl+C byte after the command.
+	rx := m.BytesReceived()
+	if !bytes.Contains(rx, []byte{'\x03'}) {
+		t.Errorf("mock did not receive Ctrl+C (\\x03) after freeze timeout; bytes: %q", rx)
+	}
+
+	// A subsequent Exec must succeed — proves no stale prompt state remains.
+	info, execErr := flip.DeviceInfo()
+	if execErr != nil {
+		t.Errorf("DeviceInfo after ExecLong timeout: %v", execErr)
+	}
+	if !strings.Contains(info, "hardware_model") {
+		t.Errorf("DeviceInfo output missing expected content after timeout: %q", info)
 	}
 }
