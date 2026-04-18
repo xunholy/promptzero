@@ -48,18 +48,59 @@ type Entry struct {
 type Log struct {
 	db        *sql.DB
 	sessionID string
+	path      string
+	lockFile  *os.File
 
 	obsMu     sync.RWMutex
 	observers []func(Entry)
 }
 
+// Open prepares the audit log at dbPath. It takes a non-blocking advisory
+// flock on the db file so only one PromptZero process writes to a given
+// path at a time; if that lock is already held, Open falls back to a
+// PID-suffixed sibling path (<dbPath>.<pid>) and logs a warning. The
+// fallback keeps the REPL responsive instead of hard-erroring when a
+// stale or sibling process still holds the primary log — each process
+// gets its own WAL-backed sqlite file and concurrent writers no longer
+// corrupt each other.
+//
+// The lock is released on Log.Close.
 func Open(dbPath string) (*Log, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	actualPath := dbPath
+	lockFile, locked, err := tryFlock(dbPath)
 	if err != nil {
+		return nil, fmt.Errorf("locking audit db: %w", err)
+	}
+	if !locked {
+		fallback := fmt.Sprintf("%s.%d", dbPath, os.Getpid())
+		obs.Default().Warn("audit_lock_contended",
+			"primary", dbPath,
+			"fallback", fallback,
+			"reason", "another process holds the primary db flock",
+		)
+		lockFile, locked, err = tryFlock(fallback)
+		if err != nil {
+			return nil, fmt.Errorf("locking audit db fallback %s: %w", fallback, err)
+		}
+		if !locked {
+			// Extremely unlikely: two processes with the same PID raced.
+			// Disambiguate with a timestamp and retry once.
+			fallback = fmt.Sprintf("%s.%d-%d", dbPath, os.Getpid(), time.Now().UnixNano())
+			lockFile, locked, err = tryFlock(fallback)
+			if err != nil || !locked {
+				return nil, fmt.Errorf("locking audit db fallback %s: %w", fallback, err)
+			}
+		}
+		actualPath = fallback
+	}
+
+	db, err := sql.Open("sqlite", actualPath)
+	if err != nil {
+		_ = releaseFlock(lockFile)
 		return nil, fmt.Errorf("opening audit db: %w", err)
 	}
 
@@ -83,13 +124,14 @@ func Open(dbPath string) (*Log, error) {
 	`)
 	if err != nil {
 		db.Close()
+		_ = releaseFlock(lockFile)
 		return nil, fmt.Errorf("creating audit tables: %w", err)
 	}
 
 	// Audit log can contain secrets embedded in tool inputs/outputs. Tighten
 	// the mode now that the file is guaranteed to exist.
-	if err := os.Chmod(dbPath, 0o600); err != nil {
-		log.Printf("audit: chmod %s: %v", dbPath, err)
+	if err := os.Chmod(actualPath, 0o600); err != nil {
+		log.Printf("audit: chmod %s: %v", actualPath, err)
 	}
 
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
@@ -99,12 +141,25 @@ func Open(dbPath string) (*Log, error) {
 	return &Log{
 		db:        db,
 		sessionID: fmt.Sprintf("session-%d", time.Now().Unix()),
+		path:      actualPath,
+		lockFile:  lockFile,
 	}, nil
 }
 
 func (l *Log) Close() error {
-	return l.db.Close()
+	err := l.db.Close()
+	if relErr := releaseFlock(l.lockFile); relErr != nil && err == nil {
+		err = relErr
+	}
+	l.lockFile = nil
+	return err
 }
+
+// Path returns the on-disk path of the sqlite db backing this log. When
+// the primary path was contended at Open time this will be the
+// PID-suffixed fallback; tests and /audit tail use it to distinguish the
+// two cases.
+func (l *Log) Path() string { return l.path }
 
 func (l *Log) SessionID() string {
 	return l.sessionID
