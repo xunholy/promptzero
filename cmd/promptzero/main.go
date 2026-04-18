@@ -32,6 +32,7 @@ import (
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/rules"
+	"github.com/xunholy/promptzero/internal/version"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/web"
@@ -54,7 +55,6 @@ type stringSlice []string
 func (s *stringSlice) String() string     { return strings.Join(*s, ",") }
 func (s *stringSlice) Set(v string) error { *s = append(*s, v); return nil }
 
-var version = "dev"
 
 // Style carries ANSI colour escapes. When stderr is not a TTY, or NO_COLOR
 // is set in the environment, all fields are empty strings so callers emit
@@ -414,7 +414,7 @@ func run() error {
 	flag.Parse()
 
 	if showVersion {
-		fmt.Printf("promptzero %s\n", version)
+		fmt.Printf("promptzero %s\n", version.String())
 		return nil
 	}
 
@@ -2426,7 +2426,7 @@ func handleRulesCmd(eng *rules.Engine, args []string) {
 func renderDebugSnapshot(w io.Writer, cfg *config.Config, rec *obs.Recorder, p *persona.Persona, flip *flipper.Flipper, hasMarauder bool, auditLog *audit.Log, ai *agent.Agent, tracker *cost.Tracker) {
 	goroutines, heapMB, sysMB, lastGC, goVer, plat := obs.CollectRuntime()
 	snap := obs.DebugSnapshot{
-		BuildVersion: version,
+		BuildVersion: version.Version,
 		GoVersion:    goVer,
 		Platform:     plat,
 		Goroutines:   goroutines,

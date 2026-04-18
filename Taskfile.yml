@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: MIT
+#
+# Taskfile.yml — build/dev tasks for promptzero.
+# Docs: https://taskfile.dev
+
+version: "3"
+
+vars:
+  APP: promptzero
+  PKG: github.com/xunholy/promptzero
+  BIN: bin/{{.APP}}
+  VERSION_PKG: "{{.PKG}}/internal/version"
+  GOLANGCI_LINT_VERSION: v2.11.4
+
+env:
+  CGO_ENABLED: "0"
+
+tasks:
+  default:
+    desc: Show available tasks.
+    cmds:
+      - task --list
+
+  dev:setup:
+    desc: Install pinned dev tools (golangci-lint) into GOBIN.
+    cmds:
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+      - echo "dev tools installed — ensure $(go env GOPATH)/bin is on PATH"
+
+  build:
+    desc: Build the binary with version ldflags stamped from git.
+    vars:
+      COMMIT:
+        sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
+      DATE:
+        sh: date -u +%Y-%m-%dT%H:%M:%SZ
+    cmds:
+      - >-
+        go build -trimpath
+        -ldflags "-s -w
+        -X {{.VERSION_PKG}}.Commit={{.COMMIT}}
+        -X {{.VERSION_PKG}}.Date={{.DATE}}"
+        -o {{.BIN}} ./cmd/promptzero
+
+  run:
+    desc: Build and run the binary.
+    deps: [build]
+    cmds:
+      - ./{{.BIN}}
+
+  tidy:
+    desc: Tidy go.mod / go.sum.
+    cmds:
+      - go mod tidy
+
+  lint:
+    desc: Run golangci-lint across the module.
+    cmds:
+      - golangci-lint run ./...
+
+  vet:
+    desc: go vet across the module.
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Short test suite — skips slow timing-sensitive tests.
+    cmds:
+      - go test -race -count=1 -short ./...
+
+  test:full:
+    desc: Full test suite (matches CI).
+    cmds:
+      - go test -race -count=1 ./...
+
+  clean:
+    desc: Remove build artefacts.
+    cmds:
+      - rm -rf bin/
