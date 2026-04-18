@@ -69,6 +69,13 @@ For WiFi attacks: scan -> select targets -> attack. For evil portals: generate_e
 // the oldest middle entries are dropped.
 const maxHistory = 100
 
+// defaultMaxToolCallsPerTurn caps how many tool_use blocks Run will honour
+// inside a single user turn before injecting a synthetic "cap reached"
+// tool_result and breaking out. Guards against runaway tool loops where a
+// model keeps re-invoking tools without ever emitting a text-only reply.
+// Tunable per-agent via SetMaxToolsPerTurn.
+const defaultMaxToolCallsPerTurn = 32
+
 // ToolEvent describes one tool invocation phase. Phase is "start" when
 // execution begins (Duration/Output are zero) and "finish" when it completes.
 type ToolEvent struct {
@@ -130,6 +137,7 @@ type Agent struct {
 	sessionStore     *session.Store
 	sessionID        string
 	persona          *persona.Persona
+	maxToolsPerTurn  int
 }
 
 func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *Agent {
@@ -139,6 +147,7 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 		cfg:              cfg,
 		model:            cfg.Model,
 		confirmThreshold: risk.High,
+		maxToolsPerTurn:  defaultMaxToolCallsPerTurn,
 	}
 
 	// Set up vision analyzer
@@ -196,6 +205,20 @@ func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) 
 // prompt. Tools classified at or above the threshold are gated. Defaults
 // to risk.High.
 func (a *Agent) SetConfirmThreshold(l risk.Level) { a.confirmThreshold = l }
+
+// SetMaxToolsPerTurn overrides the per-turn tool-call cap. A non-positive
+// value resets the cap to the default. Callers typically leave this alone
+// — it exists so tests can force early termination and future config can
+// expose the knob without changing Run's internals.
+func (a *Agent) SetMaxToolsPerTurn(n int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if n <= 0 {
+		a.maxToolsPerTurn = defaultMaxToolCallsPerTurn
+		return
+	}
+	a.maxToolsPerTurn = n
+}
 
 // SetPersona swaps the active operator persona. The persona's SystemPrompt
 // replaces the default preamble on the next streamed request and its tool
@@ -260,6 +283,12 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		sysPrompt += systemPromptWiFi
 	}
 
+	maxTools := a.maxToolsPerTurn
+	if maxTools <= 0 {
+		maxTools = defaultMaxToolCallsPerTurn
+	}
+	toolCallsThisTurn := 0
+
 	for {
 		resp, err := a.streamOnce(ctx, sysPrompt, tools)
 		if err != nil {
@@ -282,6 +311,29 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			a.autoSaveLocked()
 			return strings.Join(textParts, ""), nil
 		}
+
+		// Per-turn tool-call cap: if accepting this batch would push the
+		// running count past the cap, synthesise a cap-reached tool_result
+		// for each pending tool_use and break without executing any tools
+		// in this batch. Emitting the result for every tool_use keeps the
+		// assistant/user pair well-formed for the history compaction step.
+		if toolCallsThisTurn+len(toolCalls) > maxTools {
+			obs.FromCtx(ctx).Warn("tool_call_cap_reached",
+				"cap", maxTools,
+				"calls_so_far", toolCallsThisTurn,
+				"pending", len(toolCalls),
+			)
+			a.history = append(a.history, anthropic.NewAssistantMessage(toUnionBlocks(resp.Content)...))
+			capMsg := fmt.Sprintf("tool call cap reached (%d calls in this turn); returning to user", maxTools)
+			var capResults []anthropic.ContentBlockParamUnion
+			for _, tc := range toolCalls {
+				capResults = append(capResults, anthropic.NewToolResultBlock(tc.ID, capMsg, true))
+			}
+			a.history = append(a.history, anthropic.NewUserMessage(capResults...))
+			a.autoSaveLocked()
+			return capMsg, nil
+		}
+		toolCallsThisTurn += len(toolCalls)
 
 		a.history = append(a.history, anthropic.NewAssistantMessage(toUnionBlocks(resp.Content)...))
 
