@@ -57,7 +57,7 @@ func TestDetectCapabilities(t *testing.T) {
 			wantFork:        "Momentum",
 			wantPowerCmd:    "info power",
 			wantNFCSubshell: true,
-			wantSubGHzDev:   false,
+			wantSubGHzDev:   true,
 		},
 		{
 			name:            "momentum all-lowercase",
@@ -65,7 +65,7 @@ func TestDetectCapabilities(t *testing.T) {
 			wantFork:        "momentum",
 			wantPowerCmd:    "info power",
 			wantNFCSubshell: true,
-			wantSubGHzDev:   false,
+			wantSubGHzDev:   true,
 		},
 		{
 			name:            "momentum all-uppercase",
@@ -73,7 +73,7 @@ func TestDetectCapabilities(t *testing.T) {
 			wantFork:        "MOMENTUM",
 			wantPowerCmd:    "info power",
 			wantNFCSubshell: true,
-			wantSubGHzDev:   false,
+			wantSubGHzDev:   true,
 		},
 	}
 

@@ -77,9 +77,13 @@ func detectCapabilities(deviceInfo string) Capabilities {
 	case "momentum":
 		// Momentum dropped the legacy `power_info` alias — only `info power`
 		// is registered (see applications/services/cli/cli_main_commands.c
-		// in Next-Flip/Momentum-Firmware). NFC/SubGHz surface otherwise
-		// tracks the stock/Unleashed side.
+		// in Next-Flip/Momentum-Firmware). Its `subghz rx` also takes a
+		// mandatory <Device: 0|1> trailing arg (applications/main/subghz/
+		// subghz_cli.c → subghz_cli_command_rx), so the SubGHzNeedsDev
+		// quirk applies here too — caught by a live-hardware smoke run
+		// when `subghz rx <freq>` errored with "illegal option".
 		c.PowerInfoCmd = "info power"
+		c.SubGHzNeedsDev = true
 	}
 	return c
 }
