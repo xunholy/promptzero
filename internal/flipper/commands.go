@@ -6,26 +6,21 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/clisafe"
 )
 
-// sanitizeArg removes bytes that would break out of a single CLI command
-// when interpolated into a Flipper serial command string: \r (command
-// terminator), \n, \x00, and \x03 (ETX / Ctrl+C). Keep everything else.
-func sanitizeArg(s string) string {
-	return strings.Map(func(r rune) rune {
-		switch r {
-		case '\r', '\n', '\x00', '\x03':
-			return -1
-		}
-		return r
-	}, s)
-}
+// sanitizeArg delegates to clisafe.SanitizeArg. Kept as an internal wrapper
+// so existing call sites in this file read naturally; the shared helper
+// strips the union of bytes any CLI transport cares about (CR, LF, NUL,
+// ETX, and the double-quote delimiter).
+func sanitizeArg(s string) string { return clisafe.SanitizeArg(s) }
 
-// SanitizeArg is the exported wrapper around sanitizeArg for callers outside
-// this package that build Flipper CLI commands directly (e.g. the agent's
-// inline bruteforce dispatch). Prefer the typed wrapper functions when one
-// exists.
-func SanitizeArg(s string) string { return sanitizeArg(s) }
+// SanitizeArg is the exported wrapper for callers outside this package
+// that build Flipper CLI commands directly (e.g. the agent's inline
+// bruteforce dispatch). Prefer the typed wrapper functions when one
+// exists. Delegates to clisafe.SanitizeArg.
+func SanitizeArg(s string) string { return clisafe.SanitizeArg(s) }
 
 // nfcAllowedSubcommands is the explicit allowlist of `nfc` CLI subcommands
 // we permit callers to invoke via NFCSubcommand. Arbitrary subcommands

@@ -1,15 +1,10 @@
-package marauder
+package clisafe
 
-import (
-	"testing"
+import "testing"
 
-	"github.com/xunholy/promptzero/internal/clisafe"
-)
-
-// TestSanitizeArgStripsFramingBytes asserts that every byte that could
-// terminate a Marauder CLI line early (\r \n \x00 \x03) plus the double-quote
-// that delimits quoted fields is removed. AddSSID, Join, and SetSetting all
-// share the helper — now sourced from the internal/clisafe package.
+// TestSanitizeArgStripsFramingBytes asserts the full set of bytes that
+// could terminate or escape a quoted CLI argument is removed, and that
+// benign content (spaces, unicode) survives unchanged.
 func TestSanitizeArgStripsFramingBytes(t *testing.T) {
 	cases := []struct {
 		name string
@@ -22,16 +17,19 @@ func TestSanitizeArgStripsFramingBytes(t *testing.T) {
 		{"nul", "abc\x00def", "abcdef"},
 		{"etx", "abc\x03def", "abcdef"},
 		{"quote", `abc"def`, "abcdef"},
-		{"mixed", "a\rb\nc\x00d\"e", "abcde"},
+		{"all-bytes", "a\rb\nc\x00d\x03e\"f", "abcdef"},
 		{"empty", "", ""},
 		{"spaces-preserved", "hello world", "hello world"},
 		{"unicode-preserved", "café\r", "café"},
+		{"only-strip-bytes", "\r\n\x00\x03\"", ""},
+		{"leading-stripped", "\rhello", "hello"},
+		{"trailing-stripped", "hello\n", "hello"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := clisafe.SanitizeArg(c.in)
+			got := SanitizeArg(c.in)
 			if got != c.want {
-				t.Fatalf("clisafe.SanitizeArg(%q) = %q, want %q", c.in, got, c.want)
+				t.Fatalf("SanitizeArg(%q) = %q, want %q", c.in, got, c.want)
 			}
 		})
 	}
