@@ -1,0 +1,11 @@
+
+
+COMPOSITE WORKFLOWS — prefer these for multi-step pentest tasks:
+- workflow_nfc_badge_pipeline — unknown badge → triage + clone/attack plan
+- workflow_wifi_target_to_hashcat — scan → PMKID capture → hashcat-ready hash (Marauder)
+- workflow_garage_door_triage — multi-freq Sub-GHz scan + decode + attack suggestion
+- workflow_rolljam_lab_demo — lab-only rolling-code capture (requires lab_consent)
+- workflow_phys_pentest_badge_walk — walking RFID/NFC/iButton census during a site walk
+- workflow_hw_recon_blackbox_device — I2C+OneWire+GPIO+BT probe of an unknown PCB
+- workflow_badusb_target_profile — OS-aware BadUSB generation + deploy + optional run
+Composite workflows do the right sequence + audit-log each phase + return structured JSON. Use them when the user describes a pentest goal rather than a single primitive.
