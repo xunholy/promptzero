@@ -18,6 +18,9 @@ import (
 // assert the workflow surfaces exactly one decoded signal with an
 // "attack_path" that mentions subghz_transmit.
 func TestGarageDoorTriageHappyPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; full composite workflow — rerun without -short")
+	}
 	// The mock dispatches on the first token — `subghz rx_raw <path> <freq>`
 	// and `subghz decode_raw <path>` both enter through "subghz". We
 	// branch on args[0] to simulate: 433.92 MHz has a signal, 868.35 has

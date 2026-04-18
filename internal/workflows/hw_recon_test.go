@@ -36,6 +36,9 @@ func mockFlipper(t *testing.T, opts ...mock.Option) (*flipper.Flipper, *mock.Moc
 // TestHWReconHappyPath verifies the workflow aggregates each probe's
 // output into the JSON envelope and surfaces parsed I²C addresses.
 func TestHWReconHappyPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; drives the full 12-phase recon — rerun without -short")
+	}
 	f, _ := mockFlipper(t,
 		mock.WithHandler("i2c", func(args []string) string {
 			// "i2c scan" response — typical Flipper format with two devices.
@@ -89,6 +92,9 @@ func TestHWReconHappyPath(t *testing.T) {
 // TestHWReconRespectsGPIOOverride verifies the `gpios` param overrides
 // the default pin list. We pass one pin and expect only one gpio phase.
 func TestHWReconRespectsGPIOOverride(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; rerun without -short")
+	}
 	f, _ := mockFlipper(t,
 		mock.WithHandler("i2c", func(args []string) string { return "no devices found" }),
 		mock.WithHandler("onewire", func(args []string) string { return "no devices" }),

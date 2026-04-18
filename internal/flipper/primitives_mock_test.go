@@ -250,6 +250,9 @@ func TestJSRunHappyPathExecLong(t *testing.T) {
 // the fallback via the mock's command log (mutex-protected) rather than
 // through a handler-side bool, which would race with the main goroutine.
 func TestI2CScanFallsBackToLoader(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; exercises CLI→FAP fallback wait — rerun without -short")
+	}
 	m := mock.Spawn(t,
 		mock.WithHandler("i2c", func(args []string) string {
 			return "`i2c` is not a recognized command. Use `help` or `?` to list available commands."

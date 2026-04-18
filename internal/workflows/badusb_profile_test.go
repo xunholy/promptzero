@@ -31,6 +31,9 @@ func (f *fakeProvider) Complete(ctx context.Context, system string, messages []p
 // wrote the generated script to the default path and the result
 // surfaces the preview + script length.
 func TestBadUSBTargetProfileGenerateDeploy(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; full composite workflow — rerun without -short")
+	}
 	f, _ := mockFlipper(t,
 		// `storage mkdir` + `storage write_chunked` both land on the
 		// `storage` head. An empty reply plus the prompt keeps the

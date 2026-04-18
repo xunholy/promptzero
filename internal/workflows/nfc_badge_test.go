@@ -26,6 +26,9 @@ firmware_build_date           : 01-01-2025`
 // nfc_detect returns a Classic tag, no attempt_dump flag, and the
 // workflow returns the mfkey-recovery next steps.
 func TestNFCBadgePipelineMIFAREClassic(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; full composite workflow — rerun without -short")
+	}
 	f, _ := mockFlipper(t,
 		mock.WithHandler("device_info", func(args []string) string { return stockDeviceInfo }),
 		mock.WithHandler("nfc", func(args []string) string { return "" }), // entering subshell
@@ -79,6 +82,9 @@ func TestNFCBadgePipelineMIFAREClassic(t *testing.T) {
 // returns an empty output we surface "no tag detected" and still emit
 // valid JSON with the detect phase recorded.
 func TestNFCBadgePipelineNoTag(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; rerun without -short")
+	}
 	f, _ := mockFlipper(t,
 		mock.WithHandler("device_info", func(args []string) string { return stockDeviceInfo }),
 		mock.WithHandler("nfc", func(args []string) string { return "" }),

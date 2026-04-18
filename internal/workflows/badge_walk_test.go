@@ -18,6 +18,9 @@ import (
 // workflow dedupes across iterations and writes a CSV with exactly one
 // row per radio.
 func TestPhysPentestBadgeWalkDedupes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; 3-second walk with periodic radio polls — rerun without -short")
+	}
 	f, _ := mockFlipper(t,
 		mock.WithHandler("device_info", func(args []string) string { return stockDeviceInfo }),
 		mock.WithHandler("nfc", func(args []string) string { return "" }),

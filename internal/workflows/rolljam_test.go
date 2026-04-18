@@ -41,6 +41,9 @@ func TestRolljamLabDemoRefusesWithoutConsent(t *testing.T) {
 // lab_consent=true. Asserts both files are recorded + the JSON surfaces
 // both paths.
 func TestRolljamLabDemoHappyPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; full composite workflow — rerun without -short")
+	}
 	f, _ := mockFlipper(t,
 		mock.WithHandler("subghz", func(args []string) string {
 			// Any rx_raw call succeeds with a short non-empty capture banner.

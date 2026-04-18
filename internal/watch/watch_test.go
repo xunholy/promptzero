@@ -12,6 +12,9 @@ import (
 )
 
 func TestWatcherFiresOnceWithSubstitutedPrompt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; rerun without -short")
+	}
 	dir := t.TempDir()
 	w := New([]string{dir}, []Rule{{
 		Pattern: "*.sub",
@@ -76,6 +79,9 @@ func TestWatcherFiresOnceWithSubstitutedPrompt(t *testing.T) {
 }
 
 func TestWatcherDebouncesBurstWrites(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; rerun without -short")
+	}
 	dir := t.TempDir()
 	w := New([]string{dir}, []Rule{{Pattern: "*.png", Prompt: "{{path}}"}})
 	var calls atomic.Int32
@@ -105,6 +111,9 @@ func TestWatcherDebouncesBurstWrites(t *testing.T) {
 }
 
 func TestWatcherIgnoresDotfilesAndSwap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; rerun without -short")
+	}
 	dir := t.TempDir()
 	w := New([]string{dir}, []Rule{{Pattern: "*", Prompt: "{{path}}"}})
 	var calls atomic.Int32
@@ -132,6 +141,9 @@ func TestWatcherIgnoresDotfilesAndSwap(t *testing.T) {
 }
 
 func TestWatcherPauseSuppressesDispatch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; rerun without -short")
+	}
 	dir := t.TempDir()
 	w := New([]string{dir}, []Rule{{Pattern: "*.sub", Prompt: "{{path}}"}})
 	w.Pause()

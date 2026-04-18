@@ -91,6 +91,9 @@ func TestDispatcher_HMACWhenSecretSet(t *testing.T) {
 }
 
 func TestDispatcher_RetriesOn5xx(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; exercises exponential backoff — rerun without -short")
+	}
 	var attempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := attempts.Add(1)
