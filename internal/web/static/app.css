@@ -118,12 +118,12 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   padding-top: 2px; /* optical align against smaller chips */
 }
 .pz-pixel-zero {
-  display: inline-block;
-  width: 6px; height: 6px;
-  background: var(--pz-flipper-orange);
-  margin-left: 4px;
-  vertical-align: middle;
+  /* Was a 6x6 orange block read as a "missing O". Now renders the
+   * literal "O" in Flipper orange to preserve the accent without the
+   * ambiguity. Wordmark reads PROMPTZERO with the tail O highlighted. */
+  color: var(--pz-flipper-orange);
 }
+.pz-pixel-zero::before { content: "O"; }
 
 .pz-dot-sep { color: var(--pz-text-muted); font-family: var(--pz-font-mono); }
 
