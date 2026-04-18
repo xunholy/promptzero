@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-04-18
+
 ### Added
 
 - Flipper Zero capability-gap primitives (42 new operations) with mock-backed tests.
@@ -46,3 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Marauder CLI invocations now sanitise user-supplied strings before shelling
   out.
 - BadUSB preflight flags unsafe payloads before execution.
+
+[Unreleased]: https://github.com/xunholy/promptzero/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/xunholy/promptzero/releases/tag/v0.1.0
