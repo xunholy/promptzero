@@ -93,6 +93,19 @@
         <span class="pz-conn-glyph pz-tabular" aria-hidden="true" x-text="connectionGlyph"></span>
       </span>
 
+      <!-- Cost pill (REPL /cost parity; polled every 5s, click for per-model breakdown) -->
+      <button type="button"
+              class="pz-cost-pill pz-chip pz-tabular"
+              x-show="costPillVisible"
+              x-cloak
+              :class="{ 'pz-cost-offline': costUI.offline }"
+              @click="toggleCostModal()"
+              :title="costUI.offline ? 'offline pricing estimate' : 'click for per-model breakdown'"
+              aria-label="session cost">
+        <span class="pz-cost-glyph" aria-hidden="true">$</span>
+        <span x-text="costPillText"></span>
+      </button>
+
       <span class="pz-battery" :title="'battery ' + session.device.battery + '%'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="16" height="10" rx="1"/><path d="M22 11v2"/></svg>
         <span class="pz-tabular" x-text="session.device.battery + '%'"></span>
@@ -441,6 +454,59 @@
       <div class="pz-panel-empty">rules panel coming soon</div>
     </section>
   </aside>
+
+  <!-- Cost breakdown modal (REPL /cost parity) -->
+  <template x-if="costUI.modalOpen">
+    <div class="pz-modal-backdrop"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="pz-cost-modal-title"
+         @click.self="costUI.modalOpen = false">
+      <div class="pz-modal pz-modal-cost">
+        <div class="pz-modal-title" id="pz-cost-modal-title">SESSION COST</div>
+        <div class="pz-cost-total">
+          <span class="pz-cost-total-usd pz-tabular" x-text="formatUSD(costUI.usd)"></span>
+          <span class="pz-cost-total-sep">·</span>
+          <span class="pz-cost-total-tokens pz-tabular"
+                x-text="formatTokens(costUI.inputTokens + costUI.outputTokens) + ' tokens'"></span>
+          <template x-if="costUI.offline">
+            <span class="pz-cost-offline-pill">OFFLINE ESTIMATE</span>
+          </template>
+        </div>
+        <div class="pz-cost-split pz-tabular">
+          <span>in&nbsp;<span x-text="formatTokens(costUI.inputTokens)"></span></span>
+          <span>out&nbsp;<span x-text="formatTokens(costUI.outputTokens)"></span></span>
+        </div>
+        <h4 class="pz-panel-heading">By model</h4>
+        <template x-if="costUI.byModel.length === 0">
+          <div class="pz-panel-empty">no usage yet</div>
+        </template>
+        <table class="pz-cost-table" x-show="costUI.byModel.length > 0">
+          <thead>
+            <tr>
+              <th>model</th>
+              <th class="pz-cost-num">in</th>
+              <th class="pz-cost-num">out</th>
+              <th class="pz-cost-num">usd</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="m in costUI.byModel" :key="m.model">
+              <tr>
+                <td class="pz-mono" x-text="m.model || '(unknown)'"></td>
+                <td class="pz-cost-num pz-tabular" x-text="formatTokens(m.input_tokens)"></td>
+                <td class="pz-cost-num pz-tabular" x-text="formatTokens(m.output_tokens)"></td>
+                <td class="pz-cost-num pz-tabular" x-text="formatUSD(m.usd)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="pz-modal-actions">
+          <button type="button" class="pz-panel-btn" @click="costUI.modalOpen = false">Close</button>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <!-- CRITICAL RISK MODAL (only for risk === 'critical'; requires typing 'all' to enable Approve) -->
   <template x-if="criticalConfirm">

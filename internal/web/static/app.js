@@ -108,6 +108,7 @@
       sidebar:   { open: false, tab: 'watch' },
       watchUI:   { loaded: false, error: '', enabled: false, paused: false, paths: [], rules: [], events: [] },
       rulesUI:   { loaded: false, error: '', list: [], testResults: {} },
+      costUI:    { loaded: false, error: '', usd: 0, inputTokens: 0, outputTokens: 0, offline: false, byModel: [], modalOpen: false },
 
       /* internals */
       _ws: null,
@@ -115,6 +116,7 @@
       _spinnerTimer: null,
       _elapsedTimer: null,
       _heartbeatWatchdog: null,
+      _costTimer: null,
       _lastPingAt: 0,
       _reduced: false,
       _autoScrollPaused: false,
@@ -161,6 +163,8 @@
         this._installMock();
         this._connect();
         this.loadPersonas();
+        this.loadCost();
+        this._costTimer = setInterval(() => this.loadCost(), 5000);
 
         document.addEventListener('keydown', (e) => this._globalKey(e));
 
@@ -776,6 +780,50 @@
           .catch((e) => {
             this.rulesUI.testResults = Object.assign({}, this.rulesUI.testResults, { [name]: String(e) });
           });
+      },
+
+      /* ---------- cost pill (REPL /cost parity) ---------- */
+      loadCost() {
+        fetch('api/cost')
+          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
+          .then(({ ok, body }) => {
+            this.costUI.loaded = true;
+            if (!ok) {
+              this.costUI.error = (body && body.error) || 'cost tracker unavailable';
+              return;
+            }
+            this.costUI.error = '';
+            var total = (body && body.total) || {};
+            this.costUI.usd          = Number(total.usd || 0);
+            this.costUI.inputTokens  = Number(total.input_tokens || 0);
+            this.costUI.outputTokens = Number(total.output_tokens || 0);
+            this.costUI.offline      = !!body.offline;
+            this.costUI.byModel      = Array.isArray(body.by_model) ? body.by_model : [];
+          })
+          .catch((e) => { this.costUI.loaded = true; this.costUI.error = String(e); });
+      },
+      toggleCostModal() {
+        if (!this.costUI.modalOpen) this.loadCost();
+        this.costUI.modalOpen = !this.costUI.modalOpen;
+      },
+      formatTokens(n) {
+        var v = Number(n || 0);
+        if (v >= 1e6) return (v / 1e6).toFixed(v >= 1e7 ? 0 : 1) + 'M';
+        if (v >= 1e3) return (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + 'k';
+        return String(v);
+      },
+      formatUSD(n) {
+        var v = Number(n || 0);
+        if (v >= 100) return '$' + v.toFixed(0);
+        if (v >= 1)   return '$' + v.toFixed(2);
+        return '$' + v.toFixed(v < 0.01 ? 4 : 2);
+      },
+      get costPillText() {
+        var tokens = this.costUI.inputTokens + this.costUI.outputTokens;
+        return this.formatUSD(this.costUI.usd) + ' · ' + this.formatTokens(tokens) + ' tok';
+      },
+      get costPillVisible() {
+        return this.costUI.loaded && !this.costUI.error;
       },
 
       /* ---------- shared formatters ---------- */

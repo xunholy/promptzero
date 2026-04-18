@@ -1165,6 +1165,97 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .pz-modal-confirm-input:focus { border-color: var(--pz-flipper-amber); }
 
 /* ==========================================================================
+   Cost pill + breakdown modal (REPL /cost parity)
+   ========================================================================== */
+
+.pz-cost-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-strong);
+  color: var(--pz-text-primary);
+  padding: 2px 8px;
+  font-family: var(--pz-font-mono, 'JetBrains Mono', monospace);
+  font-size: var(--pz-text-sm);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.pz-cost-pill:hover,
+.pz-cost-pill:focus-visible {
+  border-color: var(--pz-flipper-amber);
+  color: var(--pz-flipper-amber);
+  outline: none;
+}
+.pz-cost-pill .pz-cost-glyph {
+  color: var(--pz-text-dim);
+  font-weight: 600;
+}
+.pz-cost-pill.pz-cost-offline .pz-cost-glyph {
+  color: var(--pz-flipper-orange);
+}
+
+.pz-modal.pz-modal-cost {
+  min-width: 360px;
+  max-width: 560px;
+}
+.pz-cost-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 2px;
+}
+.pz-cost-total-usd {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--pz-text-primary);
+}
+.pz-cost-total-sep { color: var(--pz-text-dim); }
+.pz-cost-total-tokens { color: var(--pz-text-secondary); }
+.pz-cost-offline-pill {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--pz-flipper-orange);
+  color: var(--pz-flipper-orange);
+  font-family: var(--pz-font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.pz-cost-split {
+  display: flex;
+  gap: 12px;
+  color: var(--pz-text-dim);
+  font-size: var(--pz-text-sm);
+  margin-bottom: 10px;
+}
+.pz-cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--pz-text-sm);
+}
+.pz-cost-table th,
+.pz-cost-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--pz-border);
+  text-align: left;
+}
+.pz-cost-table th {
+  color: var(--pz-text-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+.pz-cost-table .pz-cost-num { text-align: right; }
+
+.pz-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ==========================================================================
    Responsive (360px phone viewport)
    ========================================================================== */
 
@@ -1173,6 +1264,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   .pz-header-left     { gap: 4px; overflow: hidden; }
   .pz-chip-firmware   { display: none; }
   .pz-dot-sep         { display: none; }
+  .pz-cost-pill       { display: none; }
   .pz-composer        { margin: 8px; padding: 6px 8px; gap: 6px; }
   .pz-messages        { padding: 12px 8px 4px; }
 }
