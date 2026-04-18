@@ -681,7 +681,10 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   margin: 12px;
   display: grid;
   grid-template-columns: auto 1fr auto auto;
-  align-items: end;
+  /* center-align so the 28px send button, the single-line input, and
+   * the char-count pill share a visual midline. The previous end
+   * alignment made the button appear to tower over the text row. */
+  align-items: center;
   gap: 8px;
   padding: 8px 10px;
   background: var(--pz-bg-elevated);
@@ -723,22 +726,26 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   font-family: var(--pz-font-mono);
   font-size: var(--pz-text-xs);
   color: var(--pz-text-dim);
-  align-self: end;
-  padding-bottom: 2px;
+  /* align-self unset: inherit centerline from parent grid. */
 }
 .pz-composer-count.pz-count-warn { color: var(--pz-flipper-amber); }
 .pz-composer-count.pz-count-crit { color: var(--pz-alert-red); }
 
 .pz-send {
-  width: 32px; height: 32px;
+  /* 28x28 tuned against the ~24px single-line text row so the button
+   * reads as "same family" as the input rather than dominant chrome. */
+  width: 28px; height: 28px;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--pz-flipper-orange);
   color: var(--pz-bg-base);
   border-radius: 0;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
 }
 .pz-send:disabled         { background: var(--pz-flipper-ember); cursor: not-allowed; }
 .pz-send:hover:not(:disabled) { background: var(--pz-flipper-amber); }
-.pz-send svg { width: 16px; height: 16px; }
+.pz-send svg { width: 14px; height: 14px; display: block; }
 
 /* composer top-edge chase (turn in flight) */
 .pz-composer-running::before {
