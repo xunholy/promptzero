@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Default Claude model bumped from `claude-sonnet-4-6` to `claude-opus-4-7`
+  for the agent and the vision analyzer. Existing `model:` values in
+  user config override the default; cost pricer already knew about
+  opus-4-7 so no math surprises.
+
 ## [0.1.0] - 2026-04-18
 
 ### Added

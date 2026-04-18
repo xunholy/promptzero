@@ -72,8 +72,9 @@ api_key: ""
 # OpenAI API key for Whisper voice transcription (or set OPENAI_API_KEY env var)
 openai_api_key: ""
 
-# Claude model to use
-model: "claude-sonnet-4-6"
+# Claude model to use (opus 4.7 default; swap to claude-sonnet-4-6 for
+# faster/cheaper turns or claude-haiku-4-5 for minimal cost)
+model: "claude-opus-4-7"
 
 # Flipper Zero serial connection
 serial:

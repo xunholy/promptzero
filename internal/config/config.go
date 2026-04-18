@@ -196,7 +196,7 @@ type Device struct {
 
 func Load(path string) (*Config, error) {
 	cfg := &Config{
-		Model: "claude-sonnet-4-6",
+		Model: "claude-opus-4-7",
 		Serial: SerialConfig{
 			Port:     "/dev/ttyACM0",
 			BaudRate: 230400,
