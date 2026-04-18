@@ -242,6 +242,212 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 }
 
 /* ==========================================================================
+   Side panel (Watch / Rules)
+   ========================================================================== */
+
+.pz-sidebar-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  cursor: pointer;
+  background: var(--pz-bg-elevated);
+  border: 1px solid var(--pz-border-subtle);
+  padding: 2px 8px;
+  color: var(--pz-text-dim);
+}
+.pz-sidebar-btn:hover         { color: var(--pz-text-primary); border-color: var(--pz-border-strong); }
+.pz-sidebar-btn-open          { color: var(--pz-text-primary); border-color: var(--pz-border-strong); }
+.pz-sidebar-glyph             { color: var(--pz-flipper-orange); }
+
+.pz-sidebar {
+  position: fixed;
+  top: 40px; right: 0; bottom: 0;
+  width: 360px;
+  max-width: 95vw;
+  background: var(--pz-bg-surface);
+  border-left: 1px solid var(--pz-border-strong);
+  display: flex; flex-direction: column;
+  z-index: 15;
+}
+.pz-sidebar-head {
+  flex: 0 0 36px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--pz-border-subtle);
+}
+.pz-sidebar-tabs { display: flex; gap: 4px; }
+.pz-sidebar-tab {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-xs);
+  letter-spacing: 0.08em;
+  color: var(--pz-text-dim);
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.pz-sidebar-tab:hover         { color: var(--pz-text-primary); }
+.pz-sidebar-tab-active {
+  color: var(--pz-flipper-orange);
+  border-bottom: 2px solid var(--pz-flipper-orange);
+}
+.pz-sidebar-close {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-sm);
+  color: var(--pz-text-dim);
+  padding: 2px 6px;
+}
+.pz-sidebar-close:hover { color: var(--pz-text-primary); }
+
+.pz-sidebar-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.pz-panel-heading {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--pz-text-dim);
+  margin: 16px 0 6px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--pz-border-subtle);
+}
+.pz-panel-empty {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-xs);
+  color: var(--pz-text-dim);
+  padding: 8px 0;
+}
+.pz-panel-err { color: var(--pz-alert-red); }
+.pz-panel-spacer { flex: 1 1 auto; }
+.pz-panel-btn {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-xs);
+  background: var(--pz-bg-elevated);
+  border: 1px solid var(--pz-border-subtle);
+  color: var(--pz-text-dim);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.pz-panel-btn:hover { color: var(--pz-text-primary); border-color: var(--pz-border-strong); }
+.pz-panel-btn-primary {
+  color: var(--pz-flipper-orange);
+  border-color: var(--pz-flipper-ember);
+}
+.pz-panel-btn-primary:hover { color: var(--pz-flipper-amber); }
+.pz-panel-btn-sm { padding: 2px 8px; }
+
+/* Watch panel */
+.pz-watch-state {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--pz-border-subtle);
+}
+.pz-watch-pill {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-xs);
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  letter-spacing: 0.08em;
+}
+.pz-watch-pill-active { color: var(--pz-scan-green); }
+.pz-watch-pill-paused { color: var(--pz-flipper-amber); }
+.pz-watch-paths       { color: var(--pz-text-dim); font-family: var(--pz-font-mono); font-size: var(--pz-text-xs); }
+
+.pz-watch-rule {
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--pz-border-subtle);
+}
+.pz-watch-rule-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+}
+.pz-watch-rule-pat {
+  color: var(--pz-text-primary);
+  font-size: var(--pz-text-sm);
+}
+.pz-watch-rule-persona {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-xs);
+  color: var(--pz-flipper-amber);
+}
+.pz-watch-rule-prompt {
+  margin-top: 2px;
+  font-size: var(--pz-text-xs);
+  line-height: 1.35;
+  color: var(--pz-text-dim);
+}
+
+.pz-watch-event {
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--pz-border-subtle);
+}
+.pz-watch-event-head {
+  display: flex; gap: 8px; align-items: baseline;
+}
+.pz-watch-event-time { color: var(--pz-text-dim); font-family: var(--pz-font-mono); font-size: var(--pz-text-xs); }
+.pz-watch-event-rule { color: var(--pz-flipper-orange); font-size: var(--pz-text-xs); }
+.pz-watch-event-path { color: var(--pz-text-primary); font-size: var(--pz-text-xs); word-break: break-all; margin-top: 2px; }
+.pz-watch-event-err  { color: var(--pz-alert-red); font-size: var(--pz-text-xs); margin-top: 2px; }
+
+/* Rules panel */
+.pz-rule {
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--pz-border-subtle);
+}
+.pz-rule-head {
+  display: flex; align-items: center; gap: 8px;
+}
+.pz-rule-name { color: var(--pz-text-primary); flex: 1 1 auto; }
+.pz-rule-fires {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-xs);
+  color: var(--pz-text-dim);
+}
+.pz-rule-desc {
+  margin: 4px 0;
+  font-size: var(--pz-text-xs);
+  color: var(--pz-text-dim);
+  line-height: 1.35;
+}
+.pz-rule-actions { display: flex; align-items: flex-start; gap: 6px; flex-wrap: wrap; }
+.pz-rule-test {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-subtle);
+  color: var(--pz-text-dim);
+  font-size: var(--pz-text-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Toggle switch (used for rule enabled/paused) */
+.pz-rule-toggle { position: relative; display: inline-flex; width: 32px; height: 18px; }
+.pz-rule-toggle input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.pz-rule-toggle-track {
+  position: absolute; inset: 0;
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-strong);
+}
+.pz-rule-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 10px; height: 10px;
+  background: var(--pz-text-dim);
+  transition: transform 120ms ease, background 120ms ease;
+}
+.pz-rule-toggle input:checked + .pz-rule-toggle-track {
+  border-color: var(--pz-flipper-ember);
+}
+.pz-rule-toggle input:checked + .pz-rule-toggle-track::after {
+  transform: translateX(14px);
+  background: var(--pz-flipper-orange);
+}
+
+/* ==========================================================================
    Message stack
    ========================================================================== */
 

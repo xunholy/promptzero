@@ -39,6 +39,17 @@
     </div>
 
     <div class="pz-header-right">
+      <!-- Sidebar toggle (Watch / Rules) -->
+      <button type="button"
+              class="pz-chip pz-sidebar-btn"
+              :class="{ 'pz-sidebar-btn-open': sidebar.open }"
+              @click="toggleSidebar()"
+              :aria-expanded="sidebar.open ? 'true' : 'false'"
+              aria-label="panels">
+        <span class="pz-sidebar-glyph" aria-hidden="true">☰</span>
+        <span>PANELS</span>
+      </button>
+
       <!-- Persona switcher (REPL /persona parity) -->
       <div class="pz-persona" @click.away="personaUI.open = false">
         <button type="button"
@@ -335,6 +346,101 @@
             aria-label="send"
             x-html="icons.send"></button>
   </form>
+
+  <!-- ================================================================
+       Collapsible side panel: Watch / Rules tabs
+       (REPL /watch, /rules parity — opens from the right, 360px wide)
+       ================================================================ -->
+  <aside class="pz-sidebar" x-show="sidebar.open" x-cloak role="complementary" aria-label="REPL panels">
+    <header class="pz-sidebar-head">
+      <nav class="pz-sidebar-tabs" role="tablist">
+        <button type="button"
+                role="tab"
+                class="pz-sidebar-tab"
+                :class="{ 'pz-sidebar-tab-active': sidebar.tab === 'watch' }"
+                :aria-selected="sidebar.tab === 'watch' ? 'true' : 'false'"
+                @click="selectSidebarTab('watch')">WATCH</button>
+        <button type="button"
+                role="tab"
+                class="pz-sidebar-tab"
+                :class="{ 'pz-sidebar-tab-active': sidebar.tab === 'rules' }"
+                :aria-selected="sidebar.tab === 'rules' ? 'true' : 'false'"
+                @click="selectSidebarTab('rules')">RULES</button>
+      </nav>
+      <button type="button"
+              class="pz-sidebar-close"
+              @click="sidebar.open = false"
+              aria-label="close panels">✕</button>
+    </header>
+
+    <!-- WATCH TAB -->
+    <section class="pz-sidebar-body" x-show="sidebar.tab === 'watch'" role="tabpanel">
+      <template x-if="!watchUI.loaded">
+        <div class="pz-panel-empty">loading…</div>
+      </template>
+      <template x-if="watchUI.loaded && watchUI.error">
+        <div class="pz-panel-empty pz-panel-err" x-text="watchUI.error"></div>
+      </template>
+      <template x-if="watchUI.loaded && !watchUI.error">
+        <div>
+          <div class="pz-watch-state">
+            <span class="pz-watch-pill"
+                  :class="watchUI.paused ? 'pz-watch-pill-paused' : 'pz-watch-pill-active'"
+                  x-text="watchUI.paused ? 'PAUSED' : 'ACTIVE'"></span>
+            <span class="pz-watch-paths pz-tabular"
+                  x-text="(watchUI.paths.length || 0) + ' path' + (watchUI.paths.length === 1 ? '' : 's')"></span>
+            <span class="pz-panel-spacer"></span>
+            <button type="button"
+                    class="pz-panel-btn"
+                    x-show="!watchUI.paused"
+                    @click="watchPause()">Pause</button>
+            <button type="button"
+                    class="pz-panel-btn pz-panel-btn-primary"
+                    x-show="watchUI.paused"
+                    @click="watchResume()">Resume</button>
+          </div>
+
+          <h4 class="pz-panel-heading">Rules</h4>
+          <template x-if="watchUI.rules.length === 0">
+            <div class="pz-panel-empty">no rules configured</div>
+          </template>
+          <template x-for="r in watchUI.rules" :key="r.pattern + r.prompt">
+            <div class="pz-watch-rule">
+              <div class="pz-watch-rule-head">
+                <span class="pz-watch-rule-pat pz-mono" x-text="r.pattern"></span>
+                <template x-if="r.persona">
+                  <span class="pz-watch-rule-persona" x-text="r.persona"></span>
+                </template>
+              </div>
+              <div class="pz-watch-rule-prompt" x-text="r.prompt"></div>
+            </div>
+          </template>
+
+          <h4 class="pz-panel-heading">Recent fires</h4>
+          <template x-if="watchUI.events.length === 0">
+            <div class="pz-panel-empty">no recent events</div>
+          </template>
+          <template x-for="e in watchUI.events" :key="e.at + e.path">
+            <div class="pz-watch-event">
+              <div class="pz-watch-event-head">
+                <span class="pz-watch-event-time pz-tabular" x-text="shortTime(e.at)"></span>
+                <span class="pz-watch-event-rule pz-mono" x-text="e.rule"></span>
+              </div>
+              <div class="pz-watch-event-path pz-mono" x-text="e.path"></div>
+              <template x-if="e.error">
+                <div class="pz-watch-event-err" x-text="e.error"></div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+    </section>
+
+    <!-- RULES TAB (populated in a later commit) -->
+    <section class="pz-sidebar-body" x-show="sidebar.tab === 'rules'" role="tabpanel">
+      <div class="pz-panel-empty">rules panel coming soon</div>
+    </section>
+  </aside>
 
   <!-- CRITICAL RISK MODAL (only for risk === 'critical'; requires typing 'all' to enable Approve) -->
   <template x-if="criticalConfirm">

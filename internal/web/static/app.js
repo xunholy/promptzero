@@ -105,6 +105,9 @@
 
       /* REPL-parity panels */
       personaUI: { open: false, current: '', list: [] },
+      sidebar:   { open: false, tab: 'watch' },
+      watchUI:   { loaded: false, error: '', enabled: false, paused: false, paths: [], rules: [], events: [] },
+      rulesUI:   { loaded: false, error: '', list: [], testResults: {} },
 
       /* internals */
       _ws: null,
@@ -705,6 +708,83 @@
           })
           .catch(() => { /* fall back silently; the menu stays open for retry */ })
           .finally(() => { this.personaUI.open = false; });
+      },
+
+      /* ---------- sidebar tabs (Watch / Rules) ---------- */
+      toggleSidebar() {
+        this.sidebar.open = !this.sidebar.open;
+        if (this.sidebar.open) this._refreshSidebarTab();
+      },
+      selectSidebarTab(tab) {
+        this.sidebar.tab = tab;
+        this._refreshSidebarTab();
+      },
+      _refreshSidebarTab() {
+        if (this.sidebar.tab === 'watch') this.loadWatch();
+        else if (this.sidebar.tab === 'rules') this.loadRules();
+      },
+
+      /* ---------- watch panel (REPL /watch parity) ---------- */
+      loadWatch() {
+        fetch('api/watch')
+          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
+          .then(({ ok, body }) => {
+            this.watchUI.loaded = true;
+            if (!ok) { this.watchUI.error = body.error || 'watch unavailable'; return; }
+            this.watchUI.error = '';
+            this.watchUI.enabled = !!body.enabled;
+            this.watchUI.paused = !!body.paused;
+            this.watchUI.paths = Array.isArray(body.paths) ? body.paths : [];
+            this.watchUI.rules = Array.isArray(body.rules) ? body.rules : [];
+            this.watchUI.events = Array.isArray(body.recent_events) ? body.recent_events : [];
+          })
+          .catch((e) => { this.watchUI.loaded = true; this.watchUI.error = String(e); });
+      },
+      watchPause()  { this._watchToggle('api/watch/pause',  true);  },
+      watchResume() { this._watchToggle('api/watch/resume', false); },
+      _watchToggle(url, paused) {
+        fetch(url, { method: 'POST' })
+          .then((r) => { if (r.ok) this.watchUI.paused = paused; })
+          .catch(() => {});
+      },
+
+      /* ---------- rules panel (REPL /rules parity) ---------- */
+      loadRules() {
+        fetch('api/rules')
+          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
+          .then(({ ok, body }) => {
+            this.rulesUI.loaded = true;
+            if (!ok) { this.rulesUI.error = (body && body.error) || 'rules unavailable'; return; }
+            this.rulesUI.error = '';
+            this.rulesUI.list = Array.isArray(body) ? body : [];
+          })
+          .catch((e) => { this.rulesUI.loaded = true; this.rulesUI.error = String(e); });
+      },
+      toggleRule(r) {
+        var target = r.enabled ? 'pause' : 'resume';
+        fetch('api/rules/' + encodeURIComponent(r.name) + '/' + target, { method: 'POST' })
+          .then((resp) => { if (resp.ok) r.enabled = !r.enabled; })
+          .catch(() => {});
+      },
+      testRule(name) {
+        fetch('api/rules/' + encodeURIComponent(name) + '/test', { method: 'POST' })
+          .then((r) => r.json())
+          .then((body) => {
+            var text = Array.isArray(body.actions) ? body.actions.join('\n') : (body.error || 'no actions');
+            this.rulesUI.testResults = Object.assign({}, this.rulesUI.testResults, { [name]: text });
+          })
+          .catch((e) => {
+            this.rulesUI.testResults = Object.assign({}, this.rulesUI.testResults, { [name]: String(e) });
+          });
+      },
+
+      /* ---------- shared formatters ---------- */
+      shortTime(iso) {
+        if (!iso) return '';
+        try {
+          var d = new Date(iso);
+          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        } catch (_) { return String(iso); }
       },
 
       /* ---------- dev mock console (localhost only) ---------- */
