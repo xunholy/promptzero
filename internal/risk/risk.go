@@ -24,11 +24,20 @@ func (l Level) String() string {
 	}
 }
 
-// Classify returns the risk level for a given tool name.
-func Classify(tool string) Level {
-	switch tool {
+// toolLevels is the single source of truth for tool risk classification.
+// Grouped by level so additions are easy to scan and drift between risk.go
+// and the tool catalogues in internal/agent is caught by the coverage test.
+var toolLevels = func() map[string]Level {
+	m := map[string]Level{}
+	register := func(l Level, names ...string) {
+		for _, n := range names {
+			m[n] = l
+		}
+	}
+
 	// Read-only / informational
-	case "power_info", "device_info", "list_devices",
+	register(Low,
+		"power_info", "device_info", "list_devices",
 		"storage_list", "storage_read", "storage_info",
 		"gpio_read", "led_set", "vibro",
 		"wifi_stop_scan", "wifi_list_aps", "wifi_list_ssids", "wifi_list_stations",
@@ -38,7 +47,6 @@ func Classify(tool string) Level {
 		"discover_apps",
 		"analyze_image",
 		"loader_list", "list_apps",
-		// Phase-1 capability primitives
 		"ir_decode_file", "ir_universal_list",
 		"rfid_raw_analyze",
 		"onewire_search",
@@ -47,16 +55,15 @@ func Classify(tool string) Level {
 		"loader_info", "log_stream",
 		"bt_hci_info",
 		"loader_unitemp",
-		// File-format structural inspection (read-only on the SD card)
 		"fileformat_read", "fileformat_diff",
-		// BadUSB payload validator — reads the script, never transmits
 		"badusb_validate",
-		// Composite workflows (read-only recon)
-		"workflow_hw_recon_blackbox_device":
-		return Low
+		"system_info",
+		"workflow_hw_recon_blackbox_device",
+	)
 
 	// Captures, scans, file writes
-	case "subghz_receive", "subghz_decode",
+	register(Medium,
+		"subghz_receive", "subghz_decode",
 		"ir_receive", "ir_transmit_raw",
 		"rfid_read",
 		"ibutton_read",
@@ -75,7 +82,6 @@ func Classify(tool string) Level {
 		"deploy_payload",
 		"input_send",
 		"storage_write", "storage_mkdir", "storage_delete",
-		// Phase-1 capability primitives
 		"subghz_rx_raw",
 		"nfc_mfu_rdbl", "nfc_dump_protocol",
 		"rfid_raw_read",
@@ -83,15 +89,15 @@ func Classify(tool string) Level {
 		"loader_protoview", "loader_spectrum_analyzer",
 		"loader_signal_generator", "loader_uart_terminal",
 		"loader_spi_mem_manager",
-		// File-format edit writes back to the SD card in place.
 		"fileformat_edit",
-		// Composite workflows (receive-only scans / logged site walks)
+		"loader_close",
 		"workflow_garage_door_triage",
-		"workflow_phys_pentest_badge_walk":
-		return Medium
+		"workflow_phys_pentest_badge_walk",
+	)
 
 	// Active transmission, emulation, execution
-	case "subghz_transmit",
+	register(High,
+		"subghz_transmit",
 		"ir_transmit",
 		"nfc_emulate",
 		"rfid_emulate", "rfid_write",
@@ -109,7 +115,6 @@ func Classify(tool string) Level {
 		"run_payload",
 		"generate_deploy_run",
 		"loader_open",
-		// Phase-1 capability primitives
 		"subghz_tx_key", "subghz_chat",
 		"nfc_raw_frame", "nfc_apdu", "nfc_mfu_wrbl",
 		"loader_nfc_magic", "loader_mfkey", "loader_mifare_nested",
@@ -119,35 +124,50 @@ func Classify(tool string) Level {
 		"loader_subghz_playlist",
 		"loader_signal",
 		"crypto_store_key",
-		// Composite workflows (active RF capture / FAP launches / payload generation)
 		"workflow_nfc_badge_pipeline",
 		"workflow_wifi_target_to_hashcat",
-		"workflow_badusb_target_profile":
-		return High
+		"workflow_badusb_target_profile",
+	)
 
 	// Destructive, attack, brute force. flipper_raw_cli is here because it's
 	// an unrestricted passthrough — a single call could reboot the device,
 	// overwrite files, or transmit on any frequency. Always prompt.
-	case "wifi_deauth", "wifi_deauth_targeted",
+	register(Critical,
+		"wifi_deauth", "wifi_deauth_targeted",
 		"wifi_csa_attack",
 		"wifi_sae_flood",
 		"subghz_bruteforce",
 		"ir_bruteforce",
 		"device_reboot", "wifi_reboot",
 		"flipper_raw_cli",
-		// Phase-1 capability primitives
 		"loader_subghz_bruteforcer",
 		"loader_nrf24mousejacker",
 		"js_run",
 		"power_reboot_dfu",
 		"update_install",
-		// Composite workflows (rolling-code capture enables rolljam)
-		"workflow_rolljam_lab_demo":
-		return Critical
+		"workflow_rolljam_lab_demo",
+	)
 
-	default:
-		return High
+	return m
+}()
+
+// Classify returns the risk level for a given tool name. Tools that have not
+// been explicitly classified default to High so an unknown capability is
+// gated behind a confirmation rather than silently auto-approved.
+func Classify(tool string) Level {
+	if l, ok := toolLevels[tool]; ok {
+		return l
 	}
+	return High
+}
+
+// ClassifyExplicit returns the registered risk level and true if the tool
+// has an explicit classification, or (High, false) if the tool fell through
+// to the safe default. Used by the agent-package coverage test to detect
+// drift between the tool catalogue and this registry.
+func ClassifyExplicit(tool string) (Level, bool) {
+	l, ok := toolLevels[tool]
+	return l, ok
 }
 
 // AutoApprove returns whether a tool at the given risk level should auto-execute.
