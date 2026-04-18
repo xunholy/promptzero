@@ -243,6 +243,11 @@ func (t *bleTransport) Dial(ctx context.Context) error {
 		return err
 	}
 
+	if err := rxChar.EnableNotifications(t.onNotify); err != nil {
+		_ = device.Disconnect()
+		return fmt.Errorf("transport: enabling RX notifications on %s: %w", t.mac, err)
+	}
+
 	t.mu.Lock()
 	t.adapter = adapter
 	t.device = &device
@@ -251,6 +256,33 @@ func (t *bleTransport) Dial(ctx context.Context) error {
 	t.mu.Unlock()
 
 	return nil
+}
+
+// onNotify is the callback registered against the RX characteristic's
+// notification stream at Dial time. The bluetooth library invokes it
+// from a library-owned goroutine whenever a notification packet
+// arrives; our job is to append the bytes to readBuf under mu and
+// signal any Read that's blocked in readCond.Wait.
+//
+// This is the "notify→stream bridge" that lets the Flipper command
+// layer above the transport see a continuous Read stream even though
+// the wire protocol is chunked into notification packets of MTU-3
+// bytes. readBuf is unbounded on purpose — the flipper command layer
+// reads aggressively (readUntilPrompt) and Flipper payloads are
+// small; bounding the buffer would risk losing prompt bytes mid-
+// response.
+func (t *bleTransport) onNotify(buf []byte) {
+	if len(buf) == 0 {
+		return
+	}
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return
+	}
+	t.readBuf.Write(buf)
+	t.readCond.Broadcast()
+	t.mu.Unlock()
 }
 
 // scanForMAC runs a single BLE scan bounded by bleScanTimeout and
@@ -369,11 +401,74 @@ func selectFlipperCharacteristics(chars []bluetooth.DeviceCharacteristic) (tx, r
 	return chars[0], chars[1], nil
 }
 
-// Read is wired in a subsequent commit. In this commit, it returns
-// errBLENotWired so the Transport interface is satisfied and the
-// package builds cleanly.
+// Read drains up to len(p) bytes from the internal read buffer
+// populated by onNotify. It follows the serial transport's blocking
+// semantics: with a non-zero readTimeout it returns (0, nil) when the
+// timeout elapses without any bytes arriving (letting the flipper
+// layer's prompt-poll loop tick through ctx), with a zero readTimeout
+// it blocks until data, Close, or a latched readErr.
+//
+// The cond-with-timer pattern — a background time.AfterFunc that
+// broadcasts readCond once the deadline elapses — is used instead of
+// a channel because readBuf is already guarded by mu and sync.Cond
+// is the standard idiom for "signal arrival" on shared state. The
+// timer is stopped on every exit so repeated Reads don't leak
+// goroutines when the timeout is reset frequently.
 func (t *bleTransport) Read(p []byte) (int, error) {
-	return 0, errBLENotWired
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	timeout := t.readTimeout
+	var deadline time.Time
+	if timeout > 0 {
+		deadline = time.Now().Add(timeout)
+	}
+
+	for {
+		if t.readBuf.Len() > 0 {
+			return t.readBuf.Read(p)
+		}
+		if t.closed {
+			return 0, os.ErrClosed
+		}
+		if t.readErr != nil {
+			return 0, t.readErr
+		}
+		if timeout == 0 {
+			t.readCond.Wait()
+			continue
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return 0, nil
+		}
+		waitCondTimeout(t.readCond, remaining)
+	}
+}
+
+// waitCondTimeout waits on cond for at most d, then broadcasts to
+// unblock the wait. Must be called with cond.L held; on return the
+// lock is still held (cond.Wait re-acquires it).
+//
+// The broadcast goroutine re-locks cond.L before broadcasting —
+// sync.Cond allows Broadcast without the lock, but taking the lock
+// avoids a subtle race: if the timer fires concurrently with another
+// thread about to signal (say, an onNotify append), the other signal
+// might already have woken our waiter and we'd broadcast into an
+// empty set. Holding the lock during broadcast serialises with the
+// waiter's state check and is cheap in practice.
+func waitCondTimeout(cond *sync.Cond, d time.Duration) {
+	timer := time.AfterFunc(d, func() {
+		cond.L.Lock()
+		cond.Broadcast()
+		cond.L.Unlock()
+	})
+	defer timer.Stop()
+	cond.Wait()
 }
 
 // Write is wired in a subsequent commit.
@@ -381,9 +476,21 @@ func (t *bleTransport) Write(p []byte) (int, error) {
 	return 0, errBLENotWired
 }
 
-// SetReadTimeout is wired in a subsequent commit.
+// SetReadTimeout reconfigures how long the next Read will block
+// before returning (0, nil). Zero means "block indefinitely until
+// data, close, or error" — matching the serial and mock transports.
+// The change applies to the next Read call; a Read currently
+// blocked in readCond.Wait is woken via Broadcast so it can pick up
+// the new timeout immediately.
 func (t *bleTransport) SetReadTimeout(d time.Duration) error {
-	return errBLENotWired
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return os.ErrClosed
+	}
+	t.readTimeout = d
+	t.readCond.Broadcast()
+	return nil
 }
 
 // Reconnect is wired in a subsequent commit.
