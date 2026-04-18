@@ -3,12 +3,24 @@ package marauder
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
 
 	"go.bug.st/serial"
 )
+
+// portIface is the subset of go.bug.st/serial.Port the package actually
+// uses. Defined as an interface so tests can inject a fake (see
+// fake_port_test.go) without opening a real serial device. serial.Port
+// satisfies this interface today — Connect still returns one.
+type portIface interface {
+	io.Reader
+	io.Writer
+	io.Closer
+	SetReadTimeout(time.Duration) error
+}
 
 // Marauder interfaces with the ESP32 Marauder firmware over serial.
 // Default port is /dev/ttyACM1 for the official Flipper WiFi devboard (ESP32-S2 USB CDC).
@@ -19,9 +31,19 @@ import (
 //   - After a command is sent, Marauder echoes the command prefixed with '#' on the first line.
 //   - Output lines follow, terminated by a '> ' prompt (greater-than + space).
 type Marauder struct {
-	port   serial.Port
+	port   portIface
 	mu     sync.Mutex
 	reader *bufio.Reader
+}
+
+// newMarauderWithPort wires a Marauder around a caller-supplied portIface.
+// Unexported because callers outside the package should use Connect; the
+// only in-repo consumer is the fake-port test harness.
+func newMarauderWithPort(p portIface) *Marauder {
+	return &Marauder{
+		port:   p,
+		reader: bufio.NewReader(p),
+	}
 }
 
 func Connect(portName string, baudRate int) (*Marauder, error) {
