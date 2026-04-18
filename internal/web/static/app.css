@@ -84,7 +84,12 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   padding: 0 12px;
   background: var(--pz-bg-surface);
   border-bottom: 1px solid var(--pz-border-subtle);
-  overflow: hidden;
+  /* No overflow:hidden here — header-anchored dropdowns (persona menu,
+   * future popovers) render below the 40px line via position:absolute
+   * and get clipped if any ancestor hides overflow. The scan-line
+   * overlay is still bounded by the header because it uses inset:0
+   * rather than escaping geometry; narrow-viewport squish is handled
+   * per-slot by .pz-header-left { overflow: hidden } at <=420px. */
 }
 
 .pz-header-scan {
