@@ -176,6 +176,72 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .pz-session-pill.pz-copied { color: var(--pz-scan-green); border-color: var(--pz-scan-green); }
 
 /* ==========================================================================
+   Persona switcher (REPL /persona parity)
+   ========================================================================== */
+
+.pz-persona { position: relative; }
+.pz-persona-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  cursor: pointer;
+  background: var(--pz-bg-elevated);
+  border: 1px solid var(--pz-border-subtle);
+  padding: 2px 8px;
+  color: var(--pz-text-dim);
+}
+.pz-persona-btn:hover      { color: var(--pz-text-primary); border-color: var(--pz-border-strong); }
+.pz-persona-btn-open       { color: var(--pz-flipper-orange); border-color: var(--pz-flipper-ember); }
+.pz-persona-glyph          { color: var(--pz-flipper-orange); }
+.pz-persona-name           { color: inherit; letter-spacing: 0.04em; }
+
+.pz-persona-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  list-style: none;
+  min-width: 260px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--pz-bg-surface);
+  border: 1px solid var(--pz-border-strong);
+  padding: 4px 0;
+}
+.pz-persona-empty {
+  padding: 8px 12px;
+  color: var(--pz-text-dim);
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-sm);
+}
+.pz-persona-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+}
+.pz-persona-item:hover            { background: var(--pz-bg-inset); }
+.pz-persona-item-active           { border-left: 2px solid var(--pz-flipper-orange); }
+.pz-persona-item-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px;
+}
+.pz-persona-item-name {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-sm);
+  color: var(--pz-text-primary);
+}
+.pz-persona-item-tools {
+  font-family: var(--pz-font-mono);
+  font-size: var(--pz-text-xs);
+  color: var(--pz-text-dim);
+}
+.pz-persona-item-desc {
+  margin-top: 2px;
+  font-size: var(--pz-text-xs);
+  line-height: 1.3;
+  color: var(--pz-text-dim);
+}
+
+/* ==========================================================================
    Message stack
    ========================================================================== */
 

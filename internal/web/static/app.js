@@ -103,6 +103,9 @@
       motifSvg: Object.create(null),   /* reactive: motif → svg string */
       icons: ICONS,
 
+      /* REPL-parity panels */
+      personaUI: { open: false, current: '', list: [] },
+
       /* internals */
       _ws: null,
       _wsBackoff: 800,
@@ -154,6 +157,7 @@
         this._startHeartbeatWatchdog();
         this._installMock();
         this._connect();
+        this.loadPersonas();
 
         document.addEventListener('keydown', (e) => this._globalKey(e));
 
@@ -400,6 +404,11 @@
             this._lastPingAt = Date.now();
             if (this.connection === 'slow') this.connection = 'online';
             this._send({ type: 'pong', t: msg.t });
+            break;
+
+          case 'persona_switched':
+            this.personaUI.current = msg.name || '';
+            this._addAgent('● ' + (msg.content || ('persona switched to ' + msg.name)), null, { streaming: false, system: true });
             break;
         }
       },
@@ -664,6 +673,38 @@
           return obj;
         }
         try { return JSON.stringify(obj, null, 2); } catch (_) { return String(obj); }
+      },
+
+      /* ---------- persona switcher (REPL /persona parity) ---------- */
+      loadPersonas() {
+        fetch('api/personas')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (!data) return;
+            this.personaUI.current = data.current || '';
+            this.personaUI.list = Array.isArray(data.available) ? data.available : [];
+          })
+          .catch(() => { /* panel stays empty; hide in UI */ });
+      },
+      togglePersonaMenu() {
+        if (!this.personaUI.open) this.loadPersonas();
+        this.personaUI.open = !this.personaUI.open;
+      },
+      switchPersona(name) {
+        if (!name || name === this.personaUI.current) { this.personaUI.open = false; return; }
+        fetch('api/personas/switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name }),
+        })
+          .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+          .then((data) => {
+            this.personaUI.current = data.current || name;
+            /* The server also broadcasts a persona_switched event; the toast
+               is emitted there so peer tabs see it too. */
+          })
+          .catch(() => { /* fall back silently; the menu stays open for retry */ })
+          .finally(() => { this.personaUI.open = false; });
       },
 
       /* ---------- dev mock console (localhost only) ---------- */

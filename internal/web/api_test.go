@@ -1,0 +1,349 @@
+// Tests for the REPL-parity HTTP endpoints. Each panel gets a focused
+// test that exercises both the success and the not-configured paths so
+// the frontend contract stays observable.
+
+package web
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/cost"
+	"github.com/xunholy/promptzero/internal/persona"
+	"github.com/xunholy/promptzero/internal/rules"
+	"github.com/xunholy/promptzero/internal/watch"
+)
+
+// apiServer is startTestServer's equivalent for the HTTP JSON routes —
+// skips the WebSocket dial and returns the raw httptest.Server so tests
+// can GET/POST directly.
+func apiServer(t *testing.T, fa *fakeAgent) (*Server, *httptest.Server) {
+	t.Helper()
+	s := &Server{
+		agent:             fa,
+		addr:              "127.0.0.1:0",
+		conns:             make(map[*sessionConn]struct{}),
+		confirms:          make(map[string]chan agent.Decision),
+		heartbeatInterval: 100 * time.Millisecond,
+		heartbeatTimeout:  2 * time.Second,
+		writeTimeout:      2 * time.Second,
+		startedAt:         time.Now(),
+	}
+	s.attachAgentCallbacks()
+	mux := http.NewServeMux()
+	s.registerAPIRoutes(mux)
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	return s, ts
+}
+
+func getJSON(t *testing.T, ts *httptest.Server, path string) (int, map[string]any) {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, ts.URL+path, nil)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	var body map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	return resp.StatusCode, body
+}
+
+func postJSON(t *testing.T, ts *httptest.Server, path string, payload any) (int, []byte) {
+	t.Helper()
+	var buf bytes.Buffer
+	if payload != nil {
+		_ = json.NewEncoder(&buf).Encode(payload)
+	}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+path, &buf)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	out := make([]byte, 0, 512)
+	buf2 := make([]byte, 1024)
+	for {
+		n, rerr := resp.Body.Read(buf2)
+		if n > 0 {
+			out = append(out, buf2[:n]...)
+		}
+		if rerr != nil {
+			break
+		}
+	}
+	return resp.StatusCode, out
+}
+
+// ---------------------------------------------------------------------------
+// Personas
+// ---------------------------------------------------------------------------
+
+func TestPersonasListReturns503WithoutRegistry(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	code, body := getJSON(t, ts, "/api/personas")
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503; body=%v", code, body)
+	}
+	if body["error"] == "" {
+		t.Errorf("expected error string, got %v", body)
+	}
+}
+
+func TestPersonasListReturnsRegistry(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	reg := persona.NewRegistry()
+	s.SetPersonaRegistry(reg)
+
+	code, body := getJSON(t, ts, "/api/personas")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%v", code, body)
+	}
+	avail, ok := body["available"].([]any)
+	if !ok || len(avail) == 0 {
+		t.Fatalf("expected non-empty available list, got %v", body["available"])
+	}
+	first, _ := avail[0].(map[string]any)
+	if first["name"] == nil {
+		t.Errorf("entry missing name: %v", first)
+	}
+	if _, ok := body["current"]; !ok {
+		t.Errorf("expected 'current' key in response")
+	}
+}
+
+func TestPersonasSwitchApplies(t *testing.T) {
+	fa := &fakeAgent{}
+	s, ts := apiServer(t, fa)
+	reg := persona.NewRegistry()
+	s.SetPersonaRegistry(reg)
+
+	names := reg.Names()
+	if len(names) == 0 {
+		t.Fatal("built-in registry empty; cannot test switch")
+	}
+	target := names[0]
+
+	code, raw := postJSON(t, ts, "/api/personas/switch", map[string]string{"name": target})
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", code, raw)
+	}
+	if fa.Persona() == nil || fa.Persona().Name != target {
+		t.Errorf("agent persona = %v, want %s", fa.Persona(), target)
+	}
+}
+
+func TestPersonasSwitchUnknownReturns404(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	s.SetPersonaRegistry(persona.NewRegistry())
+
+	code, _ := postJSON(t, ts, "/api/personas/switch", map[string]string{"name": "no-such-persona"})
+	if code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Watch
+// ---------------------------------------------------------------------------
+
+func TestWatchReturnsState(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	tmp := t.TempDir()
+	w := watch.New([]string{tmp}, []watch.Rule{
+		{Pattern: "*.sub", Prompt: "decode {{path}}"},
+	})
+	s.SetWatcher(w)
+
+	code, body := getJSON(t, ts, "/api/watch")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%v", code, body)
+	}
+	rs, _ := body["rules"].([]any)
+	if len(rs) != 1 {
+		t.Errorf("rules = %v, want 1 entry", rs)
+	}
+	if body["paused"] != false {
+		t.Errorf("paused = %v, want false", body["paused"])
+	}
+}
+
+func TestWatchPauseResumeToggles(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	w := watch.New([]string{t.TempDir()}, nil)
+	s.SetWatcher(w)
+
+	code, _ := postJSON(t, ts, "/api/watch/pause", nil)
+	if code != http.StatusOK || !w.Paused() {
+		t.Fatalf("pause failed: code=%d paused=%v", code, w.Paused())
+	}
+	code, _ = postJSON(t, ts, "/api/watch/resume", nil)
+	if code != http.StatusOK || w.Paused() {
+		t.Fatalf("resume failed: code=%d paused=%v", code, w.Paused())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cost
+// ---------------------------------------------------------------------------
+
+func TestCostSnapshot(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	tr := cost.NewTracker(cost.NewPricer(nil), "claude-opus-4-7", nil)
+	tr.AddUsage(1_000_000, 500_000)
+	s.SetCostTracker(tr)
+
+	code, body := getJSON(t, ts, "/api/cost")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%v", code, body)
+	}
+	total, _ := body["total"].(map[string]any)
+	if total["input_tokens"].(float64) != 1_000_000 {
+		t.Errorf("input_tokens = %v, want 1_000_000", total["input_tokens"])
+	}
+	if total["usd"].(float64) <= 0 {
+		t.Errorf("usd = %v, want > 0", total["usd"])
+	}
+	byModel, _ := body["by_model"].([]any)
+	if len(byModel) != 1 {
+		t.Errorf("by_model len = %d, want 1", len(byModel))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Rules
+// ---------------------------------------------------------------------------
+
+func TestRulesList(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	eng := rules.New(rules.Deps{})
+	eng.Register(rules.Rule{
+		Name: "alpha", Description: "first", Enabled: true,
+		Actions: []rules.Action{{Kind: rules.ActionLog, Params: map[string]interface{}{"message": "hi"}}},
+	})
+	s.SetRulesEngine(eng)
+
+	code, body := getJSON(t, ts, "/api/rules")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%v", code, body)
+	}
+	// Response is an array; decode as raw list.
+	code, raw := postJSON(t, ts, "/api/rules/alpha/pause", nil)
+	if code != http.StatusOK {
+		t.Fatalf("pause status = %d; body=%s", code, raw)
+	}
+	code, _ = postJSON(t, ts, "/api/rules/alpha/resume", nil)
+	if code != http.StatusOK {
+		t.Fatalf("resume status = %d", code)
+	}
+}
+
+func TestRuleTestRendersWithoutFiring(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	eng := rules.New(rules.Deps{})
+	eng.Register(rules.Rule{
+		Name: "preview-rule", Enabled: true,
+		Actions: []rules.Action{{Kind: rules.ActionLog, Params: map[string]interface{}{"message": "tool={{tool}}"}}},
+	})
+	s.SetRulesEngine(eng)
+
+	code, raw := postJSON(t, ts, "/api/rules/preview-rule/test", nil)
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", code, raw)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(raw, &body)
+	actions, _ := body["actions"].([]any)
+	if len(actions) != 1 {
+		t.Fatalf("actions = %v, want 1", actions)
+	}
+}
+
+func TestRulePauseUnknownReturns404(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	s.SetRulesEngine(rules.New(rules.Deps{}))
+	code, _ := postJSON(t, ts, "/api/rules/ghost/pause", nil)
+	if code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Validate
+// ---------------------------------------------------------------------------
+
+func TestValidateInlineContent(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+
+	code, raw := postJSON(t, ts, "/api/validate", map[string]string{
+		"path":    "script.txt",
+		"content": "STRING rm -rf /\n",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", code, raw)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(raw, &body)
+	if body["overall_risk"] != "critical" {
+		t.Errorf("overall_risk = %v, want critical", body["overall_risk"])
+	}
+	if body["approved"] != false {
+		t.Errorf("approved = %v, want false for critical", body["approved"])
+	}
+}
+
+func TestValidateReadsFileFromPath(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	dir := t.TempDir()
+	p := filepath.Join(dir, "harmless.txt")
+	if err := os.WriteFile(p, []byte("REM harmless\nSTRING hello\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, raw := postJSON(t, ts, "/api/validate", map[string]string{"path": p})
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", code, raw)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(raw, &body)
+	if body["approved"] != true {
+		t.Errorf("approved = %v, want true for harmless script", body["approved"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Debug
+// ---------------------------------------------------------------------------
+
+func TestDebugSnapshotShape(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	s.SetFlipperConnected(true)
+	s.SetMarauderConnected(false)
+
+	code, body := getJSON(t, ts, "/api/debug")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%v", code, body)
+	}
+	for _, key := range []string{"build", "runtime", "state"} {
+		if _, ok := body[key]; !ok {
+			t.Errorf("missing top-level %q in %v", key, body)
+		}
+	}
+	state, _ := body["state"].(map[string]any)
+	if state["flipper_connected"] != true {
+		t.Errorf("flipper_connected = %v, want true", state["flipper_connected"])
+	}
+	rt, _ := body["runtime"].(map[string]any)
+	if rt["goroutines"].(float64) <= 0 {
+		t.Errorf("goroutines = %v, want > 0", rt["goroutines"])
+	}
+}

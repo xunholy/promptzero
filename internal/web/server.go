@@ -45,8 +45,12 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/obs"
+	"github.com/xunholy/promptzero/internal/persona"
+	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/voice"
+	"github.com/xunholy/promptzero/internal/watch"
 )
 
 //go:embed static
@@ -61,6 +65,8 @@ type agentDriver interface {
 	SetTextDeltaCallback(f func(agent.TextDelta))
 	SetToolStatusCallback(f func(agent.ToolEvent))
 	SetConfirmCallback(f agent.ConfirmFunc)
+	SetPersona(p *persona.Persona)
+	Persona() *persona.Persona
 }
 
 // outboundQueue bounds how many pending events a slow consumer may buffer.
@@ -93,6 +99,24 @@ type Server struct {
 	conns       map[*sessionConn]struct{}
 	currentTurn *turnState
 	confirms    map[string]chan agent.Decision
+
+	// Optional data sources for the REPL-parity panels. Nil when the host
+	// process has not wired a given subsystem — handlers return 503 with a
+	// short reason so the UI can hide or grey out the affected panel.
+	personas    *persona.Registry
+	watcher     *watch.Watcher
+	costs       *cost.Tracker
+	rulesEngine *rules.Engine
+
+	// startedAt records the time NewServer returned; /api/debug computes
+	// uptime against it rather than os.StartTime so the number matches the
+	// connection lifecycle the operator sees in the cockpit.
+	startedAt time.Time
+
+	// Device state surfaced in /api/debug. Updated by the host via
+	// SetFlipperConnected / SetMarauderConnected on transport events.
+	flipperOn  atomic.Bool
+	marauderOn atomic.Bool
 }
 
 type sessionConn struct {
@@ -137,6 +161,7 @@ func NewServer(addr string, ag agentDriver, v *voice.Engine) *Server {
 		heartbeatInterval: 15 * time.Second,
 		heartbeatTimeout:  30 * time.Second,
 		writeTimeout:      5 * time.Second,
+		startedAt:         time.Now(),
 	}
 	s.attachAgentCallbacks()
 	return s
@@ -149,6 +174,31 @@ func (s *Server) SetMetrics(rec *obs.Recorder, path string) {
 	s.metrics = rec
 	s.metricsPath = path
 }
+
+// SetPersonaRegistry wires the persona catalogue into the server so
+// /api/personas can list choices and /api/personas/switch can apply one.
+// Safe to pass nil — the endpoints return 503 until a registry is set.
+func (s *Server) SetPersonaRegistry(r *persona.Registry) { s.personas = r }
+
+// SetWatcher wires the filesystem watcher into the server so /api/watch
+// can surface its configured rules, recent events, and paused state.
+func (s *Server) SetWatcher(w *watch.Watcher) { s.watcher = w }
+
+// SetCostTracker wires the session cost tracker into the server so the
+// header cost pill and /api/cost handler can render live totals.
+func (s *Server) SetCostTracker(t *cost.Tracker) { s.costs = t }
+
+// SetRulesEngine wires the reactive-rules engine into the server so
+// /api/rules can list, pause, resume, and test rule fires.
+func (s *Server) SetRulesEngine(e *rules.Engine) { s.rulesEngine = e }
+
+// SetFlipperConnected records the current Flipper serial state for the
+// /api/debug snapshot. Call on connect/disconnect transitions.
+func (s *Server) SetFlipperConnected(v bool) { s.flipperOn.Store(v) }
+
+// SetMarauderConnected records the current Marauder serial state for the
+// /api/debug snapshot. Call on connect/disconnect transitions.
+func (s *Server) SetMarauderConnected(v bool) { s.marauderOn.Store(v) }
 
 // Addr returns the effective host:port the server will bind to, after any
 // loopback-default rewrite applied in NewServer. Use this for display so the
@@ -200,6 +250,7 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		mux.Handle(path, s.metrics.Handler())
 	}
+	s.registerAPIRoutes(mux)
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 	mux.HandleFunc("/ws", s.handleWebSocket)
 

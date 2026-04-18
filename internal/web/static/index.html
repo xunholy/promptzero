@@ -39,6 +39,40 @@
     </div>
 
     <div class="pz-header-right">
+      <!-- Persona switcher (REPL /persona parity) -->
+      <div class="pz-persona" @click.away="personaUI.open = false">
+        <button type="button"
+                class="pz-persona-btn pz-chip"
+                :class="{ 'pz-persona-btn-open': personaUI.open }"
+                @click="togglePersonaMenu()"
+                :aria-expanded="personaUI.open ? 'true' : 'false'"
+                :aria-label="'persona: ' + (personaUI.current || 'default')"
+                :title="'persona: ' + (personaUI.current || 'default')">
+          <span class="pz-persona-glyph" aria-hidden="true">◆</span>
+          <span class="pz-persona-name pz-tabular" x-text="personaUI.current || 'default'"></span>
+        </button>
+        <ul class="pz-persona-menu"
+            x-show="personaUI.open"
+            x-cloak
+            role="menu">
+          <template x-if="personaUI.list.length === 0">
+            <li class="pz-persona-empty">no personas loaded</li>
+          </template>
+          <template x-for="p in personaUI.list" :key="p.name">
+            <li role="menuitem"
+                class="pz-persona-item"
+                :class="{ 'pz-persona-item-active': p.name === personaUI.current }"
+                @click="switchPersona(p.name)">
+              <div class="pz-persona-item-head">
+                <span class="pz-persona-item-name" x-text="p.name"></span>
+                <span class="pz-persona-item-tools pz-tabular" x-text="p.tools + ' tools'"></span>
+              </div>
+              <div class="pz-persona-item-desc" x-text="p.description"></div>
+            </li>
+          </template>
+        </ul>
+      </div>
+
       <span class="pz-conn"
             :class="'pz-conn-' + connection"
             :title="'connection: ' + connection"

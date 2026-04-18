@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/persona"
 )
 
 // fakeAgent satisfies agentDriver without touching any real LLM client. The
@@ -25,6 +26,7 @@ type fakeAgent struct {
 	runFn        func(ctx context.Context, input string, f *fakeAgent) (string, error)
 	resetCalls   int
 	lastRunInput string
+	persona      *persona.Persona
 }
 
 func (f *fakeAgent) Run(ctx context.Context, input string) (string, error) {
@@ -58,6 +60,18 @@ func (f *fakeAgent) SetConfirmCallback(cb agent.ConfirmFunc) {
 	f.mu.Lock()
 	f.confirmCb = cb
 	f.mu.Unlock()
+}
+
+func (f *fakeAgent) SetPersona(p *persona.Persona) {
+	f.mu.Lock()
+	f.persona = p
+	f.mu.Unlock()
+}
+
+func (f *fakeAgent) Persona() *persona.Persona {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.persona
 }
 
 func (f *fakeAgent) emitDelta(t agent.TextDelta) {
