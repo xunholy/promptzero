@@ -23,6 +23,7 @@ import (
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/rules"
+	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
 	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/webhook"
@@ -186,8 +187,42 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 			}
 		})
 		return true, false
+	case "/validate":
+		if len(fields) < 2 {
+			ed.writeOutput(func() {
+				fmt.Fprintf(os.Stderr, "  %susage: /validate <path-on-flipper>%s\n", dim, reset)
+			})
+			return true, false
+		}
+		path := fields[1]
+		ed.writeOutput(func() { handleValidate(deps.flip, path) })
+		return true, false
 	}
 	return false, false
+}
+
+// handleValidate reads a BadUSB/DuckyScript payload off the Flipper SD card
+// and prints the validator Report. Gives operators a way to triage a script
+// before running it — without spinning up badusb_run just to see the gate.
+func handleValidate(flip *flipper.Flipper, path string) {
+	if flip == nil {
+		fmt.Fprintf(os.Stderr, "  %s● /validate needs a connected Flipper%s\n", red, reset)
+		return
+	}
+	raw, err := flip.StorageRead(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● read %s failed: %v%s\n", red, path, err, reset)
+		return
+	}
+	rep := validator.Validate(path, raw)
+	label := green + "●"
+	switch rep.Severity {
+	case validator.SeverityWarn:
+		label = yellow + "●"
+	case validator.SeverityCritical:
+		label = red + "●"
+	}
+	fmt.Fprintf(os.Stderr, "  %s%s %s\n", label, reset, strings.TrimRight(rep.RenderText(), "\n"))
 }
 
 // --- /help ---------------------------------------------------------------
@@ -218,6 +253,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/webhooks [test <name>]%s List outbound webhooks with recent deliveries\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/mqtt [test]%s           Show MQTT bridge status (and publish a synthetic ping)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/validate <path>%s       Lint a BadUSB .txt payload on the Flipper SD card\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sDevice%s\n", dim, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sInput%s\n", dim, reset)
