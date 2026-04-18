@@ -11,16 +11,20 @@ import (
 	"go.bug.st/serial"
 )
 
-// portIface is the subset of go.bug.st/serial.Port the package actually
-// uses. Defined as an interface so tests can inject a fake (see
-// fake_port_test.go) without opening a real serial device. serial.Port
-// satisfies this interface today — Connect still returns one.
-type portIface interface {
+// Port is the subset of go.bug.st/serial.Port the package actually uses.
+// Exported so sibling test packages (internal/testmocks) can inject a
+// fake backend via NewWithPort. serial.Port satisfies this interface
+// today — production Connect still returns one.
+type Port interface {
 	io.Reader
 	io.Writer
 	io.Closer
 	SetReadTimeout(time.Duration) error
 }
+
+// portIface is an internal alias retained so the package-local test
+// harness reads the same way it used to.
+type portIface = Port
 
 // Marauder interfaces with the ESP32 Marauder firmware over serial.
 // Default port is /dev/ttyACM1 for the official Flipper WiFi devboard (ESP32-S2 USB CDC).
@@ -36,15 +40,20 @@ type Marauder struct {
 	reader *bufio.Reader
 }
 
-// newMarauderWithPort wires a Marauder around a caller-supplied portIface.
-// Unexported because callers outside the package should use Connect; the
-// only in-repo consumer is the fake-port test harness.
-func newMarauderWithPort(p portIface) *Marauder {
+// NewWithPort wires a Marauder around a caller-supplied Port. Production
+// code should call Connect; this constructor exists for tests (including
+// the sibling internal/testmocks harness) that need to inject a fake
+// serial backend without opening a real device.
+func NewWithPort(p Port) *Marauder {
 	return &Marauder{
 		port:   p,
 		reader: bufio.NewReader(p),
 	}
 }
+
+// newMarauderWithPort is a package-local alias that preserves the
+// unexported spelling used by the in-package test harness.
+func newMarauderWithPort(p portIface) *Marauder { return NewWithPort(p) }
 
 func Connect(portName string, baudRate int) (*Marauder, error) {
 	if baudRate == 0 {
