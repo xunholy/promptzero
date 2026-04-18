@@ -449,9 +449,57 @@
       </template>
     </section>
 
-    <!-- RULES TAB (populated in a later commit) -->
+    <!-- RULES TAB -->
     <section class="pz-sidebar-body" x-show="sidebar.tab === 'rules'" role="tabpanel">
-      <div class="pz-panel-empty">rules panel coming soon</div>
+      <template x-if="!rulesUI.loaded">
+        <div class="pz-panel-empty">loading…</div>
+      </template>
+      <template x-if="rulesUI.loaded && rulesUI.error">
+        <div class="pz-panel-empty pz-panel-err" x-text="rulesUI.error"></div>
+      </template>
+      <template x-if="rulesUI.loaded && !rulesUI.error">
+        <div>
+          <h4 class="pz-panel-heading">
+            <span>Rules</span>
+            <span class="pz-panel-spacer"></span>
+            <span class="pz-tabular pz-rule-fires" x-text="rulesUI.list.length + ' total'"></span>
+          </h4>
+          <template x-if="rulesUI.list.length === 0">
+            <div class="pz-panel-empty">no rules loaded</div>
+          </template>
+          <template x-for="r in rulesUI.list" :key="r.name">
+            <div class="pz-rule">
+              <div class="pz-rule-head">
+                <label class="pz-rule-toggle" :title="r.enabled ? 'pause ' + r.name : 'resume ' + r.name">
+                  <input type="checkbox"
+                         :checked="r.enabled"
+                         @change.prevent="toggleRule(r)"
+                         :aria-label="(r.enabled ? 'pause ' : 'resume ') + r.name">
+                  <span class="pz-rule-toggle-track" aria-hidden="true"></span>
+                </label>
+                <span class="pz-rule-name pz-mono" x-text="r.name"></span>
+                <span class="pz-rule-fires pz-tabular"
+                      x-text="(r.fire_count || 0) + ' fires'"></span>
+              </div>
+              <template x-if="r.description">
+                <div class="pz-rule-desc" x-text="r.description"></div>
+              </template>
+              <div class="pz-rule-actions">
+                <button type="button"
+                        class="pz-panel-btn"
+                        @click="testRule(r.name)">Test</button>
+                <template x-if="r.last_fired">
+                  <span class="pz-rule-fires pz-tabular"
+                        x-text="'last fired ' + shortTime(r.last_fired)"></span>
+                </template>
+              </div>
+              <template x-if="rulesUI.testResults[r.name]">
+                <pre class="pz-rule-test" x-text="rulesUI.testResults[r.name]"></pre>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
     </section>
   </aside>
 
