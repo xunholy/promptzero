@@ -91,11 +91,6 @@ const bleMaxMTU = 512
 // size for a single WriteWithoutResponse.
 const attHeaderOverhead = 3
 
-// errBLENotWired is returned by bleTransport methods that have not yet
-// been implemented in the current commit. Replaced with functional
-// implementations in subsequent commits of this phase.
-var errBLENotWired = errors.New("transport: ble method not yet implemented")
-
 func init() { Register("ble", bleDialer) }
 
 // mustParseUUID parses a UUID literal or panics. Used only for the
@@ -185,10 +180,9 @@ type bleTransport struct {
 	readTimeout time.Duration
 }
 
-// Dial enables the adapter, scans for the target MAC (bounded by
-// bleScanTimeout), connects to the peripheral, discovers the Flipper
-// service, and resolves the TX / RX characteristics. It honours
-// ctx cancellation throughout: a cancelled ctx during scan stops the
+// Dial enables the adapter and runs the scan → connect → discover →
+// notify-enable → MTU negotiation pipeline. It honours ctx
+// cancellation throughout: a cancelled ctx during scan stops the
 // scan immediately; a cancel between connect and characteristic
 // resolution disconnects the device and returns ctx.Err.
 func (t *bleTransport) Dial(ctx context.Context) error {
@@ -203,6 +197,16 @@ func (t *bleTransport) Dial(ctx context.Context) error {
 	}
 	t.mu.Unlock()
 
+	return t.establish(ctx)
+}
+
+// establish runs the full scan → connect → discover → notify-enable →
+// MTU-handshake pipeline and commits the resulting handles to t.
+// Shared between Dial and Reconnect so the wire-level steps have
+// exactly one implementation. The caller is responsible for clearing
+// any previous adapter/device/char state (Reconnect does this under
+// mu before calling).
+func (t *bleTransport) establish(ctx context.Context) error {
 	adapter := bluetooth.DefaultAdapter
 	if err := adapter.Enable(); err != nil {
 		return fmt.Errorf("transport: enabling BLE adapter: %w", err)
@@ -248,14 +252,44 @@ func (t *bleTransport) Dial(ctx context.Context) error {
 		return fmt.Errorf("transport: enabling RX notifications on %s: %w", t.mac, err)
 	}
 
+	mtu := negotiateMTU(txChar)
+
 	t.mu.Lock()
 	t.adapter = adapter
 	t.device = &device
 	t.txChar = txChar
 	t.rxChar = rxChar
+	t.mtu = mtu
+	// Wake any Read already parked before Reconnect — onNotify for
+	// the new connection will refill readBuf, but a Read blocked
+	// with a stale readErr latch should re-evaluate.
+	t.readErr = nil
+	t.readCond.Broadcast()
 	t.mu.Unlock()
 
 	return nil
+}
+
+// negotiateMTU queries the negotiated ATT MTU via GetMTU on the TX
+// characteristic and returns the usable per-Write payload size
+// (negotiated MTU minus the 3-byte ATT header). Falls back to the
+// BLE spec minimum (23 − 3 = 20 bytes) if GetMTU errors or returns a
+// value below spec — some backends return 0 on Linux before the
+// peripheral confirms the MTU exchange, and the flipper-layer's
+// first command is small enough that a 20-byte chunk size is always
+// correct. Clamps above bleMaxMTU to keep chunk sizes sane.
+func negotiateMTU(c bluetooth.DeviceCharacteristic) int {
+	raw, err := c.GetMTU()
+	if err != nil || int(raw) < bleDefaultMTU {
+		slog.Warn("transport/ble: MTU negotiation unavailable; using BLE default",
+			"mtu", raw, "err", err, "fallback", bleDefaultMTU)
+		return bleDefaultMTU - attHeaderOverhead
+	}
+	mtu := int(raw)
+	if mtu > bleMaxMTU {
+		mtu = bleMaxMTU
+	}
+	return mtu - attHeaderOverhead
 }
 
 // onNotify is the callback registered against the RX characteristic's
@@ -471,9 +505,57 @@ func waitCondTimeout(cond *sync.Cond, d time.Duration) {
 	cond.Wait()
 }
 
-// Write is wired in a subsequent commit.
+// Write sends p to the Flipper via the TX characteristic. BLE ATT
+// payloads are bounded by the negotiated MTU minus the 3-byte header,
+// so writes larger than t.mtu are chunked into consecutive
+// WriteWithoutResponse calls. WriteWithoutResponse is preferred over
+// Write because the Flipper's BLE serial service does not ACK
+// individual writes at the GATT layer — the application-level prompt
+// response (read back via notifications) is what confirms delivery.
+//
+// The characteristic handle is snapshot under mu before the chunk
+// loop so a concurrent Close or Reconnect doesn't mutate txChar
+// mid-write, but the actual library call is made outside the lock so
+// a stalled write cannot block readers in onNotify. A Close or error
+// mid-loop returns the bytes successfully sent so far, matching
+// io.Writer's partial-write contract.
 func (t *bleTransport) Write(p []byte) (int, error) {
-	return 0, errBLENotWired
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return 0, os.ErrClosed
+	}
+	if t.device == nil {
+		t.mu.Unlock()
+		return 0, fmt.Errorf("transport: ble write before Dial on %s", t.mac)
+	}
+	txChar := t.txChar
+	chunkSize := t.mtu
+	if chunkSize <= 0 {
+		chunkSize = bleDefaultMTU - attHeaderOverhead
+	}
+	t.mu.Unlock()
+
+	total := 0
+	for total < len(p) {
+		end := total + chunkSize
+		if end > len(p) {
+			end = len(p)
+		}
+		n, err := txChar.WriteWithoutResponse(p[total:end])
+		total += n
+		if err != nil {
+			return total, fmt.Errorf("transport: BLE write to %s: %w", t.mac, err)
+		}
+		if n == 0 {
+			return total, fmt.Errorf("transport: BLE write to %s returned 0 bytes", t.mac)
+		}
+	}
+	return total, nil
 }
 
 // SetReadTimeout reconfigures how long the next Read will block
@@ -493,9 +575,39 @@ func (t *bleTransport) SetReadTimeout(d time.Duration) error {
 	return nil
 }
 
-// Reconnect is wired in a subsequent commit.
+// Reconnect tears down the current peripheral connection and re-runs
+// the Dial pipeline. Used by the flipper layer when a Read or Write
+// surfaces a disconnect-class error (the Transport contract says the
+// caller is responsible for driving Reconnect; we do not auto-
+// reconnect from inside onNotify because the library's notification
+// goroutine must return quickly).
+//
+// The old device handle is Disconnected outside the lock — BlueZ's
+// Disconnect can block on DBus for several seconds if the peripheral
+// already dropped — and readErr is cleared inside establish so a Read
+// parked with a stale latched error picks up the new connection.
 func (t *bleTransport) Reconnect(ctx context.Context) error {
-	return errBLENotWired
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return os.ErrClosed
+	}
+	oldDevice := t.device
+	t.device = nil
+	t.adapter = nil
+	t.txChar = bluetooth.DeviceCharacteristic{}
+	t.rxChar = bluetooth.DeviceCharacteristic{}
+	t.readBuf.Reset()
+	t.mu.Unlock()
+
+	if oldDevice != nil {
+		if err := oldDevice.Disconnect(); err != nil {
+			slog.Debug("transport/ble: disconnect during reconnect returned error (continuing)",
+				"mac", t.mac, "err", err)
+		}
+	}
+
+	return t.establish(ctx)
 }
 
 // Close disconnects the peripheral, latches closed=true, and signals
