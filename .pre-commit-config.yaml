@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: MIT
+#
+# Pre-commit hooks for promptzero.
+# Install: pre-commit install
+# Run against all files: pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.11.4
+    hooks:
+      - id: golangci-lint
+        args: [--timeout=5m]
+
+  - repo: local
+    hooks:
+      - id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+      - id: go-mod-tidy
+        name: go mod tidy (check)
+        entry: bash -c 'go mod tidy && git diff --quiet go.mod go.sum'
+        language: system
+        files: ^(go\.mod|go\.sum)$
+        pass_filenames: false

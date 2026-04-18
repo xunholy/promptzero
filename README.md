@@ -276,13 +276,18 @@ Tested against modded firmware with all features unlocked:
 
 ## Building
 
+Preferred workflow uses [Task](https://taskfile.dev):
+
 ```bash
-make build          # Build for current platform
-make run            # Build and run
-make clean          # Remove build artifacts
-make tidy           # go mod tidy
-make lint           # golangci-lint (requires golangci-lint installed)
+task dev:setup      # One-time: install pinned golangci-lint
+task build          # Build with version ldflags stamped from git
+task test           # Short test suite (<5s)
+task test:full      # Full suite, matches CI
+task lint           # golangci-lint run ./...
+task --list         # See every available target
 ```
+
+The original `make` targets still work for build/run/clean/tidy/lint.
 
 ### Cross-compilation
 
