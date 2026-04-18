@@ -134,6 +134,20 @@ export OPENAI_API_KEY="sk-..."          # optional, for voice
 export OPENROUTER_API_KEY="sk-or-..."   # optional, for multi-model generation
 ```
 
+### Examples
+
+The [`examples/`](examples/) directory ships operator-ready templates you
+can copy into `~/.promptzero/` to get started:
+
+| File | Purpose |
+|------|---------|
+| [`examples/config.yaml`](examples/config.yaml) | Fully-commented config template covering every section (serial, marauder, web, watch, webhooks, MQTT, observability, validator, cost, rules). |
+| [`examples/rules.yaml`](examples/rules.yaml) | Four reactive rules: critical alerts, Mifare auto-triage, rolljam MQTT feed, risk-level log breadcrumbs. |
+| [`examples/personas/red-team-day.yaml`](examples/personas/red-team-day.yaml) | Authorised engagement persona — full offensive surface, `risk_threshold: high`. |
+| [`examples/personas/blue-team-audit.yaml`](examples/personas/blue-team-audit.yaml) | Read-only forensic persona — no transmit/emulate/write, `risk_threshold: low`. |
+| [`examples/personas/ctf-shelf.yaml`](examples/personas/ctf-shelf.yaml) | CTF puzzle persona — heavy on file-format surgery, audit replay, and multi-angle decode. |
+| [`examples/personas/hw-lab.yaml`](examples/personas/hw-lab.yaml) | Hardware bench persona — GPIO/I2C/OneWire/UART/SPI only, vision-first pinout. |
+
 ### Run
 
 ```bash

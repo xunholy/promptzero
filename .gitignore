@@ -14,9 +14,9 @@ zeropilot
 go.work
 go.work.sum
 
-# Config with secrets
-config.yaml
-config.yml
+# Config with secrets (top-level only — examples/ templates are committed)
+/config.yaml
+/config.yml
 
 # IDE
 .idea/

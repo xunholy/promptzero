@@ -1,0 +1,62 @@
+# PromptZero reactive rules — subscribed to the audit observer.
+#
+# Each rule AND-matches any non-empty field of `when` against every
+# audit entry and, on a match (subject to cooldown), fans out the
+# actions in `then`. Action params support the template placeholders
+# {{tool}}, {{risk}}, {{level}}, {{output}}, {{session_id}}, {{trace_id}}.
+#
+# Load via `rules:` in config.yaml or paste into ~/.promptzero/config.yaml.
+rules:
+  - name: alert-on-critical
+    description: >-
+      Fire the slack-alerts webhook on any Critical audit entry.
+      Cooldowns prevent alert-storming during sustained activity.
+    when:
+      level: Critical
+    then:
+      - type: webhook
+        webhook: slack-alerts
+        params:
+          summary: "CRITICAL: {{tool}} (trace {{trace_id}})"
+          output: "{{output}}"
+    cooldown: 1m
+
+  - name: auto-triage-mifare
+    description: >-
+      When a Mifare Classic card is detected, kick off the badge
+      pipeline workflow in read-only mode (no dump attempt) to pull
+      UID, sector layout, and known-key hits automatically.
+    when:
+      tool: nfc_detect
+      output_contains: MIFARE Classic
+    then:
+      - type: tool
+        tool: workflow_nfc_badge_pipeline
+        params:
+          attempt_dump: false
+
+  - name: log-rolljam-attempts
+    description: >-
+      Publish every rolljam workflow step to the ops MQTT stream so a
+      second operator can watch along on a dashboard.
+    when:
+      tool: workflow_rolljam_*
+    then:
+      - type: mqtt
+        topic: ops/rolljam/attempts
+        params:
+          stage: "{{tool}}"
+          trace_id: "{{trace_id}}"
+          risk: "{{risk}}"
+
+  - name: record-risk-prompts
+    description: >-
+      Stdout-only breadcrumb for every Critical-risk tool call,
+      regardless of tool. No side effects — useful when tailing logs
+      during a live engagement.
+    when:
+      risk: critical
+    then:
+      - type: log
+        params:
+          message: "risk=critical tool={{tool}} trace={{trace_id}}"

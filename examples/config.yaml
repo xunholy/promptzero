@@ -1,0 +1,100 @@
+# PromptZero full configuration template.
+# Copy to ~/.promptzero/config.yaml or pass via --config. Every non-trivial
+# field is commented; omit sections you don't need.
+
+# --- API + model ----------------------------------------------------------
+
+# Anthropic API key (or set ANTHROPIC_API_KEY env var — env wins).
+api_key: ""
+# Optional OpenAI key for Whisper voice transcription.
+openai_api_key: ""
+# Claude model. Defaults to claude-sonnet-4-6 if omitted.
+model: "claude-sonnet-4-6"
+
+# --- Flipper Zero connection ---------------------------------------------
+serial:
+  port: "/dev/ttyACM0"               # USB CDC-ACM path
+  baud_rate: 230400                  # nominal; CDC-ACM is lane-rate irrelevant
+  # transport_url overrides port + baud. Schemes:
+  #   serial:///dev/ttyACM0?baud=230400
+  #   mock:///dev/pts/5              (test harness pty slave)
+  #   ble://AA:BB:CC:DD:EE:FF        (reserved — Phase-B, not yet live)
+  transport_url: ""
+
+# --- ESP32 Marauder (WiFi + BLE devboard) --------------------------------
+marauder:
+  enabled: false                     # flip to true when the devboard is plugged in
+  port: "/dev/ttyUSB0"               # separate USB serial port from the Flipper
+  baud_rate: 115200
+
+# --- Web UI --------------------------------------------------------------
+web:
+  host: "127.0.0.1"                  # loopback default; web UI has no auth
+  port: 8080
+
+# --- Default persona -----------------------------------------------------
+# One of: default, rf-recon, badge-cloner, hw-recon, physical-pentest,
+# defender — or any YAML file under ~/.promptzero/personas/ (see examples/personas).
+persona: "default"
+
+# --- Filesystem-trigger mode (--watch) -----------------------------------
+watch:
+  enabled: false                     # gate via --watch CLI flag in most cases
+  paths: []                          # ["/home/you/flipper-inbox"]
+  rules:
+    - pattern: "*.sub"               # any new .sub file in a watched path
+      prompt: "Decode and summarise this Sub-GHz capture: {{path}}"
+      persona: "rf-recon"
+    - pattern: "*.png"               # photos of gear — auto-triage
+      prompt: "Analyse this photo. Identify the device and likely attack surface: {{path}}"
+
+# --- Webhooks (outbound HTTP events) -------------------------------------
+webhooks:
+  - name: "slack-alerts"             # referenced by rules' webhook action
+    url: "https://hooks.slack.com/services/T0/B0/REPLACE"
+    events: ["risk.exceeded", "tool.completed"]  # empty = all events
+    secret: "REPLACE_WITH_RANDOM_HMAC_SECRET"    # enables X-PromptZero-Signature
+    headers:
+      X-Source: "promptzero"
+
+# --- MQTT bridge (publish-only) ------------------------------------------
+mqtt:
+  enabled: false                     # flip when a broker is reachable
+  # broker: "tcp://mqtt.lan:1883"
+  # client_id: "promptzero-01"
+  # username: "promptzero"
+  # password: ""                     # MQTT_PASSWORD env var wins when empty
+  # base_path: "promptzero"          # topic prefix, defaults to "promptzero"
+  # qos: 1
+  # retained: false
+
+# --- Observability -------------------------------------------------------
+observability:
+  log_level: "info"                  # debug | info | warn | error
+  log_format: "text"                 # "text" (human) or "json" (shipping)
+  # log_file: "/var/log/promptzero.log"  # tees alongside stderr
+  metrics_enabled: true              # exposes Prometheus /metrics on the web port
+  metrics_path: "/metrics"
+
+# --- BadUSB sandbox validator --------------------------------------------
+validator:
+  badusb:
+    # enabled: true                  # leave unset to default to on
+    allow_critical: false            # refuse payloads with Critical findings
+    warn_action: "warn"              # "warn" (log + run) or "block" (refuse)
+
+# --- Cost overrides (USD per million tokens) ------------------------------
+# Missing entries fall back to the built-in rate table in internal/cost.
+cost:
+  rates:
+    # claude-sonnet-4-6:
+    #   input: 3.00
+    #   output: 15.00
+    # claude-opus-4-7:
+    #   input: 15.00
+    #   output: 75.00
+
+# --- Reactive rules ------------------------------------------------------
+# Inline rules can go here, or keep them in examples/rules.yaml and merge
+# with `yq`/`sops` at deploy time. See examples/rules.yaml for the schema.
+rules: []
