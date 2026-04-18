@@ -41,9 +41,9 @@ func TestOpenByScheme(t *testing.T) {
 			wantKind: "mock",
 		},
 		{
-			name:    "ble URL returns ErrNotImplemented",
-			url:     "ble://AA:BB:CC:DD:EE:FF",
-			wantErr: ErrNotImplemented,
+			name:     "ble URL parses and returns a ble transport",
+			url:      "ble://AA:BB:CC:DD:EE:FF",
+			wantKind: "ble",
 		},
 		{
 			name:   "unknown scheme returns a clean error",
