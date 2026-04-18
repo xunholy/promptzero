@@ -45,6 +45,8 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/validate", s.handleValidate)
 
 	mux.HandleFunc("GET /api/debug", s.handleDebug)
+
+	mux.HandleFunc("GET /api/device", s.handleDevice)
 }
 
 // respondJSON is the common success-path writer. Marshalling failures log
@@ -453,4 +455,100 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 
 func bytesToMB(b uint64) uint64 {
 	return b / (1024 * 1024)
+}
+
+// ---------------------------------------------------------------------------
+// Device profile — full device_info + power_info surface
+// ---------------------------------------------------------------------------
+
+// handleDevice surfaces the Momentum-level device profile the Flipper mobile
+// app shows on connect: firmware identity, hardware revision, radio stack,
+// battery health, and storage usage. All fields are pulled from
+// `device_info` + `power_info` and returned as both a structured JSON with
+// grouped sections AND the raw key→value map so the UI can render fields
+// we haven't explicitly modelled yet.
+func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
+	if s.flipper == nil {
+		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
+		return
+	}
+	devInfo, err := s.flipper.DeviceInfoMap()
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("device_info: %v", err))
+		return
+	}
+	// power_info may duplicate fields already present in device_info on
+	// Momentum firmware; that's fine — the final raw map just overlays.
+	powerInfo, perr := s.flipper.PowerInfoMap()
+	if perr == nil {
+		for k, v := range powerInfo {
+			if _, ok := devInfo[k]; !ok {
+				devInfo[k] = v
+			}
+		}
+	}
+
+	// Group into logical sections the UI can render as panels. Every key
+	// that maps into a section is still also present in `raw` so the
+	// frontend can sanity-check or render the full dump in a debug view.
+	firmware := pickFields(devInfo, []string{
+		"firmware_origin_fork", "firmware_version", "firmware_branch",
+		"firmware_commit", "firmware_commit_dirty", "firmware_build_date",
+		"firmware_target", "firmware_api_major", "firmware_api_minor",
+		"firmware_origin_git",
+	})
+	hardware := pickFields(devInfo, []string{
+		"hardware_model", "hardware_name", "hardware_uid",
+		"hardware_ver", "hardware_region", "hardware_region_provisioned",
+		"hardware_target", "hardware_body", "hardware_connect",
+		"hardware_display", "hardware_color", "hardware_otp_ver",
+		"hardware_timestamp",
+	})
+	radio := pickFields(devInfo, []string{
+		"radio_alive", "radio_mode",
+		"radio_stack_major", "radio_stack_minor", "radio_stack_sub",
+		"radio_stack_release", "radio_stack_branch", "radio_stack_type",
+		"radio_stack_flash", "radio_stack_sram1", "radio_stack_sram2a", "radio_stack_sram2b",
+		"radio_fus_major", "radio_fus_minor", "radio_fus_sub",
+		"radio_fus_flash", "radio_fus_sram2a", "radio_fus_sram2b",
+		"radio_ble_mac",
+	})
+	battery := pickFields(devInfo, []string{
+		"charge_level", "charge_state", "charge_voltage_limit",
+		"battery_voltage", "battery_current", "battery_temp", "battery_health",
+		"capacity_remain", "capacity_full", "capacity_design",
+	})
+	storage := pickFields(devInfo, []string{
+		"storage_sdcard_present", "storage_sdcard_totalSpace", "storage_sdcard_freeSpace",
+		"storage_databases_present",
+		"storage_internal_totalSpace", "storage_internal_freeSpace",
+	})
+	system := pickFields(devInfo, []string{
+		"protobuf_version_major", "protobuf_version_minor",
+		"enclave_valid", "enclave_valid_keys",
+		"system_debug", "system_lock", "system_log_level",
+	})
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"firmware": firmware,
+		"hardware": hardware,
+		"radio":    radio,
+		"battery":  battery,
+		"storage":  storage,
+		"system":   system,
+		"raw":      devInfo,
+	})
+}
+
+// pickFields returns a submap containing only the requested keys that
+// exist in src. Missing keys are skipped — the UI handles absent fields
+// by rendering em-dash placeholders. Order is preserved by the slice.
+func pickFields(src map[string]string, keys []string) map[string]string {
+	out := make(map[string]string, len(keys))
+	for _, k := range keys {
+		if v, ok := src[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
 }

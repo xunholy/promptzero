@@ -1246,6 +1246,112 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 }
 
 /* ==========================================================================
+   Device profile modal (full device_info / power_info surface)
+   ========================================================================== */
+
+.pz-device-btn {
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-strong);
+  color: var(--pz-text-dim);
+  font-family: var(--pz-font-display, 'VT323', monospace);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.pz-device-btn:hover,
+.pz-device-btn:focus-visible {
+  color: var(--pz-flipper-orange);
+  border-color: var(--pz-flipper-orange);
+  outline: none;
+}
+
+.pz-modal.pz-modal-device {
+  min-width: 520px;
+  max-width: 760px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.pz-device-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 8px 0 4px;
+}
+.pz-device-section {
+  border: 1px solid var(--pz-border-subtle);
+  padding: 8px 10px;
+  background: var(--pz-bg-inset);
+}
+.pz-device-section-head {
+  font-family: var(--pz-font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--pz-text-muted);
+  margin-bottom: 6px;
+}
+.pz-device-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 16px;
+}
+.pz-device-grid > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 1px dashed var(--pz-border-subtle);
+  padding: 3px 0;
+}
+
+/* Battery visual */
+.pz-device-battery-bar {
+  position: relative;
+  height: 20px;
+  border: 1px solid var(--pz-border-strong);
+  background: var(--pz-bg-base);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.pz-device-battery-fill {
+  position: absolute; inset: 0 auto 0 0;
+  width: var(--pz-batt, 0%);
+  background: linear-gradient(90deg, var(--pz-flipper-ember), var(--pz-flipper-orange));
+  transition: width 300ms ease-out;
+}
+.pz-device-battery-label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--pz-text-xs);
+  color: var(--pz-text-primary);
+  mix-blend-mode: difference;
+}
+
+/* Storage bar — same visual lexicon, different colour to distinguish at a glance */
+.pz-device-storage-bar {
+  position: relative;
+  height: 16px;
+  border: 1px solid var(--pz-border-strong);
+  background: var(--pz-bg-base);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.pz-device-storage-fill {
+  position: absolute; inset: 0 auto 0 0;
+  width: var(--pz-stor, 0%);
+  background: var(--pz-text-muted);
+  transition: width 300ms ease-out;
+}
+.pz-device-storage-label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--pz-text-xs);
+  color: var(--pz-text-primary);
+  mix-blend-mode: difference;
+}
+
+/* ==========================================================================
    Validate modal (REPL /validate parity)
    ========================================================================== */
 

@@ -701,6 +701,7 @@ type WebDeps struct {
 	Personas       *persona.Registry
 	CostTracker    *cost.Tracker
 	RulesEngine    *rules.Engine
+	Flipper        *flipper.Flipper
 	MarauderOnline bool
 }
 
@@ -723,6 +724,9 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	}
 	if deps.RulesEngine != nil {
 		srv.SetRulesEngine(deps.RulesEngine)
+	}
+	if deps.Flipper != nil {
+		srv.SetFlipper(deps.Flipper)
 	}
 	srv.SetFlipperConnected(true)
 	srv.SetMarauderConnected(deps.MarauderOnline)

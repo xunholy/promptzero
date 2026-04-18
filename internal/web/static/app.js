@@ -111,6 +111,7 @@
       costUI:    { loaded: false, error: '', usd: 0, inputTokens: 0, outputTokens: 0, offline: false, byModel: [], modalOpen: false },
       validateUI: { open: false, path: '', content: '', loading: false, error: '', report: null },
       debugUI:   { open: false, loaded: false, error: '', snapshot: null, copied: false },
+      deviceUI:  { open: false, loaded: false, error: '', snapshot: null, title: 'DEVICE PROFILE' },
 
       /* internals */
       _ws: null,
@@ -836,6 +837,77 @@
           this.debugUI.copied = true;
           setTimeout(() => { this.debugUI.copied = false; }, 1500);
         } catch (_) { /* noop */ }
+      },
+
+      /* ---------- device profile modal (full device_info surface) ---------- */
+      openDevice() {
+        this.deviceUI.open = true;
+        this.loadDevice();
+      },
+      closeDevice() {
+        this.deviceUI.open = false;
+      },
+      loadDevice() {
+        this.deviceUI.loaded = false;
+        this.deviceUI.error = '';
+        fetch('api/device')
+          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
+          .then(({ ok, body }) => {
+            this.deviceUI.loaded = true;
+            if (!ok) { this.deviceUI.error = (body && body.error) || 'device info unavailable'; return; }
+            /* Ensure every section is present as an object so x-text dereferences don't throw. */
+            var sections = ['firmware', 'hardware', 'radio', 'battery', 'storage', 'system'];
+            sections.forEach((k) => { if (!body[k] || typeof body[k] !== 'object') body[k] = {}; });
+            this.deviceUI.snapshot = body;
+            /* Title: "DEVICE · Yonigida · Momentum" */
+            var name = (body.hardware && body.hardware.hardware_name) || 'flipper';
+            var fork = (body.firmware && body.firmware.firmware_origin_fork) || 'stock';
+            this.deviceUI.title = 'DEVICE · ' + name + ' · ' + fork;
+          })
+          .catch((e) => { this.deviceUI.loaded = true; this.deviceUI.error = String(e); });
+      },
+      get deviceChargePct() {
+        var b = this.deviceUI.snapshot && this.deviceUI.snapshot.battery;
+        if (!b) return 0;
+        var n = parseInt(b.charge_level, 10);
+        return isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+      },
+      get deviceStorageUsedPct() {
+        var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
+        if (!s) return 0;
+        var total = Number(s.storage_sdcard_totalSpace || 0);
+        var free  = Number(s.storage_sdcard_freeSpace  || 0);
+        if (!total || total <= 0) return 0;
+        var used = Math.max(0, total - free);
+        return Math.min(100, Math.round((used / total) * 100));
+      },
+      get deviceStorageLabel() {
+        var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
+        if (!s) return '—';
+        var total = Number(s.storage_sdcard_totalSpace || 0);
+        var free  = Number(s.storage_sdcard_freeSpace  || 0);
+        if (!total) return 'no SD card detected';
+        var used = Math.max(0, total - free);
+        return this._fmtBytes(used) + ' used · ' + this._fmtBytes(total) + ' total';
+      },
+      formatVoltage(mv) {
+        var n = Number(mv);
+        if (!isFinite(n) || n <= 0) return '—';
+        return (n / 1000).toFixed(2) + ' V';
+      },
+      formatCurrent(ma) {
+        if (ma === undefined || ma === null || ma === '') return '—';
+        var n = Number(ma);
+        if (!isFinite(n)) return '—';
+        return n.toFixed(0) + ' mA';
+      },
+      _fmtBytes(n) {
+        n = Number(n);
+        if (!isFinite(n) || n <= 0) return '0 B';
+        var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+        var i = 0;
+        while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+        return n.toFixed(n >= 100 ? 0 : n >= 10 ? 1 : 2) + ' ' + units[i];
       },
 
       /* ---------- validate modal (REPL /validate parity) ---------- */

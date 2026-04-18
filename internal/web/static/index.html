@@ -118,6 +118,13 @@
               :title="copied ? 'copied' : 'click to copy session id'"
               x-text="sessionPillText"></button>
 
+      <!-- Device profile (full device_info surface) -->
+      <button type="button"
+              class="pz-device-btn"
+              @click="openDevice()"
+              title="device profile"
+              aria-label="device profile">◎</button>
+
       <!-- Debug snapshot (REPL /debug parity) -->
       <button type="button"
               class="pz-debug-btn"
@@ -599,6 +606,161 @@
                   @click="copyDebug()"
                   x-text="debugUI.copied ? 'Copied' : 'Copy JSON'"></button>
           <button type="button" class="pz-panel-btn" @click="closeDebug()">Close</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Device profile modal (full device_info / power_info surface) -->
+  <template x-if="deviceUI.open">
+    <div class="pz-modal-backdrop"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="pz-device-modal-title"
+         @click.self="closeDevice()"
+         @keydown.escape.window="closeDevice()">
+      <div class="pz-modal pz-modal-device">
+        <div class="pz-modal-title" id="pz-device-modal-title" x-text="deviceUI.title"></div>
+
+        <template x-if="!deviceUI.loaded">
+          <div class="pz-panel-empty">loading device_info…</div>
+        </template>
+        <template x-if="deviceUI.loaded && deviceUI.error">
+          <div class="pz-validate-err" x-text="deviceUI.error"></div>
+        </template>
+
+        <template x-if="deviceUI.loaded && !deviceUI.error && deviceUI.snapshot">
+          <div class="pz-device-body">
+            <!-- Battery: big, visual because it's what operators look at first -->
+            <section class="pz-device-section pz-device-battery">
+              <div class="pz-device-section-head">BATTERY</div>
+              <div class="pz-device-battery-bar" :style="`--pz-batt:${deviceChargePct}%`">
+                <div class="pz-device-battery-fill"></div>
+                <span class="pz-device-battery-label pz-tabular"
+                      x-text="deviceChargePct + '% · ' + (deviceUI.snapshot.battery.charge_state || '—')"></span>
+              </div>
+              <div class="pz-device-grid">
+                <div><span class="pz-debug-label">voltage</span>
+                  <span class="pz-debug-val pz-tabular" x-text="formatVoltage(deviceUI.snapshot.battery.battery_voltage)"></span></div>
+                <div><span class="pz-debug-label">current</span>
+                  <span class="pz-debug-val pz-tabular" x-text="formatCurrent(deviceUI.snapshot.battery.battery_current)"></span></div>
+                <div><span class="pz-debug-label">temp</span>
+                  <span class="pz-debug-val pz-tabular" x-text="(deviceUI.snapshot.battery.battery_temp || '—') + '°C'"></span></div>
+                <div><span class="pz-debug-label">health</span>
+                  <span class="pz-debug-val pz-tabular" x-text="(deviceUI.snapshot.battery.battery_health || '—') + '%'"></span></div>
+                <div><span class="pz-debug-label">capacity</span>
+                  <span class="pz-debug-val pz-tabular"
+                        x-text="(deviceUI.snapshot.battery.capacity_remain || '—') + ' / ' + (deviceUI.snapshot.battery.capacity_full || '—') + ' mAh'"></span></div>
+                <div><span class="pz-debug-label">design</span>
+                  <span class="pz-debug-val pz-tabular"
+                        x-text="(deviceUI.snapshot.battery.capacity_design || '—') + ' mAh'"></span></div>
+              </div>
+            </section>
+
+            <!-- Storage -->
+            <section class="pz-device-section">
+              <div class="pz-device-section-head">STORAGE (SD)</div>
+              <div class="pz-device-storage-bar" :style="`--pz-stor:${deviceStorageUsedPct}%`">
+                <div class="pz-device-storage-fill"></div>
+                <span class="pz-device-storage-label pz-tabular" x-text="deviceStorageLabel"></span>
+              </div>
+              <div class="pz-device-grid">
+                <div><span class="pz-debug-label">sd card</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.storage.storage_sdcard_present || '—'"></span></div>
+                <div><span class="pz-debug-label">databases</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.storage.storage_databases_present || '—'"></span></div>
+              </div>
+            </section>
+
+            <!-- Firmware -->
+            <section class="pz-device-section">
+              <div class="pz-device-section-head">FIRMWARE</div>
+              <div class="pz-device-grid">
+                <div><span class="pz-debug-label">fork</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.firmware.firmware_origin_fork || 'stock'"></span></div>
+                <div><span class="pz-debug-label">version</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.firmware.firmware_version || '—'"></span></div>
+                <div><span class="pz-debug-label">branch</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.firmware.firmware_branch || '—'"></span></div>
+                <div><span class="pz-debug-label">commit</span>
+                  <span class="pz-debug-val pz-mono"
+                        x-text="(deviceUI.snapshot.firmware.firmware_commit || '—') + (deviceUI.snapshot.firmware.firmware_commit_dirty === 'true' ? ' (dirty)' : '')"></span></div>
+                <div><span class="pz-debug-label">build date</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.firmware.firmware_build_date || '—'"></span></div>
+                <div><span class="pz-debug-label">api</span>
+                  <span class="pz-debug-val pz-tabular"
+                        x-text="(deviceUI.snapshot.firmware.firmware_api_major || '—') + '.' + (deviceUI.snapshot.firmware.firmware_api_minor || '—')"></span></div>
+              </div>
+            </section>
+
+            <!-- Hardware -->
+            <section class="pz-device-section">
+              <div class="pz-device-section-head">HARDWARE</div>
+              <div class="pz-device-grid">
+                <div><span class="pz-debug-label">model</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_model || '—'"></span></div>
+                <div><span class="pz-debug-label">name</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_name || '—'"></span></div>
+                <div><span class="pz-debug-label">UID</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_uid || '—'"></span></div>
+                <div><span class="pz-debug-label">ver</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_ver || '—'"></span></div>
+                <div><span class="pz-debug-label">region</span>
+                  <span class="pz-debug-val pz-mono"
+                        x-text="(deviceUI.snapshot.hardware.hardware_region || '—') + ' (prov: ' + (deviceUI.snapshot.hardware.hardware_region_provisioned || '—') + ')'"></span></div>
+                <div><span class="pz-debug-label">color</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_color || '—'"></span></div>
+              </div>
+            </section>
+
+            <!-- Radio -->
+            <section class="pz-device-section">
+              <div class="pz-device-section-head">RADIO</div>
+              <div class="pz-device-grid">
+                <div><span class="pz-debug-label">stack</span>
+                  <span class="pz-debug-val pz-mono"
+                        x-text="(deviceUI.snapshot.radio.radio_stack_major || '—') + '.' + (deviceUI.snapshot.radio.radio_stack_minor || '—') + '.' + (deviceUI.snapshot.radio.radio_stack_sub || '—')"></span></div>
+                <div><span class="pz-debug-label">FUS</span>
+                  <span class="pz-debug-val pz-mono"
+                        x-text="(deviceUI.snapshot.radio.radio_fus_major || '—') + '.' + (deviceUI.snapshot.radio.radio_fus_minor || '—') + '.' + (deviceUI.snapshot.radio.radio_fus_sub || '—')"></span></div>
+                <div><span class="pz-debug-label">mode</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.radio.radio_mode || '—'"></span></div>
+                <div><span class="pz-debug-label">BLE MAC</span>
+                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.radio.radio_ble_mac || '—'"></span></div>
+                <div><span class="pz-debug-label">stack flash</span>
+                  <span class="pz-debug-val pz-tabular" x-text="deviceUI.snapshot.radio.radio_stack_flash || '—'"></span></div>
+                <div><span class="pz-debug-label">alive</span>
+                  <span class="pz-debug-val pz-mono"
+                        :class="deviceUI.snapshot.radio.radio_alive === 'true' ? 'pz-validate-ok' : 'pz-validate-blocked'"
+                        x-text="deviceUI.snapshot.radio.radio_alive || '—'"></span></div>
+              </div>
+            </section>
+
+            <!-- System + enclave -->
+            <section class="pz-device-section">
+              <div class="pz-device-section-head">SYSTEM</div>
+              <div class="pz-device-grid">
+                <div><span class="pz-debug-label">protobuf</span>
+                  <span class="pz-debug-val pz-tabular"
+                        x-text="(deviceUI.snapshot.system.protobuf_version_major || '—') + '.' + (deviceUI.snapshot.system.protobuf_version_minor || '—')"></span></div>
+                <div><span class="pz-debug-label">enclave</span>
+                  <span class="pz-debug-val pz-mono"
+                        :class="deviceUI.snapshot.system.enclave_valid === 'true' ? 'pz-validate-ok' : 'pz-validate-blocked'"
+                        x-text="(deviceUI.snapshot.system.enclave_valid === 'true' ? 'valid' : 'invalid') + ' (' + (deviceUI.snapshot.system.enclave_valid_keys || '0') + ' keys)'"></span></div>
+                <div><span class="pz-debug-label">debug</span>
+                  <span class="pz-debug-val pz-mono"
+                        x-text="deviceUI.snapshot.system.system_debug === '1' ? 'enabled' : 'disabled'"></span></div>
+                <div><span class="pz-debug-label">lock</span>
+                  <span class="pz-debug-val pz-mono"
+                        x-text="deviceUI.snapshot.system.system_lock === '1' ? 'enabled' : 'disabled'"></span></div>
+              </div>
+            </section>
+          </div>
+        </template>
+
+        <div class="pz-modal-actions">
+          <button type="button" class="pz-panel-btn" @click="loadDevice()">Refresh</button>
+          <button type="button" class="pz-panel-btn" @click="closeDevice()">Close</button>
         </div>
       </div>
     </div>

@@ -143,6 +143,7 @@ func run() error {
 			Personas:       personas,
 			CostTracker:    costTracker,
 			RulesEngine:    ruleEngine,
+			Flipper:        flip,
 			MarauderOnline: hasMarauder,
 		})
 	}

@@ -496,6 +496,59 @@ func (f *Flipper) DeviceInfo() (string, error) {
 	return f.Exec("device_info")
 }
 
+// DeviceInfoMap runs device_info and parses the output into a flat
+// key→value map. Blank lines and lines missing a colon are skipped.
+// The full surface is preserved — callers wanting one field (e.g. the
+// dolphin name) should look up the key directly. Numeric-looking
+// values stay as strings so consumers decide the typing (some fields
+// like storage_sdcard_totalSpace are huge int64s that don't survive
+// JavaScript number coercion without care).
+func (f *Flipper) DeviceInfoMap() (map[string]string, error) {
+	raw, err := f.DeviceInfo()
+	if err != nil {
+		return nil, err
+	}
+	return parseKVBlock(raw), nil
+}
+
+// PowerInfoMap runs the fork-appropriate power_info command and
+// returns the parsed key→value map (charge_level, battery_voltage,
+// capacity_*, etc.). Separate from DeviceInfoMap because Momentum's
+// device_info already includes the power fields; Xtreme and stock
+// keep them behind power_info.
+func (f *Flipper) PowerInfoMap() (map[string]string, error) {
+	raw, err := f.PowerInfo()
+	if err != nil {
+		return nil, err
+	}
+	return parseKVBlock(raw), nil
+}
+
+// parseKVBlock is the shared parser for Flipper "key: value" line
+// blocks (device_info, power_info, storage info). Whitespace around
+// the colon and on either side of the value is stripped; the returned
+// map preserves the exact key and trimmed string value.
+func parseKVBlock(raw string) map[string]string {
+	out := make(map[string]string)
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		idx := strings.Index(line, ":")
+		if idx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		if key == "" {
+			continue
+		}
+		out[key] = val
+	}
+	return out
+}
+
 // RawCLI sends an arbitrary CLI command string to the Flipper and returns
 // its output. Escape hatch for firmware features we haven't wrapped, or for
 // debugging. Callers MUST risk-gate this — it can reboot the device, write

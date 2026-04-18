@@ -46,6 +46,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/cost"
+	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/rules"
@@ -107,6 +108,7 @@ type Server struct {
 	watcher     *watch.Watcher
 	costs       *cost.Tracker
 	rulesEngine *rules.Engine
+	flipper     *flipper.Flipper
 
 	// startedAt records the time NewServer returned; /api/debug computes
 	// uptime against it rather than os.StartTime so the number matches the
@@ -195,6 +197,12 @@ func (s *Server) SetRulesEngine(e *rules.Engine) { s.rulesEngine = e }
 // SetFlipperConnected records the current Flipper serial state for the
 // /api/debug snapshot. Call on connect/disconnect transitions.
 func (s *Server) SetFlipperConnected(v bool) { s.flipperOn.Store(v) }
+
+// SetFlipper wires the live *flipper.Flipper into the server so
+// /api/device can run device_info + power_info and surface the full
+// Momentum-level profile to the web UI. Safe to pass nil — /api/device
+// returns 503 until this is set.
+func (s *Server) SetFlipper(f *flipper.Flipper) { s.flipper = f }
 
 // SetMarauderConnected records the current Marauder serial state for the
 // /api/debug snapshot. Call on connect/disconnect transitions.
