@@ -110,6 +110,7 @@
       rulesUI:   { loaded: false, error: '', list: [], testResults: {} },
       costUI:    { loaded: false, error: '', usd: 0, inputTokens: 0, outputTokens: 0, offline: false, byModel: [], modalOpen: false },
       validateUI: { open: false, path: '', content: '', loading: false, error: '', report: null },
+      debugUI:   { open: false, loaded: false, error: '', snapshot: null, copied: false },
 
       /* internals */
       _ws: null,
@@ -781,6 +782,60 @@
           .catch((e) => {
             this.rulesUI.testResults = Object.assign({}, this.rulesUI.testResults, { [name]: String(e) });
           });
+      },
+
+      /* ---------- debug snapshot (REPL /debug parity) ---------- */
+      openDebug() {
+        this.debugUI.open = true;
+        this.loadDebug();
+      },
+      closeDebug() {
+        this.debugUI.open = false;
+        this.debugUI.copied = false;
+      },
+      loadDebug() {
+        this.debugUI.loaded = false;
+        this.debugUI.error = '';
+        fetch('api/debug')
+          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
+          .then(({ ok, body }) => {
+            this.debugUI.loaded = true;
+            if (!ok) { this.debugUI.error = (body && body.error) || 'debug unavailable'; return; }
+            this.debugUI.snapshot = body;
+          })
+          .catch((e) => { this.debugUI.loaded = true; this.debugUI.error = String(e); });
+      },
+      get debugText() {
+        if (!this.debugUI.snapshot) return '';
+        try { return JSON.stringify(this.debugUI.snapshot, null, 2); }
+        catch (_) { return String(this.debugUI.snapshot); }
+      },
+      copyDebug() {
+        var text = this.debugText;
+        if (!text) return;
+        var reset = () => { setTimeout(() => { this.debugUI.copied = false; }, 1500); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text)
+            .then(() => { this.debugUI.copied = true; reset(); })
+            .catch(() => { this._fallbackCopy(text); });
+          return;
+        }
+        this._fallbackCopy(text);
+      },
+      _fallbackCopy(text) {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          this.debugUI.copied = true;
+          setTimeout(() => { this.debugUI.copied = false; }, 1500);
+        } catch (_) { /* noop */ }
       },
 
       /* ---------- validate modal (REPL /validate parity) ---------- */

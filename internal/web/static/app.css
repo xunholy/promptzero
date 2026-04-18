@@ -1165,6 +1165,75 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .pz-modal-confirm-input:focus { border-color: var(--pz-flipper-amber); }
 
 /* ==========================================================================
+   Debug snapshot modal (REPL /debug parity)
+   ========================================================================== */
+
+.pz-debug-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-strong);
+  color: var(--pz-text-dim);
+  font-family: var(--pz-font-display, 'VT323', monospace);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.pz-debug-btn:hover,
+.pz-debug-btn:focus-visible {
+  color: var(--pz-flipper-amber);
+  border-color: var(--pz-flipper-amber);
+  outline: none;
+}
+
+.pz-modal.pz-modal-debug {
+  min-width: 480px;
+  max-width: 720px;
+}
+.pz-debug-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+  margin: 8px 0 10px;
+}
+.pz-debug-cell {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 1px dashed var(--pz-border-subtle);
+  padding: 3px 0;
+}
+.pz-debug-label {
+  color: var(--pz-text-dim);
+  font-family: var(--pz-font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  min-width: 88px;
+}
+.pz-debug-val {
+  color: var(--pz-text-primary);
+  font-size: var(--pz-text-sm);
+  word-break: break-all;
+}
+.pz-debug-raw {
+  max-height: 240px;
+  overflow: auto;
+  background: var(--pz-bg-inset);
+  border: 1px solid var(--pz-border-subtle);
+  color: var(--pz-text-dim);
+  padding: 6px 8px;
+  font-size: var(--pz-text-xs);
+  white-space: pre;
+  word-break: normal;
+  margin-top: 6px;
+}
+
+/* ==========================================================================
    Validate modal (REPL /validate parity)
    ========================================================================== */
 

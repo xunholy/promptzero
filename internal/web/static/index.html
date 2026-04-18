@@ -117,6 +117,13 @@
               @click="copySession()"
               :title="copied ? 'copied' : 'click to copy session id'"
               x-text="sessionPillText"></button>
+
+      <!-- Debug snapshot (REPL /debug parity) -->
+      <button type="button"
+              class="pz-debug-btn"
+              @click="openDebug()"
+              title="runtime snapshot"
+              aria-label="runtime snapshot">i</button>
     </div>
   </header>
 
@@ -507,6 +514,95 @@
       </template>
     </section>
   </aside>
+
+  <!-- Debug snapshot modal (REPL /debug parity) -->
+  <template x-if="debugUI.open">
+    <div class="pz-modal-backdrop"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="pz-debug-modal-title"
+         @click.self="closeDebug()"
+         @keydown.escape.window="closeDebug()">
+      <div class="pz-modal pz-modal-debug">
+        <div class="pz-modal-title" id="pz-debug-modal-title">RUNTIME SNAPSHOT</div>
+        <template x-if="!debugUI.loaded">
+          <div class="pz-panel-empty">loading…</div>
+        </template>
+        <template x-if="debugUI.loaded && debugUI.error">
+          <div class="pz-validate-err" x-text="debugUI.error"></div>
+        </template>
+        <template x-if="debugUI.loaded && !debugUI.error && debugUI.snapshot">
+          <div>
+            <div class="pz-debug-grid">
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">version</span>
+                <span class="pz-debug-val pz-mono"
+                      x-text="(debugUI.snapshot.build && debugUI.snapshot.build.version) || '—'"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">commit</span>
+                <span class="pz-debug-val pz-mono"
+                      x-text="(debugUI.snapshot.build && debugUI.snapshot.build.commit) || '—'"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">go</span>
+                <span class="pz-debug-val pz-mono"
+                      x-text="(debugUI.snapshot.runtime && debugUI.snapshot.runtime.go_version) || '—'"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">uptime</span>
+                <span class="pz-debug-val pz-tabular"
+                      x-text="(debugUI.snapshot.runtime && debugUI.snapshot.runtime.uptime_seconds) + 's'"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">goroutines</span>
+                <span class="pz-debug-val pz-tabular"
+                      x-text="(debugUI.snapshot.runtime && debugUI.snapshot.runtime.goroutines) || 0"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">heap / sys</span>
+                <span class="pz-debug-val pz-tabular"
+                      x-text="((debugUI.snapshot.runtime && debugUI.snapshot.runtime.heap_mb) || 0) + ' / ' + ((debugUI.snapshot.runtime && debugUI.snapshot.runtime.sys_mb) || 0) + ' MB'"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">persona</span>
+                <span class="pz-debug-val pz-mono"
+                      x-text="(debugUI.snapshot.state && debugUI.snapshot.state.persona) || 'default'"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">connections</span>
+                <span class="pz-debug-val pz-tabular"
+                      x-text="(debugUI.snapshot.state && debugUI.snapshot.state.active_connections) || 0"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">flipper</span>
+                <span class="pz-debug-val pz-mono"
+                      :class="(debugUI.snapshot.state && debugUI.snapshot.state.flipper_connected) ? 'pz-validate-ok' : 'pz-validate-blocked'"
+                      x-text="(debugUI.snapshot.state && debugUI.snapshot.state.flipper_connected) ? 'online' : 'offline'"></span>
+              </div>
+              <div class="pz-debug-cell">
+                <span class="pz-debug-label">marauder</span>
+                <span class="pz-debug-val pz-mono"
+                      :class="(debugUI.snapshot.state && debugUI.snapshot.state.marauder_connected) ? 'pz-validate-ok' : 'pz-validate-blocked'"
+                      x-text="(debugUI.snapshot.state && debugUI.snapshot.state.marauder_connected) ? 'online' : 'offline'"></span>
+              </div>
+            </div>
+            <pre class="pz-debug-raw pz-mono" x-text="debugText"></pre>
+          </div>
+        </template>
+        <div class="pz-modal-actions">
+          <button type="button" class="pz-panel-btn" @click="loadDebug()">Refresh</button>
+          <button type="button"
+                  class="pz-panel-btn"
+                  :class="{ 'pz-panel-btn-primary': debugUI.copied }"
+                  :disabled="!debugUI.snapshot"
+                  @click="copyDebug()"
+                  x-text="debugUI.copied ? 'Copied' : 'Copy JSON'"></button>
+          <button type="button" class="pz-panel-btn" @click="closeDebug()">Close</button>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <!-- Validate modal (REPL /validate parity) -->
   <template x-if="validateUI.open">
