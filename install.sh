@@ -1,12 +1,17 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# install.sh — install, upgrade, or remove the promptzero CLI.
+# install.sh — fetch the latest promptzero release and drop it on $PATH.
+#
+# This script intentionally does one thing: bootstrap a fresh install.
+# Once promptzero is on your system, use its own subcommands to stay
+# current:
+#
+#   promptzero version --check   — see if a newer release is available
+#   promptzero upgrade           — replace yourself with the latest
 #
 # Usage:
 #   sh install.sh                         Install the latest release.
-#   sh install.sh upgrade                 Upgrade to the latest release.
-#   sh install.sh uninstall               Remove promptzero from --prefix.
 #   sh install.sh --version vX.Y.Z        Pin a specific release.
 #   sh install.sh --prefix <dir>          Install directory (see below).
 #   sh install.sh --help                  This text.
@@ -58,16 +63,11 @@ usage() {
 
 # --- Argument parsing ---------------------------------------------------
 
-CMD=""
 VERSION="${PROMPTZERO_VERSION:-}"
 PREFIX="${PROMPTZERO_PREFIX:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    install|upgrade|uninstall)
-      [ -n "$CMD" ] && die "multiple subcommands given (saw '$CMD' then '$1')"
-      CMD="$1"
-      ;;
     --version)
       shift
       [ $# -gt 0 ] || die "--version needs a value"
@@ -81,11 +81,13 @@ while [ $# -gt 0 ]; do
       ;;
     --prefix=*)  PREFIX="${1#--prefix=}" ;;
     -h|--help)   usage; exit 0 ;;
-    *)           usage >&2; die "unknown argument: $1" ;;
+    upgrade|uninstall)
+      die "'$1' is no longer handled by install.sh — use 'promptzero $1' instead"
+      ;;
+    *) usage >&2; die "unknown argument: $1" ;;
   esac
   shift
 done
-CMD="${CMD:-install}"
 
 # --- Dependencies & platform detection ---------------------------------
 
@@ -94,7 +96,7 @@ need_cmd() {
 }
 
 sha256_of() {
-  # Portable SHA-256: GNU coreutils uses sha256sum, macOS uses shasum.
+  # Portable SHA-256: GNU coreutils ships sha256sum, macOS ships shasum.
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
   elif command -v shasum >/dev/null 2>&1; then
@@ -124,8 +126,6 @@ detect_platform() {
 
 # --- Install-dir resolution --------------------------------------------
 
-# writable_dir checks whether a directory exists and is writable, or
-# can be created under a writable parent. Returns 0 on match.
 writable_dir() {
   d="$1"
   [ -z "$d" ] && return 1
@@ -160,7 +160,7 @@ normalise_version() {
 
 # latest_version follows the /releases/latest redirect on github.com and
 # pulls the tag off the end of the final URL. Unauthenticated, no rate
-# limit, no JSON parsing — unlike the REST API path.
+# limit, no JSON parsing — the same approach the CLI uses internally.
 latest_version() {
   url="$(curl -fsSIL -o /dev/null -w '%{url_effective}' \
          "https://github.com/${REPO}/releases/latest" 2>/dev/null)" \
@@ -180,17 +180,6 @@ resolve_version() {
   latest_version
 }
 
-# --- Installed-version introspection -----------------------------------
-
-# current_version runs `promptzero --version` and extracts the leading
-# token. Returns empty on any failure so callers can treat "not installed"
-# and "broken install" the same way.
-current_version() {
-  bin="$1"
-  [ -x "$bin" ] || return 0
-  "$bin" --version 2>/dev/null | awk '{print $2; exit}'
-}
-
 # --- PATH hint ----------------------------------------------------------
 
 check_path() {
@@ -206,87 +195,62 @@ check_path() {
   log  ""
 }
 
-# --- Commands -----------------------------------------------------------
+# --- Install flow -------------------------------------------------------
 
-do_install() {
-  detect_platform
-  need_cmd curl
-  need_cmd tar
+detect_platform
+need_cmd curl
+need_cmd tar
 
-  prefix="$(resolve_prefix)"
-  target="$(resolve_version)"
-  bin_path="${prefix}/${BINARY}"
-  current="$(current_version "$bin_path" 2>/dev/null || true)"
+prefix="$(resolve_prefix)"
+target="$(resolve_version)"
+bin_path="${prefix}/${BINARY}"
 
-  info "target : ${target}"
-  info "host   : ${OS}/${ARCH}"
-  info "prefix : ${prefix}"
-  if [ -n "$current" ]; then
-    info "current: ${current}"
-  fi
+info "target : ${target}"
+info "host   : ${OS}/${ARCH}"
+info "prefix : ${prefix}"
 
-  if [ "$CMD" = "upgrade" ] && [ -n "$current" ] && [ "$current" = "$target" ]; then
-    ok "already at ${target} — nothing to do"
-    return
-  fi
+asset="${BINARY}-${OS}-${ARCH}.tar.gz"
+base="https://github.com/${REPO}/releases/download/${target}"
 
-  asset="${BINARY}-${OS}-${ARCH}.tar.gz"
-  base="https://github.com/${REPO}/releases/download/${target}"
+CLEANUP_TMP="$(mktemp -d 2>/dev/null || mktemp -d -t promptzero)"
 
-  CLEANUP_TMP="$(mktemp -d 2>/dev/null || mktemp -d -t promptzero)"
+info "downloading ${asset}"
+curl -fsSL -o "${CLEANUP_TMP}/${asset}" "${base}/${asset}" \
+  || die "download failed: ${base}/${asset}"
+info "downloading checksums.txt"
+curl -fsSL -o "${CLEANUP_TMP}/checksums.txt" "${base}/checksums.txt" \
+  || die "download failed: ${base}/checksums.txt"
 
-  info "downloading ${asset}"
-  curl -fsSL -o "${CLEANUP_TMP}/${asset}" "${base}/${asset}" \
-    || die "download failed: ${base}/${asset}"
-  info "downloading checksums.txt"
-  curl -fsSL -o "${CLEANUP_TMP}/checksums.txt" "${base}/checksums.txt" \
-    || die "download failed: ${base}/checksums.txt"
-
-  info "verifying sha256"
-  expected="$(awk -v f="$asset" '$2 == f || $2 == "*"f {print $1; exit}' \
-              "${CLEANUP_TMP}/checksums.txt")"
-  [ -n "$expected" ] || die "no checksum entry for ${asset} in checksums.txt"
-  got="$(sha256_of "${CLEANUP_TMP}/${asset}")"
-  if [ "$got" != "$expected" ]; then
-    die "checksum mismatch for ${asset}
+info "verifying sha256"
+expected="$(awk -v f="$asset" '$2 == f || $2 == "*"f {print $1; exit}' \
+            "${CLEANUP_TMP}/checksums.txt")"
+[ -n "$expected" ] || die "no checksum entry for ${asset} in checksums.txt"
+got="$(sha256_of "${CLEANUP_TMP}/${asset}")"
+if [ "$got" != "$expected" ]; then
+  die "checksum mismatch for ${asset}
   expected: ${expected}
   got:      ${got}"
-  fi
+fi
 
-  info "extracting"
-  ( cd "${CLEANUP_TMP}" && tar xzf "${asset}" )
-  src="${CLEANUP_TMP}/${BINARY}-${OS}-${ARCH}"
-  [ -f "$src" ] || die "binary '${BINARY}-${OS}-${ARCH}' not found after extract"
-  chmod +x "$src"
+info "extracting"
+( cd "${CLEANUP_TMP}" && tar xzf "${asset}" )
+src="${CLEANUP_TMP}/${BINARY}-${OS}-${ARCH}"
+[ -f "$src" ] || die "binary '${BINARY}-${OS}-${ARCH}' not found after extract"
+chmod +x "$src"
 
-  info "installing to ${bin_path}"
-  mkdir -p "$prefix"
-  mv "$src" "$bin_path"
+info "installing to ${bin_path}"
+mkdir -p "$prefix"
+mv "$src" "$bin_path"
 
-  # Sanity-check the freshly installed binary. A mismatch usually means
-  # the release assets were built from the wrong commit — fail loudly.
-  got_ver="$(current_version "$bin_path" 2>/dev/null || true)"
-  if [ -n "$got_ver" ] && [ "$got_ver" != "$target" ]; then
-    warn "installed binary reports ${got_ver}, expected ${target}"
-  fi
+got_ver="$("$bin_path" --version 2>/dev/null | awk '{print $2; exit}')" || true
+if [ -n "$got_ver" ] && [ "$got_ver" != "$target" ]; then
+  warn "installed binary reports ${got_ver}, expected ${target}"
+fi
 
-  ok "installed ${BINARY} ${target} → ${bin_path}"
-  check_path "$prefix"
-}
-
-do_uninstall() {
-  prefix="$(resolve_prefix)"
-  bin_path="${prefix}/${BINARY}"
-  if [ ! -e "$bin_path" ]; then
-    ok "${bin_path} not present — nothing to uninstall"
-    return
-  fi
-  rm -f "$bin_path"
-  ok "removed ${bin_path}"
-}
-
-case "$CMD" in
-  install|upgrade) do_install ;;
-  uninstall)       do_uninstall ;;
-  *)               usage; exit 2 ;;
-esac
+ok "installed ${BINARY} ${target} → ${bin_path}"
+log ""
+log "  Stay current with:"
+log "      promptzero version --check"
+log "      promptzero upgrade"
+log ""
+check_path "$prefix"

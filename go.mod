@@ -9,6 +9,7 @@ require (
 	github.com/mark3labs/mcp-go v0.48.0
 	github.com/prometheus/client_golang v1.23.2
 	go.bug.st/serial v1.6.4
+	golang.org/x/mod v0.35.0
 	golang.org/x/sys v0.43.0
 	golang.org/x/term v0.42.0
 	gopkg.in/yaml.v3 v3.0.1

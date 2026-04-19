@@ -124,17 +124,32 @@ The script downloads the latest release, verifies the SHA-256 against the
 release's `checksums.txt`, and installs `promptzero` into the first writable
 directory of: `$XDG_BIN_HOME`, `~/.local/bin`, or `/usr/local/bin`.
 
-Useful subcommands and flags (all work with `curl … | sh -s -- <arg>`):
+Pin a version or choose an install dir with:
 
 ```bash
-sh install.sh upgrade                  # re-run against the latest release
-sh install.sh uninstall                # remove from --prefix
-sh install.sh --version v0.1.1         # pin a specific release
-sh install.sh --prefix ~/bin           # custom install dir
+sh install.sh --version v0.2.0
+sh install.sh --prefix ~/bin
 ```
+
+Once installed, let the CLI keep itself current:
+
+```bash
+promptzero version --check       # print current, flag if a newer release exists
+promptzero upgrade               # atomic self-replace to the latest release
+promptzero upgrade --dry-run     # show the plan without touching disk
+promptzero upgrade --version v0.2.0   # pin
+```
+
+**Guardrails on `upgrade`:** refuses to downgrade, refuses to replace a
+dev build, verifies the SHA-256 against the release's `checksums.txt`,
+runs the candidate binary with `--version` before swapping, and does an
+atomic rename so a failed download never leaves a half-written install.
+Pass `--force` if you genuinely need to bypass any of those.
 
 Windows users: download the `.zip` from the
 [releases page](https://github.com/xunholy/promptzero/releases).
+Self-upgrade isn't supported on Windows — a running `.exe` can't be
+replaced atomically.
 
 **From source:**
 

@@ -23,6 +23,30 @@ func (s *stringSlice) String() string     { return strings.Join(*s, ",") }
 func (s *stringSlice) Set(v string) error { *s = append(*s, v); return nil }
 
 func main() {
+	// Subcommand dispatch: if the first positional arg is a known
+	// management verb, peel it off and route to a dedicated handler
+	// *before* the REPL's flag parser runs. Keeps `promptzero upgrade`
+	// and `promptzero version` free of the REPL-only flags (--config,
+	// --web, --wifi, etc.) that would confuse their help output.
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "upgrade":
+			opts := parseUpgradeFlags(os.Args[2:])
+			if err := runUpgrade(context.Background(), opts); err != nil {
+				fmt.Fprintf(os.Stderr, "\n  %s%serror: %v%s\n\n", bold, red, err, reset)
+				os.Exit(1)
+			}
+			return
+		case "version":
+			check := parseVersionFlags(os.Args[2:])
+			if err := runVersionCheck(context.Background(), check); err != nil {
+				fmt.Fprintf(os.Stderr, "\n  %s%serror: %v%s\n\n", bold, red, err, reset)
+				os.Exit(1)
+			}
+			return
+		}
+	}
+
 	if err := run(); err != nil {
 		if errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "\n  %scancelled.%s\n\n", dim, reset)
