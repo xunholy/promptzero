@@ -1238,4 +1238,3 @@ func handleWebhooksCmd(wh webhook.Dispatcher, args []string) {
 		}
 	}
 }
-
