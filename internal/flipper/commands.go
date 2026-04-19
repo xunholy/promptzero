@@ -218,7 +218,7 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 	if err != nil {
 		return out, err
 	}
-	if closeErr := f.waitLoaderClosed(5 * time.Second); closeErr != nil {
+	if closeErr := f.waitLoaderClosed(10 * time.Second); closeErr != nil {
 		return out, closeErr
 	}
 	return out, nil
@@ -239,15 +239,15 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 func (f *Flipper) waitLoaderClosed(budget time.Duration) error {
 	_, _ = f.Exec("loader close")
 	deadline := time.Now().Add(budget)
-	// Require THREE consecutive successful uptime probes with 150ms
-	// between each. Momentum's loader is driven by an async message
-	// queue and its per-app teardown can briefly release and re-take
-	// the lock (e.g. during post-exit housekeeping). A single success
-	// observation is a race: on live HW we've seen uptime succeed while
-	// the next app-launching command still hits "cannot be run". Three
-	// consecutive ~450ms-spread successes is enough to ride past the
-	// housekeeping window without driving total latency past the budget.
-	const requiredConsecutive = 3
+	// Momentum's loader runs a delayed post-exit housekeeping pass that
+	// briefly re-takes the lock ~1+ seconds after the app signals exit.
+	// A short consecutive-success gate within that window races, so we
+	// require a longer settled period: 5 consecutive `uptime` successes
+	// at 100ms intervals (≥500ms sustained free), THEN a 750ms settle
+	// sleep, THEN a final confirm probe. Any failure in the confirm
+	// restarts the counter — we keep looping until we get both the
+	// 5-in-a-row streak AND a post-settle confirmation within budget.
+	const requiredConsecutive = 5
 	consecutive := 0
 	for time.Now().Before(deadline) {
 		out, err := f.Exec("uptime")
@@ -262,9 +262,22 @@ func (f *Flipper) waitLoaderClosed(budget time.Duration) error {
 		if strings.Contains(out, "Uptime:") {
 			consecutive++
 			if consecutive >= requiredConsecutive {
-				return nil
+				// Settle past any delayed teardown housekeeping, then
+				// confirm the lock is still free before declaring victory.
+				time.Sleep(750 * time.Millisecond)
+				confirm, cerr := f.Exec("uptime")
+				if cerr != nil {
+					return fmt.Errorf("flipper: uptime confirm: %w", cerr)
+				}
+				if strings.Contains(confirm, "Uptime:") {
+					return nil
+				}
+				// Housekeeping re-took the lock during the settle; reset
+				// and keep looping until budget expires.
+				consecutive = 0
+				continue
 			}
-			time.Sleep(150 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		// Unexpected response — retry until deadline.
