@@ -372,10 +372,11 @@ func (s *Server) registerFlipperTools() {
 		[]mcp.ToolOption{
 			mcp.WithString("protocol", mcp.Required(), mcp.Description("RFID protocol")),
 			mcp.WithString("data", mcp.Required(), mcp.Description("Hex data")),
+			mcp.WithNumber("duration_seconds", mcp.Description("Emulation window (default 10)")),
 		},
 		[]string{"protocol", "data"},
 		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.RFIDEmulate(sa(a, "protocol"), sa(a, "data"))
+			return f.RFIDEmulate(sa(a, "protocol"), sa(a, "data"), durationParam(a, "duration_seconds", 10*time.Second))
 		})
 
 	s.add("rfid_write", "Write data to a writable RFID tag (e.g. T5577).",
@@ -428,10 +429,11 @@ func (s *Server) registerFlipperTools() {
 		[]mcp.ToolOption{
 			mcp.WithString("protocol", mcp.Required(), mcp.Description("Protocol: Dallas, Cyfral, Metakom")),
 			mcp.WithString("hex_data", mcp.Required(), mcp.Description("Hex key data")),
+			mcp.WithNumber("duration_seconds", mcp.Description("Emulation window (default 10)")),
 		},
 		[]string{"protocol", "hex_data"},
 		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.IButtonEmulate(sa(a, "protocol"), sa(a, "hex_data"))
+			return f.IButtonEmulate(sa(a, "protocol"), sa(a, "hex_data"), durationParam(a, "duration_seconds", 10*time.Second))
 		})
 
 	s.add("ibutton_write", "Write a Dallas iButton key to a writable blank.",

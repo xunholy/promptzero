@@ -218,10 +218,19 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 	if err != nil {
 		return out, err
 	}
-	// Let the NFC app complete initialisation before asking it to close.
-	// Closing mid-init leaves the app in an abnormal teardown path whose
-	// housekeeping hangs onto the loader lock past the point of reason.
+	// Let the NFC app complete initialisation — closing mid-init leaves
+	// the app in an abnormal teardown state.
 	time.Sleep(500 * time.Millisecond)
+	// The NFC app does not handle FuriSignalExit, so `loader close`
+	// returns "has to be closed manually" and leaves the app running.
+	// Simulate the back button to trigger the app's normal shutdown
+	// path, which is what the user would do on-device. Send it twice
+	// (short press + long press) to cover both "exit current screen"
+	// and "exit app entirely" cases — the app is idempotent against
+	// back presses at its root screen.
+	_, _ = f.InputSend("back", "short")
+	time.Sleep(100 * time.Millisecond)
+	_, _ = f.InputSend("back", "short")
 	if closeErr := f.waitLoaderClosed(10 * time.Second); closeErr != nil {
 		return out, closeErr
 	}
@@ -243,49 +252,39 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 func (f *Flipper) waitLoaderClosed(budget time.Duration) error {
 	_, _ = f.Exec("loader close")
 	deadline := time.Now().Add(budget)
-	// Momentum's loader runs a delayed post-exit housekeeping pass that
-	// briefly re-takes the lock ~1+ seconds after the app signals exit.
-	// A short consecutive-success gate within that window races, so we
-	// require a longer settled period: 5 consecutive `uptime` successes
-	// at 100ms intervals (≥500ms sustained free), THEN a 750ms settle
-	// sleep, THEN a final confirm probe. Any failure in the confirm
-	// restarts the counter — we keep looping until we get both the
-	// 5-in-a-row streak AND a post-settle confirmation within budget.
-	const requiredConsecutive = 5
-	consecutive := 0
+	// Probe until we see the first successful `uptime` (lock acquirable)
+	// as a rough signal that the app's primary thread has exited, then
+	// hard-sleep past Momentum's delayed async housekeeping window
+	// before a final confirm. Consecutive-success gating was tried at
+	// 3/5/N intervals and always raced the ~1 s post-teardown re-lock;
+	// the loader's async message queue makes the "not locked" state
+	// observable for a moment even though a new app can't yet launch.
+	// A simple hard sleep past the housekeeping is the only reliable
+	// signal available to us from outside the firmware.
+	const postTeardownSettle = 3 * time.Second
 	for time.Now().Before(deadline) {
 		out, err := f.Exec("uptime")
 		if err != nil {
 			return fmt.Errorf("flipper: uptime probe: %w", err)
 		}
 		if strings.Contains(out, "cannot be run while an application is open") {
-			consecutive = 0
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		if strings.Contains(out, "Uptime:") {
-			consecutive++
-			if consecutive >= requiredConsecutive {
-				// Settle past any delayed teardown housekeeping, then
-				// confirm the lock is still free before declaring victory.
-				time.Sleep(750 * time.Millisecond)
-				confirm, cerr := f.Exec("uptime")
-				if cerr != nil {
-					return fmt.Errorf("flipper: uptime confirm: %w", cerr)
-				}
-				if strings.Contains(confirm, "Uptime:") {
-					return nil
-				}
-				// Housekeeping re-took the lock during the settle; reset
-				// and keep looping until budget expires.
-				consecutive = 0
-				continue
+			time.Sleep(postTeardownSettle)
+			confirm, cerr := f.Exec("uptime")
+			if cerr != nil {
+				return fmt.Errorf("flipper: uptime confirm: %w", cerr)
 			}
+			if strings.Contains(confirm, "Uptime:") {
+				return nil
+			}
+			// Housekeeping re-took the lock; keep waiting.
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		// Unexpected response — retry until deadline.
-		consecutive = 0
 		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("flipper: loader still locked after close (budget %v)", budget)
@@ -464,10 +463,15 @@ func rfidDetectionLine(line string) bool {
 	return false
 }
 
-// RFIDEmulate emulates an RFID tag.
+// RFIDEmulate emulates an RFID tag for the given duration. The firmware
+// command is streaming (prints "Emulating RFID..." then waits for Ctrl+C),
+// so the wrapper uses ExecLong with streaming semantics: on deadline the
+// lower layer sends \x03 to abort and returns the accumulated output
+// with nil error. Pass a reasonable duration (typical: 2–10 s) — a reader
+// needs to be pointed at the Flipper during the window.
 // CLI: rfid emulate <protocol> <hex_data>
-func (f *Flipper) RFIDEmulate(protocol string, data string) (string, error) {
-	return f.Exec(fmt.Sprintf("rfid emulate %s %s", sanitizeArg(protocol), sanitizeArg(data)))
+func (f *Flipper) RFIDEmulate(protocol string, data string, duration time.Duration) (string, error) {
+	return f.ExecLong(fmt.Sprintf("rfid emulate %s %s", sanitizeArg(protocol), sanitizeArg(data)), duration)
 }
 
 // RFIDWrite writes data to an RFID tag.
@@ -486,11 +490,14 @@ func (f *Flipper) IButtonRead(timeout time.Duration) (string, error) {
 	})
 }
 
-// IButtonEmulate emulates an iButton key.
+// IButtonEmulate emulates an iButton key for the given duration. The
+// firmware command is streaming (prints "Emulating key ..." then waits
+// for Ctrl+C), so the wrapper uses ExecLong with streaming semantics.
+// Supported protocols: Dallas, Cyfral, Metakom. A reader must be in
+// contact with the iButton contacts during the emulation window.
 // CLI: ikey emulate <protocol> <hex_data>
-// Supported protocols: Dallas, Cyfral, Metakom
-func (f *Flipper) IButtonEmulate(protocol string, hexData string) (string, error) {
-	return f.Exec(fmt.Sprintf("ikey emulate %s %s", sanitizeArg(protocol), sanitizeArg(hexData)))
+func (f *Flipper) IButtonEmulate(protocol string, hexData string, duration time.Duration) (string, error) {
+	return f.ExecLong(fmt.Sprintf("ikey emulate %s %s", sanitizeArg(protocol), sanitizeArg(hexData)), duration)
 }
 
 // IButtonWrite writes an iButton key (Dallas only).

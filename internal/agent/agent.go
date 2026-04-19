@@ -455,7 +455,7 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "rfid_read":
 		return a.flipper.RFIDRead(ctx, str(p, "mode"), time.Duration(intOr(p, "timeout_seconds", 15))*time.Second)
 	case "rfid_emulate":
-		return a.flipper.RFIDEmulate(str(p, "protocol"), str(p, "data"))
+		return a.flipper.RFIDEmulate(str(p, "protocol"), str(p, "data"), time.Duration(intOr(p, "duration_seconds", 10))*time.Second)
 	case "rfid_write":
 		return a.flipper.RFIDWrite(str(p, "protocol"), str(p, "data"))
 
@@ -463,7 +463,7 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "ibutton_read":
 		return a.flipper.IButtonRead(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
 	case "ibutton_emulate":
-		return a.flipper.IButtonEmulate(str(p, "protocol"), str(p, "hex_data"))
+		return a.flipper.IButtonEmulate(str(p, "protocol"), str(p, "hex_data"), time.Duration(intOr(p, "duration_seconds", 10))*time.Second)
 	case "ibutton_write":
 		return a.flipper.IButtonWrite(str(p, "hex_data"))
 

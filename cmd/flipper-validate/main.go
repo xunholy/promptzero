@@ -574,8 +574,10 @@ func buildCases() []tcase {
 		{category: "nfc", name: "NFCRawFrame(26)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
 			return f.NFCRawFrame("26", 4*time.Second)
 		}, allowEmpty: true, rxTolerant: true},
-		{category: "rfid", name: "RFIDRawRead(2s)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
-			return f.RFIDRawRead("", testDir+"/raw.lfrfid", 2*time.Second)
+		{category: "rfid", name: "RFIDRawRead(ask,2s)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
+			// Momentum's rfid raw_read REQUIRES a modulation arg (ask|psk);
+			// empty mode returns the rfid usage banner.
+			return f.RFIDRawRead("ask", testDir+"/raw.lfrfid", 2*time.Second)
 		}, allowEmpty: true, rxTolerant: true},
 		{category: "rfid", name: "RFIDRawAnalyze(raw.lfrfid)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
 			return f.RFIDRawAnalyze(testDir + "/raw.lfrfid")
@@ -598,29 +600,18 @@ func buildCases() []tcase {
 		{category: "subghz", name: "SubGHzTxKey(ABCDEF,433920000,200,1)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
 			return f.SubGHzTxKey("ABCDEF", 433920000, 200, 1)
 		}, allowEmpty: true},
-		{category: "nfc", name: "NFCEmulate(testNFCFile,2s)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
-			// NFCEmulate wraps LoaderOpen, which launches the app. Give it 2s to init,
-			// then try to close the app so the CLI isn't wedged.
-			done := make(chan struct{})
-			var out string
-			var err error
-			go func() {
-				out, err = f.NFCEmulate(testNFCFile)
-				close(done)
-			}()
-			select {
-			case <-done:
-			case <-time.After(2 * time.Second):
-			}
-			// Try to close whatever was launched.
-			_, _ = f.LoaderClose()
-			return out + " (loader_close dispatched)", err
+		{category: "nfc", name: "NFCEmulate(testNFCFile)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
+			// NFCEmulate wraps LoaderOpen + loader-close wait. The wrapper
+			// handles the full open → settle → close → post-teardown wait
+			// sequence; just call it directly and let the case deadline
+			// (15s) bound total time.
+			return f.NFCEmulate(testNFCFile)
 		}, allowEmpty: true, rxTolerant: true},
-		{category: "rfid", name: "RFIDEmulate(EM4100,deadbeef01)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
-			return f.RFIDEmulate("EM4100", "DEADBEEF01")
+		{category: "rfid", name: "RFIDEmulate(EM4100,deadbeef01,2s)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
+			return f.RFIDEmulate("EM4100", "DEADBEEF01", 2*time.Second)
 		}, allowEmpty: true, rxTolerant: true},
-		{category: "ibutton", name: "IButtonEmulate(Dallas,0102030405060708)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
-			return f.IButtonEmulate("Dallas", "0102030405060708")
+		{category: "ibutton", name: "IButtonEmulate(Dallas,…,2s)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
+			return f.IButtonEmulate("Dallas", "0102030405060708", 2*time.Second)
 		}, allowEmpty: true, rxTolerant: true},
 		{category: "loader", name: "LoaderOpen(About)",
 			skip: "SKIPPED — app launch freezes CLI until back-button; cannot dismiss programmatically without InputSend working in a live app context"},
