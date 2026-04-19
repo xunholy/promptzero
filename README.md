@@ -117,7 +117,8 @@ promptzero> what's this?  [photo of a remote control]
 ```bash
 git clone https://github.com/xunholy/promptzero.git
 cd promptzero
-make build
+task dev:setup   # one-time: install pinned golangci-lint
+task build       # stamps version ldflags from git
 ```
 
 ### Configure
@@ -376,8 +377,6 @@ task test:full      # Full suite, matches CI
 task lint           # golangci-lint run ./...
 task --list         # See every available target
 ```
-
-The original `make` targets still work for build/run/clean/tidy/lint.
 
 ### Cross-compilation
 
