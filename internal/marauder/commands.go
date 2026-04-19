@@ -2,6 +2,7 @@ package marauder
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,24 +21,58 @@ func (m *Marauder) ScanAll(timeout time.Duration) (string, error) {
 	return m.Exec("scanall", timeout)
 }
 
+// ScanStation was the short-hand for scanning stations only on pre-v1.11
+// firmware. The underlying `scansta` command was removed in v1.11.1 with no
+// replacement on the current upstream — ScanAll is the sanctioned path.
+// Exposing this as a hard error means SDK / MCP surfaces that advertise
+// "scansta" get a clear failure mode instead of a silent timeout on a no-op.
+func (m *Marauder) ScanStation(_ time.Duration) (string, error) {
+	return "", fmt.Errorf("scansta is unavailable in Marauder v1.11.1+; use ScanAll instead")
+}
+
 func (m *Marauder) StopScan() (string, error) {
 	return m.Exec("stopscan", 5*time.Second)
 }
 
 // --- Selection ---
 
+// selectIndicesRe accepts a Marauder `select` index argument: either the
+// literal token "all", or a comma/space/tab-separated list of decimal
+// indices. The character class is explicit (not `\s`) because `\s` also
+// matches \r, \n, and \f — exactly the bytes an attacker would use to
+// inject a follow-on command over the serial link.
+var selectIndicesRe = regexp.MustCompile(`^(?:all|[0-9][0-9, \t]*)$`)
+
+// validateSelectIndices returns nil when s is a safe Marauder select index
+// list. See selectIndicesRe for the accepted grammar.
+func validateSelectIndices(s string) error {
+	if !selectIndicesRe.MatchString(s) {
+		return fmt.Errorf("invalid indices %q (want \"all\" or a comma/space-separated list of digits)", s)
+	}
+	return nil
+}
+
 // SelectAP selects APs by index list or "all".
 func (m *Marauder) SelectAP(indices string) (string, error) {
+	if err := validateSelectIndices(indices); err != nil {
+		return "", err
+	}
 	return m.Exec("select -a "+indices, 5*time.Second)
 }
 
 // SelectStation selects stations by index list or "all".
 func (m *Marauder) SelectStation(indices string) (string, error) {
+	if err := validateSelectIndices(indices); err != nil {
+		return "", err
+	}
 	return m.Exec("select -c "+indices, 5*time.Second)
 }
 
 // SelectSSID selects SSIDs by index list or "all".
 func (m *Marauder) SelectSSID(indices string) (string, error) {
+	if err := validateSelectIndices(indices); err != nil {
+		return "", err
+	}
 	return m.Exec("select -s "+indices, 5*time.Second)
 }
 
@@ -381,6 +416,25 @@ func (m *Marauder) Settings() (string, error) {
 	return m.Exec("settings", 5*time.Second)
 }
 
+// settingNames is the allowlist of setting names `settings -s` accepts on
+// current ESP32-Marauder firmware. Validating at the Go layer turns typos
+// and free-form input from an LLM into a clear error instead of a silent
+// firmware no-op (the parser ignores unknown names without feedback) — and
+// closes a CLI-injection path where an attacker-controlled `name` would
+// otherwise have been concatenated verbatim.
+var settingNames = map[string]struct{}{
+	"ForcePMKID":   {},
+	"ForceProbe":   {},
+	"SavePCAP":     {},
+	"SaveLog":      {},
+	"SavePMKID":    {},
+	"EnableLED":    {},
+	"RandomBLEMac": {},
+	"EnableWeb":    {},
+	"SDCard":       {},
+	"WebAuth":      {},
+}
+
 // SetSetting updates a single device setting by name and value. Both args
 // are sanitised (CR/LF/NUL/quote stripped) so a value with embedded control
 // characters can't inject additional CLI commands.
@@ -390,6 +444,9 @@ func (m *Marauder) Settings() (string, error) {
 // over the CLI. We validate at the Go layer so callers get a clear error
 // instead of a silent no-op.
 func (m *Marauder) SetSetting(name, value string) (string, error) {
+	if _, ok := settingNames[name]; !ok {
+		return "", fmt.Errorf("invalid setting name %q (valid: ForcePMKID, ForceProbe, SavePCAP, SaveLog, SavePMKID, EnableLED, RandomBLEMac, EnableWeb, SDCard, WebAuth)", name)
+	}
 	if value != "enable" && value != "disable" {
 		return "", fmt.Errorf("invalid setting value %q (must be \"enable\" or \"disable\")", value)
 	}

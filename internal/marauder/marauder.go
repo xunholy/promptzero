@@ -255,7 +255,12 @@ func parseMarauderResponse(b []byte) string {
 }
 
 func (m *Marauder) drain() {
-	m.port.SetReadTimeout(100 * time.Millisecond)
+	// Bail on SetReadTimeout failure: a half-open port that rejects the
+	// short timeout would leave the subsequent Read blocking on the
+	// previous (potentially infinite) deadline.
+	if err := m.port.SetReadTimeout(100 * time.Millisecond); err != nil {
+		return
+	}
 	buf := make([]byte, 1024)
 	for {
 		n, _ := m.port.Read(buf)
@@ -263,5 +268,5 @@ func (m *Marauder) drain() {
 			break
 		}
 	}
-	m.port.SetReadTimeout(5 * time.Second)
+	_ = m.port.SetReadTimeout(5 * time.Second)
 }
