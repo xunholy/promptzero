@@ -1064,6 +1064,57 @@ func (s *Server) registerMarauderTools() {
 		func(_ context.Context, a map[string]interface{}) (string, error) {
 			return m.SetChannel(int(na(a, "channel")))
 		})
+
+	// --- GPS (passive read-only) ---
+	s.add("marauder_gps_data", "Return the last parsed GPS fix from the Marauder devboard.", nil, nil,
+		func(_ context.Context, _ map[string]interface{}) (string, error) { return m.GPSData() })
+	s.add("marauder_gps_field", "Return a single GPS datum.",
+		[]mcp.ToolOption{
+			mcp.WithString("field", mcp.Required(), mcp.Description("fix|sat|lon|lat|alt|date|accuracy|text|nmea")),
+			mcp.WithString("nav_system", mcp.Description("Optional: native|all|gps|glonass|galileo|navic|qzss|beidou")),
+		},
+		[]string{"field"},
+		func(_ context.Context, a map[string]interface{}) (string, error) {
+			return m.GPSField(sa(a, "field"), sa(a, "nav_system"))
+		})
+	s.add("marauder_nmea", "Stream raw NMEA sentences from the attached GPS module.",
+		[]mcp.ToolOption{mcp.WithNumber("duration_seconds", mcp.Description("Capture duration (default 5)"))},
+		nil,
+		func(_ context.Context, a map[string]interface{}) (string, error) {
+			return m.NMEA(durationParam(a, "duration_seconds", 5*time.Second))
+		})
+
+	// --- Device-local utilities ---
+	s.add("marauder_packet_count", "Return the cumulative packet counters (per frame type).", nil, nil,
+		func(_ context.Context, _ map[string]interface{}) (string, error) { return m.PacketCount() })
+	s.add("marauder_storage_ls", "List contents of a directory on the Marauder SD card.",
+		[]mcp.ToolOption{mcp.WithString("path", mcp.Description("Directory path (default /)"))},
+		nil,
+		func(_ context.Context, a map[string]interface{}) (string, error) {
+			return m.StorageLS(sa(a, "path"))
+		})
+
+	// --- LED control ---
+	s.add("marauder_led_set", "Set the devboard LED to a fixed 24-bit RGB hex colour.",
+		[]mcp.ToolOption{mcp.WithString("rgb_hex", mcp.Required(), mcp.Description("6-hex RGB e.g. ff0000"))},
+		[]string{"rgb_hex"},
+		func(_ context.Context, a map[string]interface{}) (string, error) {
+			return m.LEDSetHex(sa(a, "rgb_hex"))
+		})
+	s.add("marauder_led_rainbow", "Start the cycling rainbow LED pattern.", nil, nil,
+		func(_ context.Context, _ map[string]interface{}) (string, error) { return m.LEDRainbow() })
+
+	// --- Named-service portscan (requires Join) ---
+	s.add("wifi_portscan_service", "Scan the host at the given IP index for a named service (ssh, http, ...). Requires a prior Join.",
+		[]mcp.ToolOption{
+			mcp.WithNumber("ip_index", mcp.Required(), mcp.Description("IP list index")),
+			mcp.WithString("service", mcp.Required(), mcp.Description("Service token: ssh|http|https|ftp|smb|rdp|dns|smtp|pop3|imap|mysql|psql|mssql|redis|vnc")),
+			mcp.WithNumber("duration_seconds", mcp.Description("Duration (default 30)")),
+		},
+		[]string{"ip_index", "service"},
+		func(_ context.Context, a map[string]interface{}) (string, error) {
+			return m.PortScanService(int(na(a, "ip_index")), sa(a, "service"), durationParam(a, "duration_seconds", 30*time.Second))
+		})
 }
 
 // --- Registration: persona prompts ---

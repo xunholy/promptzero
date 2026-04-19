@@ -192,6 +192,45 @@ func buildCases() []tcase {
 		{category: "device", name: "GetChannel", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
 			return m.GetChannel()
 		}, expectOutputPattern: "Current channel:"},
+		{category: "device", name: "SetChannel(6)", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			_, _ = m.SetChannel(6)
+			return m.GetChannel()
+		}, expectOutputPattern: "Current channel: 6"},
+		{category: "device", name: "SetChannel(1,restore)", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			_, _ = m.SetChannel(1)
+			return m.GetChannel()
+		}, expectOutputPattern: "Current channel: 1"},
+		{category: "device", name: "PacketCount", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.PacketCount()
+		}, allowEmpty: true},
+		{category: "storage", name: "StorageLS(/)", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.StorageLS("/")
+		}, allowEmpty: true},
+
+		// ================================================================
+		// Round 1b — new non-streaming wrappers (GPS / LED / EvilPortal file)
+		// These run EARLY, before the streaming-sniff block, because some
+		// sniff variants can leave the board in a state where subsequent
+		// Exec calls time out waiting for a prompt.
+		// ================================================================
+		{category: "gps", name: "GPSData", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.GPSData()
+		}, allowEmpty: true},
+		{category: "gps", name: "GPSField(fix)", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.GPSField("fix", "")
+		}, allowEmpty: true},
+		{category: "led", name: "LEDRainbow", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.LEDRainbow()
+		}, allowEmpty: true},
+		{category: "led", name: "LEDSetHex(ff0000)", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.LEDSetHex("ff0000")
+		}, allowEmpty: true},
+		{category: "led", name: "LEDSetHex(000000,off)", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.LEDSetHex("000000")
+		}, allowEmpty: true},
+		{category: "evilportal", name: "EvilPortalSetHTML(test.html)", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.EvilPortalSetHTML("test.html")
+		}, allowEmpty: true},
 
 		// ================================================================
 		// Round 2 — list management (no RF)
@@ -231,6 +270,12 @@ func buildCases() []tcase {
 		}, allowEmpty: true},
 		{category: "list", name: "LoadSSIDs", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
 			return m.LoadSSIDs()
+		}, allowEmpty: true},
+		{category: "list", name: "SaveAPs", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.SaveAPs()
+		}, allowEmpty: true},
+		{category: "list", name: "LoadAPs", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
+			return m.LoadAPs()
 		}, allowEmpty: true},
 		{category: "list", name: "ClearSSIDs(final)", run: func(_ context.Context, m *marauder.Marauder) (string, error) {
 			return m.ClearSSIDs()
@@ -274,6 +319,12 @@ func buildCases() []tcase {
 			_, _ = m.StopScan()
 			return "", nil
 		}, allowEmpty: true},
+		{category: "sniff", name: "SniffPMKID(passive)", skip: "SKIPPED — streaming verb wedges the CLI prompt on the current firmware; validated structurally via unit tests"},
+		{category: "ble", name: "SniffBT(airtag|flipper|flock|meta)", skip: "SKIPPED — streaming BT sniffers wedge subsequent non-streaming commands on this firmware build"},
+		{category: "ble", name: "SniffSkimmer", skip: "SKIPPED — same streaming-wedge profile as SniffBT"},
+		{category: "gps", name: "NMEA", skip: "SKIPPED — streaming verb; wrapper correctness covered by build-time verification"},
+		{category: "select", name: "SelectAP/SelectStation/SelectSSID", skip: "SKIPPED — pure string builders; live chain wedges subsequent commands when no APs are scanned"},
+		{category: "mac", name: "CloneAPMAC", skip: "SKIPPED — requires a scanned AP list and wedges on empty list"},
 
 		// ================================================================
 		// Round 4 — MAC randomisation (Marauder-local, no RF effect)

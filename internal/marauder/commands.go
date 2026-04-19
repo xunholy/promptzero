@@ -2,6 +2,7 @@ package marauder
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/clisafe"
@@ -302,10 +303,40 @@ func (m *Marauder) ARPScan(timeout time.Duration) (string, error) {
 
 // PortScan performs a full-port scan against the host at the given IP
 // index. Requires a successful Join and a prior pingscan/arpscan to
-// populate the IP list. The named-service variant (`portscan -s <service>`)
-// is not currently exposed — add a separate wrapper if you need it.
+// populate the IP list. See PortScanService for the named-service variant.
 func (m *Marauder) PortScan(ipIndex int, timeout time.Duration) (string, error) {
 	return m.Exec(fmt.Sprintf("portscan -a -t %d", ipIndex), timeout)
+}
+
+// portScanServices is the allowlist of well-known service tokens Marauder
+// accepts on `portscan -s <service>`. Firmware upstream maps these to fixed
+// port numbers (e.g. ssh → 22, http → 80). We validate at the Go layer so
+// callers don't get a silent no-op on a typo.
+var portScanServices = map[string]struct{}{
+	"ssh":   {},
+	"http":  {},
+	"https": {},
+	"ftp":   {},
+	"smb":   {},
+	"rdp":   {},
+	"dns":   {},
+	"smtp":  {},
+	"pop3":  {},
+	"imap":  {},
+	"mysql": {},
+	"psql":  {},
+	"mssql": {},
+	"redis": {},
+	"vnc":   {},
+}
+
+// PortScanService runs the named-service variant of portscan (`portscan -s
+// <service> -t <ipIndex>`). Requires the same Join precondition as PortScan.
+func (m *Marauder) PortScanService(ipIndex int, service string, timeout time.Duration) (string, error) {
+	if _, ok := portScanServices[service]; !ok {
+		return "", fmt.Errorf("invalid portscan service %q (valid: ssh, http, https, ftp, smb, rdp, dns, smtp, pop3, imap, mysql, psql, mssql, redis, vnc)", service)
+	}
+	return m.Exec(fmt.Sprintf("portscan -s %s -t %d", clisafe.SanitizeArg(service), ipIndex), timeout)
 }
 
 // --- MAC Manipulation ---
@@ -379,4 +410,83 @@ func (m *Marauder) Reboot() (string, error) {
 // Update triggers an OTA firmware update check.
 func (m *Marauder) Update() (string, error) {
 	return m.Exec("update -s", 30*time.Second)
+}
+
+// --- GPS (requires GPS module on the devboard) ---
+
+// GPSData prints the last parsed GPS fix (lat/lon/alt/date/accuracy/text).
+// Silently returns empty if no GPS module is attached.
+func (m *Marauder) GPSData() (string, error) {
+	return m.Exec("gpsdata", 5*time.Second)
+}
+
+// gpsValidFields is the allowlist of `gps -g <field>` tokens accepted by
+// firmware: applications/main/gps_cli.c (or equivalent). Guarded at the Go
+// layer to surface typos as errors instead of silent no-ops.
+var gpsValidFields = map[string]struct{}{
+	"fix": {}, "sat": {}, "lon": {}, "lat": {}, "alt": {},
+	"date": {}, "accuracy": {}, "text": {}, "nmea": {},
+}
+
+// GPSField returns a single GPS datum selected by `field`. Accepts:
+// fix, sat, lon, lat, alt, date, accuracy, text, nmea. The optional
+// navSystem token selects the satellite system: "native", "all", "gps",
+// "glonass", "galileo", "navic", "qzss", "beidou" (empty = firmware default).
+func (m *Marauder) GPSField(field, navSystem string) (string, error) {
+	if _, ok := gpsValidFields[field]; !ok {
+		return "", fmt.Errorf("invalid gps field %q (valid: fix, sat, lon, lat, alt, date, accuracy, text, nmea)", field)
+	}
+	cmd := "gps -g " + clisafe.SanitizeArg(field)
+	if navSystem != "" {
+		cmd += " -n " + clisafe.SanitizeArg(navSystem)
+	}
+	return m.Exec(cmd, 5*time.Second)
+}
+
+// NMEA streams raw NMEA sentences from the attached GPS module. Empty on
+// boards without GPS hardware.
+func (m *Marauder) NMEA(timeout time.Duration) (string, error) {
+	return m.Exec("nmea", timeout)
+}
+
+// --- Device-local utilities ---
+
+// PacketCount returns a live packet-counter snapshot (cumulative packets
+// received since boot, grouped by frame type).
+func (m *Marauder) PacketCount() (string, error) {
+	return m.Exec("packetcount", 5*time.Second)
+}
+
+// StorageLS lists the contents of the given directory on the Marauder SD
+// card. The path is sanitised + double-quoted so spaces are preserved
+// (the firmware's args parser otherwise truncates at the first space).
+func (m *Marauder) StorageLS(path string) (string, error) {
+	if path == "" {
+		path = "/"
+	}
+	return m.Exec(fmt.Sprintf(`ls "%s"`, clisafe.SanitizeArg(path)), 5*time.Second)
+}
+
+// --- LED control ---
+
+// LEDSetHex sets the devboard LED to a literal 24-bit RGB hex colour
+// (e.g. "ff0000" for red). The hex value is sanitised; the firmware
+// rejects non-hex strings silently, so we validate at the Go layer.
+func (m *Marauder) LEDSetHex(rgbHex string) (string, error) {
+	cleaned := strings.TrimPrefix(strings.TrimPrefix(rgbHex, "#"), "0x")
+	if len(cleaned) != 6 {
+		return "", fmt.Errorf("invalid LED colour %q (want 6-hex RGB e.g. \"ff0000\")", rgbHex)
+	}
+	for _, c := range cleaned {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return "", fmt.Errorf("invalid LED colour %q (non-hex character)", rgbHex)
+		}
+	}
+	return m.Exec("led -s "+clisafe.SanitizeArg(cleaned), 5*time.Second)
+}
+
+// LEDRainbow starts the cycling rainbow pattern. Use any other LED command
+// to stop it.
+func (m *Marauder) LEDRainbow() (string, error) {
+	return m.Exec("led -p rainbow", 5*time.Second)
 }
