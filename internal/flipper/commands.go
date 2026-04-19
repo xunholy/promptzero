@@ -4,12 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/clisafe"
 )
+
+// ansiRE strips ANSI CSI sequences used by Flipper firmware to colour CLI
+// output (e.g. `\x1b[31mError: …\x1b[0m`). Applied when pattern-matching
+// output text, so matches are colour-agnostic.
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
 
 // sanitizeArg delegates to clisafe.SanitizeArg. Kept as an internal wrapper
 // so existing call sites in this file read naturally; the shared helper
@@ -212,7 +218,7 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 	if err != nil {
 		return out, err
 	}
-	if closeErr := f.waitLoaderClosed(1 * time.Second); closeErr != nil {
+	if closeErr := f.waitLoaderClosed(3 * time.Second); closeErr != nil {
 		return out, closeErr
 	}
 	return out, nil
@@ -308,7 +314,38 @@ func (f *Flipper) NFCSubcommand(subcommand string, timeout time.Duration) (strin
 		return result, nil // return result despite exit error
 	}
 
+	// Momentum's NFC subshell prints "Error: <msg>" (with ANSI colour) when
+	// the subcommand fails at the firmware layer — e.g. `mfu rdbl` with no
+	// tag present emits "Error: Timeout". Without a physical card or when
+	// the tag type doesn't match the subcommand, this is a normal outcome
+	// rather than a wrapper bug. Surface it as a Go error so callers can
+	// distinguish firmware-reported failure from success; rxTolerant test
+	// cases classify "no card" / "timeout" style errors as expected.
+	if msg, ok := nfcErrorFromOutput(result); ok {
+		return result, fmt.Errorf("nfc %s: %s", verb, msg)
+	}
+
 	return result, nil
+}
+
+// nfcErrorFromOutput extracts a firmware error message from an NFC subshell
+// response. Momentum prints `\x1b[31mError: <msg>\x1b[0m` (ANSI colour-wrapped)
+// when a subcommand fails at the firmware layer. Returns the stripped message
+// and true if one is found; "" and false otherwise.
+func nfcErrorFromOutput(out string) (string, bool) {
+	// Strip ANSI CSI sequences (\x1b[<params>m) so pattern matching is
+	// colour-agnostic. Accept Momentum's default foreground-colour wrap.
+	stripped := ansiRE.ReplaceAllString(out, "")
+	for _, line := range strings.Split(stripped, "\n") {
+		trim := strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(trim, "Error:"); ok {
+			rest = strings.TrimSpace(rest)
+			if rest != "" {
+				return rest, true
+			}
+		}
+	}
+	return "", false
 }
 
 // --- RFID (125 kHz LF) ---
