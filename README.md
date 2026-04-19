@@ -135,6 +135,18 @@ export OPENAI_API_KEY="sk-..."          # optional, for voice
 export OPENROUTER_API_KEY="sk-or-..."   # optional, for multi-model generation
 ```
 
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | Claude API key for the main agent (required unless `api_key` is set in config). |
+| `OPENAI_API_KEY` | OpenAI key for Whisper voice transcription (optional). |
+| `OPENROUTER_API_KEY` | OpenRouter key when `--gen-provider openrouter` is in use. |
+| `PROMPTZERO_CONFIG` | Path to the config file; overrides the default search path. |
+| `PROMPTZERO_WEB_TOKEN` | Bearer token for the web UI; overrides `web.token`. |
+| `PROMPTZERO_LOG_LEVEL` | Operator-only log level (`debug` \| `info` \| `warn` \| `error`); overrides `observability.log_level`. |
+| `PROMPTZERO_SERIAL_DEBUG` | Any non-empty value dumps Flipper serial I/O to stderr. |
+
 ### Examples
 
 The [`examples/`](examples/) directory ships operator-ready templates you
@@ -259,12 +271,13 @@ web:
 ```
 
 — or via `PROMPTZERO_WEB_TOKEN` in the environment. HTTP callers send
-`Authorization: Bearer <token>` and the browser passes `?token=<token>`
-on the WebSocket URL (it's also picked up from a `#token=…` URL fragment
-on first load and saved to `sessionStorage`, so you can share a login
-link once and forget). Leaving the token empty keeps the legacy no-auth
-behaviour; the server prints a red warning if that combines with a
-non-loopback bind.
+`Authorization: Bearer <token>`; the browser negotiates the WebSocket
+with `Sec-WebSocket-Protocol: bearer, <token>` (the server echoes
+`bearer` back on success). The token is picked up from a `#token=…` URL
+fragment on first load and saved to `sessionStorage`, so you can share a
+login link once and forget. Leaving the token empty keeps the legacy
+no-auth behaviour; the server prints a red warning if that combines
+with a non-loopback bind.
 
 PromptZero speaks plain HTTP on purpose — terminate TLS at a reverse
 proxy (Caddy, Traefik, nginx) or a Tailscale/Cloudflare tunnel. There is
