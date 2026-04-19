@@ -26,7 +26,10 @@ func main() {
 	if err := run(); err != nil {
 		if errors.Is(err, context.Canceled) {
 			fmt.Fprintf(os.Stderr, "\n  %scancelled.%s\n\n", dim, reset)
-			return
+			// POSIX convention: 128 + signal number; SIGINT = 2 → 130.
+			// Lets shell scripts distinguish user-cancellation from a
+			// real failure (exit 1).
+			os.Exit(130)
 		}
 		fmt.Fprintf(os.Stderr, "\n  %s%serror: %v%s\n\n", bold, red, err, reset)
 		os.Exit(1)
