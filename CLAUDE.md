@@ -6,7 +6,7 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 
 PromptZero — Go 1.25 CLI that drives a Flipper Zero + ESP32 Marauder
 over USB serial via Claude tool use. Module path is
-`github.com/xunholy/promptzero`. License is MIT.
+`github.com/xunholy/promptzero`. License is AGPL-3.0-or-later.
 
 ## Dev setup
 

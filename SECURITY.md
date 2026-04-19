@@ -73,8 +73,9 @@ This tool is intended for:
 
 Unauthorised use against systems, networks, or radio equipment you do not
 own or have written permission to test is illegal in most jurisdictions,
-and the maintainers assume no liability. The MIT license disclaims warranty
-and liability in full (see `LICENSE`); this document does not supersede it.
+and the maintainers assume no liability. The AGPL-3.0-or-later license
+disclaims warranty and liability in full (see `LICENSE`); this document
+does not supersede it.
 
 If you are unsure whether your intended use is authorised, **it probably
 isn't** — consult your legal counsel or the target system's owner before
