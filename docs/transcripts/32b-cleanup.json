@@ -1,0 +1,25 @@
+{
+  "prompt": "Delete /ext/badusb/pztest_dangerous.txt",
+  "response": "Deleted `/ext/badusb/pztest_dangerous.txt`.",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "storage_delete",
+      "input": {
+        "path": "/ext/badusb/pztest_dangerous.txt"
+      },
+      "at": "2026-04-20T05:42:03.303683901+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "storage_delete",
+      "input": {
+        "path": "/ext/badusb/pztest_dangerous.txt"
+      },
+      "duration_ms": 120,
+      "at": "2026-04-20T05:42:03.424541326+10:00"
+    }
+  ],
+  "duration_s": 3.584176437,
+  "model": "claude-opus-4-7"
+}

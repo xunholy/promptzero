@@ -1,0 +1,15 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Decode the Tesla_EU_AM270.sub file on my Flipper — what protocol, frequency and key does it use?
+2026/04/20 05:30:38 INFO turn_started trace_id=6b7fc6db0a4037c2 input_len=98
+  ▸ fileformat_read {"path": "/ext/subghz/Tesla_EU_AM270.sub"}
+  ✗ fileformat_read (110ms)
+  ▸ storage_list {"path": "/ext/subghz"}
+  ◦ storage_list (107ms)
+  ▸ storage_list {"path": "/ext/subghz/Tesla"}
+  ◦ storage_list (109ms)
+  ▸ subghz_decode {"file": "/ext/subghz/Tesla/Tesla_EU_AM270.sub"}
+  ◦ subghz_decode (1134ms)
+  ▸ storage_read {"path": "/ext/subghz/Tesla/Tesla_EU_AM270.sub"}
+  ◦ storage_read (159ms)

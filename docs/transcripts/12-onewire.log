@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Look for any 1-Wire devices on the iButton pad
+2026/04/20 05:32:43 INFO turn_started trace_id=10193011a7e9eb9e input_len=46
+  ▸ onewire_search {}
+  ◦ onewire_search (684ms)

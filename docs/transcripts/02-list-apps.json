@@ -1,0 +1,22 @@
+{
+  "prompt": "What apps are installed on my Flipper?",
+  "response": "Here's what's on your Flipper:\n\n**Apps**\n- Sub-GHz\n- 125 kHz RFID\n- NFC\n- Infrared\n- GPIO\n- iButton\n- Bad KB\n- U2F\n- Momentum\n\n**Settings**\n- Bluetooth, LCD & Notifications, Storage, Power, Desktop, Passport, System, Expansion Modules, Clock & Alarm, Input, About\n\nLooks like you're running Momentum firmware. No extra FAPs installed beyond the built-ins — let me know if you want to add any (NFC Magic, MFKey32, Mifare Nested, PicoPass, ProtoView, etc.).",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "list_apps",
+      "input": {},
+      "at": "2026-04-20T05:29:44.386376553+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "list_apps",
+      "input": {},
+      "duration_ms": 150,
+      "output": "{\"apps\":[\"Sub-GHz\",\"125 kHz RFID\",\"NFC\",\"Infrared\",\"GPIO\",\"iButton\",\"Bad KB\",\"U2F\",\"Momentum\"],\"settings\":[\"Bluetooth\",\"…",
+      "at": "2026-04-20T05:29:44.536788638+10:00"
+    }
+  ],
+  "duration_s": 7.252627963,
+  "model": "claude-opus-4-7"
+}

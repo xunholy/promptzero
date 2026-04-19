@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Try to detect an NFC tag for 8 seconds
+2026/04/20 05:32:03 INFO turn_started trace_id=4ae3d6ac910f0e1b input_len=38
+  ▸ nfc_detect {"timeout_seconds": 8}
+  ◦ nfc_detect (8831ms)

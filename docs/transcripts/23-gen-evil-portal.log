@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Generate an evil-portal HTML page that looks like a corporate guest WiFi login — don't deploy
+2026/04/20 05:37:45 INFO turn_started trace_id=49c9eb7818b4313c input_len=95
+  ▸ generate_evil_portal {"description": "Corporate guest WiFi captive portal login page. Clean professional design with a g…
+  ◦ generate_evil_portal (26701ms)

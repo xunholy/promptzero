@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Generate an IR remote file for a generic Samsung TV — generate only, do NOT deploy
+2026/04/20 05:35:58 INFO turn_started trace_id=d65f0cbc905a6abf input_len=84
+  ▸ generate_ir {"description": "Generic Samsung TV remote with all common commands: power, volume up/down, channel…
+  ◦ generate_ir (10304ms)

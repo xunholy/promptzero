@@ -1,0 +1,22 @@
+{
+  "prompt": "What's the battery level and is it charging?",
+  "response": "Battery: **100%** — fully charged, not currently drawing charge current. Health 100%, 27°C, 4.165V.",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "power_info",
+      "input": {},
+      "at": "2026-04-20T05:41:02.406600305+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "power_info",
+      "input": {},
+      "duration_ms": 119,
+      "output": "format.major                  : 2\nformat.minor                  : 1\ncharge.level                  : 100\ncharge.state    …",
+      "at": "2026-04-20T05:41:02.52592213+10:00"
+    }
+  ],
+  "duration_s": 7.8675705019999995,
+  "model": "claude-opus-4-7"
+}

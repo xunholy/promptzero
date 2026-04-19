@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Do a quick receive on 433.92MHz for 5 seconds and tell me if anything's in the air
+2026/04/20 05:31:04 INFO turn_started trace_id=79d876b710f540f4 input_len=82
+  ▸ subghz_receive {"frequency": 433920000, "duration_seconds": 5}
+  ◦ subghz_receive (5161ms)

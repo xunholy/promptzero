@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: List the files at /ext on my Flipper and tell me what's there
+2026/04/20 05:54:04 INFO turn_started trace_id=e7e04a8a20049733 input_len=61
+  ▸ storage_list {"path": "/ext"}
+  ◦ storage_list (115ms)

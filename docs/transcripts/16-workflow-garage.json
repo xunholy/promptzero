@@ -1,0 +1,26 @@
+{
+  "prompt": "Do a garage-door triage sweep — listen on all the common garage and car remote frequencies and tell me what you hear. Use 3 seconds per frequency.",
+  "response": "Triage sweep complete — 7 frequencies scanned at 3s each, **0 decoded signals**.\n\n| Frequency | Activity | Decoded |\n|---|---|---|\n| 300 MHz | Dense noise floor, some bursts | ❌ |\n| 310 MHz | Heavy raw pulse activity | ❌ |\n| 315 MHz | Continuous noise, no clean frame | ❌ |\n| 318 MHz | Quiet | ❌ |\n| 390 MHz | Repeating ~70ms gaps (looks like a beacon/telemetry, not a remote) | ❌ |\n| 433.92 MHz | Quiet — just a few scattered pulses | ❌ |\n| 868.35 MHz | Silent | ❌ |\n\n**Read:** 3 seconds is too short to catch a garage/car remote unless someone happens to press the button during the exact window. The pulses you see are ambient RF — wireless sensors, thermometers, doorbells, car TPMS — but nothing matched a known garage/remote protocol cleanly enough to decode.\n\n**Next steps if you want an actual capture:**\n- Have the remote ready and press it during the scan\n- Bump to 10s per frequency: `workflow_garage_door_triage` with `per_freq_seconds: 10`\n- Or target a single freq with `subghz_receive` at 433.92 MHz / 315 MHz for 30s while pressing the button\n\nWant me to rerun with a longer window, or target a specific frequency?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "workflow_garage_door_triage",
+      "input": {
+        "per_freq_seconds": 3
+      },
+      "at": "2026-04-20T05:34:19.905982869+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "workflow_garage_door_triage",
+      "input": {
+        "per_freq_seconds": 3
+      },
+      "duration_ms": 26334,
+      "output": "{\n  \"frequencies_scanned\": [\n    300000000,\n    310000000,\n    315000000,\n    318000000,\n    390000000,\n    433920000,\n …",
+      "at": "2026-04-20T05:34:46.240868529+10:00"
+    }
+  ],
+  "duration_s": 40.312070144,
+  "model": "claude-opus-4-7"
+}

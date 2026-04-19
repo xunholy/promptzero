@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: I'm holding an unknown NFC badge against the back of the Flipper — run the badge-triage workflow on it with a 8 second timeout, and do NOT dump yet.
+2026/04/20 05:39:07 INFO turn_started trace_id=5b39402cff3ce54c input_len=150
+  ▸ workflow_nfc_badge_pipeline {"attempt_dump": false, "timeout_seconds": 8}
+  ◦ workflow_nfc_badge_pipeline (8824ms)

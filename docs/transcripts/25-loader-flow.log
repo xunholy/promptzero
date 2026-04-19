@@ -1,0 +1,11 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Open the NFC app on my Flipper, tell me what app is running, then close it
+2026/04/20 05:38:58 INFO turn_started trace_id=12e8ddee9ab97bf6 input_len=74
+  ▸ loader_open {"app_name": "NFC"}
+  ◦ loader_open (309ms)
+  ▸ loader_info {}
+  ◦ loader_info (147ms)
+  ▸ loader_close {}
+  ◦ loader_close (178ms)

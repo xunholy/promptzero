@@ -1,0 +1,46 @@
+{
+  "prompt": "Diff the two Tesla EU sub files in /ext/subghz/Tesla — what's different between AM270 and AM650?",
+  "response": "**Single difference: the modulation preset.**\n\n| Field | EU_AM270 | EU_AM650 |\n|---|---|---|\n| preset | `FuriHalSubGhzPresetOok270Async` | `FuriHalSubGhzPresetOok650Async` |\n\nEverything else is identical — same 433.92 MHz frequency, same RAW protocol, same 1180 raw samples, same (empty) key/te.\n\nThe two files are the same captured Tesla charge-port-open burst replayed through different CC1101 RX bandwidth filters: **270 kHz** vs **650 kHz**. They're meant to be tried as a pair — different reader front-ends respond to one or the other depending on how tight their filtering is. For TX you can use either; the preset only really matters on the RX side.",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext/subghz/Tesla"
+      },
+      "at": "2026-04-20T05:36:50.949777076+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext/subghz/Tesla"
+      },
+      "duration_ms": 112,
+      "output": "\t[F] Tesla_EU_AM270.sub 5503b\n\t[F] Tesla_EU_AM650.sub 5503b\n\t[F] Tesla_US_AM270.sub 5503b\n\t[F] Tesla_US_AM650.sub 5503b",
+      "at": "2026-04-20T05:36:51.06253147+10:00"
+    },
+    {
+      "phase": "start",
+      "name": "fileformat_diff",
+      "input": {
+        "path_a": "/ext/subghz/Tesla/Tesla_EU_AM270.sub",
+        "path_b": "/ext/subghz/Tesla/Tesla_EU_AM650.sub"
+      },
+      "at": "2026-04-20T05:36:53.268812402+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "fileformat_diff",
+      "input": {
+        "path_a": "/ext/subghz/Tesla/Tesla_EU_AM270.sub",
+        "path_b": "/ext/subghz/Tesla/Tesla_EU_AM650.sub"
+      },
+      "duration_ms": 332,
+      "output": "{\n  \"format_a\": \"sub\",\n  \"format_b\": \"sub\",\n  \"same_format\": true,\n  \"entries\": [\n    {\n      \"field\": \"filetype\",\n     …",
+      "at": "2026-04-20T05:36:53.601112733+10:00"
+    }
+  ],
+  "duration_s": 10.70659527,
+  "model": "claude-opus-4-7"
+}

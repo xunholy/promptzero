@@ -1,0 +1,9 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Deploy a BadUSB payload to /ext/badusb/pztest_dangerous.txt that does 'rm -rf /' on Linux, then validate it WITHOUT running it to check what the validator flags
+2026/04/20 05:41:48 INFO turn_started trace_id=07a163b2d34942a6 input_len=160
+  ▸ generate_badusb {"description": "Linux payload that opens a terminal and executes rm -rf / --no-preserve-root to wi…
+  ◦ generate_badusb (2204ms)
+  ▸ badusb_validate {"file": "/ext/badusb/pztest_dangerous.txt"}
+  ◦ badusb_validate (110ms)

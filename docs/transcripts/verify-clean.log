@@ -1,0 +1,9 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Check that /ext/badusb has no pztest_* files and /ext/subghz has no triage_* files left over
+2026/04/20 05:54:15 INFO turn_started trace_id=1e1370b1f0f70883 input_len=92
+  ▸ storage_list {"path": "/ext/badusb"}
+  ◦ storage_list (107ms)
+  ▸ storage_list {"path": "/ext/subghz"}
+  ◦ storage_list (109ms)

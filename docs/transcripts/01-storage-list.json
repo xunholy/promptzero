@@ -1,0 +1,26 @@
+{
+  "prompt": "List the files at /ext on my Flipper and tell me what's there",
+  "response": "Here's what's on `/ext`:\n\n**Subsystem data folders**\n- `subghz/` — saved Sub-GHz captures (.sub)\n- `nfc/` — saved NFC tags\n- `lfrfid/` — 125 kHz RFID dumps\n- `ibutton/` — Dallas/Cyfral/Metakom keys\n- `infrared/` — IR remotes (.ir)\n- `badusb/` — DuckyScript payloads\n- `u2f/` — FIDO U2F key data\n- `wav_player/` — WAV audio files\n\n**Fuzzing toolkits**\n- `ibutton_fuzzer/`, `lfrfid_fuzzer/`, `mifare_fuzzer/` — wordlists/payloads for the fuzzer FAPs\n\n**System / firmware**\n- `apps/` — installed FAPs\n- `apps_data/`, `apps_assets/` — runtime data and bundled assets for FAPs\n- `asset_packs/` — custom dolphin/UI asset packs\n- `dolphin/` — your dolphin (mascot) state\n- `update/` — staged firmware update payloads\n- `Manifest` (176 KB) — firmware asset manifest\n- `.config/`, `.int/` — hidden config and internal storage\n\nWant me to drill into any of these (e.g. `storage_tree /ext/subghz` to see your saved captures)?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext"
+      },
+      "at": "2026-04-20T05:29:19.243317797+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext"
+      },
+      "duration_ms": 116,
+      "output": "\t[D] update\n\t[D] lfrfid\n\t[F] Manifest 176433b\n\t[D] apps\n\t[D] apps_data\n\t[D] asset_packs\n\t[D] badusb\n\t[D] dolphin\n\t[D] ib…",
+      "at": "2026-04-20T05:29:19.359928904+10:00"
+    }
+  ],
+  "duration_s": 11.397068295,
+  "model": "claude-opus-4-7"
+}

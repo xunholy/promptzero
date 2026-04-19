@@ -1,0 +1,28 @@
+{
+  "prompt": "Record raw Sub-GHz pulses on 433.92MHz for 3 seconds and dump the raw data (don't save to SD)",
+  "response": "Captured 3 seconds of raw pulse data on 433.92 MHz (actual tuned freq 433.919830):\n\n```\n-501 +901 -66 +637 -134 +135 -100 +297 -98 +131 -98 +97 -98 +327\n-228 +1019 -134 +269 -34 +1171 -68 +199 -300 +97 -132 +163 -34 +263\n-98 +687 -66 +589 -32 +1441 -34 +1603 -32\n```\n\nValues are pulse durations in microseconds (`+` = high/mark, `-` = low/space). Looks like low-level background RF noise — no clean repeating OOK pattern here. If you want to catch an actual remote, press its button during the capture window.",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "subghz_rx_raw",
+      "input": {
+        "duration_seconds": 3,
+        "frequency": 433920000
+      },
+      "at": "2026-04-20T05:38:26.441521906+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "subghz_rx_raw",
+      "input": {
+        "duration_seconds": 3,
+        "frequency": 433920000
+      },
+      "duration_ms": 3197,
+      "output": "subghz rx_raw 433920000 0\nListening at 433919830. Press CTRL+C to stop\n-501 +901 -66 +637 -134 +135 -100 +297 -98 +131 -…",
+      "at": "2026-04-20T05:38:29.639360435+10:00"
+    }
+  ],
+  "duration_s": 11.315375331,
+  "model": "claude-opus-4-7"
+}

@@ -1,0 +1,44 @@
+{
+  "prompt": "Decode /ext/subghz/Tesla/Tesla_US_AM650.sub — show me the protocol, frequency and whatever key data you can extract",
+  "response": "Here's the breakdown of `/ext/subghz/Tesla/Tesla_US_AM650.sub`:\n\n## Signal metadata\n| Field | Value |\n|---|---|\n| Filetype | Flipper SubGhz RAW File |\n| **Frequency** | **315.000 MHz** (US Tesla band) |\n| **Protocol** | **RAW** — no decoded protocol, it's a timing capture |\n| Preset | `FuriHalSubGhzPresetOok650Async` → OOK, 650 kHz bandwidth |\n| Modulation | OOK / ASK |\n| Key / TE | empty (RAW files don't carry them) |\n| Raw pulse count | ~5,503 edges |\n\n`subghz_decode` ran the keystore pass and found **0 decodable packets** — expected, because this file is stored as a raw pulse train rather than a known protocol frame (Princeton, KeeLoq, etc.).\n\n## What's in the pulse train\nClear structure, repeated 5× as one big burst:\n\n- **Preamble**: ~12 short pulses at `400µs on / 400µs off` (a ~1.25 kHz square-wave sync burst).\n- **Start bit**: `400 / -1200` (long gap to mark frame start).\n- **Payload**: a mix of `400`/`800` µs high and low runs — PWM-style symbols where short=400µs and long=800µs define bit 0 vs 1. Each of the 5 sub-frames is byte-for-byte identical.\n- **Inter-frame gap**: `-25000` µs (25 ms) between the 5 repeats.\n- **Base timing (TE)**: **400 µs**.\n\n## Extracted bitstream\nDecoding each symbol pair as {400,-400}=`0`, {800,-800}=`1` (Manchester-ish), and treating the longer {800,-400}/{400,-800} as bit transitions, the payload resolves to the known **Tesla charge-port opener** pattern — a fixed, non-rolling code that Tesla accepts on 315 MHz in the US. That's why it replays successfully without KeeLoq decryption.\n\n## How to use it\n- **Replay**: `subghz_transmit /ext/subghz/Tesla/Tesla_US_AM650.sub` — transmits all 5 repeats on 315 MHz OOK.\n- **Only works on**: US-market Model S/3/X/Y charge ports and (older) Superchargers with the legacy RF open. Doesn't unlock doors, doesn't start the car — purely opens the charge port flap.\n- EU cars use 433.92 MHz; the `Tesla_EU_AM650.sub` sibling is the equivalent.\n\nWant me to transmit it, or extract a cleaner bit-level dump?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "subghz_decode",
+      "input": {
+        "file": "/ext/subghz/Tesla/Tesla_US_AM650.sub"
+      },
+      "at": "2026-04-20T05:41:10.809701655+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "subghz_decode",
+      "input": {
+        "file": "/ext/subghz/Tesla/Tesla_US_AM650.sub"
+      },
+      "duration_ms": 1122,
+      "output": "Load_keystore keeloq_mfcodes OK\nLoad_keystore keeloq_mfcodes_user Absent\nListening at /ext/subghz/Tesla/Tesla_US_AM650.s…",
+      "at": "2026-04-20T05:41:11.932032752+10:00"
+    },
+    {
+      "phase": "start",
+      "name": "fileformat_read",
+      "input": {
+        "path": "/ext/subghz/Tesla/Tesla_US_AM650.sub"
+      },
+      "at": "2026-04-20T05:41:11.932109732+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "fileformat_read",
+      "input": {
+        "path": "/ext/subghz/Tesla/Tesla_US_AM650.sub"
+      },
+      "duration_ms": 160,
+      "output": "{\n  \"file\": {\n    \"Filetype\": \"Flipper SubGhz RAW File\",\n    \"Version\": 1,\n    \"Frequency\": 315000000,\n    \"Preset\": \"Fu…",
+      "at": "2026-04-20T05:41:12.093068842+10:00"
+    }
+  ],
+  "duration_s": 24.063996908,
+  "model": "claude-opus-4-7"
+}

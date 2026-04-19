@@ -1,0 +1,22 @@
+{
+  "prompt": "Tell me my Flipper's Bluetooth controller info — chip, firmware, MAC",
+  "response": "Here's what your Flipper's BT controller reported:\n\n| Field | Value |\n|---|---|\n| **Chip** | STMicroelectronics BlueNRG / WB55 (Manufacturer 48 = STMicro) |\n| **HCI Version** | 13 (Bluetooth 5.4) |\n| **HCI Revision** | 16507 |\n| **LMP/PAL Version** | 13 (BT 5.4) |\n| **LMP Subversion** | 123 |\n| **Return code** | 0 (OK) |\n\n⚠️ MAC address wasn't returned by `hci info` on this firmware — that command only exposes controller version/manufacturer data. The BLE MAC lives in a different CLI surface (`bt info` on some forks) and isn't wrapped by a dedicated tool here. Want me to try it via raw CLI?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "bt_hci_info",
+      "input": {},
+      "at": "2026-04-20T05:43:03.641833496+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "bt_hci_info",
+      "input": {},
+      "duration_ms": 153,
+      "output": "Ret: 0, HCI_Version: 13, HCI_Revision: 16507, LMP_PAL_Version: 13, Manufacturer_Name: 48, LMP_PAL_Subversion: 123",
+      "at": "2026-04-20T05:43:03.795438532+10:00"
+    }
+  ],
+  "duration_s": 8.209204621,
+  "model": "claude-opus-4-7"
+}

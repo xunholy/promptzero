@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: What apps are installed on my Flipper?
+2026/04/20 05:53:51 INFO turn_started trace_id=9b5f5b6b9864d146 input_len=38
+  ▸ list_apps {}
+  ◦ list_apps (150ms)

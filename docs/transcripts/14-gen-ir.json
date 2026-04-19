@@ -1,0 +1,28 @@
+{
+  "prompt": "Generate an IR remote file for a generic Samsung TV — generate only, do NOT deploy",
+  "response": "Done — generic Samsung TV IR remote generated (Samsung32 protocol, address `07 00 00 00`). Not deployed to the Flipper.\n\nCommands included in the preview: Power, Vol_up, Vol_dn, Mute, Ch_up (and more below the truncation — full numpad, nav, menu, input, etc.).\n\nWant me to:\n- Deploy it to `/ext/infrared/` now?\n- Show the full contents first?\n- Tweak (add/remove buttons, different protocol)?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "generate_ir",
+      "input": {
+        "description": "Generic Samsung TV remote with all common commands: power, volume up/down, channel up/down, mute, input/source, menu, navigation (up/down/left/right/ok), back/exit, home, number keys 0-9",
+        "deploy": false
+      },
+      "at": "2026-04-20T05:36:02.11081082+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "generate_ir",
+      "input": {
+        "description": "Generic Samsung TV remote with all common commands: power, volume up/down, channel up/down, mute, input/source, menu, navigation (up/down/left/right/ok), back/exit, home, number keys 0-9",
+        "deploy": false
+      },
+      "duration_ms": 10304,
+      "output": "Generated ir (not deployed)\n\nPreview:\nFiletype: IR signals file\nVersion: 1\n#\n# Power\nname: Power\ntype: parsed\nprotocol: …",
+      "at": "2026-04-20T05:36:12.415081255+10:00"
+    }
+  ],
+  "duration_s": 19.879512623,
+  "model": "claude-opus-4-7"
+}

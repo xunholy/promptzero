@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Show me the last 10 tool executions from my audit log
+2026/04/20 05:37:40 INFO turn_started trace_id=6f0f85f753fdb3ab input_len=53
+  ▸ audit_query {"limit": 10}
+  ◦ audit_query (0ms)

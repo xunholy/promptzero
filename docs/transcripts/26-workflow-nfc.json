@@ -1,0 +1,28 @@
+{
+  "prompt": "I'm holding an unknown NFC badge against the back of the Flipper — run the badge-triage workflow on it with a 8 second timeout, and do NOT dump yet.",
+  "response": "No tag detected in 8s — the scanner ran but didn't see anything.\n\n**Likely causes:**\n- Badge not centered on the back of the Flipper (the NFC antenna is in the upper-back area)\n- Too much distance / case or wallet in the way\n- Tag is LF 125 kHz, not 13.56 MHz — in which case try `rfid_read` instead\n\nReposition the badge flat against the back and say the word — I'll rerun it (and we can bump the timeout if you want more headroom).",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "workflow_nfc_badge_pipeline",
+      "input": {
+        "attempt_dump": false,
+        "timeout_seconds": 8
+      },
+      "at": "2026-04-20T05:39:10.24175817+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "workflow_nfc_badge_pipeline",
+      "input": {
+        "attempt_dump": false,
+        "timeout_seconds": 8
+      },
+      "duration_ms": 8824,
+      "output": "{\n  \"next_steps\": [\n    \"Hold the tag flat against the back of the Flipper and retry\"\n  ],\n  \"phases\": [\n    {\n      \"ph…",
+      "at": "2026-04-20T05:39:19.066654746+10:00"
+    }
+  ],
+  "duration_s": 16.942737058,
+  "model": "claude-opus-4-7"
+}

@@ -1,0 +1,9 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Confirm /ext/pztest_edit.sub does not exist (we were using it as a scratch file) and show me what's directly in /ext
+2026/04/20 05:40:27 INFO turn_started trace_id=206732c9f3c14a1c input_len=116
+  ▸ storage_info {"path": "/ext/pztest_edit.sub"}
+  ◦ storage_info (108ms)
+  ▸ storage_list {"path": "/ext"}
+  ◦ storage_list (112ms)

@@ -1,0 +1,26 @@
+{
+  "prompt": "List the files at /ext on my Flipper and tell me what's there",
+  "response": "Here's what's on `/ext`:\n\n**Signal/tag libraries**\n- `subghz/` — saved Sub-GHz captures (.sub)\n- `nfc/` — NFC tags\n- `lfrfid/` — 125 kHz RFID cards\n- `ibutton/` — iButton keys\n- `infrared/` — IR remotes\n\n**Attack / fuzzer tooling**\n- `badusb/` — DuckyScript payloads\n- `ibutton_fuzzer/`, `lfrfid_fuzzer/`, `mifare_fuzzer/` — brute-force dictionaries\n- `u2f/` — U2F token data\n\n**Apps & system**\n- `apps/` — installed FAPs\n- `apps_data/`, `apps_assets/` — per-app storage (evil portal HTML lives under here)\n- `asset_packs/` — custom icon/animation packs\n- `dolphin/` — dolphin mood/XP state\n- `update/` — staged firmware updates\n- `wav_player/` — WAV audio files\n- `Manifest` (176 KB) — asset manifest\n- `.config/`, `.int/` — hidden config/internal\n\nWant me to drill into any specific folder?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext"
+      },
+      "at": "2026-04-20T05:54:06.567647015+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext"
+      },
+      "duration_ms": 115,
+      "output": "\t[D] update\n\t[D] lfrfid\n\t[F] Manifest 176433b\n\t[D] apps\n\t[D] apps_data\n\t[D] asset_packs\n\t[D] badusb\n\t[D] dolphin\n\t[D] ib…",
+      "at": "2026-04-20T05:54:06.683313479+10:00"
+    }
+  ],
+  "duration_s": 9.977214113,
+  "model": "claude-opus-4-7"
+}

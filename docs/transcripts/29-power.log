@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: What's the battery level and is it charging?
+2026/04/20 05:41:00 INFO turn_started trace_id=859f31ec70e98b3f input_len=44
+  ▸ power_info {}
+  ◦ power_info (119ms)

@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Try to read a 125kHz RFID fob — I'm holding one against the back of the Flipper. Give it 8 seconds max.
+2026/04/20 05:31:48 INFO turn_started trace_id=5d899cf1c007b52c input_len=105
+  ▸ rfid_read {"timeout_seconds": 8}
+  ✗ rfid_read (8071ms)

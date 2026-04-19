@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Run the black-box hardware recon workflow on whatever's hooked up to my GPIO header right now
+2026/04/20 05:33:59 INFO turn_started trace_id=683df0ae4e4e7e19 input_len=93
+  ▸ workflow_hw_recon_blackbox_device {}
+  ◦ workflow_hw_recon_blackbox_device (3029ms)

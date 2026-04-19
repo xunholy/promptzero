@@ -1,0 +1,9 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Decode /ext/subghz/Tesla/Tesla_US_AM650.sub — show me the protocol, frequency and whatever key data you can extract
+2026/04/20 05:41:08 INFO turn_started trace_id=6a71a0427d5f957b input_len=117
+  ▸ subghz_decode {"file": "/ext/subghz/Tesla/Tesla_US_AM650.sub"}
+  ◦ subghz_decode (1122ms)
+  ▸ fileformat_read {"path": "/ext/subghz/Tesla/Tesla_US_AM650.sub"}
+  ◦ fileformat_read (160ms)

@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Tell me my Flipper's Bluetooth controller info — chip, firmware, MAC
+2026/04/20 05:43:01 INFO turn_started trace_id=99c5514a7e1ba240 input_len=70
+  ▸ bt_hci_info {}
+  ◦ bt_hci_info (153ms)

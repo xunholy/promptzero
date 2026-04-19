@@ -1,0 +1,9 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Vibrate the Flipper briefly
+2026/04/20 05:53:58 INFO turn_started trace_id=be74592a94678c74 input_len=27
+  ▸ vibro {"on": true}
+  ◦ vibro (148ms)
+  ▸ vibro {"on": false}
+  ◦ vibro (148ms)

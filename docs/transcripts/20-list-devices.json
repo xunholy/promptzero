@@ -1,0 +1,21 @@
+{
+  "prompt": "List my configured devices — the named ones I've mapped to signal files",
+  "response": "No named devices configured. Your `config.yaml` has no device-to-signal mappings yet.\n\nTo add some, edit `config.yaml` with entries like:\n```yaml\ndevices:\n  garage: /ext/subghz/garage.sub\n  tv: /ext/infrared/livingroom_tv.ir\n  office_badge: /ext/nfc/office.nfc\n```\n\nWant me to scan the SD card (`discover_apps`) to see what signal files you already have saved that could be mapped?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "list_devices",
+      "input": {},
+      "at": "2026-04-20T05:37:00.990385889+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "list_devices",
+      "input": {},
+      "output": "No devices configured. Add devices to config.yaml.",
+      "at": "2026-04-20T05:37:00.990444539+10:00"
+    }
+  ],
+  "duration_s": 5.308027045,
+  "model": "claude-opus-4-7"
+}

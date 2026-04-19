@@ -1,0 +1,42 @@
+{
+  "prompt": "Vibrate the Flipper briefly",
+  "response": "Buzzed. 🫨",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "vibro",
+      "input": {
+        "on": true
+      },
+      "at": "2026-04-20T05:54:00.65154946+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "vibro",
+      "input": {
+        "on": true
+      },
+      "duration_ms": 148,
+      "at": "2026-04-20T05:54:00.800129728+10:00"
+    },
+    {
+      "phase": "start",
+      "name": "vibro",
+      "input": {
+        "on": false
+      },
+      "at": "2026-04-20T05:54:02.374810594+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "vibro",
+      "input": {
+        "on": false
+      },
+      "duration_ms": 148,
+      "at": "2026-04-20T05:54:02.522953079+10:00"
+    }
+  ],
+  "duration_s": 5.612925123,
+  "model": "claude-opus-4-7"
+}

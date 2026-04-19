@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Deploy this BadUSB payload for Windows to /ext/badusb/hello_pztest.txt: prints 'Hi from pzrunner' in Notepad. After deploy, DO NOT run it.
+2026/04/20 05:36:33 INFO turn_started trace_id=09f002d2b825ead9 input_len=138
+  ▸ generate_badusb {"description": "Open Notepad on Windows and type the text 'Hi from pzrunner'. Do not save or close…
+  ◦ generate_badusb (2542ms)

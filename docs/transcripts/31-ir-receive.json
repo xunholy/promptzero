@@ -1,0 +1,26 @@
+{
+  "prompt": "Try to learn an IR signal — I'll press a remote at the Flipper. Give it 8 seconds.",
+  "response": "No signal captured in that 8-second window. A few things to check:\n\n- **Aim**: point the remote's emitter directly at the top of the Flipper (the IR receiver is on the top edge).\n- **Distance**: 5–20 cm works best.\n- **Fresh batteries** in the remote.\n- **Hold the button firmly** for ~1 second during the window.\n\nWant me to try again with a longer timeout?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "ir_receive",
+      "input": {
+        "timeout_seconds": 8
+      },
+      "at": "2026-04-20T05:41:36.201320353+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "ir_receive",
+      "input": {
+        "timeout_seconds": 8
+      },
+      "duration_ms": 8627,
+      "output": "ir rx\nReceiving  INFRARED...\nPress Ctrl+C to abort",
+      "at": "2026-04-20T05:41:44.828562699+10:00"
+    }
+  ],
+  "duration_s": 15.91899948,
+  "model": "claude-opus-4-7"
+}

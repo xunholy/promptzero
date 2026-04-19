@@ -1,0 +1,21 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Find and delete any triage_*.sub files left in /ext/subghz from earlier scans
+2026/04/20 05:42:41 INFO turn_started trace_id=eaaf79da278efa1b input_len=77
+  ▸ storage_tree {"path": "/ext/subghz"}
+  ◦ storage_tree (151ms)
+  ▸ storage_delete {"path": "/ext/subghz/triage_300000000_1776627259.sub"}
+  ◦ storage_delete (123ms)
+  ▸ storage_delete {"path": "/ext/subghz/triage_310000000_1776627263.sub"}
+  ◦ storage_delete (120ms)
+  ▸ storage_delete {"path": "/ext/subghz/triage_315000000_1776627267.sub"}
+  ◦ storage_delete (119ms)
+  ▸ storage_delete {"path": "/ext/subghz/triage_318000000_1776627271.sub"}
+  ◦ storage_delete (120ms)
+  ▸ storage_delete {"path": "/ext/subghz/triage_390000000_1776627275.sub"}
+  ◦ storage_delete (120ms)
+  ▸ storage_delete {"path": "/ext/subghz/triage_433920000_1776627278.sub"}
+  ◦ storage_delete (120ms)
+  ▸ storage_delete {"path": "/ext/subghz/triage_868350000_1776627282.sub"}
+  ◦ storage_delete (119ms)

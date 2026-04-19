@@ -1,0 +1,22 @@
+{
+  "prompt": "Do a full discover of what's on my SD card — apps, saved signals, everything. Give me a categorized inventory.",
+  "response": "Here's your Flipper SD card inventory:\n\n## 📂 SD Card Inventory\n\n### 🔴 Sub-GHz Captures (7)\nLooks like output from a `workflow_garage_door_triage` run — one capture per scanned frequency:\n| File | Freq | Size |\n|---|---|---|\n| triage_300000000… | 300 MHz | 1.9 KB |\n| triage_310000000… | 310 MHz | 11.7 KB ⭐ |\n| triage_315000000… | 315 MHz | 8.4 KB ⭐ |\n| triage_318000000… | 318 MHz | 279 B |\n| triage_390000000… | 390 MHz | 6.6 KB |\n| triage_433920000… | 433.92 MHz | 409 B |\n| triage_868350000… | 868.35 MHz | 88 B |\n\n⭐ = largest captures (310 & 315 MHz) — most likely to contain real signals worth decoding.\n\n### 📺 Infrared (1)\n- `Samsung.ir` (2.4 KB) — Samsung TV remote\n\n### 💳 NFC (1)\n- `RickRoll.nfc` (5.3 KB) — NFC tag (likely NDEF URL → rickroll)\n\n### ⌨️ BadUSB (1 + config)\n- `hello_pztest.txt` (128 B) — test payload\n- `.badkb.settings` — BadUSB keyboard-layout config\n\n### 🔑 iButton\n- Empty\n\n### 📱 Apps (FAPs)\n- None detected in standard locations.\n\n---\n\n**Suggestions:**\n- Decode the big triage captures: `fileformat_read` on the 310/315 MHz files to see what protocol they grabbed.\n- Want me to inspect any specific file?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "discover_apps",
+      "input": {},
+      "at": "2026-04-20T05:37:28.752828713+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "discover_apps",
+      "input": {},
+      "duration_ms": 895,
+      "output": "\n[BADUSB] (2 files)\n  [F] .badkb.settings 226b  ->  /ext/badusb/[F] .badkb.settings 226b\n  [F] hello_pztest.txt 128b  ->…",
+      "at": "2026-04-20T05:37:29.648828358+10:00"
+    }
+  ],
+  "duration_s": 13.054340164,
+  "model": "claude-opus-4-7"
+}

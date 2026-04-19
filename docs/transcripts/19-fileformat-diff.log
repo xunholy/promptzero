@@ -1,0 +1,9 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Diff the two Tesla EU sub files in /ext/subghz/Tesla — what's different between AM270 and AM650?
+2026/04/20 05:36:48 INFO turn_started trace_id=a0e24194852bd1d2 input_len=98
+  ▸ storage_list {"path": "/ext/subghz/Tesla"}
+  ◦ storage_list (112ms)
+  ▸ fileformat_diff {"path_a": "/ext/subghz/Tesla/Tesla_EU_AM270.sub", "path_b": "/ext/subghz/Tesla/Tesla_EU_AM650.sub"}
+  ◦ fileformat_diff (332ms)

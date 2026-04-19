@@ -1,0 +1,99 @@
+{
+  "prompt": "Decode the Tesla_EU_AM270.sub file on my Flipper — what protocol, frequency and key does it use?",
+  "response": "Here's the breakdown of **Tesla_EU_AM270.sub**:\n\n| Field | Value |\n|---|---|\n| **Frequency** | 433.92 MHz |\n| **Modulation/Preset** | OOK 270 kHz bandwidth (AM270 async) |\n| **Protocol** | RAW (no structured protocol — it's a recorded pulse train) |\n| **File type** | Flipper SubGhz RAW File v1 |\n| **Base timing (Te)** | 400 µs (short) / 800 µs (long), with 1200 µs sync gaps and 25 ms inter-burst pauses |\n| **Payload** | 5 identical bursts (replay-style), each containing a 12-bit preamble (`400 -400` × 12) + sync + ~3 repeated data blocks |\n\n**No decoded \"key\"** — because it's saved as RAW, there's no protocol-level key/rolling-code field. It's the infamous Tesla charge-port-open signal: a RAW OOK burst crafted by MG66/HackingIntoYourHeart. The \"payload\" lives entirely in the pulse timings above.\n\nThe four Tesla files in that folder pair EU (433.92 MHz) vs. US (315 MHz) with two bandwidth presets (AM270 = narrow, AM650 = wide) — try AM650 variants if AM270 doesn't trigger the port.\n\nWant me to transmit it, or diff it against the US/AM650 variants?",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "fileformat_read",
+      "input": {
+        "path": "/ext/subghz/Tesla_EU_AM270.sub"
+      },
+      "at": "2026-04-20T05:30:40.79981395+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "fileformat_read",
+      "input": {
+        "path": "/ext/subghz/Tesla_EU_AM270.sub"
+      },
+      "duration_ms": 110,
+      "err": true,
+      "output": "error: parse /ext/subghz/Tesla_EU_AM270.sub: sub: missing Filetype header",
+      "at": "2026-04-20T05:30:40.910235338+10:00"
+    },
+    {
+      "phase": "start",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext/subghz"
+      },
+      "at": "2026-04-20T05:30:43.22856391+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext/subghz"
+      },
+      "duration_ms": 107,
+      "output": "\t[D] Tesla\n\t[D] assets\n\t[D] playlist\n\t[D] remote",
+      "at": "2026-04-20T05:30:43.335751936+10:00"
+    },
+    {
+      "phase": "start",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext/subghz/Tesla"
+      },
+      "at": "2026-04-20T05:30:45.771330565+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "storage_list",
+      "input": {
+        "path": "/ext/subghz/Tesla"
+      },
+      "duration_ms": 109,
+      "output": "\t[F] Tesla_EU_AM270.sub 5503b\n\t[F] Tesla_EU_AM650.sub 5503b\n\t[F] Tesla_US_AM270.sub 5503b\n\t[F] Tesla_US_AM650.sub 5503b",
+      "at": "2026-04-20T05:30:45.880915791+10:00"
+    },
+    {
+      "phase": "start",
+      "name": "subghz_decode",
+      "input": {
+        "file": "/ext/subghz/Tesla/Tesla_EU_AM270.sub"
+      },
+      "at": "2026-04-20T05:30:48.429674866+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "subghz_decode",
+      "input": {
+        "file": "/ext/subghz/Tesla/Tesla_EU_AM270.sub"
+      },
+      "duration_ms": 1134,
+      "output": "Load_keystore keeloq_mfcodes OK\nLoad_keystore keeloq_mfcodes_user Absent\nListening at /ext/subghz/Tesla/Tesla_EU_AM270.s…",
+      "at": "2026-04-20T05:30:49.563833493+10:00"
+    },
+    {
+      "phase": "start",
+      "name": "storage_read",
+      "input": {
+        "path": "/ext/subghz/Tesla/Tesla_EU_AM270.sub"
+      },
+      "at": "2026-04-20T05:30:49.563897402+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "storage_read",
+      "input": {
+        "path": "/ext/subghz/Tesla/Tesla_EU_AM270.sub"
+      },
+      "duration_ms": 159,
+      "output": "Size: 5503\nFiletype: Flipper SubGhz RAW File\nVersion: 1\nFrequency: 433920000\nPreset: FuriHalSubGhzPresetOok270Async\nProt…",
+      "at": "2026-04-20T05:30:49.722993058+10:00"
+    }
+  ],
+  "duration_s": 25.028952991,
+  "model": "claude-opus-4-7"
+}

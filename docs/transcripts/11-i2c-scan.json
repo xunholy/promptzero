@@ -1,0 +1,22 @@
+{
+  "prompt": "Scan the I2C bus for devices connected to the Flipper's GPIO header",
+  "response": "No I²C devices detected on PC0 (SCL) / PC1 (SDA) at 100 kHz.\n\nTroubleshooting checklist:\n- **Wiring**: SCL → PC0, SDA → PC1, GND → GND, and power the target from 3V3 (pin 9) or an external supply sharing ground.\n- **Pull-ups**: I²C needs 4.7k–10k pull-ups on SDA and SCL to VCC. Many breakout boards include them; bare chips do not.\n- **Power**: Confirm the target is actually powered — check with a multimeter or `gpio_read PA7` on a known-good rail.\n- **Address conflicts / stuck bus**: If SDA is held low by a mis-wired device, no addresses will ACK.\n- **Speed**: Some sensors only respond reliably at lower clocks, but 100 kHz is already the safe default.\n\nFix the wiring/pull-ups and rerun — or if you want, I can sweep again after you reconnect.",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "i2c_scan",
+      "input": {},
+      "at": "2026-04-20T05:32:31.901026383+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "i2c_scan",
+      "input": {},
+      "duration_ms": 821,
+      "output": "Scanning external i2c on PC0(SCL)/PC1(SDA)\nClock: 100khz, 7bit address\n\n  | 0 1 2 3 4 5 6 7 8 9 A B C D E F\n--+---------…",
+      "at": "2026-04-20T05:32:32.722889607+10:00"
+    }
+  ],
+  "duration_s": 13.939623034,
+  "model": "claude-opus-4-7"
+}

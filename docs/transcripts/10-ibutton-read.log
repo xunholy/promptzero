@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Scan for iButton keys for 8 seconds
+2026/04/20 05:32:19 INFO turn_started trace_id=6db692aef6bb2d3e input_len=35
+  ▸ onewire_search {"duration_seconds": 8}
+  ◦ onewire_search (667ms)

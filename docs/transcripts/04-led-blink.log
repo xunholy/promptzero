@@ -1,0 +1,17 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Blink my Flipper's LEDs red, green, blue, then turn them all off
+2026/04/20 05:29:59 INFO turn_started trace_id=5a8cba2c5e357806 input_len=64
+  ▸ led_set {"channel": "r", "value": 255}
+  ◦ led_set (146ms)
+  ▸ led_set {"channel": "r", "value": 0}
+  ◦ led_set (146ms)
+  ▸ led_set {"channel": "g", "value": 255}
+  ◦ led_set (146ms)
+  ▸ led_set {"channel": "g", "value": 0}
+  ◦ led_set (146ms)
+  ▸ led_set {"channel": "b", "value": 255}
+  ◦ led_set (146ms)
+  ▸ led_set {"channel": "b", "value": 0}
+  ◦ led_set (146ms)

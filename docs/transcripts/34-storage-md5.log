@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Compute the MD5 of /ext/subghz/Tesla/Tesla_EU_AM270.sub
+2026/04/20 05:42:57 INFO turn_started trace_id=9c7f05560e1fd74f input_len=55
+  ▸ storage_md5 {"path": "/ext/subghz/Tesla/Tesla_EU_AM270.sub"}
+  ◦ storage_md5 (123ms)

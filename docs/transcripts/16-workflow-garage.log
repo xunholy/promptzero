@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Do a garage-door triage sweep — listen on all the common garage and car remote frequencies and tell me what you hear. Use 3 seconds per frequency.
+2026/04/20 05:34:16 INFO turn_started trace_id=96b9fdb416fa434e input_len=148
+  ▸ workflow_garage_door_triage {"per_freq_seconds": 3}
+  ◦ workflow_garage_door_triage (26334ms)

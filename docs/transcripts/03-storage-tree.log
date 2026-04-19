@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Show me everything under /ext/subghz — files and folders, recursively
+2026/04/20 05:29:49 INFO turn_started trace_id=c07701e25a58ed80 input_len=71
+  ▸ storage_tree {"path": "/ext/subghz"}
+  ◦ storage_tree (145ms)

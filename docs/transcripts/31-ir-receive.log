@@ -1,0 +1,7 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Try to learn an IR signal — I'll press a remote at the Flipper. Give it 8 seconds.
+2026/04/20 05:41:32 INFO turn_started trace_id=fb6250aea836071e input_len=84
+  ▸ ir_receive {"timeout_seconds": 8}
+  ◦ ir_receive (8627ms)

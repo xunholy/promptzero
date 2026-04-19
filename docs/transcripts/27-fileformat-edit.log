@@ -1,0 +1,25 @@
+▸ connecting flipper on /dev/ttyACM0...
+✓ connected: Unholy · Momentum mntm-dev
+
+▸ prompt: Copy /ext/subghz/Tesla/Tesla_EU_AM270.sub to /ext/pztest_edit.sub, then edit the copy's frequency field to 315000000, then diff the original and the edit to show me what changed.
+2026/04/20 05:39:24 INFO turn_started trace_id=353b697434b70412 input_len=178
+  ▸ storage_copy {"src": "/ext/subghz/Tesla/Tesla_EU_AM270.sub", "dst": "/ext/pztest_edit.sub"}
+  ◦ storage_copy (196ms)
+  ▸ fileformat_edit {"path": "/ext/pztest_edit.sub", "edits": {"frequency":315000000}}
+  ◦ fileformat_edit (550ms)
+  ▸ fileformat_diff {"path_a": "/ext/subghz/Tesla/Tesla_EU_AM270.sub", "path_b": "/ext/pztest_edit.sub"}
+  ✗ fileformat_diff (360ms)
+  ▸ storage_read {"path": "/ext/pztest_edit.sub"}
+  ◦ storage_read (228ms)
+  ▸ storage_delete {"path": "/ext/pztest_edit.sub"}
+  ◦ storage_delete (120ms)
+  ▸ storage_copy {"src": "/ext/subghz/Tesla/Tesla_EU_AM270.sub", "dst": "/ext/pztest_edit.sub"}
+  ◦ storage_copy (214ms)
+  ▸ fileformat_edit {"path": "/ext/subghz/Tesla/Tesla_EU_AM270.sub", "edits": {"frequency":315000000}, "output_path": "…
+  ◦ fileformat_edit (540ms)
+  ▸ fileformat_diff {"path_a": "/ext/subghz/Tesla/Tesla_EU_AM270.sub", "path_b": "/ext/pztest_edit.sub"}
+  ✗ fileformat_diff (365ms)
+  ▸ storage_delete {"path": "/ext/pztest_edit.sub"}
+  ◦ storage_delete (121ms)
+  ▸ storage_read {"path": "/ext/subghz/Tesla/Tesla_EU_AM270.sub"}
+  ◦ storage_read (158ms)

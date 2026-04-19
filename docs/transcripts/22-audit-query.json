@@ -1,0 +1,25 @@
+{
+  "prompt": "Show me the last 10 tool executions from my audit log",
+  "response": "Audit logging isn't enabled on this session — there's nothing to show. If you want a record of tool executions going forward, enable audit logging in your promptzero config and re-run your workflow; I can then pull history with `audit_query`, `audit_stats`, or export the full log via `audit_export`.",
+  "tools": [
+    {
+      "phase": "start",
+      "name": "audit_query",
+      "input": {
+        "limit": 10
+      },
+      "at": "2026-04-20T05:37:42.024594222+10:00"
+    },
+    {
+      "phase": "finish",
+      "name": "audit_query",
+      "input": {
+        "limit": 10
+      },
+      "output": "Audit logging not enabled",
+      "at": "2026-04-20T05:37:42.024931263+10:00"
+    }
+  ],
+  "duration_s": 4.881813254,
+  "model": "claude-opus-4-7"
+}
