@@ -765,11 +765,11 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 			return "", err
 		}
 		return a.marauder.DeauthAttack(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_deauth_targeted":
+	case "wifi_deauth_station_list":
 		if err := a.requireMarauder(); err != nil {
 			return "", err
 		}
-		return a.marauder.DeauthTargeted(intOr(p, "channel", 1), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
+		return a.marauder.DeauthToStationList(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
 	case "wifi_beacon_spam":
 		if err := a.requireMarauder(); err != nil {
 			return "", err
@@ -814,7 +814,7 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		if err := a.requireMarauder(); err != nil {
 			return "", err
 		}
-		return a.marauder.SniffPMKID(str(p, "flags"), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
+		return a.marauder.SniffPMKID(intOr(p, "channel", 0), boolOr(p, "deauth", false), boolOr(p, "list_only", false), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
 	case "wifi_sniff_beacon":
 		if err := a.requireMarauder(); err != nil {
 			return "", err
@@ -864,7 +864,7 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		if err := a.requireMarauder(); err != nil {
 			return "", err
 		}
-		return a.marauder.EvilPortalStop()
+		return a.marauder.StopScan()
 	case "wifi_add_ssid":
 		if err := a.requireMarauder(); err != nil {
 			return "", err

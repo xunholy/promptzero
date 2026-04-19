@@ -75,9 +75,14 @@ func (m *Marauder) DeauthAttack(timeout time.Duration) (string, error) {
 	return m.Exec("attack -t deauth", timeout)
 }
 
-// DeauthTargeted sends deauth frames to a specific channel.
-func (m *Marauder) DeauthTargeted(channel int, timeout time.Duration) (string, error) {
-	return m.Exec(fmt.Sprintf("attack -t deauth -c %d", channel), timeout)
+// DeauthToStationList sends deauth frames to the currently-selected
+// *station list* (rather than the broad "all captured APs" mode used by
+// DeauthAttack). Upstream parses `-c` as a mode flag that selects the
+// WIFI_ATTACK_DEAUTH_TARGETED path; it does NOT take a channel argument.
+// Callers need to have populated the station list via ScanAll / SelectStation
+// first, otherwise the attack finds no targets and returns immediately.
+func (m *Marauder) DeauthToStationList(timeout time.Duration) (string, error) {
+	return m.Exec("attack -t deauth -c", timeout)
 }
 
 // BeaconSpamList spams beacon frames from the current SSID list.
@@ -122,12 +127,24 @@ func (m *Marauder) SAEFlood(timeout time.Duration) (string, error) {
 
 // --- Sniffing ---
 
-// SniffPMKID captures PMKID handshakes. Optional channel (-c) and deauth flag (-d) may be passed via flags.
-// Pass an empty string for flags to use defaults.
-func (m *Marauder) SniffPMKID(flags string, timeout time.Duration) (string, error) {
+// SniffPMKID captures PMKID handshakes. channel selects a specific WiFi
+// channel (0 = all channels / default). deauth=true triggers active deauth
+// frames against scanned APs to coerce PMKID exchange. listOnly=true passes
+// `-l` to limit capture to the currently-loaded AP list.
+//
+// The previous signature accepted a free-form flags string that was passed
+// through unsanitised — a caller-supplied `\n` would inject arbitrary
+// follow-on commands over the serial link. Typed params remove that vector.
+func (m *Marauder) SniffPMKID(channel int, deauth, listOnly bool, timeout time.Duration) (string, error) {
 	cmd := "sniffpmkid"
-	if flags != "" {
-		cmd += " " + flags
+	if channel > 0 {
+		cmd += fmt.Sprintf(" -c %d", channel)
+	}
+	if deauth {
+		cmd += " -d"
+	}
+	if listOnly {
+		cmd += " -l"
 	}
 	return m.Exec(cmd, timeout)
 }
@@ -155,18 +172,46 @@ func (m *Marauder) SniffRaw(timeout time.Duration) (string, error) {
 
 // --- BLE Spam ---
 
+// bleSpamModes is the allowlist of valid `blespam -t` mode tokens accepted
+// by the Marauder firmware. Any value outside this set is rejected at the
+// Go layer rather than being silently forwarded as-is.
+var bleSpamModes = map[string]struct{}{
+	"apple":   {},
+	"google":  {},
+	"samsung": {},
+	"windows": {},
+	"flipper": {},
+	"all":     {},
+}
+
 // BLESpam sends BLE advertisement spam of the given type.
 // Valid modes: apple, google, samsung, windows, flipper, all.
 func (m *Marauder) BLESpam(mode string, timeout time.Duration) (string, error) {
-	return m.Exec("blespam -t "+mode, timeout)
+	if _, ok := bleSpamModes[mode]; !ok {
+		return "", fmt.Errorf("invalid blespam mode %q (valid: apple, google, samsung, windows, flipper, all)", mode)
+	}
+	return m.Exec("blespam -t "+clisafe.SanitizeArg(mode), timeout)
 }
 
 // --- Bluetooth Scanning ---
 
+// sniffBTTargets is the allowlist of valid `sniffbt -t` tokens. Anything
+// outside this set is rejected to prevent command injection via a free-form
+// string that would otherwise be concatenated into the CLI line.
+var sniffBTTargets = map[string]struct{}{
+	"airtag":  {},
+	"flipper": {},
+	"flock":   {},
+	"meta":    {},
+}
+
 // SniffBT sniffs Bluetooth advertisements for specific device types.
 // Valid targetType values: airtag, flipper, flock, meta.
 func (m *Marauder) SniffBT(targetType string, timeout time.Duration) (string, error) {
-	return m.Exec("sniffbt -t "+targetType, timeout)
+	if _, ok := sniffBTTargets[targetType]; !ok {
+		return "", fmt.Errorf("invalid sniffbt target %q (valid: airtag, flipper, flock, meta)", targetType)
+	}
+	return m.Exec("sniffbt -t "+clisafe.SanitizeArg(targetType), timeout)
 }
 
 // SniffSkimmer sniffs for Bluetooth credit card skimmers.
@@ -178,17 +223,20 @@ func (m *Marauder) SniffSkimmer(timeout time.Duration) (string, error) {
 
 // EvilPortalStart starts the evil portal captive portal.
 // Pass an optional HTML filename, or empty string to use the default page.
+// The filename is sanitised and quoted so spaces are preserved (Marauder's
+// arg parser otherwise truncates at the first whitespace character).
 func (m *Marauder) EvilPortalStart(filename string) (string, error) {
 	cmd := "evilportal -c start"
 	if filename != "" {
-		cmd += " -w " + filename
+		cmd += fmt.Sprintf(` -w "%s"`, clisafe.SanitizeArg(filename))
 	}
 	return m.Exec(cmd, 10*time.Second)
 }
 
-// EvilPortalSetHTML sets the evil portal HTML page to the given filename on the SD card.
+// EvilPortalSetHTML sets the evil portal HTML page to the given filename on
+// the SD card. Filename is sanitised and quoted (see EvilPortalStart).
 func (m *Marauder) EvilPortalSetHTML(filename string) (string, error) {
-	return m.Exec("evilportal -c sethtml "+filename, 5*time.Second)
+	return m.Exec(fmt.Sprintf(`evilportal -c sethtml "%s"`, clisafe.SanitizeArg(filename)), 5*time.Second)
 }
 
 // EvilPortalSetHTMLStr tells Marauder to read the HTML page from serial input.
@@ -196,10 +244,6 @@ func (m *Marauder) EvilPortalSetHTMLStr() (string, error) {
 	return m.Exec("evilportal -c sethtmlstr", 5*time.Second)
 }
 
-// EvilPortalStop stops the evil portal by issuing stopscan.
-func (m *Marauder) EvilPortalStop() (string, error) {
-	return m.Exec("stopscan", 5*time.Second)
-}
 
 // --- Channel ---
 
@@ -241,17 +285,26 @@ func (m *Marauder) Join(apIndex int, password string) (string, error) {
 	return m.Exec(fmt.Sprintf(`join -a %d -p "%s"`, apIndex, clisafe.SanitizeArg(password)), 15*time.Second)
 }
 
-// PingScan performs an ICMP ping sweep of the joined network.
+// PingScan performs an ICMP ping sweep of the joined network. The Marauder
+// firmware silently no-ops this command unless the board has already
+// associated with an AP via Join — there is no error on the wire. Callers
+// should invoke Join successfully beforehand.
 func (m *Marauder) PingScan(timeout time.Duration) (string, error) {
 	return m.Exec("pingscan", timeout)
 }
 
-// ARPScan performs an ARP scan of the joined network.
+// ARPScan performs an ARP scan of the joined network. Silently no-ops on
+// the dual-band board variant (HAS_DUAL_BAND=1 in firmware) and whenever
+// the board isn't associated. Call Join first and, on dual-band hardware,
+// use the upstream pingscan as an alternative.
 func (m *Marauder) ARPScan(timeout time.Duration) (string, error) {
 	return m.Exec("arpscan", timeout)
 }
 
-// PortScan performs a port scan against the host at the given IP index.
+// PortScan performs a full-port scan against the host at the given IP
+// index. Requires a successful Join and a prior pingscan/arpscan to
+// populate the IP list. The named-service variant (`portscan -s <service>`)
+// is not currently exposed — add a separate wrapper if you need it.
 func (m *Marauder) PortScan(ipIndex int, timeout time.Duration) (string, error) {
 	return m.Exec(fmt.Sprintf("portscan -a -t %d", ipIndex), timeout)
 }
@@ -301,7 +354,15 @@ func (m *Marauder) Settings() (string, error) {
 // SetSetting updates a single device setting by name and value. Both args
 // are sanitised (CR/LF/NUL/quote stripped) so a value with embedded control
 // characters can't inject additional CLI commands.
+//
+// The firmware's settings parser only accepts exactly "enable" or "disable"
+// for value — any other token is silently ignored and no error is returned
+// over the CLI. We validate at the Go layer so callers get a clear error
+// instead of a silent no-op.
 func (m *Marauder) SetSetting(name, value string) (string, error) {
+	if value != "enable" && value != "disable" {
+		return "", fmt.Errorf("invalid setting value %q (must be \"enable\" or \"disable\")", value)
+	}
 	return m.Exec(fmt.Sprintf("settings -s %s %s", clisafe.SanitizeArg(name), clisafe.SanitizeArg(value)), 5*time.Second)
 }
 

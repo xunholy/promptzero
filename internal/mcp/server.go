@@ -930,14 +930,11 @@ func (s *Server) registerMarauderTools() {
 		func(_ context.Context, a map[string]interface{}) (string, error) {
 			return m.DeauthAttack(durationParam(a, "duration_seconds", 30*time.Second))
 		})
-	s.add("wifi_deauth_targeted", "Deauth attack on a specific channel.",
-		[]mcp.ToolOption{
-			mcp.WithNumber("channel", mcp.Required(), mcp.Description("WiFi channel 1-14")),
-			mcp.WithNumber("duration_seconds", mcp.Description("Duration (default 30)")),
-		},
-		[]string{"channel"},
+	s.add("wifi_deauth_station_list", "Deauth the currently-selected station list (populate via wifi_scan_all + wifi_select_station first).",
+		[]mcp.ToolOption{mcp.WithNumber("duration_seconds", mcp.Description("Duration (default 30)"))},
+		nil,
 		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return m.DeauthTargeted(int(na(a, "channel")), durationParam(a, "duration_seconds", 30*time.Second))
+			return m.DeauthToStationList(durationParam(a, "duration_seconds", 30*time.Second))
 		})
 	s.add("wifi_beacon_spam", "Broadcast fake SSIDs from the current list.",
 		[]mcp.ToolOption{mcp.WithNumber("duration_seconds", mcp.Description("Duration (default 30)"))},
@@ -978,12 +975,14 @@ func (s *Server) registerMarauderTools() {
 
 	s.add("wifi_sniff_pmkid", "Capture PMKID hashes (offline crack candidates).",
 		[]mcp.ToolOption{
-			mcp.WithString("flags", mcp.Description("Optional flags, e.g. '-c 6'")),
+			mcp.WithNumber("channel", mcp.Description("Specific WiFi channel (0 = all)")),
+			mcp.WithBoolean("deauth", mcp.Description("Trigger deauth frames to coerce handshakes")),
+			mcp.WithBoolean("list_only", mcp.Description("Limit capture to the currently-loaded AP list")),
 			mcp.WithNumber("duration_seconds", mcp.Description("Duration (default 60)")),
 		},
 		nil,
 		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return m.SniffPMKID(sa(a, "flags"), durationParam(a, "duration_seconds", 60*time.Second))
+			return m.SniffPMKID(int(na(a, "channel")), ba(a, "deauth"), ba(a, "list_only"), durationParam(a, "duration_seconds", 60*time.Second))
 		})
 	s.add("wifi_sniff_beacon", "Capture beacon frames.",
 		[]mcp.ToolOption{mcp.WithNumber("duration_seconds", mcp.Description("Duration (default 30)"))},
@@ -1042,7 +1041,7 @@ func (s *Server) registerMarauderTools() {
 			return m.EvilPortalStart(sa(a, "filename"))
 		})
 	s.add("wifi_evil_portal_stop", "Stop the evil portal.", nil, nil,
-		func(_ context.Context, _ map[string]interface{}) (string, error) { return m.EvilPortalStop() })
+		func(_ context.Context, _ map[string]interface{}) (string, error) { return m.StopScan() })
 
 	s.add("wifi_info", "Get Marauder devboard info.", nil, nil,
 		func(_ context.Context, _ map[string]interface{}) (string, error) { return m.Info() })

@@ -126,7 +126,7 @@ func WiFiTargetToHashcat(ctx context.Context, deps Deps, params map[string]inter
 		return cancelledResult("wifi target to hashcat", phases, extra), nil
 	}
 	sniffPhase := runPhase("sniff_pmkid", "wifi_sniff_pmkid", func() (string, error) {
-		return deps.Marauder.SniffPMKID("", time.Duration(sniffSecs)*time.Second)
+		return deps.Marauder.SniffPMKID(0, false, false, time.Duration(sniffSecs)*time.Second)
 	})
 	phases = append(phases, sniffPhase)
 	recordPhase(deps.Audit, wf, sniffPhase, map[string]int{"seconds": sniffSecs}, "high")

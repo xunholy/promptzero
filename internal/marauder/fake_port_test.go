@@ -31,6 +31,9 @@ type fakePort struct {
 	// onWrite is fired (under the lock) when a complete command line
 	// arrives, so test goroutines can synchronise.
 	onWrite func(cmd string)
+	// noNewlinePrompt, when true, emits the '> ' prompt without a trailing
+	// \r\n — matching the actual Marauder wire format.
+	noNewlinePrompt bool
 }
 
 func newFakePort() *fakePort {
@@ -48,6 +51,17 @@ func (f *fakePort) respond(cmd, body string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.responses[cmd] = body
+}
+
+// writePrompt appends the '> ' prompt to f.out. When noNewlinePrompt is set,
+// no trailing \r\n is added — matching the actual Marauder wire format.
+// Must be called with f.mu held.
+func (f *fakePort) writePrompt() {
+	if f.noNewlinePrompt {
+		f.out.WriteString("> ")
+	} else {
+		f.out.WriteString("> \r\n")
+	}
 }
 
 func (f *fakePort) Read(p []byte) (int, error) {
@@ -100,11 +114,12 @@ func (f *fakePort) Write(p []byte) (int, error) {
 					f.out.WriteString("\r\n")
 				}
 			}
-			f.out.WriteString("> \r\n")
+			f.writePrompt()
 		} else {
 			// Unscripted commands still receive an echo + prompt so
 			// readUntilPrompt doesn't hang on timeout in the happy path.
-			fmt.Fprintf(&f.out, "#%s\r\n> \r\n", line)
+			fmt.Fprintf(&f.out, "#%s\r\n", line)
+			f.writePrompt()
 		}
 		if f.onWrite != nil {
 			f.onWrite(line)
@@ -244,6 +259,58 @@ func TestJoinPasswordSanitised(t *testing.T) {
 	want := `join -a 0 -p "hello world"`
 	if got != want {
 		t.Fatalf("wire form differs\nwant: %q\n got: %q", want, got)
+	}
+}
+
+// TestExecNoNewlinePrompt feeds a response whose '> ' prompt has no trailing
+// newline — the actual Marauder wire format — and asserts that Exec returns
+// the body lines cleanly without hanging or erroring.
+func TestExecNoNewlinePrompt(t *testing.T) {
+	fp := newFakePort()
+	fp.noNewlinePrompt = true
+	fp.respond("info", "Device MAC: 00:11:22:33:44:55\r\nSD Card: Connected")
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	out, err := m.Exec("info", 2*time.Second)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if !strings.Contains(out, "Device MAC: 00:11:22:33:44:55") {
+		t.Fatalf("missing Device MAC line: %q", out)
+	}
+	if !strings.Contains(out, "SD Card: Connected") {
+		t.Fatalf("missing SD Card line: %q", out)
+	}
+	if strings.Contains(out, "#info") {
+		t.Fatalf("echo line not stripped: %q", out)
+	}
+	if strings.Contains(out, ">") {
+		t.Fatalf("prompt leaked into output: %q", out)
+	}
+}
+
+// TestExecSubsequentAfterNoNewlinePrompt verifies that after Exec cleanly
+// consumes a no-newline-prompt response, a subsequent Exec on the same
+// Marauder also succeeds (drain left the port in a clean state).
+func TestExecSubsequentAfterNoNewlinePrompt(t *testing.T) {
+	fp := newFakePort()
+	fp.noNewlinePrompt = true
+	fp.respond("info", "Device MAC: 00:11:22:33:44:55\r\nSD Card: Connected")
+	fp.respond("channel", "Channel: 6")
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	if _, err := m.Exec("info", 2*time.Second); err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+
+	out, err := m.Exec("channel", 2*time.Second)
+	if err != nil {
+		t.Fatalf("second Exec: %v", err)
+	}
+	if !strings.Contains(out, "Channel: 6") {
+		t.Fatalf("second Exec output wrong: %q", out)
 	}
 }
 

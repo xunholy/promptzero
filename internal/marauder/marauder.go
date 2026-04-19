@@ -1,7 +1,7 @@
 package marauder
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -34,10 +34,10 @@ type portIface = Port
 //   - Commands are terminated with '\n' (Marauder uses Serial.readStringUntil('\n')).
 //   - After a command is sent, Marauder echoes the command prefixed with '#' on the first line.
 //   - Output lines follow, terminated by a '> ' prompt (greater-than + space).
+//   - The '> ' prompt has NO trailing newline; line-based reads would block forever.
 type Marauder struct {
-	port   portIface
-	mu     sync.Mutex
-	reader *bufio.Reader
+	port portIface
+	mu   sync.Mutex
 }
 
 // NewWithPort wires a Marauder around a caller-supplied Port. Production
@@ -45,10 +45,7 @@ type Marauder struct {
 // the sibling internal/testmocks harness) that need to inject a fake
 // serial backend without opening a real device.
 func NewWithPort(p Port) *Marauder {
-	return &Marauder{
-		port:   p,
-		reader: bufio.NewReader(p),
-	}
+	return &Marauder{port: p}
 }
 
 // newMarauderWithPort is a package-local alias that preserves the
@@ -77,10 +74,7 @@ func Connect(portName string, baudRate int) (*Marauder, error) {
 		return nil, fmt.Errorf("setting read timeout: %w", err)
 	}
 
-	m := &Marauder{
-		port:   port,
-		reader: bufio.NewReader(port),
-	}
+	m := &Marauder{port: port}
 
 	// Drain any pending output before issuing commands.
 	m.drain()
@@ -107,7 +101,11 @@ func (m *Marauder) Exec(command string, timeout time.Duration) (string, error) {
 	return m.readUntilPrompt(timeout)
 }
 
-// ExecLong is Exec with a longer default timeout for slow operations.
+// ExecLong is a deprecated alias for Exec; callers supply the timeout
+// themselves, so there is no behavioural difference between the two.
+// Prefer Exec in new code. Retained to avoid breaking external callers.
+//
+// Deprecated: use Exec.
 func (m *Marauder) ExecLong(command string, timeout time.Duration) (string, error) {
 	return m.Exec(command, timeout)
 }
@@ -131,42 +129,69 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 		defer m.mu.Unlock()
 		defer close(lines)
 
+		var accum []byte
+		buf := make([]byte, 512)
 		firstLine := true
 		consecutiveErrors := 0
 
 		for {
 			select {
 			case <-done:
-				m.port.Write([]byte("stopscan\n"))
+				// Best-effort: we're already tearing down the stream, so a
+				// failed stopscan write is logged-only-if-the-caller-cares.
+				// Swallow the error here; if the board is wedged the next
+				// Exec will surface it.
+				_, _ = m.port.Write([]byte("stopscan\n"))
 				return
 			default:
 			}
 
-			line, err := m.reader.ReadString('\n')
+			_ = m.port.SetReadTimeout(100 * time.Millisecond)
+			n, err := m.port.Read(buf)
 			if err != nil {
+				if err == io.EOF {
+					return
+				}
 				consecutiveErrors++
 				if consecutiveErrors > 10 {
-					return // device likely disconnected
+					return
 				}
 				continue
 			}
-			consecutiveErrors = 0
-			line = strings.TrimSpace(line)
-
-			// Skip the command echo line (e.g. "#scanap").
-			if firstLine && strings.HasPrefix(line, "#") {
-				firstLine = false
+			if n == 0 {
 				continue
 			}
-			firstLine = false
+			consecutiveErrors = 0
+			accum = append(accum, buf[:n]...)
 
-			// Stop streaming when the prompt is received.
-			if line == ">" || line == "> " {
-				return
+			// Emit every complete newline-terminated line in accum.
+			for {
+				idx := bytes.IndexByte(accum, '\n')
+				if idx < 0 {
+					break
+				}
+				rawLine := accum[:idx]
+				accum = accum[idx+1:]
+				line := strings.TrimRight(string(rawLine), "\r")
+				line = strings.TrimSpace(line)
+
+				if firstLine && strings.HasPrefix(line, "#") {
+					firstLine = false
+					continue
+				}
+				firstLine = false
+
+				if line == ">" || line == "> " {
+					return
+				}
+				if line != "" {
+					lines <- line
+				}
 			}
 
-			if line != "" {
-				lines <- line
+			// Check if the unterminated suffix is the '> ' prompt.
+			if suffix := strings.TrimSpace(string(accum)); suffix == ">" || suffix == "> " {
+				return
 			}
 		}
 	}()
@@ -174,54 +199,59 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 	return lines, done, nil
 }
 
-// readUntilPrompt reads lines after a command until the '> ' prompt appears or
-// two consecutive idle timeouts occur, then returns the collected output.
-// The command echo line (prefixed with '#') is stripped.
+// readUntilPrompt accumulates raw bytes from the port until the '> ' prompt is
+// seen or the wall-clock deadline expires. Unlike bufio.ReadString('\n'), this
+// approach does not block waiting for a newline — Marauder's '> ' prompt has
+// none. SetReadTimeout is set to 100 ms per read so the deadline is polled
+// regularly even when the CP210x driver's SetReadTimeout is unreliable under WSL.
 func (m *Marauder) readUntilPrompt(timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
-	var lines []string
-	sawPrompt := false
-
-	m.port.SetReadTimeout(2 * time.Second)
-	defer m.port.SetReadTimeout(5 * time.Second)
-
-	firstLine := true
-	silenceCount := 0
+	var accum []byte
+	buf := make([]byte, 512)
 
 	for time.Now().Before(deadline) {
-		line, err := m.reader.ReadString('\n')
+		_ = m.port.SetReadTimeout(100 * time.Millisecond)
+		n, err := m.port.Read(buf)
 		if err != nil {
-			silenceCount++
-			if silenceCount >= 2 {
-				break // Two consecutive read timeouts = command done.
-			}
+			return parseMarauderResponse(accum), fmt.Errorf("reading from port: %w", err)
+		}
+		if n == 0 {
 			continue
 		}
-		silenceCount = 0
-		line = strings.TrimSpace(line)
-
-		// Strip the command echo line (e.g. "#scanap").
-		if firstLine && strings.HasPrefix(line, "#") {
-			firstLine = false
-			continue
-		}
-		firstLine = false
-
-		// Stop collecting when the '> ' prompt is received.
-		if line == ">" || line == "> " {
-			sawPrompt = true
-			break
-		}
-
-		if line != "" {
-			lines = append(lines, line)
+		accum = append(accum, buf[:n]...)
+		if idx := marauderPromptIndex(accum); idx >= 0 {
+			return parseMarauderResponse(accum[:idx]), nil
 		}
 	}
 
-	if !sawPrompt {
-		return strings.Join(lines, "\n"), fmt.Errorf("timeout waiting for prompt after %v", timeout)
+	return parseMarauderResponse(accum), fmt.Errorf("timeout waiting for prompt after %v", timeout)
+}
+
+// marauderPromptIndex returns the byte offset of the last '> ' in b, or -1.
+// Using bytes.LastIndex is safe because the prompt always appears at the end
+// of the response; taking everything before the last occurrence is correct.
+func marauderPromptIndex(b []byte) int {
+	return bytes.LastIndex(b, []byte("> "))
+}
+
+// parseMarauderResponse normalizes line endings, strips the command echo line
+// (the first line prefixed with '#'), removes blank lines, and joins the rest.
+func parseMarauderResponse(b []byte) string {
+	s := strings.ReplaceAll(string(b), "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	lines := strings.Split(s, "\n")
+	if len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[0]), "#") {
+		lines = lines[1:]
 	}
-	return strings.Join(lines, "\n"), nil
+	var result []string
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		result = append(result, l)
+	}
+	return strings.Join(result, "\n")
 }
 
 func (m *Marauder) drain() {

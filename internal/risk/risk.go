@@ -133,7 +133,7 @@ var toolLevels = func() map[string]Level {
 	// an unrestricted passthrough — a single call could reboot the device,
 	// overwrite files, or transmit on any frequency. Always prompt.
 	register(Critical,
-		"wifi_deauth", "wifi_deauth_targeted",
+		"wifi_deauth", "wifi_deauth_station_list",
 		"wifi_csa_attack",
 		"wifi_sae_flood",
 		"subghz_bruteforce",
