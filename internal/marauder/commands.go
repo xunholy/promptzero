@@ -244,7 +244,6 @@ func (m *Marauder) EvilPortalSetHTMLStr() (string, error) {
 	return m.Exec("evilportal -c sethtmlstr", 5*time.Second)
 }
 
-
 // --- Channel ---
 
 // SetChannel sets the WiFi channel (1–14).

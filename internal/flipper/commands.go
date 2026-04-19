@@ -761,7 +761,7 @@ func isSDProductLine(line string) bool {
 	hex := func(c byte) bool {
 		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 	}
-	if !(hex(line[0]) && hex(line[1])) {
+	if !hex(line[0]) || !hex(line[1]) {
 		return false
 	}
 	return strings.Contains(line, " v") || strings.Contains(line, " V")
