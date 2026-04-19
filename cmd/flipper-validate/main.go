@@ -141,6 +141,10 @@ func isNoTargetErr(err error, out string) bool {
 	needles := []string{
 		"no card", "no tag", "no rfid", "no signal", "not detected",
 		"timeout", "no response", "no data", "nothing",
+		// Momentum NFC subshell: "Error: Protocol failure" / "Error:
+		// Protocol error" on mfu rdbl / raw frames when no compatible
+		// tag is present. Treat as no-target for rxTolerant cases.
+		"protocol failure", "protocol error",
 	}
 	for _, n := range needles {
 		if strings.Contains(msg, n) {

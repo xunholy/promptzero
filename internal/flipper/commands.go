@@ -225,12 +225,18 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 }
 
 // waitLoaderClosed sends `loader close` and polls `loader info` until the
-// firmware reports no running application. Returns an error if the loader
-// has not freed within budget. Used by NFCEmulate to guarantee a clean CLI
-// state before returning.
+// firmware reports no running application — then waits for a SECOND
+// consecutive clean read after a short delay. On Momentum, a single clean
+// observation is not enough: the loader briefly reports "No application
+// is running" while it's still finishing teardown, so the very next
+// app-launching command (e.g. `rfid emulate`) fails with "cannot be run
+// while an application is open". Requiring two consecutive clean reads
+// separated by ~200 ms catches the transient window. Used by NFCEmulate
+// (and peers) to guarantee a CLI state that is ready for the next app.
 func (f *Flipper) waitLoaderClosed(budget time.Duration) error {
 	_, _ = f.Exec("loader close")
 	deadline := time.Now().Add(budget)
+	consecutiveClean := 0
 	for time.Now().Before(deadline) {
 		info, err := f.Exec("loader info")
 		if err != nil {
@@ -238,11 +244,16 @@ func (f *Flipper) waitLoaderClosed(budget time.Duration) error {
 		}
 		// loader info prints `Application "name" is running` when locked,
 		// or `No application is running` when the loader is free.
-		// Check for a quoted app name to distinguish the two cases.
-		if !strings.Contains(info, "Application \"") {
+		if strings.Contains(info, "Application \"") {
+			consecutiveClean = 0
+			time.Sleep(50 * time.Millisecond)
+			continue
+		}
+		consecutiveClean++
+		if consecutiveClean >= 2 {
 			return nil
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 	return fmt.Errorf("flipper: app still open after loader close (budget %v)", budget)
 }
