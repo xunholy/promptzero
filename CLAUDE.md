@@ -27,7 +27,9 @@ Run `task dev:setup` after cloning to install required dev tools
 
 - `cmd/promptzero/` — CLI entry point.
 - `internal/agent/` — Claude agent + tool dispatch.
-- `internal/flipper/` — Flipper serial transport + capability primitives.
+- `internal/flipper/` — Flipper transport + capability primitives.
+  Transports: Serial USB (default) and BLE (optional, via
+  `tinygo.org/x/bluetooth`).
 - `internal/marauder/` — ESP32 Marauder serial client.
 - `internal/audit/` — audit log + query DSL.
 - `internal/version/` — build metadata populated via `-ldflags`.
