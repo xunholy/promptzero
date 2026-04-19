@@ -691,6 +691,7 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	srv.SetMetrics(deps.Rec, cfg.Observability.MetricsPath)
 	srv.SetAuthToken(cfg.Web.Token)
 	srv.SetCORSOrigins(cfg.Web.CORSOrigins)
+	srv.SetAllowAnyOrigin(cfg.Web.AllowAnyOrigin)
 	if cfg.Web.Token != "" {
 		statusOK(fmt.Sprintf("Web auth %s(bearer token, %d chars)%s", dim, len(cfg.Web.Token), reset))
 	} else {

@@ -37,14 +37,16 @@ web:
   port: 8080
 
   # Bearer token. When set, every /api request must carry
-  # `Authorization: Bearer <token>` and /ws requires ?token=<token>.
-  # Empty = auth disabled (dev mode only — the server prints a loud
-  # warning if the bind is non-loopback and the token is empty).
+  # `Authorization: Bearer <token>` and /ws negotiates the token via
+  # `Sec-WebSocket-Protocol: bearer, <token>`. Empty = auth disabled
+  # (dev mode only — the server prints a loud warning if the bind is
+  # non-loopback and the token is empty).
   # PROMPTZERO_WEB_TOKEN env var overrides this field.
   token: ""
 
   # WebSocket Origin allow-list. Empty = same-origin only (safe default
   # behind a reverse proxy). Use only to allow a separate cockpit host.
+  # A literal "*" entry is refused at startup — see allow_any_origin.
   cors_origins: []
                                      # Example:
                                      # - "https://cockpit.lan"
@@ -52,6 +54,10 @@ web:
                                      # proxy (Caddy/Traefik/nginx);
                                      # promptzero speaks plain HTTP so
                                      # it doesn't need cert management.
+
+  # Opt-in wildcard Origin matching. Pair with cors_origins: [] (no "*").
+  # Use only for local dev — disables CSWSH protection.
+  allow_any_origin: false
 
 # --- Default persona -----------------------------------------------------
 # One of: default, rf-recon, badge-cloner, hw-recon, physical-pentest,

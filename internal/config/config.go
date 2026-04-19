@@ -171,7 +171,8 @@ type WebConfig struct {
 
 	// Token, when non-empty, gates every /api and /ws request behind a
 	// bearer-token check. HTTP callers send `Authorization: Bearer <token>`;
-	// the browser passes ?token=<token> on the WebSocket URL. Leave empty
+	// browsers negotiate the WebSocket with `Sec-WebSocket-Protocol: bearer,
+	// <token>` (the server echoes `bearer` back on success). Leave empty
 	// for local-only deployments — the server prints a loud warning when
 	// it's bound non-loopback without a token set.
 	// PROMPTZERO_WEB_TOKEN env var overrides this field when set.
@@ -180,8 +181,15 @@ type WebConfig struct {
 	// CORSOrigins is the list of origins allowed to connect the WebSocket
 	// and call /api cross-origin. Empty (default) means same-origin only.
 	// Entries match the browser's `Origin` header verbatim
-	// (e.g. "https://cockpit.lan"). Use "*" only for local dev.
+	// (e.g. "https://cockpit.lan"). A literal "*" is refused at Start —
+	// set AllowAnyOrigin instead.
 	CORSOrigins []string `yaml:"cors_origins,omitempty"`
+
+	// AllowAnyOrigin opts in to wildcard Origin matching for cross-origin
+	// WebSocket connections. Must be paired with removing "*" from
+	// CORSOrigins — the indirection is intentional so a stray "*" in a
+	// copy-pasted config can't silently disable Origin enforcement.
+	AllowAnyOrigin bool `yaml:"allow_any_origin,omitempty"`
 }
 
 type Device struct {

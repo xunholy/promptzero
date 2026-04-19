@@ -1,55 +1,116 @@
-# promptzero configuration
+# PromptZero full configuration template.
+# Copy to ~/.promptzero/config.yaml or pass via --config. Every non-trivial
+# field is commented; omit sections you don't need.
 
-# Anthropic API key (or set ANTHROPIC_API_KEY env var)
+# --- API + model ----------------------------------------------------------
+
+# Anthropic API key (or set ANTHROPIC_API_KEY env var — env wins).
 api_key: ""
-
-# OpenAI API key for Whisper voice transcription (or set OPENAI_API_KEY env var)
+# Optional OpenAI key for Whisper voice transcription.
 openai_api_key: ""
-
-# Claude model to use (opus 4.7 default; swap to claude-sonnet-4-6 for
-# faster/cheaper turns or claude-haiku-4-5 for minimal cost)
+# Claude model. Defaults to claude-opus-4-7 if omitted.
+# Options: claude-opus-4-7 (most capable, $15/$75 per M tok),
+#          claude-sonnet-4-6 (fast + cheap, $3/$15),
+#          claude-haiku-4-5  (cheapest, $0.80/$4).
 model: "claude-opus-4-7"
 
-# Flipper Zero connection
+# --- Flipper Zero connection ---------------------------------------------
 serial:
-  port: "/dev/ttyACM0"    # Linux default; macOS: /dev/tty.usbmodemflip_*
-  baud_rate: 230400
-
-  # Optional transport URL override. When set, takes precedence over
-  # port + baud_rate above. Supported schemes:
-  #   serial:///dev/ttyACM0?baud=230400   — explicit USB CDC-ACM (default path)
-  #   mock:///dev/pts/5                   — test harness pty slave
-  #   ble://AA:BB:CC:DD:EE:FF             — wireless via BLE (Linux/macOS; not WSL)
-  # See README.md → "Transport options" for BLE pairing + platform caveats.
-  # The --transport CLI flag overrides this field.
+  port: "/dev/ttyACM0"               # USB CDC-ACM path
+  baud_rate: 230400                  # nominal; CDC-ACM is lane-rate irrelevant
+  # transport_url overrides port + baud. Schemes:
+  #   serial:///dev/ttyACM0?baud=230400
+  #   mock:///dev/pts/5              (test harness pty slave)
+  #   ble://AA:BB:CC:DD:EE:FF        (live; Linux/macOS only — see docs)
   transport_url: ""
 
-# ESP32 Marauder WiFi devboard (optional)
+# --- ESP32 Marauder (WiFi + BLE devboard) --------------------------------
 marauder:
-  enabled: false
-  port: "/dev/ttyUSB0"    # Usually a separate USB serial port
+  enabled: false                     # flip to true when the devboard is plugged in
+  port: "/dev/ttyUSB0"               # separate USB serial port from the Flipper
   baud_rate: 115200
 
-# Web UI settings
+# --- Web UI --------------------------------------------------------------
 web:
+  host: "127.0.0.1"                  # loopback default; pair with a non-empty
+                                     # token below before binding publicly
   port: 8080
 
-# Device registry — map friendly names to signal files on the Flipper SD card
-devices:
-  garage:
-    type: subghz
-    file: "/ext/subghz/garage_door.sub"
-  living_room_tv:
-    type: ir
-    file: "/ext/infrared/living_room_tv.ir"
-    commands:
-      power: "Power"
-      volume_up: "Vol_up"
-      volume_down: "Vol_dn"
-      mute: "Mute"
-  front_door:
-    type: rfid
-    file: "/ext/lfrfid/front_door.rfid"
-  office_badge:
-    type: nfc
-    file: "/ext/nfc/office_badge.nfc"
+  # Bearer token. When set, every /api request must carry
+  # `Authorization: Bearer <token>` and /ws negotiates the token via
+  # `Sec-WebSocket-Protocol: bearer, <token>`. Empty = auth disabled
+  # (dev mode only — the server prints a loud warning if the bind is
+  # non-loopback and the token is empty).
+  # PROMPTZERO_WEB_TOKEN env var overrides this field.
+  token: ""
+
+  # WebSocket Origin allow-list. Empty = same-origin only (safe default
+  # behind a reverse proxy). Use only to allow a separate cockpit host.
+  # A literal "*" entry is refused at startup — see allow_any_origin.
+  cors_origins: []
+                                     # Example:
+                                     # - "https://cockpit.lan"
+                                     # TLS: terminate at your reverse
+                                     # proxy (Caddy/Traefik/nginx);
+                                     # promptzero speaks plain HTTP so
+                                     # it doesn't need cert management.
+
+  # Opt-in wildcard Origin matching. Pair with cors_origins: [] (no "*").
+  # Use only for local dev — disables CSWSH protection.
+  allow_any_origin: false
+
+# --- Default persona -----------------------------------------------------
+# One of: default, rf-recon, badge-cloner, hw-recon, physical-pentest,
+# defender — or any YAML file under ~/.promptzero/personas/ (see examples/personas).
+persona: "default"
+
+# --- Filesystem-trigger mode (--watch) -----------------------------------
+watch:
+  enabled: false                     # gate via --watch CLI flag in most cases
+  paths: []                          # ["/home/you/flipper-inbox"]
+  rules:
+    - pattern: "*.sub"               # any new .sub file in a watched path
+      prompt: "Decode and summarise this Sub-GHz capture: {{path}}"
+      persona: "rf-recon"
+    - pattern: "*.png"               # photos of gear — auto-triage
+      prompt: "Analyse this photo. Identify the device and likely attack surface: {{path}}"
+
+# --- Webhooks (outbound HTTP events) -------------------------------------
+webhooks:
+  - name: "slack-alerts"             # referenced by rules' webhook action
+    url: "https://hooks.slack.com/services/T0/B0/REPLACE"
+    events: ["risk.exceeded", "tool.completed"]  # empty = all events
+    secret: "REPLACE_WITH_RANDOM_HMAC_SECRET"    # enables X-PromptZero-Signature
+    headers:
+      X-Source: "promptzero"
+
+# --- Observability -------------------------------------------------------
+observability:
+  log_level: "info"                  # debug | info | warn | error
+  log_format: "text"                 # "text" (human) or "json" (shipping)
+  # log_file: "/var/log/promptzero.log"  # tees alongside stderr
+  metrics_enabled: true              # exposes Prometheus /metrics on the web port
+  metrics_path: "/metrics"
+
+# --- BadUSB sandbox validator --------------------------------------------
+validator:
+  badusb:
+    # enabled: true                  # leave unset to default to on
+    allow_critical: false            # refuse payloads with Critical findings
+    warn_action: "warn"              # "warn" (log + run) or "block" (refuse)
+
+# --- Cost overrides (USD per million tokens) ------------------------------
+# Missing entries fall back to the built-in rate table in internal/cost.
+cost:
+  rates:
+    # claude-sonnet-4-6:
+    #   input: 3.00
+    #   output: 15.00
+    # claude-opus-4-7:
+    #   input: 15.00
+    #   output: 75.00
+
+# --- Reactive rules ------------------------------------------------------
+# Inline rules can go here, or keep them in examples/rules.yaml and merge
+# with `yq`/`sops` at deploy time. See examples/rules.yaml for the schema.
+rules: []
