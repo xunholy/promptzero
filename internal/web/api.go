@@ -15,7 +15,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/audit"
@@ -408,7 +410,12 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "expected 'path' or 'content'")
 			return
 		}
-		data, err := os.ReadFile(body.Path)
+		resolved, err := s.resolveValidatePath(body.Path)
+		if err != nil {
+			writeError(w, http.StatusForbidden, err.Error())
+			return
+		}
+		data, err := os.ReadFile(resolved)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "read "+body.Path+": "+err.Error())
 			return
@@ -435,6 +442,38 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 		Approved:    !rep.Has(validator.SeverityCritical),
 		Findings:    findings,
 	})
+}
+
+// resolveValidatePath refuses any /api/validate path read that isn't rooted
+// under the configured safe base. Missing base → reject everything; that is
+// the explicit "no filesystem reads" default callers opt out of with
+// SetValidateBase.
+//
+// The check resolves the symlink chain on *both* the base and the candidate
+// path: Clean-alone is not enough because `<base>/foo` could be a symlink to
+// /etc/shadow and still pass a prefix-on-Clean test. EvalSymlinks forces the
+// real filesystem location into the comparison.
+func (s *Server) resolveValidatePath(p string) (string, error) {
+	if s.validateBase == "" {
+		return "", fmt.Errorf("path reads disabled: server has no validate base configured (send the script body in 'content' instead)")
+	}
+	abs, err := filepath.Abs(filepath.Clean(p))
+	if err != nil {
+		return "", fmt.Errorf("invalid path %q: %v", p, err)
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		// File doesn't exist / permission error — surface as 403 rather
+		// than leaking whether the path exists outside the safe base.
+		return "", fmt.Errorf("path %q is outside the allowed base", p)
+	}
+	// filepath.Rel catches the prefix case AND the "../escape" case in one
+	// comparison: a rel path that starts with ".." means we climbed out.
+	rel, err := filepath.Rel(s.validateBase, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q is outside the allowed base", p)
+	}
+	return resolved, nil
 }
 
 // ---------------------------------------------------------------------------

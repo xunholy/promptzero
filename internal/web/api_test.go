@@ -363,8 +363,9 @@ func TestValidateInlineContent(t *testing.T) {
 }
 
 func TestValidateReadsFileFromPath(t *testing.T) {
-	_, ts := apiServer(t, &fakeAgent{})
+	s, ts := apiServer(t, &fakeAgent{})
 	dir := t.TempDir()
+	s.SetValidateBase(dir)
 	p := filepath.Join(dir, "harmless.txt")
 	if err := os.WriteFile(p, []byte("REM harmless\nSTRING hello\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -377,6 +378,56 @@ func TestValidateReadsFileFromPath(t *testing.T) {
 	_ = json.Unmarshal(raw, &body)
 	if body["approved"] != true {
 		t.Errorf("approved = %v, want true for harmless script", body["approved"])
+	}
+}
+
+// TestValidateRejectsEtcShadow proves that the /api/validate path reader
+// refuses to open /etc/shadow (or anything else outside the configured safe
+// base). Critical: without the base check, an unauthenticated caller with a
+// bearer token could grep the server host's filesystem.
+func TestValidateRejectsEtcShadow(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	dir := t.TempDir()
+	s.SetValidateBase(dir)
+
+	code, raw := postJSON(t, ts, "/api/validate", map[string]string{"path": "/etc/shadow"})
+	if code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 for /etc/shadow; body=%s", code, raw)
+	}
+}
+
+// TestValidateRejectsPathWhenNoBaseConfigured exercises the default: a
+// server that never called SetValidateBase must 403 on every path read.
+func TestValidateRejectsPathWhenNoBaseConfigured(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	// NO SetValidateBase — base is "" (default).
+	code, raw := postJSON(t, ts, "/api/validate", map[string]string{"path": "/tmp/whatever"})
+	if code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 with no base configured; body=%s", code, raw)
+	}
+}
+
+// TestValidateRejectsSymlinkEscape proves the resolver follows symlinks
+// (EvalSymlinks) so an attacker cannot drop a symlink inside the safe base
+// pointing at a sensitive file outside it.
+func TestValidateRejectsSymlinkEscape(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	base := t.TempDir()
+	outside := t.TempDir()
+	s.SetValidateBase(base)
+
+	secret := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(secret, []byte("hush"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "sneaky")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Skipf("symlink unsupported on this platform: %v", err)
+	}
+
+	code, raw := postJSON(t, ts, "/api/validate", map[string]string{"path": link})
+	if code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 for symlink escape; body=%s", code, raw)
 	}
 }
 
