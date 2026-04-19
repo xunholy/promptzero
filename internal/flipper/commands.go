@@ -224,38 +224,37 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 	return out, nil
 }
 
-// waitLoaderClosed sends `loader close` and polls `loader info` until the
-// firmware reports no running application — then waits for a SECOND
-// consecutive clean read after a short delay. On Momentum, a single clean
-// observation is not enough: the loader briefly reports "No application
-// is running" while it's still finishing teardown, so the very next
-// app-launching command (e.g. `rfid emulate`) fails with "cannot be run
-// while an application is open". Requiring two consecutive clean reads
-// separated by ~200 ms catches the transient window. Used by NFCEmulate
-// (and peers) to guarantee a CLI state that is ready for the next app.
+// waitLoaderClosed sends `loader close` then polls until the CLI shell's
+// loader_lock is actually acquirable — the condition that gates every
+// non-parallel-safe command with "cannot be run while an application is
+// open".
+//
+// We can't just poll `loader info` because it reports the cleared app
+// name before the loader lock is released. Instead we probe with
+// `uptime` (CliCommandFlagDefault = lock-taking, no-arg, read-only) and
+// check the response: any "cannot be run while an application is open"
+// substring means the lock is still held; an "Uptime:" prefix means
+// we're clear. Required for NFCEmulate (and siblings) to guarantee the
+// very next app-launching command will actually succeed.
 func (f *Flipper) waitLoaderClosed(budget time.Duration) error {
 	_, _ = f.Exec("loader close")
 	deadline := time.Now().Add(budget)
-	consecutiveClean := 0
 	for time.Now().Before(deadline) {
-		info, err := f.Exec("loader info")
+		out, err := f.Exec("uptime")
 		if err != nil {
-			return fmt.Errorf("flipper: loader info: %w", err)
+			return fmt.Errorf("flipper: uptime probe: %w", err)
 		}
-		// loader info prints `Application "name" is running` when locked,
-		// or `No application is running` when the loader is free.
-		if strings.Contains(info, "Application \"") {
-			consecutiveClean = 0
-			time.Sleep(50 * time.Millisecond)
+		if strings.Contains(out, "cannot be run while an application is open") {
+			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		consecutiveClean++
-		if consecutiveClean >= 2 {
+		if strings.Contains(out, "Uptime:") {
 			return nil
 		}
-		time.Sleep(200 * time.Millisecond)
+		// Unexpected response — retry until deadline.
+		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("flipper: app still open after loader close (budget %v)", budget)
+	return fmt.Errorf("flipper: loader still locked after close (budget %v)", budget)
 }
 
 // NFCSubcommand enters the NFC subshell, sends an arbitrary subcommand, and exits.

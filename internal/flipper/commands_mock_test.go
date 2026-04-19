@@ -525,12 +525,14 @@ func TestNFCEmulateClosesLoader(t *testing.T) {
 				case "close":
 					return "Application was closed"
 				case "info":
-					// Report no app running so waitLoaderClosed exits on first poll.
 					return "No application is running"
 				}
 			}
 			return ""
 		}),
+		// waitLoaderClosed probes with `uptime` (lock-taking, harmless).
+		// Return a normal Uptime line so the probe reads loader-free.
+		mock.WithHandler("uptime", func(_ []string) string { return "Uptime: 0h1m23s" }),
 	)
 	flip := connectAndDetect(t, m)
 
@@ -558,10 +560,10 @@ func TestNFCEmulateClosesLoader(t *testing.T) {
 }
 
 // TestNFCEmulateLoaderCloseTimeout verifies that NFCEmulate returns an error
-// when `loader info` keeps reporting an app as running beyond the 1-second budget.
+// when the loader lock stays held beyond the wait budget.
 func TestNFCEmulateLoaderCloseTimeout(t *testing.T) {
 	if testing.Short() {
-		t.Skip("skipped in -short mode: waits up to 1 second for loader budget")
+		t.Skip("skipped in -short mode: waits up to the loader budget")
 	}
 	m := mock.Spawn(t,
 		mock.WithHandler("device_info", func(_ []string) string { return stockDeviceInfo }),
@@ -572,12 +574,14 @@ func TestNFCEmulateLoaderCloseTimeout(t *testing.T) {
 					return ""
 				case "close":
 					return "Application NFC has to be closed manually"
-				case "info":
-					// Simulate app stuck open.
-					return "Application \"NFC\" is running"
 				}
 			}
 			return ""
+		}),
+		// Simulate a lock that never releases: uptime probe always returns
+		// the "cannot be run" error string.
+		mock.WithHandler("uptime", func(_ []string) string {
+			return "this command cannot be run while an application is open"
 		}),
 	)
 	flip := connectAndDetect(t, m)
