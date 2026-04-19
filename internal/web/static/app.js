@@ -120,11 +120,9 @@
       _authReady: false,               /* true once _authBootstrap has resolved */
       _spinnerTimer: null,
       _elapsedTimer: null,
-      _heartbeatWatchdog: null,
       _costTimer: null,
       _deviceTimer: null,
       _knownPersonaSwitchIds: [],
-      _lastPingAt: 0,
       _reduced: false,
       _autoScrollPaused: false,
       _lastUserPrompt: '',
@@ -165,7 +163,6 @@
       get criticalReady()   { return this.criticalConfirmText.trim().toLowerCase() === 'all'; },
       get connectionGlyph() {
         if (this.connection === 'online')  return '●';
-        if (this.connection === 'slow')    return '▲';
         if (this.connection === 'offline') return '✕';
         return '○';
       },
@@ -176,7 +173,6 @@
         this._loadMotifs();
         this._startSpinner();
         this._startElapsed();
-        this._startHeartbeatWatchdog();
         this._installMock();
         /* Gate every network-dependent call behind the auth handshake so
            the WS and first fetches carry the bearer the server demands. */
@@ -258,9 +254,10 @@
            2. sessionStorage.promptzero_token — survives reloads in the same tab
            3. window.prompt()            — fallback when neither is present
          The fragment is stripped after read so the token doesn't linger in
-         the address bar. `_fetch` rides every /api call; `_connect` appends
-         ?token=… on the WS URL. If auth is disabled server-side, the flow
-         short-circuits and `_token` stays ''. */
+         the address bar. `_fetch` rides every /api call; `_connect` sends
+         the token via the Sec-WebSocket-Protocol negotiation (`bearer,
+         <token>`) so it never appears in access logs. If auth is disabled
+         server-side, the flow short-circuits and `_token` stays ''. */
       _authBootstrap() {
         /* 1. URL fragment */
         if (location.hash.indexOf('token=') !== -1) {
@@ -325,15 +322,18 @@
       _connect() {
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         var url = proto + '//' + location.host + '/ws';
-        if (this._token) url += '?token=' + encodeURIComponent(this._token);
-        try { this._ws = new WebSocket(url); }
+        /* Token travels via the Sec-WebSocket-Protocol negotiation (`bearer,
+           <token>`) so it never lands in server access logs or the browser
+           history the way ?token= used to. Server echoes `bearer` back on a
+           successful match. */
+        var wsArgs = this._token ? ['bearer', this._token] : undefined;
+        try { this._ws = wsArgs ? new WebSocket(url, wsArgs) : new WebSocket(url); }
         catch (_) { this._onWsDown(); return; }
 
         this._ws.onopen = () => {
           var wasDown = this.connection !== 'online';
           this.connection = 'online';
           this._wsBackoff = 800;
-          this._lastPingAt = Date.now();
           this._clearDisconnectBanner();
           this.offlineCard = false;
           if (wasDown) this._showReconnectToast();
@@ -402,14 +402,6 @@
         this._wsBackoff = 800;
         try { if (this._ws) this._ws.close(); } catch (_) {}
         this._connect();
-      },
-
-      _startHeartbeatWatchdog() {
-        this._heartbeatWatchdog = setInterval(() => {
-          if (this.connection !== 'online') return;
-          var lag = Date.now() - (this._lastPingAt || Date.now());
-          if (lag > 15000 && this.connection === 'online') this.connection = 'slow';
-        }, 2000);
       },
 
       _send(obj) {
@@ -498,12 +490,6 @@
 
           case 'phase':
             this._onPhase(msg.verb, msg.turn_id);
-            break;
-
-          case 'ping':
-            this._lastPingAt = Date.now();
-            if (this.connection === 'slow') this.connection = 'online';
-            this._send({ type: 'pong', t: msg.t });
             break;
 
           case 'persona_switched':

@@ -18,10 +18,14 @@
 // without fighting for control. `confirm_request` is the single exception —
 // it is delivered only to the turn owner.
 //
+// Liveness uses WebSocket protocol-level ping/pong (ws.Ping), which the
+// browser answers below the JS event loop — a backgrounded tab whose
+// timers are throttled still responds. The JSON taxonomy below is strictly
+// application payload; there are no `ping`/`pong` JSON frames.
+//
 // Outbound taxonomy: status, response, transcription, error (legacy),
-// text_delta, tool_status, confirm_request, phase, ping.
-// Inbound taxonomy: text, audio, reset (legacy), confirm_response, cancel,
-// pong.
+// text_delta, tool_status, confirm_request, phase.
+// Inbound taxonomy: text, audio, reset (legacy), confirm_response, cancel.
 package web
 
 import (
@@ -39,6 +43,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -87,6 +92,10 @@ type Server struct {
 
 	// Timing knobs. Initialised by NewServer; tests override these fields on
 	// the struct (not package-level vars) to stay race-safe across tests.
+	//
+	// heartbeatInterval: how often runHeartbeat issues a ws.Ping.
+	// heartbeatTimeout:  deadline for a single Ping to receive its Pong.
+	// writeTimeout:      deadline for a single outbound data frame.
 	heartbeatInterval time.Duration
 	heartbeatTimeout  time.Duration
 	writeTimeout      time.Duration
@@ -133,17 +142,28 @@ type Server struct {
 	// the server prints a loud warning when the bind is also non-loopback.
 	// Compared with subtle.ConstantTimeCompare to avoid timing side channels.
 	token string
+	// validateBase is the absolute, symlink-resolved directory the
+	// /api/validate POST is allowed to read files under. Empty disables
+	// filesystem reads for that endpoint — handleValidate refuses any path
+	// request with a 403 rather than letting os.ReadFile wander into
+	// /etc/shadow, ~/.ssh/id_rsa, or a /proc self-access leak.
+	validateBase string
 	// corsOrigins is the allow-list for the WebSocket Origin header. Empty
-	// means same-origin only (the coder/websocket default). Use "*" only
-	// for local dev; we pass it through to the AcceptOptions verbatim.
+	// means same-origin only (the coder/websocket default). A literal "*"
+	// is refused at Start() unless allowAnyOrigin is also set — a silent
+	// wildcard would re-open every cross-origin tab to the agent bridge.
 	corsOrigins []string
+	// allowAnyOrigin opts in to a wildcard Origin match and is only
+	// honoured when corsOrigins does NOT contain a literal "*". Operators
+	// have to set the flag deliberately AND keep their allow-list free of
+	// the footgun token; that makes the intent auditable from config.
+	allowAnyOrigin bool
 }
 
 type sessionConn struct {
-	id       string
-	ws       *websocket.Conn
-	out      chan []byte
-	lastPong atomic.Int64 // unix nanos; updated by reader on each pong
+	id  string
+	ws  *websocket.Conn
+	out chan []byte
 }
 
 type turnState struct {
@@ -178,9 +198,9 @@ func NewServer(addr string, ag agentDriver, v *voice.Engine) *Server {
 		addr:              addr,
 		conns:             make(map[*sessionConn]struct{}),
 		confirms:          make(map[string]chan agent.Decision),
-		heartbeatInterval: 15 * time.Second,
-		heartbeatTimeout:  30 * time.Second,
-		writeTimeout:      5 * time.Second,
+		heartbeatInterval: 30 * time.Second,
+		heartbeatTimeout:  60 * time.Second,
+		writeTimeout:      30 * time.Second,
 		startedAt:         time.Now(),
 	}
 	s.attachAgentCallbacks()
@@ -232,9 +252,44 @@ func (s *Server) SetMarauderConnected(v bool) { s.marauderOn.Store(v) }
 // credentials.
 func (s *Server) SetAuthToken(t string) { s.token = t }
 
+// SetValidateBase restricts /api/validate path reads to paths rooted under
+// dir. The value is normalised to its symlink-resolved absolute form; an
+// empty string (the default) disables path-based reads entirely so the
+// endpoint 403s any request that isn't an inline `content` payload.
+//
+// Must be called before Start. Callers wanting the "no filesystem reads"
+// default simply never call this.
+func (s *Server) SetValidateBase(dir string) {
+	if dir == "" {
+		s.validateBase = ""
+		return
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		s.validateBase = ""
+		return
+	}
+	// EvalSymlinks matches the check handleValidate runs on the incoming
+	// path; normalising both sides up front turns a symlink base (e.g.
+	// /tmp -> /private/tmp on macOS) into a prefix that actually compares.
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	s.validateBase = abs
+}
+
 // SetCORSOrigins sets the WebSocket Origin allow-list. Empty = same-origin
-// only. Must be called before Start.
+// only. Must be called before Start. A literal "*" entry is refused at Start
+// (callers that really want wildcard semantics must drop "*" and set
+// SetAllowAnyOrigin(true) instead).
 func (s *Server) SetCORSOrigins(origins []string) { s.corsOrigins = origins }
+
+// SetAllowAnyOrigin opts in to wildcard Origin matching for cross-origin
+// WebSocket connections. Pairs with SetCORSOrigins: the allow-list must NOT
+// contain "*" while this flag is set — the combination exists only so the
+// operator has to remove the footgun token from config as part of enabling
+// it. Must be called before Start.
+func (s *Server) SetAllowAnyOrigin(v bool) { s.allowAnyOrigin = v }
 
 // Addr returns the effective host:port the server will bind to, after any
 // loopback-default rewrite applied in NewServer. Use this for display so the
@@ -272,6 +327,9 @@ func isLoopback(host string) bool {
 }
 
 func (s *Server) Start(ctx context.Context) error {
+	if err := s.validateOriginConfig(); err != nil {
+		return err
+	}
 	mux := http.NewServeMux()
 
 	staticFS, err := fs.Sub(staticFiles, "static")
@@ -456,13 +514,21 @@ func (s *Server) emitPhaseIfChanged(ts *turnState, verb string) {
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	if !s.checkAuth(r, r.URL.Query().Get("token")) {
+	// Auth: clients send `Sec-WebSocket-Protocol: bearer, <token>`; on a match
+	// the server echoes `bearer` back, completing subprotocol negotiation.
+	// Tokens must not travel in the URL query string (request logs / referrer).
+	supplied, hasBearer := bearerFromWSProtocol(r.Header.Values("Sec-WebSocket-Protocol"))
+	if !s.checkAuth(r, supplied) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+	opts := &websocket.AcceptOptions{
 		OriginPatterns: s.effectiveOriginPatterns(),
-	})
+	}
+	if hasBearer {
+		opts.Subprotocols = []string{"bearer"}
+	}
+	ws, err := websocket.Accept(w, r, opts)
 	if err != nil {
 		log.Printf("websocket accept: %v", err)
 		return
@@ -476,7 +542,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		ws:  ws,
 		out: make(chan []byte, outboundQueue),
 	}
-	c.lastPong.Store(time.Now().UnixNano())
 
 	s.mu.Lock()
 	s.conns[c] = struct{}{}
@@ -530,8 +595,6 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			s.deliverConfirm(msg.ConfirmID, decodeDecision(msg.Decision))
 		case "cancel":
 			s.cancelTurn(c, msg.TurnID)
-		case "pong":
-			c.lastPong.Store(time.Now().UnixNano())
 		}
 	}
 }
@@ -552,6 +615,13 @@ func (s *Server) runWriter(ctx context.Context, c *sessionConn) {
 	}
 }
 
+// runHeartbeat issues a WebSocket protocol-level Ping every heartbeatInterval
+// and waits up to heartbeatTimeout for the matching Pong. Protocol frames are
+// answered by the browser below the JS event loop, so backgrounded/throttled
+// tabs stay alive where the old JSON ping/pong scheme would have timed out.
+//
+// A failed Ping closes the connection with PolicyViolation unless the parent
+// context is already done (normal teardown path — no need to race the closer).
 func (s *Server) runHeartbeat(ctx context.Context, c *sessionConn) {
 	ticker := time.NewTicker(s.heartbeatInterval)
 	defer ticker.Stop()
@@ -559,16 +629,16 @@ func (s *Server) runHeartbeat(ctx context.Context, c *sessionConn) {
 		select {
 		case <-ctx.Done():
 			return
-		case t := <-ticker.C:
-			last := time.Unix(0, c.lastPong.Load())
-			if time.Since(last) > s.heartbeatTimeout {
-				_ = c.ws.Close(websocket.StatusPolicyViolation, "heartbeat timeout")
+		case <-ticker.C:
+			pingCtx, cancel := context.WithTimeout(ctx, s.heartbeatTimeout)
+			err := c.ws.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				if ctx.Err() == nil {
+					_ = c.ws.Close(websocket.StatusPolicyViolation, "heartbeat timeout")
+				}
 				return
 			}
-			s.sendTo(c, map[string]any{
-				"type": "ping",
-				"t":    t.UTC().Format(time.RFC3339Nano),
-			})
 		}
 	}
 }
@@ -727,10 +797,44 @@ func bearerFromHeader(h string) string {
 	return strings.TrimSpace(h[len(prefix):])
 }
 
+// bearerFromWSProtocol extracts a bearer token from the Sec-WebSocket-Protocol
+// negotiation. Clients send `Sec-WebSocket-Protocol: bearer, <token>` (the
+// header may arrive as either one comma-separated value or multiple header
+// values). Returns the supplied token and whether the "bearer" scheme was
+// present; the caller uses the second result to decide whether to echo the
+// subprotocol back on the upgrade response.
+func bearerFromWSProtocol(headers []string) (token string, hasBearer bool) {
+	var parts []string
+	for _, h := range headers {
+		for _, p := range strings.Split(h, ",") {
+			if t := strings.TrimSpace(p); t != "" {
+				parts = append(parts, t)
+			}
+		}
+	}
+	for i, p := range parts {
+		if p == "bearer" {
+			hasBearer = true
+			if i+1 < len(parts) {
+				token = parts[i+1]
+			}
+			return token, hasBearer
+		}
+	}
+	return "", false
+}
+
 // effectiveOriginPatterns translates the configured allow-list into the
 // pattern slice coder/websocket expects. Empty slice means "same-origin
 // only" — coder/websocket compares Origin host to Host header itself.
+//
+// The config loader (see validateOriginConfig) has already refused a literal
+// "*" entry, so this function never emits the wildcard as a matcher for an
+// individual host; wildcard semantics come exclusively from allowAnyOrigin.
 func (s *Server) effectiveOriginPatterns() []string {
+	if s.allowAnyOrigin {
+		return []string{"*"}
+	}
 	if len(s.corsOrigins) == 0 {
 		return nil
 	}
@@ -743,6 +847,20 @@ func (s *Server) effectiveOriginPatterns() []string {
 		out = append(out, o)
 	}
 	return out
+}
+
+// validateOriginConfig refuses a CORS config that contains a literal "*"
+// entry. The user-facing requirement is explicit: to enable wildcard Origin
+// matching the operator must (a) remove "*" from web.cors_origins and
+// (b) set web.allow_any_origin: true. Catching the footgun at Start keeps a
+// stray "*" in config from silently exposing the agent bridge to any tab.
+func (s *Server) validateOriginConfig() error {
+	for _, o := range s.corsOrigins {
+		if strings.TrimSpace(o) == "*" {
+			return fmt.Errorf(`web.cors_origins contains "*": remove it and set web.allow_any_origin: true if you truly want wildcard Origin matching (this indirection keeps the footgun out of an origin allow-list)`)
+		}
+	}
+	return nil
 }
 
 // hostOf returns the host portion of "host:port", or "" when parsing fails.

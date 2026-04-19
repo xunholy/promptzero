@@ -814,7 +814,6 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   color: var(--pz-text-dim);
 }
 .pz-conn-online   { color: var(--pz-scan-green); }
-.pz-conn-slow     { color: var(--pz-flipper-amber); }
 .pz-conn-offline  { color: var(--pz-alert-red); }
 .pz-conn-connecting { color: var(--pz-text-muted); }
 .pz-conn-glyph    { font-size: var(--pz-text-xs); }
