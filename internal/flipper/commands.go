@@ -202,10 +202,43 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 	})
 }
 
-// NFCEmulate launches the NFC emulation app via the loader.
-// CLI: loader open NFC <file_path>
+// NFCEmulate launches the NFC emulation app via the loader, waits for the
+// app to exit, then verifies the loader is free before returning. This
+// ensures subsequent Exec calls are not blocked by "application is open"
+// errors. Returns an error if the loader does not free within ~1 second.
+// CLI: loader open NFC <file_path>  →  loader close  →  poll loader info
 func (f *Flipper) NFCEmulate(filePath string) (string, error) {
-	return f.LoaderOpen("NFC", filePath)
+	out, err := f.LoaderOpen("NFC", filePath)
+	if err != nil {
+		return out, err
+	}
+	if closeErr := f.waitLoaderClosed(1 * time.Second); closeErr != nil {
+		return out, closeErr
+	}
+	return out, nil
+}
+
+// waitLoaderClosed sends `loader close` and polls `loader info` until the
+// firmware reports no running application. Returns an error if the loader
+// has not freed within budget. Used by NFCEmulate to guarantee a clean CLI
+// state before returning.
+func (f *Flipper) waitLoaderClosed(budget time.Duration) error {
+	_, _ = f.Exec("loader close")
+	deadline := time.Now().Add(budget)
+	for time.Now().Before(deadline) {
+		info, err := f.Exec("loader info")
+		if err != nil {
+			return fmt.Errorf("flipper: loader info: %w", err)
+		}
+		// loader info prints `Application "name" is running` when locked,
+		// or `No application is running` when the loader is free.
+		// Check for a quoted app name to distinguish the two cases.
+		if !strings.Contains(info, "Application \"") {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("flipper: app still open after loader close (budget %v)", budget)
 }
 
 // NFCSubcommand enters the NFC subshell, sends an arbitrary subcommand, and exits.
@@ -780,21 +813,37 @@ func (f *Flipper) IRUniversalList(library string) (string, error) {
 // NFCRawFrame sends a raw ISO14443 frame to a tag via the nfc subshell and
 // returns the tag's response. Fork-gated: not available on Xtreme (no NFC CLI
 // subshell).
-// Subshell verb: raw <hex>
+// Subshell verb (stock/Unleashed): raw <hex>
+// Subshell verb (Momentum): raw -p iso14a -d <hex>
+// Momentum's NFC CLI uses a flag-based parser; positional args are rejected.
+// Protocol defaults to iso14a (ISO 14443-3A), the most common NFC protocol.
 func (f *Flipper) NFCRawFrame(hexData string, timeout time.Duration) (string, error) {
-	return f.NFCSubcommand(fmt.Sprintf("raw %s", sanitizeArg(hexData)), timeout)
+	safe := sanitizeArg(hexData)
+	if f.Capabilities().NFCFlaggedArgs {
+		return f.NFCSubcommand(fmt.Sprintf("raw -p iso14a -d %s", safe), timeout)
+	}
+	return f.NFCSubcommand(fmt.Sprintf("raw %s", safe), timeout)
 }
 
 // NFCAPDU sends an APDU command to a contactless smart card (ISO7816) via
 // the nfc subshell. Fork-gated.
-// Subshell verb: apdu <hex>
+// Subshell verb (stock/Unleashed): apdu <hex>
+// Subshell verb (Momentum): apdu -d <hex>
 func (f *Flipper) NFCAPDU(apduHex string, timeout time.Duration) (string, error) {
-	return f.NFCSubcommand(fmt.Sprintf("apdu %s", sanitizeArg(apduHex)), timeout)
+	safe := sanitizeArg(apduHex)
+	if f.Capabilities().NFCFlaggedArgs {
+		return f.NFCSubcommand(fmt.Sprintf("apdu -d %s", safe), timeout)
+	}
+	return f.NFCSubcommand(fmt.Sprintf("apdu %s", safe), timeout)
 }
 
 // NFCMFURead reads a single MIFARE Ultralight page/block. Fork-gated.
-// Subshell verb: mfu rdbl <page>
+// Subshell verb (stock/Unleashed): mfu rdbl <page>
+// Subshell verb (Momentum): mfu rdbl -b <page>
 func (f *Flipper) NFCMFURead(page int, timeout time.Duration) (string, error) {
+	if f.Capabilities().NFCFlaggedArgs {
+		return f.NFCSubcommand(fmt.Sprintf("mfu rdbl -b %d", page), timeout)
+	}
 	return f.NFCSubcommand(fmt.Sprintf("mfu rdbl %d", page), timeout)
 }
 
@@ -807,9 +856,14 @@ func (f *Flipper) NFCMFUWrite(page int, hexData string, timeout time.Duration) (
 
 // NFCDumpProtocol dumps tag contents for a specific MIFARE protocol via the
 // nfc subshell (e.g. "Mifare_Classic", "Mifare_Ultralight"). Fork-gated.
-// Subshell verb: dump <protocol>
+// Subshell verb (stock/Unleashed): dump <protocol>
+// Subshell verb (Momentum): dump -p <protocol>
 func (f *Flipper) NFCDumpProtocol(protocol string, timeout time.Duration) (string, error) {
-	return f.NFCSubcommand(fmt.Sprintf("dump %s", sanitizeArg(protocol)), timeout)
+	safe := sanitizeArg(protocol)
+	if f.Capabilities().NFCFlaggedArgs {
+		return f.NFCSubcommand(fmt.Sprintf("dump -p %s", safe), timeout)
+	}
+	return f.NFCSubcommand(fmt.Sprintf("dump %s", safe), timeout)
 }
 
 // --- RFID (capability-gap primitives) ---
@@ -818,6 +872,12 @@ func (f *Flipper) NFCDumpProtocol(protocol string, timeout time.Duration) (strin
 // Mode is "ask" or "psk" (pass "" for auto); filePath is where the raw
 // capture is written. Read-only from the RF perspective — no transmit.
 // CLI: rfid raw_read [<mode>] <file_path>
+//
+// Momentum firmware (confirmed via Next-Flip/Momentum-Firmware lfrfid_cli.c)
+// uses the same `rfid raw_read` verb with the same arg shape as stock.
+// Firmware-side arg errors are reported as a usage banner (no error code),
+// which callers would otherwise see as a silent success. Output-scanning
+// converts the banner to an explicit error.
 func (f *Flipper) RFIDRawRead(mode, filePath string, duration time.Duration) (string, error) {
 	return f.withSuccessBuzz(func() (string, error) {
 		cmd := "rfid raw_read"
@@ -827,7 +887,17 @@ func (f *Flipper) RFIDRawRead(mode, filePath string, duration time.Duration) (st
 		if filePath != "" {
 			cmd += " " + sanitizeArg(filePath)
 		}
-		return f.ExecLong(cmd, duration)
+		out, err := f.ExecLong(cmd, duration)
+		if err != nil {
+			return out, err
+		}
+		// The LFRFID CLI prints a usage banner (no exit code) when args are
+		// rejected. Detect it so callers receive an explicit error rather
+		// than a silent-success nil.
+		if strings.Contains(out, "Usage:") && strings.Contains(out, "rfid raw_read") {
+			return out, fmt.Errorf("flipper CLI: rfid raw_read: %s", firstLine(out))
+		}
+		return out, nil
 	})
 }
 
@@ -857,6 +927,17 @@ func (f *Flipper) OneWireSearch(duration time.Duration) (string, error) {
 }
 
 // --- GPIO / hardware recon ---
+
+// firstLine returns the first non-empty line of s, stripped of whitespace.
+// Used by output-scanning checks to surface the leading firmware error text.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return strings.TrimSpace(s)
+}
 
 // looksLikeUnknownCommand reports whether out reads like the Flipper CLI's
 // "command not found" error. Keyed on the error strings seen in the firmware

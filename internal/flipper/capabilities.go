@@ -21,6 +21,7 @@ type Capabilities struct {
 	PowerInfoCmd   string // "power_info" | "info power" | "" (unavailable)
 	HasNFCSubshell bool   // `nfc` subshell with `scanner`/`emulate`/... subcommands
 	SubGHzNeedsDev bool   // `subghz tx/rx` requires a trailing `<device>` arg
+	NFCFlaggedArgs bool   // NFC subshell uses flag-based args (-p, -d, -b) instead of positional
 }
 
 // FriendlyFork returns a display-ready fork name, falling back to "stock"
@@ -82,8 +83,15 @@ func detectCapabilities(deviceInfo string) Capabilities {
 		// subghz_cli.c → subghz_cli_command_rx), so the SubGHzNeedsDev
 		// quirk applies here too — caught by a live-hardware smoke run
 		// when `subghz rx <freq>` errored with "illegal option".
+		//
+		// Momentum's NFC subshell uses a new flag-based arg parser
+		// (applications/main/nfc/cli/nfc_cli_command_processor.c) that
+		// rejects positional args with "Key '<x>' is not supported".
+		// Correct forms: `raw -p iso14a -d <hex>`, `apdu -d <hex>`,
+		// `mfu rdbl -b <n>`, `dump -p <protocol>`.
 		c.PowerInfoCmd = "info power"
 		c.SubGHzNeedsDev = true
+		c.NFCFlaggedArgs = true
 	}
 	return c
 }

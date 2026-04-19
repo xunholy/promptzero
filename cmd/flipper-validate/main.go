@@ -89,6 +89,14 @@ type result struct {
 	notes    string
 }
 
+var defaultDenyPatterns = []string{
+	"Error:",
+	"cannot be run while an application is open",
+	"illegal option",
+	"Unknown command",
+	"not supported",
+}
+
 type tcase struct {
 	category string
 	name     string
@@ -103,6 +111,14 @@ type tcase struct {
 	// reboot: this case intentionally disconnects the serial port. Don't run
 	// cleanup after, and skip the deadline fail-over.
 	reboot bool
+	// denyOutputPatterns overrides defaultDenyPatterns for this case.
+	denyOutputPatterns []string
+	// allowOutputPatterns: if the output matches any pattern, deny scanning is
+	// skipped entirely (for cases that intentionally exercise an error path).
+	allowOutputPatterns []string
+	// expectOutputPattern: if non-empty, output MUST contain this substring or
+	// the case FAILs.
+	expectOutputPattern string
 }
 
 func snippet(s string) string {
@@ -163,6 +179,37 @@ func main() {
 
 	cases := buildCases()
 
+	// Pre-run cleanup: remove any leftover files from a previous interrupted run.
+	fmt.Print("pre-run cleanup: ")
+	if statOut, statErr := flip.StorageStat(testDir); statErr == nil && strings.Contains(statOut, "Directory") {
+		removed := 0
+		if listOut, listErr := flip.StorageList(testDir); listErr == nil {
+			for _, line := range strings.Split(listOut, "\n") {
+				parts := strings.Fields(line)
+				var name string
+				switch len(parts) {
+				case 0:
+					continue
+				case 1:
+					name = parts[0]
+				default:
+					// "[F] filename [size]" — filename is at index 1
+					name = parts[1]
+				}
+				if name == "" {
+					continue
+				}
+				if _, err := flip.StorageRemove(testDir + "/" + name); err == nil {
+					removed++
+				}
+			}
+		}
+		_, _ = flip.StorageRemove(testDir)
+		fmt.Printf("removed %d leftover files\n", removed)
+	} else {
+		fmt.Println("no leftovers")
+	}
+
 	results := make([]result, 0, len(cases))
 	for _, c := range cases {
 		r := result{category: c.category, name: c.name}
@@ -199,10 +246,44 @@ func main() {
 				r.notes = fmt.Sprintf("[%s] err=%v; out=%s", elapsed, got.err, snippet(got.out))
 			default:
 				trimmed := strings.TrimSpace(got.out)
-				if trimmed == "" && !c.allowEmpty {
+
+				// Allow patterns short-circuit deny scanning.
+				allowed := false
+				for _, pat := range c.allowOutputPatterns {
+					if strings.Contains(got.out, pat) {
+						allowed = true
+						break
+					}
+				}
+
+				denyMatch := ""
+				if !allowed {
+					denySet := c.denyOutputPatterns
+					if len(denySet) == 0 {
+						denySet = defaultDenyPatterns
+					}
+					for _, pat := range denySet {
+						if strings.Contains(got.out, pat) {
+							denyMatch = pat
+							break
+						}
+					}
+				}
+
+				switch {
+				case denyMatch != "":
+					r.status = "FAIL"
+					r.notes = fmt.Sprintf("[%s] deny-match: %s", elapsed, denyMatch)
+				case strings.HasPrefix(trimmed, "Usage:"):
+					r.status = "FAIL"
+					r.notes = fmt.Sprintf("[%s] bare usage banner", elapsed)
+				case c.expectOutputPattern != "" && !strings.Contains(got.out, c.expectOutputPattern):
+					r.status = "FAIL"
+					r.notes = fmt.Sprintf("[%s] expected substring not found: %q", elapsed, c.expectOutputPattern)
+				case trimmed == "" && !c.allowEmpty:
 					r.status = "FAIL"
 					r.notes = fmt.Sprintf("[%s] empty output (expected non-empty)", elapsed)
-				} else {
+				default:
 					r.status = "PASS"
 					if trimmed == "" {
 						r.notes = fmt.Sprintf("[%s] (empty — accepted)", elapsed)
