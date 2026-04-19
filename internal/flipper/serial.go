@@ -207,7 +207,7 @@ func (f *Flipper) reconnectIfNeededLocked(ctx context.Context) error {
 		}
 		// Verify identity if we knew it before.
 		if origUID != "" {
-			info, ierr := f.execLocked("device_info", 5*time.Second)
+			info, ierr := f.execLocked(ctx, "device_info", 5*time.Second)
 			if ierr != nil {
 				time.Sleep(250 * time.Millisecond)
 				continue
@@ -230,15 +230,17 @@ func (f *Flipper) reconnectIfNeededLocked(ctx context.Context) error {
 
 // execLocked runs a single CLI command and returns the response. Must be
 // called with f.mu held; does not re-acquire. Used by reconnect to verify
-// identity without recursing through Exec.
-func (f *Flipper) execLocked(command string, timeout time.Duration) (string, error) {
+// identity without recursing through Exec. ctx is honoured so a Ctrl+C
+// during a stuck reconnect identity-check cancels the read promptly
+// instead of waiting out the full timeout.
+func (f *Flipper) execLocked(ctx context.Context, command string, timeout time.Duration) (string, error) {
 	f.drain()
 	if err := f.sendRaw(command + "\r"); err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	readCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	return f.readUntilPromptCtx(ctx)
+	return f.readUntilPromptCtx(readCtx)
 }
 
 // Capabilities returns the detected firmware capability map. If DetectCapabilities
