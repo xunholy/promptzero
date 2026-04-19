@@ -218,6 +218,10 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 	if err != nil {
 		return out, err
 	}
+	// Let the NFC app complete initialisation before asking it to close.
+	// Closing mid-init leaves the app in an abnormal teardown path whose
+	// housekeeping hangs onto the loader lock past the point of reason.
+	time.Sleep(500 * time.Millisecond)
 	if closeErr := f.waitLoaderClosed(10 * time.Second); closeErr != nil {
 		return out, closeErr
 	}

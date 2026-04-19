@@ -157,6 +157,7 @@ func isNoTargetErr(err error, out string) bool {
 func main() {
 	port := flag.String("port", "/dev/ttyACM0", "serial device path")
 	baud := flag.Int("baud", 230400, "serial baud")
+	skipReboot := flag.Bool("skip-reboot", false, "skip the admin · Reboot case (use while iterating — the reboot drops WSL USB passthrough and forces a replug)")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -182,6 +183,15 @@ func main() {
 		caps.FirmwareFork, caps.FirmwareVersion, caps.PowerInfoCmd, caps.HasNFCSubshell, caps.SubGHzNeedsDev)
 
 	cases := buildCases()
+	if *skipReboot {
+		for i := range cases {
+			if cases[i].reboot {
+				cases[i].skip = "SKIPPED — --skip-reboot flag set (avoid WSL USB re-enumeration during iteration)"
+				cases[i].reboot = false
+				cases[i].run = nil
+			}
+		}
+	}
 
 	// Pre-run cleanup: remove any leftover files from a previous interrupted run.
 	fmt.Print("pre-run cleanup: ")
