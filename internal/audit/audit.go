@@ -224,7 +224,7 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 
 // AddObserver registers a callback fired after every successful Record
 // insert. Observers run synchronously on the caller goroutine, so keep
-// them fast — for anything network-bound (webhooks, MQTT) the observer
+// them fast — for anything network-bound (webhooks) the observer
 // should enqueue and return immediately. Adding during iteration is safe;
 // observers added mid-notify are picked up on the next event.
 func (l *Log) AddObserver(fn func(Entry)) {

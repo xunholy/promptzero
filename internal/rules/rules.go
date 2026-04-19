@@ -1,7 +1,7 @@
 // Package rules is PromptZero's reactive rules engine. It subscribes to
 // the audit observer and fans matching entries out to declarative
-// actions: webhook calls, MQTT publishes, slog lines — and, optionally,
-// agent tool invocations when the engine is wired with a runner.
+// actions: webhook calls, slog lines — and, optionally, agent tool
+// invocations when the engine is wired with a runner.
 //
 // # Design
 //
@@ -11,7 +11,7 @@
 // is the audit observer: it runs every rule's Match, applies cooldown,
 // renders the template, and dispatches the actions. Dispatch is
 // synchronous from the observer but non-blocking because the underlying
-// webhook/MQTT layers already queue internally.
+// webhook layer already queues internally.
 //
 // The match DSL is deliberately thin — reactive rules are cheap sugar
 // on top of the audit stream, not a pipeline runtime. Complex
@@ -41,13 +41,12 @@ type Match struct {
 }
 
 // ActionKind enumerates the built-in action types. "webhook" fires via
-// the injected WebhookFire hook, "mqtt" via MQTTPublish, "log" emits a
-// slog line, "tool" (optional) runs an agent tool via RunTool.
+// the injected WebhookFire hook, "log" emits a slog line, "tool"
+// (optional) runs an agent tool via RunTool.
 type ActionKind string
 
 const (
 	ActionWebhook ActionKind = "webhook"
-	ActionMQTT    ActionKind = "mqtt"
 	ActionLog     ActionKind = "log"
 	ActionTool    ActionKind = "tool"
 )
@@ -56,7 +55,6 @@ const (
 type Action struct {
 	Kind    ActionKind
 	Webhook string // logical webhook name passed to WebhookFire
-	Topic   string // MQTT topic suffix (appended to bridge base path)
 	Tool    string // tool name for ActionTool
 	Params  map[string]interface{}
 }
@@ -75,11 +73,10 @@ type Rule struct {
 
 // Deps are the host-supplied side-effect handlers. Any of them may be
 // nil; actions requiring a nil hook are skipped with a slog warning at
-// fire time. This keeps the engine usable in tests without webhook/MQTT
+// fire time. This keeps the engine usable in tests without webhook
 // plumbing.
 type Deps struct {
 	WebhookFire func(name string, payload map[string]any)
-	MQTTPublish func(topic string, payload map[string]any)
 	RunTool     func(ctx context.Context, tool string, params map[string]interface{}) (string, error)
 	Now         func() time.Time
 }
@@ -246,12 +243,6 @@ func (e *Engine) fire(r *Rule, entry audit.Entry) {
 				continue
 			}
 			e.deps.WebhookFire(a.Webhook, withTemplated(a.Params, payload, entry))
-		case ActionMQTT:
-			if e.deps.MQTTPublish == nil {
-				logger.Warn("rule_action_skipped", "kind", string(a.Kind), "reason", "no mqtt bridge")
-				continue
-			}
-			e.deps.MQTTPublish(render(a.Topic, entry), withTemplated(a.Params, payload, entry))
 		case ActionLog:
 			logger.Info("rule_fired", "message", render(firstString(a.Params, "message"), entry))
 		case ActionTool:
@@ -298,8 +289,8 @@ func matches(m Match, e audit.Entry) bool {
 }
 
 // entryPayload is the canonical audit → map shape rules publish out. Keys
-// match the webhook/MQTT event schema so rule-triggered fires look the
-// same on the wire as first-class events.
+// match the webhook event schema so rule-triggered fires look the same
+// on the wire as first-class events.
 func entryPayload(e audit.Entry) map[string]any {
 	return map[string]any{
 		"tool":        e.Tool,
@@ -364,8 +355,6 @@ func renderAction(a Action, e audit.Entry) string {
 	switch a.Kind {
 	case ActionWebhook:
 		return fmt.Sprintf("webhook %q → %v", a.Webhook, withTemplated(a.Params, entryPayload(e), e))
-	case ActionMQTT:
-		return fmt.Sprintf("mqtt %q → %v", render(a.Topic, e), withTemplated(a.Params, entryPayload(e), e))
 	case ActionLog:
 		return fmt.Sprintf("log: %s", render(firstString(a.Params, "message"), e))
 	case ActionTool:

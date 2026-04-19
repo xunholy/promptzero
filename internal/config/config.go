@@ -20,7 +20,6 @@ type Config struct {
 	Persona       string              `yaml:"persona,omitempty"`
 	Watch         WatchConfig         `yaml:"watch,omitempty"`
 	Webhooks      []WebhookConfig     `yaml:"webhooks,omitempty"`
-	MQTT          MQTTConfig          `yaml:"mqtt,omitempty"`
 	Observability ObservabilityConfig `yaml:"observability,omitempty"`
 	Validator     ValidatorConfig     `yaml:"validator,omitempty"`
 	Rules         []RuleConfig        `yaml:"rules,omitempty"`
@@ -88,7 +87,6 @@ type RuleActionConfig struct {
 	Tool    string                 `yaml:"tool,omitempty"`
 	Params  map[string]interface{} `yaml:"params,omitempty"`
 	Webhook string                 `yaml:"webhook,omitempty"`
-	Topic   string                 `yaml:"topic,omitempty"`
 }
 
 // CostConfig lets operators override the built-in per-model USD rate
@@ -115,21 +113,6 @@ type WebhookConfig struct {
 	Events  []string          `yaml:"events,omitempty"`
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Secret  string            `yaml:"secret,omitempty"`
-}
-
-// MQTTConfig configures the optional outbound MQTT bridge. Password is
-// overridden by env var MQTT_PASSWORD when the config field is empty.
-// Leave Enabled=false (or the whole block absent) to skip. BasePath
-// defaults to "promptzero" when empty.
-type MQTTConfig struct {
-	Enabled  bool   `yaml:"enabled,omitempty"`
-	Broker   string `yaml:"broker,omitempty"`
-	ClientID string `yaml:"client_id,omitempty"`
-	Username string `yaml:"username,omitempty"`
-	Password string `yaml:"password,omitempty"`
-	BasePath string `yaml:"base_path,omitempty"`
-	QoS      byte   `yaml:"qos,omitempty"`
-	Retained bool   `yaml:"retained,omitempty"`
 }
 
 // WatchConfig configures the --watch filesystem-trigger mode. Paths is the
@@ -181,11 +164,24 @@ type MarauderConfig struct {
 
 type WebConfig struct {
 	// Host is the interface to bind the web UI to. Empty defaults to
-	// "127.0.0.1" (loopback) — the web UI has no authentication, so
-	// binding publicly must be an explicit choice. Set to "0.0.0.0" to
-	// accept connections from any interface.
+	// "127.0.0.1" (loopback). Set to "0.0.0.0" to accept connections
+	// from any interface — pair with a non-empty Token when you do.
 	Host string `yaml:"host"`
 	Port int    `yaml:"port"`
+
+	// Token, when non-empty, gates every /api and /ws request behind a
+	// bearer-token check. HTTP callers send `Authorization: Bearer <token>`;
+	// the browser passes ?token=<token> on the WebSocket URL. Leave empty
+	// for local-only deployments — the server prints a loud warning when
+	// it's bound non-loopback without a token set.
+	// PROMPTZERO_WEB_TOKEN env var overrides this field when set.
+	Token string `yaml:"token,omitempty"`
+
+	// CORSOrigins is the list of origins allowed to connect the WebSocket
+	// and call /api cross-origin. Empty (default) means same-origin only.
+	// Entries match the browser's `Origin` header verbatim
+	// (e.g. "https://cockpit.lan"). Use "*" only for local dev.
+	CORSOrigins []string `yaml:"cors_origins,omitempty"`
 }
 
 type Device struct {
@@ -250,8 +246,8 @@ func Load(path string) (*Config, error) {
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
 		cfg.OpenAIKey = key
 	}
-	if pw := os.Getenv("MQTT_PASSWORD"); pw != "" && cfg.MQTT.Password == "" {
-		cfg.MQTT.Password = pw
+	if tok := os.Getenv("PROMPTZERO_WEB_TOKEN"); tok != "" {
+		cfg.Web.Token = tok
 	}
 
 	if cfg.APIKey == "" {

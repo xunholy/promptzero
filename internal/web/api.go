@@ -26,27 +26,41 @@ import (
 
 // registerAPIRoutes mounts the panel endpoints on mux. Paths use the
 // Go 1.22+ pattern syntax so we can thread rule names through the URL
-// without a third-party router.
+// without a third-party router. Every handler is wrapped in requireAuth
+// so a configured bearer token is enforced uniformly; /api/auth exists
+// as the one open endpoint so the frontend can distinguish "no token
+// configured" (skip the login prompt) from "wrong token" (re-prompt).
 func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/personas", s.handlePersonasList)
-	mux.HandleFunc("POST /api/personas/switch", s.handlePersonasSwitch)
+	// Open: lets the frontend detect whether auth is required before it
+	// sends any credentials. Returns {"required": bool}.
+	mux.HandleFunc("GET /api/auth", s.handleAuthInfo)
 
-	mux.HandleFunc("GET /api/watch", s.handleWatch)
-	mux.HandleFunc("POST /api/watch/pause", s.handleWatchPause)
-	mux.HandleFunc("POST /api/watch/resume", s.handleWatchResume)
+	mux.HandleFunc("GET /api/personas", s.requireAuth(s.handlePersonasList))
+	mux.HandleFunc("POST /api/personas/switch", s.requireAuth(s.handlePersonasSwitch))
 
-	mux.HandleFunc("GET /api/cost", s.handleCost)
+	mux.HandleFunc("GET /api/watch", s.requireAuth(s.handleWatch))
+	mux.HandleFunc("POST /api/watch/pause", s.requireAuth(s.handleWatchPause))
+	mux.HandleFunc("POST /api/watch/resume", s.requireAuth(s.handleWatchResume))
 
-	mux.HandleFunc("GET /api/rules", s.handleRulesList)
-	mux.HandleFunc("POST /api/rules/{name}/pause", s.handleRulePause)
-	mux.HandleFunc("POST /api/rules/{name}/resume", s.handleRuleResume)
-	mux.HandleFunc("POST /api/rules/{name}/test", s.handleRuleTest)
+	mux.HandleFunc("GET /api/cost", s.requireAuth(s.handleCost))
 
-	mux.HandleFunc("POST /api/validate", s.handleValidate)
+	mux.HandleFunc("GET /api/rules", s.requireAuth(s.handleRulesList))
+	mux.HandleFunc("POST /api/rules/{name}/pause", s.requireAuth(s.handleRulePause))
+	mux.HandleFunc("POST /api/rules/{name}/resume", s.requireAuth(s.handleRuleResume))
+	mux.HandleFunc("POST /api/rules/{name}/test", s.requireAuth(s.handleRuleTest))
 
-	mux.HandleFunc("GET /api/debug", s.handleDebug)
+	mux.HandleFunc("POST /api/validate", s.requireAuth(s.handleValidate))
 
-	mux.HandleFunc("GET /api/device", s.handleDevice)
+	mux.HandleFunc("GET /api/debug", s.requireAuth(s.handleDebug))
+
+	mux.HandleFunc("GET /api/device", s.requireAuth(s.handleDevice))
+}
+
+// handleAuthInfo reports whether the server requires a bearer token.
+// Always unauthenticated — it carries no tool metadata, just a bool the
+// frontend needs to decide whether to show a token-entry prompt.
+func (s *Server) handleAuthInfo(w http.ResponseWriter, _ *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]bool{"required": s.token != ""})
 }
 
 // respondJSON is the common success-path writer. Marshalling failures log

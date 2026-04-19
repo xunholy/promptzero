@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING:** MQTT bridge and the `mqtt:` config block. No surveyed
+  competitor shipped an equivalent and every use case MQTT covered here
+  is already handled by webhooks or audit consumers. Drops the
+  `github.com/eclipse/paho.mqtt.golang` dependency, the `/mqtt` REPL
+  command, the `promptzero_mqtt_publishes_total` metric, and the `mqtt`
+  rule-action kind + `topic` field. Migrate any MQTT subscribers to
+  webhook subscriptions (`webhooks:` in config) — same payloads, same
+  lifecycle events.
+
+### Added
+
+- Bearer-token auth on `/api`, `/metrics`, and `/ws`. Set `web.token` in
+  config or `PROMPTZERO_WEB_TOKEN` in the environment; HTTP callers send
+  `Authorization: Bearer <token>` and the browser passes `?token=<token>`
+  on the WebSocket URL. Leaving the token empty preserves the old
+  no-auth behaviour; the server prints a red warning when that combines
+  with a non-loopback bind.
+- `web.cors_origins` allow-list for the WebSocket Origin header. Empty
+  (default) means same-origin only — the previous `*` wildcard is gone.
+- `GET /api/auth` — open endpoint reporting `{"required": bool}` so the
+  browser shell knows whether to prompt for a token before opening the
+  WebSocket.
+
 ### Changed
 
 - Default Claude model bumped from `claude-sonnet-4-6` to `claude-opus-4-7`

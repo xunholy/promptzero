@@ -327,7 +327,6 @@ func enterREPL(deps *REPLDeps) error {
 	flip := deps.flip
 	rec := deps.rec
 	wh := deps.wh
-	mqttBridge := deps.mqttBridge
 	voiceEngine := deps.voiceEngine
 
 	if deps.voiceMode {
@@ -488,11 +487,8 @@ func enterREPL(deps *REPLDeps) error {
 				"output":      out,
 			}
 			wh.Fire(webhook.EventToolFinished, payload)
-			mqttBridge.PublishEvent("tool_finished", payload)
-			mqttBridge.PublishToolLast(ev.Name, payload)
 			if strings.HasPrefix(ev.Name, "workflow_") {
 				wh.Fire(webhook.EventWorkflowCompleted, payload)
-				mqttBridge.PublishEvent("workflow_completed", payload)
 			}
 		}
 	})
@@ -511,7 +507,6 @@ func enterREPL(deps *REPLDeps) error {
 				"input": string(req.Input),
 			}
 			wh.Fire(webhook.EventRiskPrompted, promptPayload)
-			mqttBridge.PublishEvent("risk_prompted", promptPayload)
 			resultCh := make(chan agent.Decision, 1)
 			pendingConfirm.Store(&confirmState{req: req, result: resultCh})
 			ed.writeOutput(func() {
@@ -533,7 +528,6 @@ func enterREPL(deps *REPLDeps) error {
 					"input": string(req.Input),
 				}
 				wh.Fire(webhook.EventRiskDenied, denyPayload)
-				mqttBridge.PublishEvent("risk_denied", denyPayload)
 			}
 			return decision
 		})

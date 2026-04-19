@@ -11,8 +11,8 @@ import (
 
 // Recorder owns a Prometheus registry and the full PromptZero metric
 // surface. It is constructed once per process and handed to every
-// subsystem that emits events (audit observer, webhook dispatcher, MQTT
-// bridge, agent, workflows). Each Record* method is concurrency-safe
+// subsystem that emits events (audit observer, webhook dispatcher,
+// agent, workflows). Each Record* method is concurrency-safe
 // and cheap — callers should never conditionally branch on "metrics
 // enabled"; instead, pass a nil Recorder to disable (every method is a
 // nil-receiver no-op).
@@ -36,7 +36,6 @@ type Recorder struct {
 	flipperConnected   prometheus.Gauge
 	marauderConnected  prometheus.Gauge
 	webhookDeliveries  *prometheus.CounterVec
-	mqttPublishes      *prometheus.CounterVec
 	anthropicReachable prometheus.Gauge
 	uptimeStart        time.Time
 
@@ -117,10 +116,6 @@ func NewRecorder() *Recorder {
 		prometheus.CounterOpts{Name: "promptzero_webhook_deliveries_total", Help: "Outbound webhook deliveries."},
 		[]string{"name", "status"},
 	)
-	r.mqttPublishes = prometheus.NewCounterVec(
-		prometheus.CounterOpts{Name: "promptzero_mqtt_publishes_total", Help: "Outbound MQTT publishes."},
-		[]string{"status"},
-	)
 	r.anthropicReachable = prometheus.NewGauge(
 		prometheus.GaugeOpts{Name: "promptzero_anthropic_reachable", Help: "1 when the Anthropic API was reachable on the last stream attempt."},
 	)
@@ -132,7 +127,7 @@ func NewRecorder() *Recorder {
 		r.auditEntries, r.riskPrompts,
 		r.sessionMessages, r.tokenUsage,
 		r.flipperConnected, r.marauderConnected,
-		r.webhookDeliveries, r.mqttPublishes,
+		r.webhookDeliveries,
 		r.anthropicReachable,
 	)
 	return r
@@ -270,15 +265,6 @@ func (r *Recorder) RecordWebhookDelivery(name, status string) {
 		return
 	}
 	r.webhookDeliveries.WithLabelValues(name, status).Inc()
-}
-
-// RecordMQTTPublish counts an outbound MQTT publish. Status is "ok" or
-// "error".
-func (r *Recorder) RecordMQTTPublish(status string) {
-	if r == nil {
-		return
-	}
-	r.mqttPublishes.WithLabelValues(status).Inc()
 }
 
 // SetAnthropicReachable toggles the offline-mode gauge. See

@@ -116,6 +116,8 @@
       /* internals */
       _ws: null,
       _wsBackoff: 800,
+      _token: '',                      /* bearer token for /api + /ws; '' = auth disabled server-side */
+      _authReady: false,               /* true once _authBootstrap has resolved */
       _spinnerTimer: null,
       _elapsedTimer: null,
       _heartbeatWatchdog: null,
@@ -176,12 +178,16 @@
         this._startElapsed();
         this._startHeartbeatWatchdog();
         this._installMock();
-        this._connect();
-        this.loadPersonas();
-        this.loadCost();
-        this._costTimer = setInterval(() => this.loadCost(), 5000);
-        this.loadSessionDevice();
-        this._deviceTimer = setInterval(() => this.loadSessionDevice(), 30000);
+        /* Gate every network-dependent call behind the auth handshake so
+           the WS and first fetches carry the bearer the server demands. */
+        this._authBootstrap().then(() => {
+          this._connect();
+          this.loadPersonas();
+          this.loadCost();
+          this._costTimer = setInterval(() => this.loadCost(), 5000);
+          this.loadSessionDevice();
+          this._deviceTimer = setInterval(() => this.loadSessionDevice(), 30000);
+        });
 
         document.addEventListener('keydown', (e) => this._globalKey(e));
 
@@ -246,10 +252,80 @@
         return ICONS.spinner;
       },
 
+      /* ---------- Auth ----------
+         Token is sourced, in order, from:
+           1. URL fragment  (#token=xxx) — convenient for copy/paste from server stderr
+           2. sessionStorage.promptzero_token — survives reloads in the same tab
+           3. window.prompt()            — fallback when neither is present
+         The fragment is stripped after read so the token doesn't linger in
+         the address bar. `_fetch` rides every /api call; `_connect` appends
+         ?token=… on the WS URL. If auth is disabled server-side, the flow
+         short-circuits and `_token` stays ''. */
+      _authBootstrap() {
+        /* 1. URL fragment */
+        if (location.hash.indexOf('token=') !== -1) {
+          var params = new URLSearchParams(location.hash.slice(1));
+          var fragTok = params.get('token');
+          if (fragTok) {
+            this._token = fragTok;
+            try { sessionStorage.setItem('promptzero_token', fragTok); } catch (_) {}
+            history.replaceState(null, '', location.pathname + location.search);
+          }
+        }
+        /* 2. sessionStorage (if not set from fragment) */
+        if (!this._token) {
+          try { this._token = sessionStorage.getItem('promptzero_token') || ''; } catch (_) {}
+        }
+        /* Ask the server whether auth is even required. Open endpoint by
+           design — returns {required: bool}. Use plain fetch here so a
+           stale token in sessionStorage doesn't trip the _fetch 401
+           handler on an endpoint that never 401s. */
+        return fetch('api/auth')
+          .then((r) => (r.ok ? r.json() : { required: false }))
+          .catch(() => ({ required: false }))
+          .then((info) => {
+            if (!info.required) {
+              this._token = '';
+              try { sessionStorage.removeItem('promptzero_token'); } catch (_) {}
+              this._authReady = true;
+              return;
+            }
+            /* Auth required and no token yet → prompt once. */
+            if (!this._token) {
+              var entered = '';
+              try { entered = window.prompt('PromptZero bearer token:') || ''; } catch (_) {}
+              this._token = entered.trim();
+              if (this._token) {
+                try { sessionStorage.setItem('promptzero_token', this._token); } catch (_) {}
+              }
+            }
+            this._authReady = true;
+          });
+      },
+
+      _fetch(path, opts) {
+        opts = opts || {};
+        if (this._token) {
+          opts.headers = Object.assign({}, opts.headers || {}, {
+            'Authorization': 'Bearer ' + this._token,
+          });
+        }
+        return fetch(path, opts).then((r) => {
+          if (r.status === 401) {
+            /* Stored token is wrong / rotated. Drop it and re-prompt on next load. */
+            try { sessionStorage.removeItem('promptzero_token'); } catch (_) {}
+            this._token = '';
+            this.errorBanner = { kind: 'api', message: 'auth failed — reload to re-enter token' };
+          }
+          return r;
+        });
+      },
+
       /* ---------- WebSocket ---------- */
       _connect() {
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         var url = proto + '//' + location.host + '/ws';
+        if (this._token) url += '?token=' + encodeURIComponent(this._token);
         try { this._ws = new WebSocket(url); }
         catch (_) { this._onWsDown(); return; }
 
@@ -708,7 +784,7 @@
 
       /* ---------- persona switcher (REPL /persona parity) ---------- */
       loadPersonas() {
-        fetch('api/personas')
+        this._fetch('api/personas')
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (!data) return;
@@ -723,7 +799,7 @@
       },
       switchPersona(name) {
         if (!name || name === this.personaUI.current) { this.personaUI.open = false; return; }
-        fetch('api/personas/switch', {
+        this._fetch('api/personas/switch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: name }),
@@ -758,7 +834,7 @@
 
       /* ---------- watch panel (REPL /watch parity) ---------- */
       loadWatch() {
-        fetch('api/watch')
+        this._fetch('api/watch')
           .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
           .then(({ ok, body }) => {
             this.watchUI.loaded = true;
@@ -775,14 +851,14 @@
       watchPause()  { this._watchToggle('api/watch/pause',  true);  },
       watchResume() { this._watchToggle('api/watch/resume', false); },
       _watchToggle(url, paused) {
-        fetch(url, { method: 'POST' })
+        this._fetch(url, { method: 'POST' })
           .then((r) => { if (r.ok) this.watchUI.paused = paused; })
           .catch(() => {});
       },
 
       /* ---------- rules panel (REPL /rules parity) ---------- */
       loadRules() {
-        fetch('api/rules')
+        this._fetch('api/rules')
           .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
           .then(({ ok, body }) => {
             this.rulesUI.loaded = true;
@@ -794,12 +870,12 @@
       },
       toggleRule(r) {
         var target = r.enabled ? 'pause' : 'resume';
-        fetch('api/rules/' + encodeURIComponent(r.name) + '/' + target, { method: 'POST' })
+        this._fetch('api/rules/' + encodeURIComponent(r.name) + '/' + target, { method: 'POST' })
           .then((resp) => { if (resp.ok) r.enabled = !r.enabled; })
           .catch(() => {});
       },
       testRule(name) {
-        fetch('api/rules/' + encodeURIComponent(name) + '/test', { method: 'POST' })
+        this._fetch('api/rules/' + encodeURIComponent(name) + '/test', { method: 'POST' })
           .then((r) => r.json())
           .then((body) => {
             var text = Array.isArray(body.actions) ? body.actions.join('\n') : (body.error || 'no actions');
@@ -822,7 +898,7 @@
       loadDebug() {
         this.debugUI.loaded = false;
         this.debugUI.error = '';
-        fetch('api/debug')
+        this._fetch('api/debug')
           .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
           .then(({ ok, body }) => {
             this.debugUI.loaded = true;
@@ -877,7 +953,7 @@
       loadDevice() {
         this.deviceUI.loaded = false;
         this.deviceUI.error = '';
-        fetch('api/device')
+        this._fetch('api/device')
           .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
           .then(({ ok, body }) => {
             this.deviceUI.loaded = true;
@@ -899,7 +975,7 @@
          drives both surfaces. Silent on failure — we'd rather show empty
          chips than a banner for every transient serial hiccup. */
       loadSessionDevice() {
-        fetch('api/device')
+        this._fetch('api/device')
           .then((r) => (r.ok ? r.json() : null))
           .then((body) => { if (body) this._applyDeviceToSession(body); })
           .catch(() => {});
@@ -1006,7 +1082,7 @@
         this.validateUI.loading = true;
         this.validateUI.error = '';
         this.validateUI.report = null;
-        fetch('api/validate', {
+        this._fetch('api/validate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: path, content: content }),
@@ -1022,7 +1098,7 @@
 
       /* ---------- cost pill (REPL /cost parity) ---------- */
       loadCost() {
-        fetch('api/cost')
+        this._fetch('api/cost')
           .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
           .then(({ ok, body }) => {
             this.costUI.loaded = true;

@@ -32,8 +32,26 @@ marauder:
 
 # --- Web UI --------------------------------------------------------------
 web:
-  host: "127.0.0.1"                  # loopback default; web UI has no auth
+  host: "127.0.0.1"                  # loopback default; pair with a non-empty
+                                     # token below before binding publicly
   port: 8080
+
+  # Bearer token. When set, every /api request must carry
+  # `Authorization: Bearer <token>` and /ws requires ?token=<token>.
+  # Empty = auth disabled (dev mode only — the server prints a loud
+  # warning if the bind is non-loopback and the token is empty).
+  # PROMPTZERO_WEB_TOKEN env var overrides this field.
+  token: ""
+
+  # WebSocket Origin allow-list. Empty = same-origin only (safe default
+  # behind a reverse proxy). Use only to allow a separate cockpit host.
+  cors_origins: []
+                                     # Example:
+                                     # - "https://cockpit.lan"
+                                     # TLS: terminate at your reverse
+                                     # proxy (Caddy/Traefik/nginx);
+                                     # promptzero speaks plain HTTP so
+                                     # it doesn't need cert management.
 
 # --- Default persona -----------------------------------------------------
 # One of: default, rf-recon, badge-cloner, hw-recon, physical-pentest,
@@ -59,17 +77,6 @@ webhooks:
     secret: "REPLACE_WITH_RANDOM_HMAC_SECRET"    # enables X-PromptZero-Signature
     headers:
       X-Source: "promptzero"
-
-# --- MQTT bridge (publish-only) ------------------------------------------
-mqtt:
-  enabled: false                     # flip when a broker is reachable
-  # broker: "tcp://mqtt.lan:1883"
-  # client_id: "promptzero-01"
-  # username: "promptzero"
-  # password: ""                     # MQTT_PASSWORD env var wins when empty
-  # base_path: "promptzero"          # topic prefix, defaults to "promptzero"
-  # qos: 1
-  # retained: false
 
 # --- Observability -------------------------------------------------------
 observability:

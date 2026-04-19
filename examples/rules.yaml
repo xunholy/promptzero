@@ -35,20 +35,6 @@ rules:
         params:
           attempt_dump: false
 
-  - name: log-rolljam-attempts
-    description: >-
-      Publish every rolljam workflow step to the ops MQTT stream so a
-      second operator can watch along on a dashboard.
-    when:
-      tool: workflow_rolljam_*
-    then:
-      - type: mqtt
-        topic: ops/rolljam/attempts
-        params:
-          stage: "{{tool}}"
-          trace_id: "{{trace_id}}"
-          risk: "{{risk}}"
-
   - name: record-risk-prompts
     description: >-
       Stdout-only breadcrumb for every Critical-risk tool call,

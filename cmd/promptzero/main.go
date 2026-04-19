@@ -115,16 +115,14 @@ func run() error {
 	defer auditClose()
 
 	wh := setupWebhooks(cfg)
-	mqttBridge, mqttClose := setupMQTT(cfg)
-	defer mqttClose()
 
 	// Fires session_ended + drains the webhook dispatcher. Deferred
-	// here (LIFO) so it runs before mqtt.Close and audit.Close, but
-	// after any setupMarauder cleanup registered later.
-	defer fireSessionEnded(auditLog, wh, mqttBridge)
+	// here (LIFO) so it runs before audit.Close, but after any
+	// setupMarauder cleanup registered later.
+	defer fireSessionEnded(auditLog, wh)
 
-	ruleEngine := setupRules(cfg, wh, mqttBridge, auditLog, rec)
-	fireSessionStarted(cfg, auditLog, wh, mqttBridge)
+	ruleEngine := setupRules(cfg, wh, auditLog, rec)
+	fireSessionStarted(cfg, auditLog, wh)
 
 	genLLM := setupGenerator(cfg, ai, flip, &client, f.genProvider, f.ollamaURL, f.ollamaModel)
 
@@ -164,7 +162,6 @@ func run() error {
 		personas:      personas,
 		costTracker:   costTracker,
 		wh:            wh,
-		mqttBridge:    mqttBridge,
 		ruleEngine:    ruleEngine,
 		gateEnabled:   gateEnabled,
 		watchPaths:    f.watchPaths,

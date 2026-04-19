@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
@@ -126,6 +127,16 @@ type Server struct {
 	// SetFlipperConnected / SetMarauderConnected on transport events.
 	flipperOn  atomic.Bool
 	marauderOn atomic.Bool
+
+	// token, when non-empty, is the shared bearer the server requires on
+	// every /api and /ws request. Empty means auth disabled (dev mode);
+	// the server prints a loud warning when the bind is also non-loopback.
+	// Compared with subtle.ConstantTimeCompare to avoid timing side channels.
+	token string
+	// corsOrigins is the allow-list for the WebSocket Origin header. Empty
+	// means same-origin only (the coder/websocket default). Use "*" only
+	// for local dev; we pass it through to the AcceptOptions verbatim.
+	corsOrigins []string
 }
 
 type sessionConn struct {
@@ -215,6 +226,16 @@ func (s *Server) SetFlipper(f *flipper.Flipper) { s.flipper = f }
 // /api/debug snapshot. Call on connect/disconnect transitions.
 func (s *Server) SetMarauderConnected(v bool) { s.marauderOn.Store(v) }
 
+// SetAuthToken installs the shared bearer token for /api and /ws. Empty
+// disables the check (dev-mode default). Must be called before Start —
+// changing the token at runtime would leave open connections with stale
+// credentials.
+func (s *Server) SetAuthToken(t string) { s.token = t }
+
+// SetCORSOrigins sets the WebSocket Origin allow-list. Empty = same-origin
+// only. Must be called before Start.
+func (s *Server) SetCORSOrigins(origins []string) { s.corsOrigins = origins }
+
 // Addr returns the effective host:port the server will bind to, after any
 // loopback-default rewrite applied in NewServer. Use this for display so the
 // "Web UI at ..." status line matches the actual socket.
@@ -263,11 +284,17 @@ func (s *Server) Start(ctx context.Context) error {
 		if path == "" {
 			path = "/metrics"
 		}
-		mux.Handle(path, s.metrics.Handler())
+		// Metrics can leak tool inventory + activity patterns, so it
+		// follows the same auth posture as /api.
+		mux.Handle(path, s.requireAuth(s.metrics.Handler().ServeHTTP))
 	}
 	s.registerAPIRoutes(mux)
 	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 	mux.HandleFunc("/ws", s.handleWebSocket)
+
+	if s.token == "" && !isLoopback(hostOf(s.addr)) {
+		fmt.Fprintf(os.Stderr, "\x1b[31m●\x1b[0m Web UI bound non-loopback with NO TOKEN set — every /api + /ws is open. Set web.token or PROMPTZERO_WEB_TOKEN.\n")
+	}
 
 	srv := &http.Server{Addr: s.addr, Handler: mux}
 
@@ -429,8 +456,12 @@ func (s *Server) emitPhaseIfChanged(ts *turnState, verb string) {
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	if !s.checkAuth(r, r.URL.Query().Get("token")) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"*"},
+		OriginPatterns: s.effectiveOriginPatterns(),
 	})
 	if err != nil {
 		log.Printf("websocket accept: %v", err)
@@ -660,4 +691,66 @@ func newID() string {
 		return fmt.Sprintf("ts%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(b[:])
+}
+
+// requireAuth wraps an http.HandlerFunc with the bearer-token check. When
+// s.token is empty the wrapper is a passthrough — dev-mode parity with the
+// legacy no-auth behaviour. A non-empty token must arrive in
+// `Authorization: Bearer <token>`; anything else is 401.
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.checkAuth(r, bearerFromHeader(r.Header.Get("Authorization"))) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// checkAuth is the single policy decision. Empty s.token → allow (the
+// per-Start warning covers non-loopback exposure). Non-empty token → the
+// supplied value must match in constant time.
+func (s *Server) checkAuth(_ *http.Request, supplied string) bool {
+	if s.token == "" {
+		return true
+	}
+	return subtle.ConstantTimeCompare([]byte(supplied), []byte(s.token)) == 1
+}
+
+// bearerFromHeader returns the token portion of an "Authorization: Bearer X"
+// header, or "" when the header is absent or not a Bearer scheme.
+func bearerFromHeader(h string) string {
+	const prefix = "Bearer "
+	if !strings.HasPrefix(h, prefix) {
+		return ""
+	}
+	return strings.TrimSpace(h[len(prefix):])
+}
+
+// effectiveOriginPatterns translates the configured allow-list into the
+// pattern slice coder/websocket expects. Empty slice means "same-origin
+// only" — coder/websocket compares Origin host to Host header itself.
+func (s *Server) effectiveOriginPatterns() []string {
+	if len(s.corsOrigins) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(s.corsOrigins))
+	for _, o := range s.corsOrigins {
+		o = strings.TrimSpace(o)
+		if o == "" {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
+}
+
+// hostOf returns the host portion of "host:port", or "" when parsing fails.
+// Used by Start to decide whether to print the no-token-and-public warning.
+func hostOf(addr string) string {
+	h, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return ""
+	}
+	return h
 }

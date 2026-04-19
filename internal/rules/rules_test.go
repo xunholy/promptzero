@@ -184,7 +184,6 @@ func TestEngine_NilHooksDontCrash(t *testing.T) {
 		Name: "r", Match: Match{Tool: "t"},
 		Actions: []Action{
 			{Kind: ActionWebhook, Webhook: "x"},
-			{Kind: ActionMQTT, Topic: "x"},
 			{Kind: ActionTool, Tool: "x"},
 		},
 		Enabled: true,

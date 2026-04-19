@@ -20,7 +20,6 @@ import (
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/mcp"
-	"github.com/xunholy/promptzero/internal/mqtt"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
@@ -504,35 +503,15 @@ func setupWebhooks(cfg *config.Config) webhook.Dispatcher {
 	return webhook.New(subs)
 }
 
-// setupMQTT constructs the MQTT bridge and kicks off a best-effort
-// Connect goroutine. Returns a no-op cleanup when the bridge is disabled
-// so callers can defer unconditionally.
-func setupMQTT(cfg *config.Config) (*mqtt.Bridge, func()) {
-	bridge := mqtt.New(cfg.MQTT)
-	if !bridge.Enabled() {
-		return bridge, func() {}
-	}
-	go func() {
-		if err := bridge.Connect(); err != nil {
-			statusWarn(fmt.Sprintf("MQTT broker unreachable: %v (auto-reconnect running)", err))
-			return
-		}
-		statusOK(fmt.Sprintf("MQTT bridge %s(%s → %s/…)%s", dim, cfg.MQTT.Broker, bridge.BasePath(), reset))
-	}()
-	return bridge, func() { bridge.Close() }
-}
-
 // setupRules loads declarative rules from config and registers the audit
 // observer that fans events out to the engine, the metrics recorder, and
-// webhook/MQTT on critical severity. Webhook-subscriber count is printed
-// here to match the original banner order (after rules, before gen).
-func setupRules(cfg *config.Config, wh webhook.Dispatcher, bridge *mqtt.Bridge, auditLog *audit.Log, rec *obs.Recorder) *rules.Engine {
+// the webhook dispatcher on critical severity. Webhook-subscriber count
+// is printed here to match the original banner order (after rules,
+// before gen).
+func setupRules(cfg *config.Config, wh webhook.Dispatcher, auditLog *audit.Log, rec *obs.Recorder) *rules.Engine {
 	engine := rules.New(rules.Deps{
 		WebhookFire: func(name string, payload map[string]any) {
 			wh.Fire(webhook.Event(name), payload)
-		},
-		MQTTPublish: func(topic string, payload map[string]any) {
-			bridge.PublishEvent(topic, payload)
 		},
 	})
 	for _, rc := range cfg.Rules {
@@ -557,7 +536,6 @@ func setupRules(cfg *config.Config, wh webhook.Dispatcher, bridge *mqtt.Bridge, 
 			engine.Handle(e)
 			if e.Level == audit.LevelCritical {
 				wh.Fire(webhook.EventAuditCritical, e)
-				bridge.PublishAuditCritical(e)
 			}
 		})
 	}
@@ -651,23 +629,22 @@ func printCapabilitySummary(hasMarauder, hasVoice bool) {
 // --- Session lifecycle events -------------------------------------------
 
 // fireSessionStarted publishes the session_started lifecycle event to
-// both webhook subscribers and the MQTT bridge. Safe to call when either
-// is disabled — both dispatchers are no-op in that case.
-func fireSessionStarted(cfg *config.Config, auditLog *audit.Log, wh webhook.Dispatcher, bridge *mqtt.Bridge) {
+// the webhook dispatcher. Safe to call when no subscribers are
+// configured — the dispatcher is a no-op in that case.
+func fireSessionStarted(cfg *config.Config, auditLog *audit.Log, wh webhook.Dispatcher) {
 	payload := map[string]any{
 		"session_id": sessionIDOf(auditLog),
 		"started_at": time.Now().UTC(),
 		"model":      cfg.Model,
 	}
 	wh.Fire(webhook.EventSessionStarted, payload)
-	bridge.PublishEvent("session_started", payload)
 }
 
 // fireSessionEnded publishes the session_ended lifecycle event and then
 // drains the webhook dispatcher with a 5s shutdown deadline. Call as the
 // very last defer before the flipper/audit closes so in-flight tool
 // events get delivered before teardown.
-func fireSessionEnded(auditLog *audit.Log, wh webhook.Dispatcher, bridge *mqtt.Bridge) {
+func fireSessionEnded(auditLog *audit.Log, wh webhook.Dispatcher) {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	payload := map[string]any{
@@ -675,7 +652,6 @@ func fireSessionEnded(auditLog *audit.Log, wh webhook.Dispatcher, bridge *mqtt.B
 		"ended_at":   time.Now().UTC(),
 	}
 	wh.Fire(webhook.EventSessionEnded, payload)
-	bridge.PublishEvent("session_ended", payload)
 	_ = wh.Close(shutdownCtx)
 }
 
@@ -713,6 +689,13 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	addr := fmt.Sprintf("%s:%d", cfg.Web.Host, cfg.Web.Port)
 	srv := web.NewServer(addr, deps.Ai, deps.Voice)
 	srv.SetMetrics(deps.Rec, cfg.Observability.MetricsPath)
+	srv.SetAuthToken(cfg.Web.Token)
+	srv.SetCORSOrigins(cfg.Web.CORSOrigins)
+	if cfg.Web.Token != "" {
+		statusOK(fmt.Sprintf("Web auth %s(bearer token, %d chars)%s", dim, len(cfg.Web.Token), reset))
+	} else {
+		statusWarn("Web auth disabled — set web.token or PROMPTZERO_WEB_TOKEN")
+	}
 	// Wire the Phase-14 panel surface. Flipper is always connected here
 	// (run() bailed earlier if the serial connect failed); Marauder and
 	// the others may be nil, and the panels handle that.

@@ -21,7 +21,6 @@ func TestRecorder_NilSafe(t *testing.T) {
 	r.SetFlipperConnected(true)
 	r.SetMarauderConnected(true)
 	r.RecordWebhookDelivery("x", "ok")
-	r.RecordMQTTPublish("ok")
 	r.SetAnthropicReachable(false)
 	if got := r.LastTools(); got != nil {
 		t.Fatalf("LastTools on nil Recorder: %v", got)

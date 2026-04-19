@@ -18,7 +18,6 @@ import (
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
-	"github.com/xunholy/promptzero/internal/mqtt"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
@@ -55,7 +54,6 @@ type REPLDeps struct {
 	personas      *persona.Registry
 	costTracker   *cost.Tracker
 	wh            webhook.Dispatcher
-	mqttBridge    *mqtt.Bridge
 	ruleEngine    *rules.Engine
 	gateEnabled   bool
 	watchPaths    []string
@@ -156,9 +154,6 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 		return true, false
 	case "/webhooks":
 		ed.writeOutput(func() { handleWebhooksCmd(deps.wh, fields[1:]) })
-		return true, false
-	case "/mqtt":
-		ed.writeOutput(func() { handleMQTTCmd(deps.mqttBridge, fields[1:]) })
 		return true, false
 	case "/rules":
 		ed.writeOutput(func() { handleRulesCmd(deps.ruleEngine, fields[1:]) })
@@ -267,7 +262,6 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/webhooks [test <name>]%s List outbound webhooks with recent deliveries\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "    %s/mqtt [test]%s           Show MQTT bridge status (and publish a synthetic ping)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/validate <path>%s       Lint a BadUSB .txt payload on the Flipper SD card\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %sDevice%s\n", dim, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
@@ -942,7 +936,6 @@ func buildRule(rc config.RuleConfig) (rules.Rule, error) {
 		actions = append(actions, rules.Action{
 			Kind:    rules.ActionKind(a.Type),
 			Webhook: a.Webhook,
-			Topic:   a.Topic,
 			Tool:    a.Tool,
 			Params:  a.Params,
 		})
@@ -1087,7 +1080,7 @@ func renderDebugSnapshot(w io.Writer, cfg *config.Config, rec *obs.Recorder, p *
 	snap.Render(w, 72)
 }
 
-// --- /persona / /watch / /webhooks / /mqtt --------------------------------
+// --- /persona / /watch / /webhooks ----------------------------------------
 
 // handlePersona implements /persona. With no args it prints the active
 // persona's summary plus the catalogue of alternatives. With a name it
@@ -1246,30 +1239,3 @@ func handleWebhooksCmd(wh webhook.Dispatcher, args []string) {
 	}
 }
 
-// handleMQTTCmd implements /mqtt. With no args it shows the bridge's
-// enabled/connected state plus the most recent connection error (if any).
-// `/mqtt test` fires a synthetic event on <base>/events/test so operators
-// can verify topic routing from the broker side.
-func handleMQTTCmd(br *mqtt.Bridge, args []string) {
-	if br == nil || !br.Enabled() {
-		fmt.Fprintf(os.Stderr, "  %sMQTT bridge disabled%s\n", dim, reset)
-		return
-	}
-	if len(args) > 0 && strings.EqualFold(args[0], "test") {
-		br.PublishEvent("test", map[string]any{
-			"ts":   time.Now().UTC(),
-			"note": "synthetic ping from /mqtt test",
-		})
-		fmt.Fprintf(os.Stderr, "  %s●%s test event published to %s/events/test\n", green, reset, br.BasePath())
-		return
-	}
-	state := red + "disconnected" + reset
-	if br.Connected() {
-		state = green + "connected" + reset
-	}
-	fmt.Fprintf(os.Stderr, "  %s●%s MQTT %s %s(base: %s/)%s\n",
-		green, reset, state, dim, br.BasePath(), reset)
-	if err := br.LastError(); err != nil {
-		fmt.Fprintf(os.Stderr, "    %slast error:%s %v\n", dim, reset, err)
-	}
-}

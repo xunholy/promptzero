@@ -32,7 +32,7 @@ Run `task dev:setup` after cloning to install required dev tools
 - `internal/audit/` — audit log + query DSL.
 - `internal/version/` — build metadata populated via `-ldflags`.
 - `internal/workflows/`, `internal/rules/`, `internal/risk/` — automation.
-- `internal/web/`, `internal/mcp/`, `internal/webhook/`, `internal/mqtt/` —
+- `internal/web/`, `internal/mcp/`, `internal/webhook/` —
   external integrations.
 
 ## Tests

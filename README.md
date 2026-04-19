@@ -141,8 +141,8 @@ can copy into `~/.promptzero/` to get started:
 
 | File | Purpose |
 |------|---------|
-| [`examples/config.yaml`](examples/config.yaml) | Fully-commented config template covering every section (serial, marauder, web, watch, webhooks, MQTT, observability, validator, cost, rules). |
-| [`examples/rules.yaml`](examples/rules.yaml) | Four reactive rules: critical alerts, Mifare auto-triage, rolljam MQTT feed, risk-level log breadcrumbs. |
+| [`examples/config.yaml`](examples/config.yaml) | Fully-commented config template covering every section (serial, marauder, web, watch, webhooks, observability, validator, cost, rules). |
+| [`examples/rules.yaml`](examples/rules.yaml) | Three reactive rules: critical alerts, Mifare auto-triage, risk-level log breadcrumbs. |
 | [`examples/personas/red-team-day.yaml`](examples/personas/red-team-day.yaml) | Authorised engagement persona — full offensive surface, `risk_threshold: high`. |
 | [`examples/personas/blue-team-audit.yaml`](examples/personas/blue-team-audit.yaml) | Read-only forensic persona — no transmit/emulate/write, `risk_threshold: low`. |
 | [`examples/personas/ctf-shelf.yaml`](examples/personas/ctf-shelf.yaml) | CTF puzzle persona — heavy on file-format surgery, audit replay, and multi-angle decode. |
@@ -244,6 +244,31 @@ Dark-themed browser interface at `http://localhost:8080`. Includes:
 - Chat interface with real-time WebSocket communication
 - Browser-based voice recording (no sox needed)
 - Status indicators and conversation management
+
+#### Auth
+
+The web UI supports a shared bearer token. Set it in config —
+
+```yaml
+web:
+  host: "0.0.0.0"
+  port: 8080
+  token: "a-long-random-string"
+  cors_origins: []   # empty = same-origin only
+```
+
+— or via `PROMPTZERO_WEB_TOKEN` in the environment. HTTP callers send
+`Authorization: Bearer <token>` and the browser passes `?token=<token>`
+on the WebSocket URL (it's also picked up from a `#token=…` URL fragment
+on first load and saved to `sessionStorage`, so you can share a login
+link once and forget). Leaving the token empty keeps the legacy no-auth
+behaviour; the server prints a red warning if that combines with a
+non-loopback bind.
+
+PromptZero speaks plain HTTP on purpose — terminate TLS at a reverse
+proxy (Caddy, Traefik, nginx) or a Tailscale/Cloudflare tunnel. There is
+no built-in TLS listener; the homelab stacks you'd run this on already
+have a better answer for certs than the binary would.
 
 ### Voice (`--voice`)
 
