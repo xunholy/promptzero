@@ -210,6 +210,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 	// Attach a fresh trace ID (or reuse the caller's) so every log line,
 	// audit row, and tool event emitted inside this turn shares one ID.
+	// The discarded second return value is the trace ID string, not a
+	// cleanup func — TraceID(ctx) recovers it downstream when needed.
 	ctx, _ = obs.WithTrace(ctx)
 	obs.FromCtx(ctx).Info("turn_started", "input_len", len(userInput))
 
@@ -327,9 +329,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			}
 
 			start := time.Now()
-			output := a.executeTool(ctx, tc.Name, tc.Input)
+			output, toolErr := a.executeTool(ctx, tc.Name, tc.Input)
 			duration := time.Since(start)
-			toolErr := strings.HasPrefix(output, "error")
 
 			if a.toolStatusCb != nil {
 				a.toolStatusCb(ToolEvent{
@@ -408,17 +409,21 @@ func (a *Agent) requireMarauder() error {
 	return nil
 }
 
-func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMessage) string {
+// executeTool dispatches a single tool call. The bool indicates whether the
+// returned string represents an error — preferred over the previous
+// strings.HasPrefix(output, "error") check, which mis-flagged any tool that
+// happened to emit text starting with the word "error".
+func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMessage) (string, bool) {
 	var params map[string]interface{}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return fmt.Sprintf("error parsing parameters: %v", err)
+		return fmt.Sprintf("error parsing parameters: %v", err), true
 	}
 
 	result, err := a.dispatch(ctx, name, params)
 	if err != nil {
-		return fmt.Sprintf("error: %v", err)
+		return fmt.Sprintf("error: %v", err), true
 	}
-	return result
+	return result, false
 }
 
 func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interface{}) (string, error) {

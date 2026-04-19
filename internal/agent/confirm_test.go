@@ -55,7 +55,7 @@ func TestConfirmDenyShortCircuits(t *testing.T) {
 			}
 		}
 		dispatched++
-		_ = a.executeTool(context.Background(), call.Name, call.Input)
+		_, _ = a.executeTool(context.Background(), call.Name, call.Input)
 	}
 
 	if called != 1 {
