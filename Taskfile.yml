@@ -48,6 +48,11 @@ tasks:
     cmds:
       - ./{{.BIN}}
 
+  build:runner:
+    desc: Build pzrunner — non-interactive harness used to reproduce docs/ examples.
+    cmds:
+      - go build -trimpath -o bin/pzrunner ./cmd/pzrunner
+
   tidy:
     desc: Tidy go.mod / go.sum.
     cmds:
