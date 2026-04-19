@@ -546,9 +546,11 @@ func buildTools() []anthropic.ToolUnionParam {
 			"Store a key in one of the Flipper's secure-storage slots (e.g. for BadUSB string encryption). Overwrites whatever is in the slot — verify with the user before calling.",
 			props(
 				reqProp("slot", "integer", "Slot number"),
-				reqProp("hex", "string", "Key bytes as hex"),
+				reqProp("key_type", "string", "Key type: master, simple, or encrypted"),
+				reqProp("key_size", "integer", "Key size in bits: 128 or 256"),
+				reqProp("hex", "string", "Key bytes as hex (key_size/8 bytes; e.g. 32 hex chars for 128-bit)"),
 			),
-			"slot", "hex",
+			"slot", "key_type", "key_size", "hex",
 		),
 		tool("bt_hci_info",
 			"Return local Bluetooth controller info: chip, firmware version, MAC. Read-only and does not bring up a BLE stack — native Flipper BLE attacks still require an external devboard; this is purely device metadata.",

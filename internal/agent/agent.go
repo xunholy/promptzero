@@ -631,15 +631,15 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "loader_info":
 		return a.flipper.LoaderInfo()
 	case "loader_signal":
-		return a.flipper.LoaderSignal(intOr(p, "signal", 0))
+		return a.flipper.LoaderSignal(intOr(p, "signal", 0), str(p, "arg_hex"))
 	case "log_stream":
-		return a.flipper.LogStream(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
+		return a.flipper.LogStream(time.Duration(intOr(p, "duration_seconds", 15))*time.Second, str(p, "level"))
 	case "power_reboot_dfu":
 		return a.flipper.PowerRebootDFU()
 	case "update_install":
 		return a.flipper.UpdateInstall(str(p, "manifest"))
 	case "crypto_store_key":
-		return a.flipper.CryptoStoreKey(intOr(p, "slot", 0), str(p, "hex"))
+		return a.flipper.CryptoStoreKey(intOr(p, "slot", 0), str(p, "key_type"), intOr(p, "key_size", 128), str(p, "hex"))
 	case "bt_hci_info":
 		return a.flipper.BTHCIInfo()
 

@@ -139,7 +139,10 @@ func (f *Flipper) IRRxRaw(timeout time.Duration) (string, error) {
 	return f.ExecLong("ir rx raw", timeout)
 }
 
-// IRUniversal transmits a signal from a universal remote library entry.
+// IRUniversal brute-forces every variant of the named signal category across
+// all manufacturer codes in the specified universal remote library. It is NOT
+// a single-shot transmission — the firmware sweeps all frames of that signal
+// type (e.g. "Power" fires every known power-off frame).
 // CLI: ir universal <remote_name> <signal_name>
 func (f *Flipper) IRUniversal(remoteName string, signalName string) (string, error) {
 	return f.Exec(fmt.Sprintf("ir universal %s %s", sanitizeArg(remoteName), sanitizeArg(signalName)))
@@ -153,7 +156,7 @@ func (f *Flipper) IRUniversal(remoteName string, signalName string) (string, err
 // error rather than hanging on a non-responsive subcommand.
 func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 	if caps := f.Capabilities(); !caps.HasNFCSubshell {
-		return "", fmt.Errorf("NFC CLI not available on %s firmware — use the on-device NFC app, or switch to stock/unleashed firmware", caps.FriendlyFork())
+		return "", fmt.Errorf("NFC CLI not available on %s firmware — use the on-device NFC app, or switch to stock, Momentum, or Unleashed firmware", caps.FriendlyFork())
 	}
 	return f.withSuccessBuzz(func() (string, error) {
 		f.mu.Lock()
@@ -531,11 +534,14 @@ func (f *Flipper) BadUSBRun(scriptPath string) (string, error) {
 // --- Loader ---
 
 // LoaderOpen opens a Flipper application by name with optional arguments.
-// CLI: loader open <app_name> [args]
+// The app name is always double-quoted so multi-word names (e.g. "Bad USB",
+// "Sub-GHz BF") are parsed as a single token by the firmware's
+// args_read_probably_quoted_string_and_trim.
+// CLI: loader open "<app_name>" [args]
 func (f *Flipper) LoaderOpen(appName string, args string) (string, error) {
-	cmd := fmt.Sprintf("loader open %s", sanitizeArg(appName))
+	cmd := fmt.Sprintf(`loader open "%s"`, sanitizeArg(appName))
 	if args != "" {
-		cmd = fmt.Sprintf("loader open %s %s", sanitizeArg(appName), sanitizeArg(args))
+		cmd += " " + sanitizeArg(args)
 	}
 	return f.Exec(cmd)
 }
@@ -599,7 +605,7 @@ func (f *Flipper) LoaderListParsed() (LoaderApps, error) {
 // InputSend sends a synthetic button input event.
 // CLI: input send <button> <type>
 // button: up, down, left, right, ok, back
-// eventType: press, release, short, long, repeat
+// eventType: press, release, short, long  ("repeat" is not accepted on Momentum)
 func (f *Flipper) InputSend(button string, eventType string) (string, error) {
 	return f.Exec(fmt.Sprintf("input send %s %s", sanitizeArg(button), sanitizeArg(eventType)))
 }
@@ -696,9 +702,15 @@ func (f *Flipper) StorageFSInfoMap(path string) (map[string]string, error) {
 			out["label"] = strings.TrimSpace(strings.TrimPrefix(line, "Label:"))
 		case strings.HasPrefix(line, "Type:"):
 			out["type"] = strings.TrimSpace(strings.TrimPrefix(line, "Type:"))
+		case strings.HasPrefix(line, "SN:"):
+			// SD-card metadata line (ext only) — firmware emits a single
+			// "<manuf_hex><oem_id> <product> v<maj>.<min>" preceding line
+			// then "SN:<serial_hex> <manuf_month>/<manuf_year>". Capture
+			// the serial + date as one string; the product line is picked
+			// up below.
+			out["sd_serial"] = strings.TrimSpace(strings.TrimPrefix(line, "SN:"))
 		default:
-			// "<N>KiB total" / "<N>KiB free". Parse via a split to avoid
-			// pulling in regexp for two suffix forms.
+			// "<N>KiB total" / "<N>KiB free" lines.
 			if n, suffix, ok := parseKiBLine(line); ok {
 				switch suffix {
 				case "total":
@@ -706,10 +718,34 @@ func (f *Flipper) StorageFSInfoMap(path string) (map[string]string, error) {
 				case "free":
 					out["freeSpace"] = n
 				}
+				continue
+			}
+			// Any line starting with two hex digits followed by a space is
+			// the SD-card product descriptor: "<manuf_hex><oem_id> <product>
+			// v<maj>.<min>". Capture verbatim; consumers format as needed.
+			if isSDProductLine(line) {
+				out["sd_product"] = line
 			}
 		}
 	}
 	return out, nil
+}
+
+// isSDProductLine heuristically matches Momentum's SD product-descriptor
+// line: starts with two hex digits (manufacturer id), continues with an
+// OEM string, product name, and a version token like "v1.0". We gate on
+// shape rather than regex to keep the parser allocation-free.
+func isSDProductLine(line string) bool {
+	if len(line) < 6 {
+		return false
+	}
+	hex := func(c byte) bool {
+		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+	}
+	if !(hex(line[0]) && hex(line[1])) {
+		return false
+	}
+	return strings.Contains(line, " v") || strings.Contains(line, " V")
 }
 
 // parseKiBLine parses "<N>KiB total" or "<N>KiB free" (with optional
@@ -834,13 +870,29 @@ func (f *Flipper) Reboot() (string, error) {
 }
 
 // Vibro turns the vibration motor on (true) or off (false).
+// On Momentum, vibro 1 is silently suppressed in two cases:
+//   - stealth mode (FuriHalRtcFlagStealthMode): "Flipper is in stealth mode…"
+//   - vibro disabled in settings: "Vibro is disabled in settings…"
+//
+// Both return success at the firmware layer, so we detect the banner and
+// return an error so callers know the motor was never activated.
 // CLI: vibro <0|1>
 func (f *Flipper) Vibro(on bool) (string, error) {
 	val := 0
 	if on {
 		val = 1
 	}
-	return f.Exec(fmt.Sprintf("vibro %d", val))
+	out, err := f.Exec(fmt.Sprintf("vibro %d", val))
+	if err == nil && on {
+		clean := ansiRE.ReplaceAllString(out, "")
+		switch {
+		case strings.Contains(clean, "stealth mode"):
+			return out, fmt.Errorf("vibro suppressed: Flipper is in stealth mode")
+		case strings.Contains(clean, "Vibro is disabled"):
+			return out, fmt.Errorf("vibro suppressed: vibro is disabled in settings")
+		}
+	}
+	return out, err
 }
 
 // LED sets a single LED channel to a brightness value (0-255).
@@ -854,15 +906,23 @@ func (f *Flipper) LED(channel string, value int) (string, error) {
 
 // SubGHzRxRaw starts a raw Sub-GHz capture that is written to a .sub file.
 // Useful for protocol-level reverse engineering when decode_raw isn't enough.
-// Xtreme firmware appends a trailing `<device>` arg (0 = internal CC1101,
-// 1 = external); honored when the capability flag is set.
+// Xtreme/Unleashed firmware appends a trailing `<device>` arg (0 = internal
+// CC1101, 1 = external); honored when SubGHzNeedsDev is set.
+//
+// Not available on Momentum: Momentum's subghz rx_raw streams raw pulses to
+// stdout and does not accept a file-path argument (subghz_cli.c:
+// subghz_cli_command_rx_raw). Calling this on Momentum returns an error.
 // CLI: subghz rx_raw <file_path> [<frequency>] [<device>]
 func (f *Flipper) SubGHzRxRaw(filePath string, frequency uint32, duration time.Duration) (string, error) {
+	caps := f.Capabilities()
+	if !caps.SubGHzRxRawHasFilePath {
+		return "", fmt.Errorf("subghz rx_raw is not supported on %s firmware (streams to stdout, no file capture)", caps.FriendlyFork())
+	}
 	cmd := fmt.Sprintf("subghz rx_raw %s", sanitizeArg(filePath))
 	if frequency > 0 {
 		cmd += fmt.Sprintf(" %d", frequency)
 	}
-	if f.Capabilities().SubGHzNeedsDev {
+	if caps.SubGHzNeedsDev {
 		cmd += " 0"
 	}
 	return f.ExecLong(cmd, duration)
@@ -891,9 +951,9 @@ func (f *Flipper) IRDecodeFile(path string) (string, error) {
 
 // IRUniversalList lists entries in a universal remote library file so the
 // agent can see which buttons are available before calling IRUniversal.
-// CLI: ir universal <library> list
+// CLI: ir universal list <library>
 func (f *Flipper) IRUniversalList(library string) (string, error) {
-	return f.Exec(fmt.Sprintf("ir universal %s list", sanitizeArg(library)))
+	return f.Exec(fmt.Sprintf("ir universal list %s", sanitizeArg(library)))
 }
 
 // --- NFC (capability-gap primitives via subshell) ---
@@ -937,9 +997,14 @@ func (f *Flipper) NFCMFURead(page int, timeout time.Duration) (string, error) {
 
 // NFCMFUWrite writes 4 bytes of hex data to a MIFARE Ultralight page/block.
 // Destructive — overwrites whatever the tag currently holds. Fork-gated.
-// Subshell verb: mfu wrbl <page> <hex>
+// Subshell verb (stock): mfu wrbl <page> <hex>
+// Subshell verb (Momentum/Unleashed): mfu wrbl -b <page> -d <hex>
 func (f *Flipper) NFCMFUWrite(page int, hexData string, timeout time.Duration) (string, error) {
-	return f.NFCSubcommand(fmt.Sprintf("mfu wrbl %d %s", page, sanitizeArg(hexData)), timeout)
+	safe := sanitizeArg(hexData)
+	if f.Capabilities().NFCFlaggedArgs {
+		return f.NFCSubcommand(fmt.Sprintf("mfu wrbl -b %d -d %s", page, safe), timeout)
+	}
+	return f.NFCSubcommand(fmt.Sprintf("mfu wrbl %d %s", page, safe), timeout)
 }
 
 // NFCDumpProtocol dumps tag contents for a specific MIFARE protocol via the
@@ -1177,20 +1242,30 @@ func (f *Flipper) LoaderInfo() (string, error) {
 	return f.Exec("loader info")
 }
 
-// LoaderSignal sends a numeric signal to the currently running app. The
-// signal number's meaning is app-specific (many apps document a few custom
-// opcodes).
-// CLI: loader signal <n>
-func (f *Flipper) LoaderSignal(signal int) (string, error) {
-	return f.Exec(fmt.Sprintf("loader signal %d", signal))
+// LoaderSignal sends a numeric signal to the currently running app with an
+// optional hex argument (many apps document custom opcodes that consume
+// argHex). Pass "" to omit the argument.
+// CLI: loader signal <n> [<hex>]
+func (f *Flipper) LoaderSignal(signal int, argHex string) (string, error) {
+	cmd := fmt.Sprintf("loader signal %d", signal)
+	if argHex != "" {
+		cmd += " " + sanitizeArg(argHex)
+	}
+	return f.Exec(cmd)
 }
 
 // LogStream opens a live log stream from the Flipper for the supplied
 // duration, returning the captured text. Read-only; the Flipper keeps
-// running after the stream ends.
-// CLI: log
-func (f *Flipper) LogStream(duration time.Duration) (string, error) {
-	return f.ExecLong("log", duration)
+// running after the stream ends. level filters the minimum severity —
+// empty string means the firmware's default; recognised values are
+// "default", "error", "warn", "info", "debug", "trace".
+// CLI: log [<level>]
+func (f *Flipper) LogStream(duration time.Duration, level string) (string, error) {
+	cmd := "log"
+	if level != "" {
+		cmd += " " + sanitizeArg(level)
+	}
+	return f.ExecLong(cmd, duration)
 }
 
 // PowerRebootDFU reboots the Flipper into the STM32 DFU bootloader. Leaves
@@ -1210,9 +1285,11 @@ func (f *Flipper) UpdateInstall(manifestPath string) (string, error) {
 
 // CryptoStoreKey stores a key in one of the Flipper's secure-storage slots.
 // Overwrites whatever was in that slot.
-// CLI: crypto store_key <slot> <hex>
-func (f *Flipper) CryptoStoreKey(slot int, keyHex string) (string, error) {
-	return f.Exec(fmt.Sprintf("crypto store_key %d %s", slot, sanitizeArg(keyHex)))
+// keyType: "master", "simple", or "encrypted"
+// keySize: 128 or 256 (bits); keyHex must be exactly keySize/8 bytes as hex.
+// CLI: crypto store_key <slot> <keyType> <keySize> <keyHex>
+func (f *Flipper) CryptoStoreKey(slot int, keyType string, keySize int, keyHex string) (string, error) {
+	return f.Exec(fmt.Sprintf("crypto store_key %d %s %d %s", slot, sanitizeArg(keyType), keySize, sanitizeArg(keyHex)))
 }
 
 // BTHCIInfo returns local Bluetooth controller info (chip, firmware version,

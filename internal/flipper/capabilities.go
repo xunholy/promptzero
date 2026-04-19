@@ -18,10 +18,11 @@ type Capabilities struct {
 	HardwareName    string // user-settable dolphin name
 
 	// CLI surface
-	PowerInfoCmd   string // "power_info" | "info power" | "" (unavailable)
-	HasNFCSubshell bool   // `nfc` subshell with `scanner`/`emulate`/... subcommands
-	SubGHzNeedsDev bool   // `subghz tx/rx` requires a trailing `<device>` arg
-	NFCFlaggedArgs bool   // NFC subshell uses flag-based args (-p, -d, -b) instead of positional
+	PowerInfoCmd           string // "power_info" | "info power" | "" (unavailable)
+	HasNFCSubshell         bool   // `nfc` subshell with `scanner`/`emulate`/... subcommands
+	SubGHzNeedsDev         bool   // `subghz tx/rx` requires a trailing `<device>` arg
+	NFCFlaggedArgs         bool   // NFC subshell uses flag-based args (-p, -d, -b) instead of positional
+	SubGHzRxRawHasFilePath bool   // `subghz rx_raw` accepts a file-path arg (false on Momentum — streams to stdout)
 }
 
 // FriendlyFork returns a display-ready fork name, falling back to "stock"
@@ -64,34 +65,46 @@ func detectCapabilities(deviceInfo string) Capabilities {
 		}
 	}
 
-	// Set the stock/Unleashed baseline before the switch so new fork cases
-	// only need to override the fields that actually differ.
+	// Set the stock baseline before the switch so new fork cases only need to
+	// override the fields that actually differ.
 	c.PowerInfoCmd = "power_info"
 	c.HasNFCSubshell = true
 	c.SubGHzNeedsDev = false
+	c.SubGHzRxRawHasFilePath = true
 
 	switch strings.ToLower(c.FirmwareFork) {
+	case "unleashed", "roguemaster":
+		// Unleashed (and RogueMaster, which is based on Unleashed) dropped the
+		// legacy `power_info` command — only `info power` is registered
+		// (cli_main_commands.c). All subghz commands that take args also
+		// require a trailing <device> index (subghz_cli.c: parse_err ORs
+		// both frequency and device_ind results when args is non-empty).
+		// The NFC subshell uses the same flag-based parser as Momentum
+		// (nfc_cli_command_mfu.c: mfu rdbl -b <n>, mfu wrbl -b <n> -d <hex>).
+		c.PowerInfoCmd = "info power"
+		c.SubGHzNeedsDev = true
+		c.NFCFlaggedArgs = true
 	case "xtreme":
 		c.PowerInfoCmd = "info power"
 		c.HasNFCSubshell = false
 		c.SubGHzNeedsDev = true
 	case "momentum":
 		// Momentum dropped the legacy `power_info` alias — only `info power`
-		// is registered (see applications/services/cli/cli_main_commands.c
-		// in Next-Flip/Momentum-Firmware). Its `subghz rx` also takes a
-		// mandatory <Device: 0|1> trailing arg (applications/main/subghz/
-		// subghz_cli.c → subghz_cli_command_rx), so the SubGHzNeedsDev
-		// quirk applies here too — caught by a live-hardware smoke run
-		// when `subghz rx <freq>` errored with "illegal option".
+		// is registered (applications/services/cli/cli_main_commands.c in
+		// Next-Flip/Momentum-Firmware). Its `subghz rx` requires a mandatory
+		// <Device: 0|1> trailing arg (subghz_cli.c → subghz_cli_command_rx).
 		//
-		// Momentum's NFC subshell uses a new flag-based arg parser
-		// (applications/main/nfc/cli/nfc_cli_command_processor.c) that
-		// rejects positional args with "Key '<x>' is not supported".
+		// Momentum's NFC subshell uses a flag-based arg parser
+		// (nfc_cli_command_processor.c) that rejects positional args.
 		// Correct forms: `raw -p iso14a -d <hex>`, `apdu -d <hex>`,
-		// `mfu rdbl -b <n>`, `dump -p <protocol>`.
+		// `mfu rdbl -b <n>`, `mfu wrbl -b <n> -d <hex>`, `dump -p <protocol>`.
+		//
+		// Momentum's `subghz rx_raw` streams pulses to stdout and does NOT
+		// accept a file-path argument (subghz_cli.c:subghz_cli_command_rx_raw).
 		c.PowerInfoCmd = "info power"
 		c.SubGHzNeedsDev = true
 		c.NFCFlaggedArgs = true
+		c.SubGHzRxRawHasFilePath = false
 	}
 	return c
 }

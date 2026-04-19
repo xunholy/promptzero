@@ -594,3 +594,252 @@ func TestNFCEmulateLoaderCloseTimeout(t *testing.T) {
 		t.Errorf("error should mention loader, got: %v", err)
 	}
 }
+
+// --- Task #1 additional: NFCMFUWrite flagged args ---
+
+// TestNFCMFUWrite_MomentumFlaggedArgs verifies that on Momentum, NFCMFUWrite
+// emits `mfu wrbl -b <page> -d <hex>` (flag-based form required by
+// nfc_cli_command_mfu.c:wrbl_action_keys which marks both -b and -d required).
+func TestNFCMFUWrite_MomentumFlaggedArgs(t *testing.T) {
+	const data = "AABBCCDD"
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(_ []string) string { return momentumDeviceInfo }),
+		mock.WithHandler("nfc", func(_ []string) string { return "" }),
+		mock.WithHandler("mfu", func(args []string) string {
+			if len(args) >= 4 && args[0] == "wrbl" && args[1] == "-b" && args[3] == "-d" {
+				return ""
+			}
+			return ""
+		}),
+		mock.WithHandler("exit", func(_ []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, err := flip.NFCMFUWrite(5, data, 5*time.Second)
+	if err != nil {
+		t.Fatalf("NFCMFUWrite (Momentum): %v", err)
+	}
+
+	wantLine := "mfu wrbl -b 5 -d " + data
+	found := false
+	for _, l := range m.Lines() {
+		if strings.TrimSpace(l) == wantLine {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected flagged form %q; lines=%v", wantLine, m.Lines())
+	}
+
+	rx := string(m.BytesReceived())
+	if strings.Contains(rx, "mfu wrbl 5 ") {
+		t.Errorf("positional form sent on Momentum — should use flagged form; bytes=%q", rx)
+	}
+}
+
+// TestNFCMFUWrite_StockPositional confirms stock firmware receives the legacy
+// positional `mfu wrbl <page> <hex>` form (not the flagged form).
+func TestNFCMFUWrite_StockPositional(t *testing.T) {
+	const data = "AABBCCDD"
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(_ []string) string { return stockDeviceInfo }),
+		mock.WithHandler("nfc", func(_ []string) string { return "" }),
+		mock.WithHandler("mfu", func(args []string) string { return "" }),
+		mock.WithHandler("exit", func(_ []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, _ = flip.NFCMFUWrite(5, data, 5*time.Second)
+
+	rx := string(m.BytesReceived())
+	if !strings.Contains(rx, "mfu wrbl 5 "+data) {
+		t.Errorf("stock should use positional form 'mfu wrbl 5 %s'; bytes=%q", data, rx)
+	}
+	if strings.Contains(rx, "mfu wrbl -b") {
+		t.Errorf("stock should NOT use flagged form; bytes=%q", rx)
+	}
+}
+
+// --- Task #1 additional: CryptoStoreKey 4-arg command ---
+
+// TestCryptoStoreKey_FourArgCommand verifies that CryptoStoreKey emits the
+// full 4-arg form `crypto store_key <slot> <type> <size> <hex>` required by
+// Momentum's crypto_cli.c:crypto_cli_store_key.
+func TestCryptoStoreKey_FourArgCommand(t *testing.T) {
+	const keyHex = "AABBCCDDEEFF00112233445566778899"
+	var captured []string
+	m := mock.Spawn(t,
+		mock.WithHandler("crypto", func(args []string) string {
+			captured = append(captured, args...)
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, err := flip.CryptoStoreKey(10, "simple", 128, keyHex)
+	if err != nil {
+		t.Fatalf("CryptoStoreKey: %v", err)
+	}
+
+	wantLine := "crypto store_key 10 simple 128 " + keyHex
+	found := false
+	for _, l := range m.Lines() {
+		if strings.TrimSpace(l) == wantLine {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected %q; lines=%v", wantLine, m.Lines())
+	}
+}
+
+// --- Task #1 additional: IRUniversalList arg order ---
+
+// TestIRUniversalList_ArgOrder verifies that IRUniversalList emits
+// `ir universal list <library>` — NOT `ir universal <library> list`.
+// Momentum's infrared_cli.c:infrared_cli_process_universal checks arg1=="list"
+// first, then treats arg2 as the remote name.
+func TestIRUniversalList_ArgOrder(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("ir", func(args []string) string {
+			if len(args) >= 3 && args[0] == "universal" && args[1] == "list" {
+				return "Power\nMute\nVolume+"
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	out, err := flip.IRUniversalList("TV_samsung")
+	if err != nil {
+		t.Fatalf("IRUniversalList: %v", err)
+	}
+	if !strings.Contains(out, "Power") {
+		t.Errorf("expected list output in return; got %q", out)
+	}
+
+	wantLine := "ir universal list TV_samsung"
+	found := false
+	for _, l := range m.Lines() {
+		if strings.TrimSpace(l) == wantLine {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected %q; lines=%v", wantLine, m.Lines())
+	}
+	for _, l := range m.Lines() {
+		if strings.TrimSpace(l) == "ir universal TV_samsung list" {
+			t.Errorf("inverted arg order sent — would brute-force a signal named 'list'; lines=%v", m.Lines())
+		}
+	}
+}
+
+// --- Task #1 additional: Vibro stealth mode error ---
+
+// TestVibroStealthModeReturnsError verifies that when Momentum returns the
+// stealth-mode banner for `vibro 1`, Vibro returns a non-nil error so callers
+// know the motor was never activated (cli_main_commands.c:cli_command_vibro).
+func TestVibroStealthModeReturnsError(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(_ []string) string { return momentumDeviceInfo }),
+		mock.WithHandler("vibro", func(args []string) string {
+			if len(args) >= 1 && args[0] == "1" {
+				return "Flipper is in stealth mode. Unmute the device to control vibration."
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, err := flip.Vibro(true)
+	if err == nil {
+		t.Fatal("Vibro(true) should return an error when firmware emits stealth mode banner")
+	}
+	if !strings.Contains(err.Error(), "stealth mode") {
+		t.Errorf("error should mention stealth mode, got: %v", err)
+	}
+}
+
+// TestVibroDisabledInSettingsReturnsError verifies the second suppression path:
+// when vibro is disabled in settings, Vibro returns a non-nil error.
+func TestVibroDisabledInSettingsReturnsError(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(_ []string) string { return momentumDeviceInfo }),
+		mock.WithHandler("vibro", func(args []string) string {
+			if len(args) >= 1 && args[0] == "1" {
+				return "Vibro is disabled in settings. Enable it to control vibration."
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, err := flip.Vibro(true)
+	if err == nil {
+		t.Fatal("Vibro(true) should return an error when vibro is disabled in settings")
+	}
+	if !strings.Contains(err.Error(), "disabled") {
+		t.Errorf("error should mention disabled, got: %v", err)
+	}
+}
+
+// TestVibroOffDoesNotErrorOnBanner confirms that Vibro(false) never errors
+// even if the mock returns unexpected output (off=0 path never checks banner).
+func TestVibroOffDoesNotErrorOnBanner(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(_ []string) string { return momentumDeviceInfo }),
+		mock.WithHandler("vibro", func(_ []string) string { return "unexpected banner" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, err := flip.Vibro(false)
+	if err != nil {
+		t.Errorf("Vibro(false) should never error; got: %v", err)
+	}
+}
+
+// --- Task #1 additional: LoaderOpen quotes multi-word app names ---
+
+// TestLoaderOpenQuotesMultiWordName verifies that LoaderOpen wraps the app name
+// in double-quotes so the Flipper firmware's
+// args_read_probably_quoted_string_and_trim parses it as a single token.
+func TestLoaderOpenQuotesMultiWordName(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("loader", func(args []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, _ = flip.LoaderOpen("Bad USB", "/ext/test.badusb")
+
+	wantLine := `loader open "Bad USB" /ext/test.badusb`
+	found := false
+	for _, l := range m.Lines() {
+		if strings.TrimSpace(l) == wantLine {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected %q; lines=%v", wantLine, m.Lines())
+	}
+}
+
+// TestLoaderOpenSingleWordNameStillQuoted confirms single-word names are also
+// quoted (firmware accepts both quoted and unquoted single-word names).
+func TestLoaderOpenSingleWordNameStillQuoted(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("loader", func(args []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, _ = flip.LoaderOpen("NFC", "/ext/test.nfc")
+
+	rx := string(m.BytesReceived())
+	if !strings.Contains(rx, `loader open "NFC"`) {
+		t.Errorf("single-word name should also be quoted; bytes=%q", rx)
+	}
+}

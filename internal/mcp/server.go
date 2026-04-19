@@ -499,10 +499,13 @@ func (s *Server) registerFlipperTools() {
 		})
 
 	s.add("loader_signal", "Deliver a numeric signal to the running app.",
-		[]mcp.ToolOption{mcp.WithNumber("signal", mcp.Required(), mcp.Description("Signal number"))},
+		[]mcp.ToolOption{
+			mcp.WithNumber("signal", mcp.Required(), mcp.Description("Signal number")),
+			mcp.WithString("arg_hex", mcp.Description("Optional hex argument passed alongside the signal")),
+		},
 		[]string{"signal"},
 		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LoaderSignal(int(na(a, "signal")))
+			return f.LoaderSignal(int(na(a, "signal")), sa(a, "arg_hex"))
 		})
 
 	// Loader FAP shortcuts — no-arg wrappers.
@@ -676,11 +679,13 @@ func (s *Server) registerFlipperTools() {
 	s.add("crypto_store_key", "Store a key in a Flipper secure-storage slot.",
 		[]mcp.ToolOption{
 			mcp.WithNumber("slot", mcp.Required(), mcp.Description("Slot number")),
-			mcp.WithString("hex", mcp.Required(), mcp.Description("Key bytes as hex")),
+			mcp.WithString("key_type", mcp.Required(), mcp.Description("Key type: master, simple, or encrypted")),
+			mcp.WithNumber("key_size", mcp.Required(), mcp.Description("Key size in bits: 128 or 256")),
+			mcp.WithString("hex", mcp.Required(), mcp.Description("Key bytes as hex (key_size/8 bytes)")),
 		},
-		[]string{"slot", "hex"},
+		[]string{"slot", "key_type", "key_size", "hex"},
 		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.CryptoStoreKey(int(na(a, "slot")), sa(a, "hex"))
+			return f.CryptoStoreKey(int(na(a, "slot")), sa(a, "key_type"), int(na(a, "key_size")), sa(a, "hex"))
 		})
 	s.add("flipper_raw_cli", "Send an arbitrary command to the Flipper CLI. Critical — unrestricted passthrough.",
 		[]mcp.ToolOption{mcp.WithString("command", mcp.Required(), mcp.Description("CLI command string"))},
@@ -704,10 +709,13 @@ func (s *Server) registerFlipperTools() {
 			return f.Vibro(ba(a, "on"))
 		})
 	s.add("log_stream", "Capture live Flipper debug log. Read-only.",
-		[]mcp.ToolOption{mcp.WithNumber("duration_seconds", mcp.Description("Stream duration (default 15)"))},
+		[]mcp.ToolOption{
+			mcp.WithNumber("duration_seconds", mcp.Description("Stream duration (default 15)")),
+			mcp.WithString("level", mcp.Description("Minimum severity: default|error|warn|info|debug|trace")),
+		},
 		nil,
 		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LogStream(durationParam(a, "duration_seconds", 15*time.Second))
+			return f.LogStream(durationParam(a, "duration_seconds", 15*time.Second), sa(a, "level"))
 		})
 }
 

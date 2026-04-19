@@ -296,7 +296,7 @@ func TestLogStreamExecLongRunsToCompletion(t *testing.T) {
 	flip := connectAndDetect(t, m)
 
 	start := time.Now()
-	out, err := flip.LogStream(5 * time.Second)
+	out, err := flip.LogStream(5*time.Second, "")
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatalf("LogStream: %v", err)

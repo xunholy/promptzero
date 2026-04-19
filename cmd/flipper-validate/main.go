@@ -619,8 +619,8 @@ func buildCases() []tcase {
 		// ================================================================
 		// Round 4 — admin
 		// ================================================================
-		{category: "crypto", name: "CryptoStoreKey(slot=10,AABBCCDD)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
-			return f.CryptoStoreKey(10, "AABBCCDDEEFF00112233445566778899")
+		{category: "crypto", name: "CryptoStoreKey(slot=10,simple,128)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
+			return f.CryptoStoreKey(10, "simple", 128, "AABBCCDDEEFF00112233445566778899")
 		}, allowEmpty: true},
 
 		// SKIPs — globally off-limits for this run
