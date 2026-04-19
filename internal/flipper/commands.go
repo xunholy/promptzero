@@ -218,7 +218,7 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 	if err != nil {
 		return out, err
 	}
-	if closeErr := f.waitLoaderClosed(3 * time.Second); closeErr != nil {
+	if closeErr := f.waitLoaderClosed(5 * time.Second); closeErr != nil {
 		return out, closeErr
 	}
 	return out, nil
@@ -239,19 +239,36 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 func (f *Flipper) waitLoaderClosed(budget time.Duration) error {
 	_, _ = f.Exec("loader close")
 	deadline := time.Now().Add(budget)
+	// Require THREE consecutive successful uptime probes with 150ms
+	// between each. Momentum's loader is driven by an async message
+	// queue and its per-app teardown can briefly release and re-take
+	// the lock (e.g. during post-exit housekeeping). A single success
+	// observation is a race: on live HW we've seen uptime succeed while
+	// the next app-launching command still hits "cannot be run". Three
+	// consecutive ~450ms-spread successes is enough to ride past the
+	// housekeeping window without driving total latency past the budget.
+	const requiredConsecutive = 3
+	consecutive := 0
 	for time.Now().Before(deadline) {
 		out, err := f.Exec("uptime")
 		if err != nil {
 			return fmt.Errorf("flipper: uptime probe: %w", err)
 		}
 		if strings.Contains(out, "cannot be run while an application is open") {
+			consecutive = 0
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		if strings.Contains(out, "Uptime:") {
-			return nil
+			consecutive++
+			if consecutive >= requiredConsecutive {
+				return nil
+			}
+			time.Sleep(150 * time.Millisecond)
+			continue
 		}
 		// Unexpected response — retry until deadline.
+		consecutive = 0
 		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("flipper: loader still locked after close (budget %v)", budget)
