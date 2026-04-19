@@ -21,7 +21,7 @@ serial:
   # transport_url overrides port + baud. Schemes:
   #   serial:///dev/ttyACM0?baud=230400
   #   mock:///dev/pts/5              (test harness pty slave)
-  #   ble://AA:BB:CC:DD:EE:FF        (reserved — Phase-B, not yet live)
+  #   ble://AA:BB:CC:DD:EE:FF        (live; Linux/macOS only — see docs)
   transport_url: ""
 
 # --- ESP32 Marauder (WiFi + BLE devboard) --------------------------------

@@ -173,6 +173,57 @@ can copy into `~/.promptzero/` to get started:
 ./bin/promptzero --web --wifi --voice
 ```
 
+### Transport options
+
+Every CLI command, web session, and MCP invocation talks to the Flipper through a pluggable **transport**. The default (`serial://`) covers 99% of setups — USB cable to the Flipper — but you can also drive the Flipper **wirelessly over BLE** without a cable, or attach a mock PTY for tests.
+
+Select a transport by setting `serial.transport_url` in your config, or the `--transport` CLI flag. The flag overrides the config.
+
+| Scheme                         | Example                                         | When to use                                                     |
+|--------------------------------|-------------------------------------------------|-----------------------------------------------------------------|
+| `serial://`                    | `serial:///dev/ttyACM0?baud=230400`             | Default. USB CDC-ACM. Fastest + most reliable.                  |
+| `ble://`                       | `ble://AA:BB:CC:DD:EE:FF`                       | Wireless. No cable. Slower (~2–8 kB/s) but fine for most verbs. |
+| `mock://`                      | `mock:///dev/pts/5`                             | Test harness pty slave. Used by `internal/flipper/mock`.        |
+
+> [!NOTE]
+> **Marauder** has no wireless control surface in upstream firmware — `marauder.port` is always a serial `/dev/ttyUSB0`-style path. Only the Flipper supports BLE.
+
+#### BLE over Flipper Zero
+
+Find your Flipper's BLE MAC on the device: **Settings → Bluetooth → scroll down → BLE MAC**. Then:
+
+```bash
+./bin/promptzero --transport ble://AA:BB:CC:DD:EE:FF --web
+```
+
+Or wire it into your config and omit the flag:
+
+```yaml
+serial:
+  transport_url: ble://AA:BB:CC:DD:EE:FF
+```
+
+**Pairing prerequisite (Linux / BlueZ):** the adapter needs to know the device before PromptZero can connect.
+```bash
+bluetoothctl scan on        # until you see your Flipper
+bluetoothctl pair AA:BB:CC:DD:EE:FF
+bluetoothctl trust AA:BB:CC:DD:EE:FF
+```
+Once paired, PromptZero will reconnect automatically on restart; you won't need to repeat this.
+
+**macOS:** BLE is supported but the upstream `tinygo.org/x/bluetooth` package needs CGO on macOS. Build on the Mac directly:
+```bash
+CGO_ENABLED=1 GOOS=darwin go build ./cmd/promptzero
+```
+Cross-compiled darwin binaries from a Linux host ship a stub that returns a clear "rebuild on macOS with CGO" error when BLE is attempted.
+
+**Limitations:**
+- **WSL cannot do BLE.** Windows doesn't pass Bluetooth through to the Linux guest. Use USB + `usbipd` for WSL, or run PromptZero natively.
+- **Throughput is ~10× slower** than USB. A `log_stream` or a long `subghz rx` capture is noticeably less responsive, but every wrapper works — the CLI protocol is identical over the Flipper's serial GATT service.
+- **Range** is Bluetooth-normal (~10 m Class 2 in practice).
+
+All 97 tools work unchanged over BLE — capabilities detection, NFC subshell, loader close-via-back-button, everything. The transport layer is the only thing that changes.
+
 ---
 
 ## Modes

@@ -17,9 +17,10 @@ serial:
 
   # Optional transport URL override. When set, takes precedence over
   # port + baud_rate above. Supported schemes:
-  #   serial:///dev/ttyACM0?baud=230400   — explicit USB CDC-ACM
+  #   serial:///dev/ttyACM0?baud=230400   — explicit USB CDC-ACM (default path)
   #   mock:///dev/pts/5                   — test harness pty slave
-  #   ble://AA:BB:CC:DD:EE:FF             — reserved (Phase-B; not yet implemented)
+  #   ble://AA:BB:CC:DD:EE:FF             — wireless via BLE (Linux/macOS; not WSL)
+  # See README.md → "Transport options" for BLE pairing + platform caveats.
   # The --transport CLI flag overrides this field.
   transport_url: ""
 
