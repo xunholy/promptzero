@@ -49,7 +49,7 @@ func TestBearerFromHeader(t *testing.T) {
 		"Bearer ":          "",
 		"Bearer abc":       "abc",
 		"Bearer  abc  ":    "abc",
-		"bearer abc":       "",   // scheme is case-sensitive to force a real Bearer
+		"bearer abc":       "", // scheme is case-sensitive to force a real Bearer
 		"Basic Zm9vOmJhcg": "",
 	}
 	for in, want := range cases {
@@ -192,16 +192,96 @@ func TestWebSocket_401WithoutToken(t *testing.T) {
 	}
 }
 
-func TestWebSocket_OKWithTokenQueryParam(t *testing.T) {
+func TestWebSocket_OKWithBearerSubprotocol(t *testing.T) {
+	_, ts := newAuthTestServer(t, "supersecret", nil)
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	c, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+		Subprotocols: []string{"bearer", "supersecret"},
+	})
+	if err != nil {
+		if resp != nil {
+			t.Fatalf("dial with bearer subprotocol: %v (status=%d)", err, resp.StatusCode)
+		}
+		t.Fatalf("dial with bearer subprotocol: %v", err)
+	}
+	defer c.Close(websocket.StatusNormalClosure, "")
+	if got := c.Subprotocol(); got != "bearer" {
+		t.Errorf("negotiated subprotocol = %q, want %q", got, "bearer")
+	}
+}
+
+func TestWebSocket_RejectsQueryParamToken(t *testing.T) {
 	_, ts := newAuthTestServer(t, "supersecret", nil)
 	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws?token=supersecret"
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, wsURL, nil)
-	if err != nil {
-		t.Fatalf("dial with correct token: %v", err)
+	_, resp, err := websocket.Dial(ctx, wsURL, nil)
+	if err == nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		t.Fatal("dial with legacy ?token= must fail: the query-param auth path has been removed")
 	}
-	c.Close(websocket.StatusNormalClosure, "")
+	if resp == nil {
+		t.Fatal("expected non-nil HTTP response alongside upgrade error")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestBearerFromWSProtocol(t *testing.T) {
+	cases := []struct {
+		name      string
+		headers   []string
+		wantToken string
+		wantOK    bool
+	}{
+		{"single-csv", []string{"bearer, abc"}, "abc", true},
+		{"split-headers", []string{"bearer", "abc"}, "abc", true},
+		{"no-bearer", []string{"other, abc"}, "", false},
+		{"bearer-only", []string{"bearer"}, "", true},
+		{"empty", nil, "", false},
+		{"trims-ws", []string{"  bearer  ,   abc   "}, "abc", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tok, ok := bearerFromWSProtocol(c.headers)
+			if tok != c.wantToken || ok != c.wantOK {
+				t.Errorf("bearerFromWSProtocol(%v) = (%q, %v), want (%q, %v)",
+					c.headers, tok, ok, c.wantToken, c.wantOK)
+			}
+		})
+	}
+}
+
+func TestValidateOriginConfig_RejectsLiteralStar(t *testing.T) {
+	s := &Server{corsOrigins: []string{"https://a.lan", "*"}}
+	err := s.validateOriginConfig()
+	if err == nil {
+		t.Fatal(`expected an error from a "*" entry in corsOrigins`)
+	}
+	if !strings.Contains(err.Error(), "allow_any_origin") {
+		t.Errorf("error %q should mention allow_any_origin so operators know the fix", err)
+	}
+}
+
+func TestValidateOriginConfig_AcceptsExplicitList(t *testing.T) {
+	s := &Server{corsOrigins: []string{"https://a.lan", "https://b.lan"}}
+	if err := s.validateOriginConfig(); err != nil {
+		t.Fatalf("explicit allow-list must pass: %v", err)
+	}
+}
+
+func TestEffectiveOriginPatterns_AllowAnyOriginEmitsStar(t *testing.T) {
+	s := &Server{allowAnyOrigin: true, corsOrigins: []string{"https://ignored.lan"}}
+	got := s.effectiveOriginPatterns()
+	if len(got) != 1 || got[0] != "*" {
+		t.Fatalf("allowAnyOrigin must emit [\"*\"], got %v", got)
+	}
 }
 
 func TestEffectiveOriginPatterns_EmptyIsSameOriginOnly(t *testing.T) {
