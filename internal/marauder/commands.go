@@ -478,7 +478,7 @@ func (m *Marauder) LEDSetHex(rgbHex string) (string, error) {
 		return "", fmt.Errorf("invalid LED colour %q (want 6-hex RGB e.g. \"ff0000\")", rgbHex)
 	}
 	for _, c := range cleaned {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return "", fmt.Errorf("invalid LED colour %q (non-hex character)", rgbHex)
 		}
 	}
