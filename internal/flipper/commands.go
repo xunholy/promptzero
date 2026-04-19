@@ -579,9 +579,10 @@ func (f *Flipper) StorageFSInfoMap(path string) (map[string]string, error) {
 			// "<N>KiB total" / "<N>KiB free". Parse via a split to avoid
 			// pulling in regexp for two suffix forms.
 			if n, suffix, ok := parseKiBLine(line); ok {
-				if suffix == "total" {
+				switch suffix {
+				case "total":
 					out["totalSpace"] = n
-				} else if suffix == "free" {
+				case "free":
 					out["freeSpace"] = n
 				}
 			}
