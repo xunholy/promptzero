@@ -114,6 +114,30 @@ promptzero> what's this?  [photo of a remote control]
 
 ### Install
 
+**Prebuilt binary (Linux & macOS, amd64/arm64):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xunholy/promptzero/main/install.sh | sh
+```
+
+The script downloads the latest release, verifies the SHA-256 against the
+release's `checksums.txt`, and installs `promptzero` into the first writable
+directory of: `$XDG_BIN_HOME`, `~/.local/bin`, or `/usr/local/bin`.
+
+Useful subcommands and flags (all work with `curl … | sh -s -- <arg>`):
+
+```bash
+sh install.sh upgrade                  # re-run against the latest release
+sh install.sh uninstall                # remove from --prefix
+sh install.sh --version v0.1.1         # pin a specific release
+sh install.sh --prefix ~/bin           # custom install dir
+```
+
+Windows users: download the `.zip` from the
+[releases page](https://github.com/xunholy/promptzero/releases).
+
+**From source:**
+
 ```bash
 git clone https://github.com/xunholy/promptzero.git
 cd promptzero

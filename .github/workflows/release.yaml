@@ -70,6 +70,9 @@ jobs:
           sha256sum *.tar.gz *.zip 2>/dev/null > checksums.txt
           cat checksums.txt
 
+      - name: Stage install.sh alongside release assets
+        run: cp install.sh dist/install.sh
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -78,3 +81,4 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+            dist/install.sh
