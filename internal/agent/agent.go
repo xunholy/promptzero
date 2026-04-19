@@ -543,7 +543,7 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "subghz_tx_key":
 		return a.flipper.SubGHzTxKey(str(p, "key_hex"), uint32(intOr(p, "frequency", 0)), uint32(intOr(p, "te", 0)), intOr(p, "repeat", 0))
 	case "subghz_rx_raw":
-		return a.flipper.SubGHzRxRaw(str(p, "file"), uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
+		return a.flipper.SubGHzRxRaw(uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
 	case "subghz_chat":
 		return a.flipper.SubGHzChat(uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
 

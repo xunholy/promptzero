@@ -45,6 +45,7 @@ func TestRolljamLabDemoHappyPath(t *testing.T) {
 		t.Skip("slow; full composite workflow — rerun without -short")
 	}
 	f, _ := mockFlipper(t,
+		mock.WithHandler("device_info", func(_ []string) string { return mock.MomentumDeviceInfo }),
 		mock.WithHandler("subghz", func(args []string) string {
 			// Any rx_raw call succeeds with a short non-empty capture banner.
 			return "Capture started\n128 bytes written\nCapture stopped"

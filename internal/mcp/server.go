@@ -214,15 +214,14 @@ func (s *Server) registerFlipperTools() {
 			return f.SubGHzTxKey(sa(a, "key_hex"), uint32(na(a, "frequency")), uint32(na(a, "te")), int(na(a, "repeat")))
 		})
 
-	s.add("subghz_rx_raw", "Start a raw Sub-GHz capture to a .sub file.",
+	s.add("subghz_rx_raw", "Stream raw Sub-GHz pulses to stdout (Momentum firmware only). Returns the captured pulse data; callers can save the output via storage_write if a persistent file is needed.",
 		[]mcp.ToolOption{
-			mcp.WithString("file", mcp.Required(), mcp.Description("Destination .sub file path")),
 			mcp.WithNumber("frequency", mcp.Description("Frequency in Hz")),
 			mcp.WithNumber("duration_seconds", mcp.Description("Capture duration (default 30)")),
 		},
-		[]string{"file"},
+		nil,
 		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.SubGHzRxRaw(sa(a, "file"), uint32(na(a, "frequency")), durationParam(a, "duration_seconds", 30*time.Second))
+			return f.SubGHzRxRaw(uint32(na(a, "frequency")), durationParam(a, "duration_seconds", 30*time.Second))
 		})
 
 	s.add("subghz_chat", "Join an interactive Sub-GHz chat — actively transmits on keystrokes.",

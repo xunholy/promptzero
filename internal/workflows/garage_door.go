@@ -57,7 +57,16 @@ func GarageDoorTriage(ctx context.Context, deps Deps, params map[string]interfac
 		ts := time.Now().Unix()
 		capturePath := fmt.Sprintf("/ext/subghz/triage_%d_%d.sub", freq, ts)
 		rxPhase := runPhase(fmt.Sprintf("rx_%d", freq), "subghz_rx_raw", func() (string, error) {
-			return deps.Flipper.SubGHzRxRaw(capturePath, uint32(freq), dur)
+			out, err := deps.Flipper.SubGHzRxRaw(uint32(freq), dur)
+			if err != nil {
+				return out, err
+			}
+			if out != "" {
+				if werr := deps.Flipper.StorageWrite(capturePath, out); werr != nil {
+					return out, fmt.Errorf("saving raw capture: %w", werr)
+				}
+			}
+			return out, nil
 		})
 		phases = append(phases, rxPhase)
 		recordPhase(deps.Audit, wf, rxPhase, map[string]interface{}{"frequency": freq, "file": capturePath}, "medium")

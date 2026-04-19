@@ -21,19 +21,19 @@ func TestGarageDoorTriageHappyPath(t *testing.T) {
 	if testing.Short() {
 		t.Skip("slow; full composite workflow — rerun without -short")
 	}
-	// The mock dispatches on the first token — `subghz rx_raw <path> <freq>`
-	// and `subghz decode_raw <path>` both enter through "subghz". We
-	// branch on args[0] to simulate: 433.92 MHz has a signal, 868.35 has
-	// nothing.
+	// The mock uses Momentum firmware so SubGHzRxRaw streams to stdout
+	// (no file-path arg). Command: `subghz rx_raw <freq> 0`
+	// args dispatched: ["rx_raw", "<freq>", "0"]
 	f, _ := mockFlipper(t,
+		mock.WithHandler("device_info", func(_ []string) string { return mock.MomentumDeviceInfo }),
 		mock.WithHandler("subghz", func(args []string) string {
 			if len(args) == 0 {
 				return ""
 			}
 			switch args[0] {
 			case "rx_raw":
-				// args[1]=file, args[2]=freq
-				if len(args) >= 3 && args[2] == "433920000" {
+				// args[1]=freq, args[2]=device-index (Momentum SubGHzNeedsDev)
+				if len(args) >= 2 && args[1] == "433920000" {
 					return "Capture started at 433.92 MHz\nCapture stopped — 128 samples written"
 				}
 				return "Capture started\nNo signal captured"

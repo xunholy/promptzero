@@ -78,7 +78,16 @@ func RolljamLabDemo(ctx context.Context, deps Deps, params map[string]interface{
 		fmt.Sprintf("Ready for press #1 on %d Hz — capturing for %d seconds", freq, perPress)))
 
 	p1 := runPhase("press1_rx", "subghz_rx_raw", func() (string, error) {
-		return deps.Flipper.SubGHzRxRaw(press1, uint32(freq), dur)
+		out, err := deps.Flipper.SubGHzRxRaw(uint32(freq), dur)
+		if err != nil {
+			return out, err
+		}
+		if out != "" {
+			if werr := deps.Flipper.StorageWrite(press1, out); werr != nil {
+				return out, fmt.Errorf("saving press1 capture: %w", werr)
+			}
+		}
+		return out, nil
 	})
 	phases = append(phases, p1)
 	recordPhase(deps.Audit, wf, p1,
@@ -101,7 +110,16 @@ func RolljamLabDemo(ctx context.Context, deps Deps, params map[string]interface{
 		fmt.Sprintf("Press #1 captured to %s — now press the remote again for press #2", press1)))
 
 	p2 := runPhase("press2_rx", "subghz_rx_raw", func() (string, error) {
-		return deps.Flipper.SubGHzRxRaw(press2, uint32(freq), dur)
+		out, err := deps.Flipper.SubGHzRxRaw(uint32(freq), dur)
+		if err != nil {
+			return out, err
+		}
+		if out != "" {
+			if werr := deps.Flipper.StorageWrite(press2, out); werr != nil {
+				return out, fmt.Errorf("saving press2 capture: %w", werr)
+			}
+		}
+		return out, nil
 	})
 	phases = append(phases, p2)
 	recordPhase(deps.Audit, wf, p2,

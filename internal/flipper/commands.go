@@ -57,7 +57,9 @@ func (f *Flipper) SetLED(color string, brightness int) error {
 // successful detection. LED feedback is handled at the turn level (see main's
 // REPL loop) so a single long scan doesn't flicker the LED on and off.
 // Vibration errors are swallowed — firmware without `vibro` support won't
-// break the scan.
+// break the scan. Note: the inner `vibro 1` exec is sent directly (not via
+// Vibro()), so stealth-mode / vibro-disabled banners from Momentum are not
+// detected here; the buzz is best-effort and silent failure is acceptable.
 func (f *Flipper) withSuccessBuzz(fn func() (string, error)) (string, error) {
 	out, err := fn()
 	if err == nil {
@@ -602,11 +604,20 @@ func (f *Flipper) LoaderListParsed() (LoaderApps, error) {
 
 // --- Input ---
 
+// validInputEventTypes is the allowlist accepted by all supported firmware
+// forks (Momentum input_cli.c:input_cli_send; "repeat" is not handled).
+var validInputEventTypes = map[string]struct{}{
+	"press": {}, "release": {}, "short": {}, "long": {},
+}
+
 // InputSend sends a synthetic button input event.
 // CLI: input send <button> <type>
 // button: up, down, left, right, ok, back
-// eventType: press, release, short, long  ("repeat" is not accepted on Momentum)
+// eventType: press, release, short, long
 func (f *Flipper) InputSend(button string, eventType string) (string, error) {
+	if _, ok := validInputEventTypes[eventType]; !ok {
+		return "", fmt.Errorf("invalid input eventType %q: must be one of press, release, short, long", eventType)
+	}
 	return f.Exec(fmt.Sprintf("input send %s %s", sanitizeArg(button), sanitizeArg(eventType)))
 }
 
@@ -703,12 +714,19 @@ func (f *Flipper) StorageFSInfoMap(path string) (map[string]string, error) {
 		case strings.HasPrefix(line, "Type:"):
 			out["type"] = strings.TrimSpace(strings.TrimPrefix(line, "Type:"))
 		case strings.HasPrefix(line, "SN:"):
-			// SD-card metadata line (ext only) — firmware emits a single
-			// "<manuf_hex><oem_id> <product> v<maj>.<min>" preceding line
-			// then "SN:<serial_hex> <manuf_month>/<manuf_year>". Capture
-			// the serial + date as one string; the product line is picked
-			// up below.
-			out["sd_serial"] = strings.TrimSpace(strings.TrimPrefix(line, "SN:"))
+			// Momentum's storage_cli_info for /ext emits:
+			//   SN:<serial_hex> <month>/<year>
+			// Parse into individual keys (storage_cli.c printf format).
+			rest := strings.TrimSpace(strings.TrimPrefix(line, "SN:"))
+			if fields := strings.Fields(rest); len(fields) == 2 {
+				out["sd_serial"] = fields[0]
+				if parts := strings.SplitN(fields[1], "/", 2); len(parts) == 2 {
+					out["sd_manufacturing_month"] = parts[0]
+					out["sd_manufacturing_year"] = parts[1]
+				}
+			} else {
+				out["sd_serial"] = rest
+			}
 		default:
 			// "<N>KiB total" / "<N>KiB free" lines.
 			if n, suffix, ok := parseKiBLine(line); ok {
@@ -720,11 +738,12 @@ func (f *Flipper) StorageFSInfoMap(path string) (map[string]string, error) {
 				}
 				continue
 			}
-			// Any line starting with two hex digits followed by a space is
-			// the SD-card product descriptor: "<manuf_hex><oem_id> <product>
-			// v<maj>.<min>". Capture verbatim; consumers format as needed.
+			// SD-card product-descriptor line: "<manuf_2hex><oem_id> <product> v<maj>.<min>"
+			// (storage_cli.c: printf "%02x%s %s v%i.%i"). The first two hex chars are
+			// the manufacturer_id; the full line is stored verbatim as sd_product.
 			if isSDProductLine(line) {
 				out["sd_product"] = line
+				out["sd_manufacturer"] = strings.ToUpper(line[:2])
 			}
 		}
 	}
@@ -904,21 +923,19 @@ func (f *Flipper) LED(channel string, value int) (string, error) {
 
 // --- Sub-GHz (capability-gap primitives) ---
 
-// SubGHzRxRaw starts a raw Sub-GHz capture that is written to a .sub file.
-// Useful for protocol-level reverse engineering when decode_raw isn't enough.
-// Xtreme/Unleashed firmware appends a trailing `<device>` arg (0 = internal
-// CC1101, 1 = external); honored when SubGHzNeedsDev is set.
-//
-// Not available on Momentum: Momentum's subghz rx_raw streams raw pulses to
-// stdout and does not accept a file-path argument (subghz_cli.c:
-// subghz_cli_command_rx_raw). Calling this on Momentum returns an error.
-// CLI: subghz rx_raw <file_path> [<frequency>] [<device>]
-func (f *Flipper) SubGHzRxRaw(filePath string, frequency uint32, duration time.Duration) (string, error) {
+// SubGHzRxRaw streams raw Sub-GHz pulse data to the caller's return value.
+// Available on Momentum firmware (subghz_cli.c:subghz_cli_command_rx_raw
+// streams pulses to stdout with no file-path argument). On stock/Unleashed/
+// Xtreme firmware, the rx_raw verb requires a file-path argument that this
+// API no longer accepts — those callers should use SubGHzRx for time-bounded
+// capture, or construct a .sub capture manually via StorageWrite.
+// CLI (Momentum): subghz rx_raw [<frequency>]
+func (f *Flipper) SubGHzRxRaw(frequency uint32, duration time.Duration) (string, error) {
 	caps := f.Capabilities()
-	if !caps.SubGHzRxRawHasFilePath {
-		return "", fmt.Errorf("subghz rx_raw is not supported on %s firmware (streams to stdout, no file capture)", caps.FriendlyFork())
+	if caps.SubGHzRxRawHasFilePath {
+		return "", fmt.Errorf("subghz rx_raw on %s firmware requires a file-path argument; use SubGHzRx for capture or StorageWrite to build a .sub file", caps.FriendlyFork())
 	}
-	cmd := fmt.Sprintf("subghz rx_raw %s", sanitizeArg(filePath))
+	cmd := "subghz rx_raw"
 	if frequency > 0 {
 		cmd += fmt.Sprintf(" %d", frequency)
 	}

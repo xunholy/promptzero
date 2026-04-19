@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -37,6 +38,16 @@ hardware_name                 : MockDolphin
 firmware_commit               : deadbeef
 firmware_origin_fork          : Xtreme
 firmware_version              : XFW-MOCK
+firmware_build_date           : 01-01-2025`
+
+// MomentumDeviceInfo is a canned device_info for tests that need Momentum
+// firmware capabilities (SubGHzRxRawHasFilePath=false, NFCFlaggedArgs=true).
+const MomentumDeviceInfo = `hardware_model                : Flipper Zero
+hardware_uid                  : 4521480226E18001
+hardware_name                 : MockDolphin
+firmware_commit               : deadbeef
+firmware_origin_fork          : Momentum
+firmware_version              : MNTM-MOCK
 firmware_build_date           : 01-01-2025`
 
 // DefaultBanner is emitted once when the slave is first opened, as the
@@ -89,6 +100,11 @@ type Mock struct {
 
 	rxMu    sync.Mutex
 	rxBytes []byte // every raw byte received from CLI-under-test (includes \x03)
+
+	// writeChunkRemaining is set by "storage write_chunk <path> <N>" and
+	// causes the serve loop to consume the next N bytes as raw binary data
+	// rather than dispatching them as commands. Accessed only from serve().
+	writeChunkRemaining int64
 
 	closed chan struct{}
 	done   chan struct{}
@@ -217,6 +233,16 @@ func (m *Mock) serve() {
 		m.rxMu.Unlock()
 		for i := 0; i < n; i++ {
 			b := rb[i]
+			// Binary consume mode: swallow bytes written after write_chunk and
+			// emit a prompt once all N bytes have been received.
+			if m.writeChunkRemaining > 0 {
+				m.writeChunkRemaining--
+				if m.writeChunkRemaining == 0 {
+					buf.Reset()
+					_, _ = m.master.WriteString("\r\n>: ")
+				}
+				continue
+			}
 			switch b {
 			case '\x03':
 				// Ctrl+C — emit a fresh prompt, no echo.
@@ -248,6 +274,16 @@ func (m *Mock) dispatch(line string) {
 
 	fields := strings.Fields(line)
 	head := fields[0]
+
+	// storage write_chunk <path> <N>: switch to binary consume mode.
+	// The prompt is suppressed here; serve() emits it once all N bytes arrive.
+	if head == "storage" && len(fields) >= 4 && fields[1] == "write_chunk" {
+		if n, err := strconv.ParseInt(fields[3], 10, 64); err == nil && n > 0 {
+			m.writeChunkRemaining = n
+			return
+		}
+	}
+
 	body := ""
 	if h, ok := m.handlers[head]; ok {
 		body = h(fields[1:])
