@@ -316,6 +316,22 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		for _, tc := range toolCalls {
 			input := json.RawMessage(tc.Input)
 			toolRisk := risk.Classify(tc.Name)
+			// For run_payload, resolve the effective risk of the underlying
+			// operation from the path argument and use the maximum of the two.
+			// This ensures a run_payload that dispatches to a Critical op is
+			// always gated as Critical, not just as the nominal High of the
+			// run_payload tool name.
+			if tc.Name == "run_payload" {
+				var rp struct {
+					Path string `json:"path"`
+				}
+				if err := json.Unmarshal(tc.Input, &rp); err == nil {
+					_, resolved := resolveRunPayloadRisk(rp.Path)
+					if resolved > toolRisk {
+						toolRisk = resolved
+					}
+				}
+			}
 
 			// Risk gate: consult the confirm callback before destructive tools run.
 			// Denied calls are short-circuited with a synthetic tool_result so the
@@ -1071,6 +1087,29 @@ func (a *Agent) runPayload(path, command string) (string, error) {
 		return a.flipper.LoaderOpen("RFID", path)
 	default:
 		return "", fmt.Errorf("unknown payload type for path: %s", path)
+	}
+}
+
+// resolveRunPayloadRisk inspects the path argument of a run_payload call and
+// returns the name of the underlying operation it will dispatch to along with
+// the effective risk level. This mirrors the dispatch logic in runPayload so
+// the confirm gate can gate on the real risk before executing anything.
+func resolveRunPayloadRisk(path string) (underlyingTool string, level risk.Level) {
+	switch {
+	case strings.Contains(path, "evil_portal"):
+		return "MarauderEvilPortalStart", risk.Critical
+	case strings.HasSuffix(path, ".txt") && strings.Contains(path, "badusb"):
+		return "BadUSBRun", risk.Critical
+	case strings.HasSuffix(path, ".sub"):
+		return "SubGHzTx", risk.Critical
+	case strings.HasSuffix(path, ".nfc"):
+		return "NFCEmulate", risk.High
+	case strings.HasSuffix(path, ".ir"):
+		return "IRUniversal", risk.Low
+	case strings.HasSuffix(path, ".rfid"):
+		return "RFIDEmulate", risk.High
+	default:
+		return "unknown", risk.High
 	}
 }
 

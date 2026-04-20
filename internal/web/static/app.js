@@ -976,9 +976,12 @@
       loadDevice() {
         this.deviceUI.loaded = false;
         this.deviceUI.error = '';
-        this._fetch('api/device')
+        var ctrl = new AbortController();
+        var tid = setTimeout(function() { ctrl.abort(); }, 5000);
+        this._fetch('api/device', { signal: ctrl.signal })
           .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
           .then(({ ok, body }) => {
+            clearTimeout(tid);
             this.deviceUI.loaded = true;
             if (!ok) { this.deviceUI.error = (body && body.error) || 'device info unavailable'; return; }
             /* Ensure every section is present as an object so x-text dereferences don't throw. */
@@ -991,14 +994,24 @@
             var fork = (body.firmware && body.firmware.firmware_origin_fork) || 'stock';
             this.deviceUI.title = 'DEVICE · ' + name + ' · ' + fork;
           })
-          .catch((e) => { this.deviceUI.loaded = true; this.deviceUI.error = String(e); });
+          .catch((e) => {
+            clearTimeout(tid);
+            this.deviceUI.loaded = true;
+            if (e && e.name === 'AbortError') {
+              this.deviceUI.error = 'Flipper unreachable (timed out after 5s)';
+            } else {
+              this.deviceUI.error = String(e);
+            }
+          });
       },
       /* Background refresh for the header chips + battery indicator. Shares
          the /api/device endpoint with the modal so a single round-trip
          drives both surfaces. Silent on failure — we'd rather show empty
          chips than a banner for every transient serial hiccup. */
       loadSessionDevice() {
-        this._fetch('api/device')
+        var ctrl = new AbortController();
+        setTimeout(function() { ctrl.abort(); }, 5000);
+        this._fetch('api/device', { signal: ctrl.signal })
           .then((r) => (r.ok ? r.json() : null))
           .then((body) => { if (body) this._applyDeviceToSession(body); })
           .catch(() => {});

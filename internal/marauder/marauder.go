@@ -2,6 +2,7 @@ package marauder
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -199,17 +200,28 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 	return lines, done, nil
 }
 
-// readUntilPrompt accumulates raw bytes from the port until the '> ' prompt is
-// seen or the wall-clock deadline expires. Unlike bufio.ReadString('\n'), this
-// approach does not block waiting for a newline — Marauder's '> ' prompt has
-// none. SetReadTimeout is set to 100 ms per read so the deadline is polled
-// regularly even when the CP210x driver's SetReadTimeout is unreliable under WSL.
-func (m *Marauder) readUntilPrompt(timeout time.Duration) (string, error) {
-	deadline := time.Now().Add(timeout)
+// readUntilPromptCtx accumulates raw bytes from the port until the '> ' prompt
+// is seen or the context deadline/timeout fires. This variant is
+// context-aware: the deadline is tracked via ctx rather than wall-clock
+// time.Now() comparisons, which avoids false-early or false-never expiries
+// under host suspend or NTP clock jumps.
+//
+// SetReadTimeout is set to 100 ms per iteration so ctx.Done() is polled
+// frequently even when the CP210x driver's SetReadTimeout is unreliable.
+func (m *Marauder) readUntilPromptCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	var accum []byte
 	buf := make([]byte, 512)
 
-	for time.Now().Before(deadline) {
+	for {
+		select {
+		case <-ctx.Done():
+			return parseMarauderResponse(accum), fmt.Errorf("timeout waiting for prompt after %v", timeout)
+		default:
+		}
+
 		_ = m.port.SetReadTimeout(100 * time.Millisecond)
 		n, err := m.port.Read(buf)
 		if err != nil {
@@ -223,8 +235,16 @@ func (m *Marauder) readUntilPrompt(timeout time.Duration) (string, error) {
 			return parseMarauderResponse(accum[:idx]), nil
 		}
 	}
+}
 
-	return parseMarauderResponse(accum), fmt.Errorf("timeout waiting for prompt after %v", timeout)
+// readUntilPrompt is a backwards-compatible wrapper around readUntilPromptCtx
+// that uses context.Background(). Prefer readUntilPromptCtx in new code when
+// a meaningful context is available.
+//
+// TODO: thread a real context through Exec and its callers so this wrapper
+// can be removed.
+func (m *Marauder) readUntilPrompt(timeout time.Duration) (string, error) {
+	return m.readUntilPromptCtx(context.Background(), timeout)
 }
 
 // marauderPromptIndex returns the byte offset of the last '> ' in b, or -1.
