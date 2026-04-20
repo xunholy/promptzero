@@ -785,6 +785,14 @@
         }
         return '';
       },
+      // 5s is the eye-friendly threshold — long enough to not nag on quick ops,
+      // short enough to help when the device needs physical interaction.
+      TOOL_LONG_RUN_MS: 5000,
+      toolLongRunHint(item) {
+        if (item.status !== 'running' || !item.startedAt) return '';
+        if ((Date.now() - item.startedAt) < this.TOOL_LONG_RUN_MS) return '';
+        return 'check Flipper screen for prompts';
+      },
       formatJSON(obj) {
         if (obj == null || obj === '') return '';
         if (typeof obj === 'string') {

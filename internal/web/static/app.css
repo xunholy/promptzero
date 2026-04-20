@@ -558,6 +558,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .pz-tool-name   { color: var(--pz-text-primary); }
 .pz-tool-sep    { color: var(--pz-text-muted); }
 .pz-tool-dur    { color: var(--pz-text-dim); font-variant-numeric: tabular-nums; }
+.pz-tool-long-hint  { color: var(--pz-text-dim); font-size: var(--pz-text-xs); font-style: italic; }
 
 .pz-tool-args-toggle {
   color: var(--pz-text-dim);

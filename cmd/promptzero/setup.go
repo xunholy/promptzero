@@ -54,7 +54,9 @@ func printFirstRunHint() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "  Welcome. A few steps to get started:")
 	fmt.Fprintln(os.Stderr, "    1. Run `promptzero --init` to scaffold ~/.promptzero/config.yaml")
-	fmt.Fprintln(os.Stderr, "    2. Set ANTHROPIC_API_KEY (required) — export it or add api_key to the config")
+	fmt.Fprintln(os.Stderr, "    2. Set your Anthropic API key — either:")
+	fmt.Fprintln(os.Stderr, "         export ANTHROPIC_API_KEY=sk-ant-\u2026")
+	fmt.Fprintln(os.Stderr, "       or add `api_key: sk-ant-\u2026` to ~/.promptzero/config.yaml")
 	fmt.Fprintln(os.Stderr, "    3. Plug in your Flipper Zero (USB Virtual COM Port mode)")
 	fmt.Fprintln(os.Stderr, "    4. Relaunch `promptzero` and type /help for commands")
 	fmt.Fprintln(os.Stderr)
@@ -285,7 +287,7 @@ func connectFlipper(ctx context.Context, sh *signalHandler, cfg *config.Config, 
 			statusWarn("Flipper connection cancelled")
 			return nil, func() {}, err
 		}
-		statusErr(fmt.Sprintf("Flipper connection failed: %v", err))
+		statusErr(fmt.Sprintf("Flipper connection failed: %v — check USB cable, try `--port /dev/ttyACM0` or `--transport ble`, or run `promptzero --init`", err))
 		return nil, func() {}, fmt.Errorf("flipper: %w", err)
 	}
 
