@@ -686,6 +686,15 @@ func (s *Server) handleText(ctx context.Context, c *sessionConn, text string) {
 	s.emitPhaseIfChanged(ts, "Thinking")
 	defer s.emitPhaseIfChanged(ts, "Idle")
 
+	// Mirror the REPL: blue LED on for the whole turn, off afterwards.
+	// Gives operators the same "device is working" cue in the web UI
+	// as they get on the CLI. Errors are ignored — the LED is cosmetic
+	// and a failed write shouldn't block a real turn.
+	if s.flipper != nil {
+		_ = s.flipper.SetLED("b", 0xff)
+		defer func() { _ = s.flipper.SetLED("b", 0) }()
+	}
+
 	resp, err := s.agent.Run(turnCtx, text)
 	if err != nil {
 		s.broadcast(map[string]any{
