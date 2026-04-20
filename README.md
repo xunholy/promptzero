@@ -99,9 +99,9 @@ promptzero> what's this?  [photo of a remote control]
 
 > [!IMPORTANT]
 > - **Flipper Zero** with modded firmware (Momentum, Unleashed, or RogueMaster)
-> - **Go 1.25+** (required by dependencies)
 > - **Anthropic API key** (`ANTHROPIC_API_KEY`)
 > - **Optional:** ESP32 Marauder WiFi devboard, OpenAI API key (for voice), sox (for CLI voice)
+> - **Building from source only:** Go 1.25+
 
 > [!NOTE]
 > **WSL2 users:** USB devices aren't passed through to WSL by default. Install [usbipd-win](https://github.com/dorssel/usbipd-win) on Windows, then from an admin PowerShell:
@@ -122,14 +122,8 @@ curl -fsSL https://raw.githubusercontent.com/xunholy/promptzero/main/install.sh 
 
 The script downloads the latest release, verifies the SHA-256 against the
 release's `checksums.txt`, and installs `promptzero` into the first writable
-directory of: `$XDG_BIN_HOME`, `~/.local/bin`, or `/usr/local/bin`.
-
-Pin a version or choose an install dir with:
-
-```bash
-sh install.sh --version v0.2.0
-sh install.sh --prefix ~/bin
-```
+directory of: `$XDG_BIN_HOME`, `~/.local/bin`, or `/usr/local/bin`. Run
+`sh install.sh --help` for flags (`--version`, `--prefix`).
 
 Once installed, let the CLI keep itself current:
 
@@ -204,26 +198,29 @@ can copy into `~/.promptzero/` to get started:
 
 ```bash
 # CLI mode (default)
-./bin/promptzero
+promptzero
 
 # Web UI
-./bin/promptzero --web
+promptzero --web
 
 # Web UI on custom port with WiFi devboard
-./bin/promptzero --web --web-port 3000 --wifi
+promptzero --web --web-port 3000 --wifi
 
 # CLI with voice input
-./bin/promptzero --voice
+promptzero --voice
 
 # MCP server (for Claude Desktop / Claude Code)
-./bin/promptzero --mcp
+promptzero --mcp
 
 # Use local Ollama for payload generation (zero exfiltration)
-./bin/promptzero --gen-provider ollama --ollama-model qwen2.5-coder:14b
+promptzero --gen-provider ollama --ollama-model qwen2.5-coder:14b
 
 # Everything at once
-./bin/promptzero --web --wifi --voice
+promptzero --web --wifi --voice
 ```
+
+> [!TIP]
+> If you built from source, the examples above become `./bin/promptzero …` — or add `bin/` to your `PATH`.
 
 ### Transport options
 
@@ -245,7 +242,7 @@ Select a transport by setting `serial.transport_url` in your config, or the `--t
 Find your Flipper's BLE MAC on the device: **Settings → Bluetooth → scroll down → BLE MAC**. Then:
 
 ```bash
-./bin/promptzero --transport ble://AA:BB:CC:DD:EE:FF --web
+promptzero --transport ble://AA:BB:CC:DD:EE:FF --web
 ```
 
 Or wire it into your config and omit the flag:
@@ -371,13 +368,13 @@ The core differentiator. Describe what you want in plain English and PromptZero 
 
 ```bash
 # Default: Claude generates payloads
-./bin/promptzero
+promptzero
 
 # Local Ollama: payloads never leave your machine
-./bin/promptzero --gen-provider ollama --ollama-model llama3.1
+promptzero --gen-provider ollama --ollama-model llama3.1
 
 # OpenRouter: use any model for generation
-./bin/promptzero --gen-provider openrouter
+promptzero --gen-provider openrouter
 ```
 
 ---
