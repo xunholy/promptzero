@@ -104,12 +104,20 @@ Convention used throughout this repo: prefix ad-hoc test files with
 
 ## 8. Risk confirmation is on by default
 
-In the interactive REPL, any `high`/`critical` tool pauses with a
-`⚠ About to run …` prompt. Answers:
-- `y` / `Y` → approve this one
+In the interactive REPL, any `high` or `critical` tool pauses with a
+`⚠ About to run …` prompt. The approval path differs by risk level:
+
+**High risk:**
+- `y` / `Y` → approve this one tool
 - `n` / `N` / Enter / Esc → deny
-- type `all` + Enter → approve every remaining high/critical tool
-  in the current turn
+- type `all` + Enter → approve all remaining *non-critical* tools in this turn
+
+**Critical risk (destructive or irreversible):**
+- type `confirm` + Enter → approve this one tool
+- any other input (including `y`, `all`, or Enter alone) → deny
+
+`all` does **not** auto-approve critical tools — each critical tool
+always requires its own `confirm` + Enter.
 
 In `pzrunner` (no UI), no callback is wired, so high/critical tools
 execute immediately — only run `pzrunner` against prompts you

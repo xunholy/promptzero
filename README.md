@@ -53,14 +53,14 @@ promptzero> what's this?  [photo of a remote control]
   I can generate a complete remote file. Want me to create it?
 ```
 
-### 97 Tools Across 5 Subsystems
+### 152 Tools Across 5 Subsystems
 
 | Subsystem | Tools | Capabilities |
 |-----------|-------|-------------|
-| **Flipper Zero** | 34 | Sub-GHz TX/RX, IR TX/RX, NFC detect/emulate, RFID read/write/emulate, iButton, GPIO, BadUSB, storage, app launcher |
+| **Flipper Zero** | 89 | Sub-GHz TX/RX, IR TX/RX, NFC detect/emulate, RFID read/write/emulate, iButton, GPIO, BadUSB, storage, app launcher |
 | **ESP32 Marauder** | 51 | WiFi scan, deauth, beacon spam, probe flood, PMKID capture, evil portal, BLE spam, BT scanning, skimmer detection, network recon, wardriving, MAC spoofing |
 | **AI Generation** | 7 | Evil portal HTML, BadUSB DuckyScript, Sub-GHz .sub files, IR .ir remotes, NFC .nfc tags - all from natural language descriptions |
-| **Intelligence** | 3 | Vision analysis (photo -> device ID + attack vector), SD card app/signal discovery, device registry |
+| **Intelligence** | 2 | Vision analysis (photo -> device ID + attack vector), SD card app/signal discovery |
 | **Audit** | 3 | SQLite audit log, session export (JSON), statistics |
 
 ---
@@ -76,7 +76,7 @@ promptzero> what's this?  [photo of a remote control]
                v                                   v
 ┌──────────────────────────┐         ┌─────────────────────────────┐
 │   Claude Agent (tool use)│         │   Generation Pipeline       │
-│   97 tools / audit log   │────────>│   Claude / Ollama / OpenRouter│
+│   152 tools / audit log  │────────>│   Claude / Ollama / OpenRouter│
 │   risk classification    │         │   generate -> deploy -> run │
 └──────────┬───────────────┘         └─────────────────────────────┘
            │
@@ -271,7 +271,7 @@ Cross-compiled darwin binaries from a Linux host ship a stub that returns a clea
 - **Throughput is ~10× slower** than USB. A `log_stream` or a long `subghz rx` capture is noticeably less responsive, but every wrapper works — the CLI protocol is identical over the Flipper's serial GATT service.
 - **Range** is Bluetooth-normal (~10 m Class 2 in practice).
 
-All 97 tools work unchanged over BLE — capabilities detection, NFC subshell, loader close-via-back-button, everything. The transport layer is the only thing that changes.
+All 152 tools work unchanged over BLE — capabilities detection, NFC subshell, loader close-via-back-button, everything. The transport layer is the only thing that changes.
 
 ---
 
@@ -293,6 +293,8 @@ Dark-themed browser interface at `http://localhost:8080`. Includes:
 - Chat interface with real-time WebSocket communication
 - Browser-based voice recording (no sox needed)
 - Status indicators and conversation management
+
+**Flipper feedback:** When the web UI (or CLI REPL) drives a turn, the Flipper's blue LED lights up for the duration of that turn and turns off once the agent finishes — a quick physical signal that the agent is actively working. The CLI REPL also notes this on startup: `blue LED while agent is working`.
 
 #### Auth
 
