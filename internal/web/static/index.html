@@ -933,7 +933,7 @@
     </div>
   </template>
 
-  <!-- CRITICAL RISK MODAL (only for risk === 'critical'; requires typing 'all' to enable Approve) -->
+  <!-- CRITICAL RISK MODAL (only for risk === 'critical'; requires typing 'confirm' to enable Approve) -->
   <template x-if="criticalConfirm">
     <div class="pz-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pz-modal-title">
       <div class="pz-modal pz-modal-critical">
@@ -947,15 +947,17 @@
           <pre class="pz-tool-block" x-text="formatJSON(confirmRequest.input)"></pre>
         </div>
         <label class="pz-modal-confirm-label" for="pz-critical-confirm">
-          Type <span class="pz-mono">all</span> to enable approval:
+          Type <span class="pz-mono">confirm</span> to enable approval:
         </label>
         <input id="pz-critical-confirm"
                class="pz-modal-confirm-input pz-mono"
                type="text"
                autocomplete="off"
                spellcheck="false"
-               pattern="all"
-               x-model="criticalConfirmText">
+               pattern="confirm"
+               placeholder="confirm"
+               x-model="criticalConfirmText"
+               @keydown.enter.prevent="criticalReady && respondConfirm('approve')">
         <div class="pz-gate-actions">
           <button type="button"
                   class="pz-gate-btn pz-gate-approve"

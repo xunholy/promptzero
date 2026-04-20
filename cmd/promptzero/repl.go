@@ -86,6 +86,11 @@ func decisionLabel(d agent.Decision) string {
 // renderConfirmPrompt paints the two-line prompt shown before a destructive
 // tool runs. Lives inside ed.writeOutput so it plays nicely with streaming
 // output and tool-status redraws.
+//
+// Critical tools get a stricter prompt: no single-key approve, no
+// blanket approve-all. The operator must type the word `confirm` so a
+// stray keystroke or approve-all reflex from an earlier tool can't
+// silently authorise something destructive.
 func renderConfirmPrompt(req agent.ConfirmRequest, cols int) {
 	pad := strings.Repeat(" ", boxPad)
 	// Size the args budget to the terminal width so a long JSON blob can't
@@ -98,9 +103,22 @@ func renderConfirmPrompt(req agent.ConfirmRequest, cols int) {
 	fmt.Fprintf(os.Stderr, "\r\033[K\n%s%s⚠ About to run%s %s%s%s %s%s%s\n",
 		pad, yellow, reset, bold, req.Tool, reset, dim, args, reset)
 	riskStr := fmt.Sprintf("%s  risk: %s%s%s", pad, riskColor(req.Risk.String()), req.Risk.String(), reset)
+	deny := fmt.Sprintf("%s[N]%s deny (default)", bold+red, reset)
+
+	if req.Risk == risk.Critical {
+		approve := fmt.Sprintf("type %sconfirm%s+Enter to approve", bold+green, reset)
+		if cols < 80 {
+			fmt.Fprintf(os.Stderr, "%s\n", riskStr)
+			fmt.Fprintf(os.Stderr, "%s    %s\n", pad, approve)
+			fmt.Fprintf(os.Stderr, "%s    %s\n", pad, deny)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "%s · %s  %s\n", riskStr, approve, deny)
+		return
+	}
+
 	approve := fmt.Sprintf("%s[y]%s approve", bold+green, reset)
 	approveAll := fmt.Sprintf("type %sall%s+Enter to approve all remaining", bold+cyan, reset)
-	deny := fmt.Sprintf("%s[N]%s deny (default)", bold+red, reset)
 	if cols < 80 {
 		fmt.Fprintf(os.Stderr, "%s\n", riskStr)
 		fmt.Fprintf(os.Stderr, "%s    %s\n", pad, approve)
@@ -116,12 +134,20 @@ func renderConfirmPrompt(req agent.ConfirmRequest, cols int) {
 // clear pendingConfirm). Non-decision keys (cursor moves, etc.) are
 // dropped so stray arrow-key escapes don't accidentally approve.
 //
-// Single-key answers: y/Y approves this one, n/N denies, Enter/Esc/Ctrl+C
-// denies. Any other printable key flips into "type-in" mode: we buffer
-// characters until Enter. If the buffer equals "all", that's approve-all;
-// anything else denies. This is deliberately slower than a single key so
-// a stray paste or leaning on the keyboard can't disable the risk gate.
+// Non-critical risk:
+//   - y / Y approves this one
+//   - n / N / Enter / Esc / Ctrl+C denies
+//   - Any other printable key enters type-in mode; typing `all` + Enter
+//     approve-alls remaining tools in the turn, anything else denies.
+//
+// Critical risk (destructive actions, reflash, key writes, RF TX-in-anger,
+// BadUSB run, etc.): no single-key approve, no approve-all. The operator
+// must type the word `confirm` + Enter. Rationale: a stray `y` from the
+// previous prompt or a reflexive type-`all` shouldn't be able to cross
+// the highest-risk gate.
 func resolveConfirmKey(cs *confirmState, k keyEvent, ed *lineEditor) bool {
+	critical := cs.req.Risk == risk.Critical
+
 	// Typed-word mode: the user has started spelling something, so queue
 	// printable runes and act only on Enter / backspace / cancel keys.
 	if cs.typing != nil {
@@ -129,9 +155,12 @@ func resolveConfirmKey(cs *confirmState, k keyEvent, ed *lineEditor) bool {
 		case keyEnter:
 			typed := strings.ToLower(strings.TrimSpace(string(cs.typing)))
 			var d agent.Decision
-			if typed == "all" {
+			switch {
+			case critical && typed == "confirm":
+				d = agent.DecisionApprove
+			case !critical && typed == "all":
 				d = agent.DecisionApproveAll
-			} else {
+			default:
 				d = agent.DecisionDeny
 			}
 			return confirmResolve(cs, d, ed)
@@ -152,6 +181,17 @@ func resolveConfirmKey(cs *confirmState, k keyEvent, ed *lineEditor) bool {
 
 	switch k.kind {
 	case keyRune:
+		if critical {
+			// No single-key approve path: every rune (even `y`) enters
+			// type-in mode and only the exact word `confirm` authorises.
+			cs.typing = []rune{k.r}
+			ed.writeOutput(func() {
+				pad := strings.Repeat(" ", boxPad)
+				fmt.Fprintf(os.Stderr, "%s  %s(type `confirm` then Enter to approve this critical action, Enter to cancel)%s\n",
+					pad, dim, reset)
+			})
+			return false
+		}
 		switch k.r {
 		case 'y', 'Y':
 			return confirmResolve(cs, agent.DecisionApprove, ed)

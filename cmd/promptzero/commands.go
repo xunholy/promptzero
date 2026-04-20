@@ -284,8 +284,10 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s✗%s tool (15s)           Tool errored or timed out\n", red, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sRisk confirmation%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s⚠%s tool {args}          Awaiting approval (high/critical risk)\n", yellow, reset)
-	fmt.Fprintf(os.Stderr, "    %sy%s approve · %sN%s / Enter deny (default) · type %sall%s + Enter to approve all remaining\n",
-		bold+green, reset, bold+red, reset, bold+cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %sHigh risk:%s     %sy%s approve · %sN%s / Enter deny · type %sall%s + Enter to approve all remaining\n",
+		bold, reset, bold+green, reset, bold+red, reset, bold+cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %sCritical risk:%s type %sconfirm%s + Enter to approve · %sN%s / Enter deny · no blanket approve-all\n",
+		bold, reset, bold+green, reset, bold+red, reset)
 	fmt.Fprintf(os.Stderr, "    Use %s--yolo%s to disable, or %s--confirm-risk=<level>%s to adjust threshold.\n", cyan, reset, cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n")
 }

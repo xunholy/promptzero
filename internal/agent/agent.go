@@ -306,7 +306,14 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			// Risk gate: consult the confirm callback before destructive tools run.
 			// Denied calls are short-circuited with a synthetic tool_result so the
 			// model gets a clean "user denied" turn instead of a dangling tool_use.
-			if a.confirmCb != nil && !approveAllRemaining && toolRisk >= a.confirmThreshold {
+			//
+			// Critical tools are *always* gated, even if the operator already
+			// said "approve all remaining" for an earlier tool in the same
+			// turn. Approve-all is a convenience for reducing prompt fatigue
+			// on moderate actions; it should never silently authorise a
+			// critical one.
+			gated := toolRisk == risk.Critical || !approveAllRemaining
+			if a.confirmCb != nil && gated && toolRisk >= a.confirmThreshold {
 				switch a.confirmWithIdleTimeout(ctx, ConfirmRequest{Tool: tc.Name, Input: input, Risk: toolRisk}) {
 				case DecisionDeny:
 					const denyMsg = "user denied this action"

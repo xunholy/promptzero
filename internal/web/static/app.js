@@ -160,7 +160,7 @@
       },
       get inlineConfirm()   { return this.confirmRequest && this.confirmRequest.risk !== 'critical' ? this.confirmRequest : null; },
       get criticalConfirm() { return this.confirmRequest && this.confirmRequest.risk === 'critical' ? this.confirmRequest : null; },
-      get criticalReady()   { return this.criticalConfirmText.trim().toLowerCase() === 'all'; },
+      get criticalReady()   { return this.criticalConfirmText.trim().toLowerCase() === 'confirm'; },
       get connectionGlyph() {
         if (this.connection === 'online')  return '●';
         if (this.connection === 'offline') return '✕';

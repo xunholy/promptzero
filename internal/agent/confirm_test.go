@@ -115,7 +115,8 @@ func TestConfirmApproveAll(t *testing.T) {
 	gated := 0
 	for _, name := range tools {
 		toolRisk := risk.Classify(name)
-		if a.confirmCb != nil && !approveAllRemaining && toolRisk >= a.confirmThreshold {
+		gate := toolRisk == risk.Critical || !approveAllRemaining
+		if a.confirmCb != nil && gate && toolRisk >= a.confirmThreshold {
 			gated++
 			if a.confirmCb(context.Background(), ConfirmRequest{Tool: name, Risk: toolRisk}) == DecisionApproveAll {
 				approveAllRemaining = true
@@ -123,10 +124,66 @@ func TestConfirmApproveAll(t *testing.T) {
 		}
 	}
 
-	if calls != 1 {
-		t.Errorf("expected callback to fire once, got %d", calls)
+	// wifi_deauth and subghz_transmit are both Critical, so they each
+	// still fire the callback even after the first one returned
+	// ApproveAll. device_reboot is High, so it rides the approve-all.
+	// 3 Critical tools would be gated three times; the one non-Critical
+	// (device_reboot) is gated only when approve-all hasn't fired yet.
+	// Exact gate count depends on risk.Classify: whichever way it's
+	// tuned, critical tools must always be in the gated set.
+	critCount := 0
+	for _, name := range tools {
+		if risk.Classify(name) == risk.Critical {
+			critCount++
+		}
 	}
-	if gated != 1 {
-		t.Errorf("expected exactly one tool gated (first), got %d", gated)
+	if gated < critCount {
+		t.Errorf("expected at least %d gated (all Critical tools), got %d", critCount, gated)
+	}
+	if calls < critCount {
+		t.Errorf("expected callback to fire at least %d times (once per Critical), got %d", critCount, calls)
+	}
+}
+
+// TestConfirmCriticalNotBypassedByApproveAll asserts the "critical
+// always prompts" rule directly: approve-all on an earlier non-critical
+// tool must not skip the gate for a later critical tool.
+func TestConfirmCriticalNotBypassedByApproveAll(t *testing.T) {
+	a := &Agent{confirmThreshold: risk.High}
+
+	var seen []string
+	a.confirmCb = func(ctx context.Context, req ConfirmRequest) Decision {
+		seen = append(seen, req.Tool)
+		if len(seen) == 1 {
+			return DecisionApproveAll
+		}
+		return DecisionApprove
+	}
+
+	// Mix of risks so a High tool is the first to hit the gate, the
+	// user approve-alls, and a later Critical tool still needs a
+	// dedicated prompt.
+	tools := []struct {
+		name string
+		risk risk.Level
+	}{
+		{"some_high_tool", risk.High},
+		{"some_critical_tool", risk.Critical},
+	}
+	var approveAllRemaining bool
+	for _, tc := range tools {
+		gate := tc.risk == risk.Critical || !approveAllRemaining
+		if a.confirmCb != nil && gate && tc.risk >= a.confirmThreshold {
+			if a.confirmCb(context.Background(), ConfirmRequest{Tool: tc.name, Risk: tc.risk}) == DecisionApproveAll {
+				approveAllRemaining = true
+			}
+		}
+	}
+
+	if len(seen) != 2 {
+		t.Fatalf("expected both tools to prompt (critical must not be bypassed), got prompts for %v", seen)
+	}
+	if seen[0] != "some_high_tool" || seen[1] != "some_critical_tool" {
+		t.Errorf("unexpected prompt order: %v", seen)
 	}
 }
