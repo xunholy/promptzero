@@ -222,6 +222,21 @@ promptzero --web --wifi --voice
 > [!TIP]
 > If you built from source, the examples above become `./bin/promptzero …` — or add `bin/` to your `PATH`.
 
+### Try It
+
+With the REPL running, paste this at the `promptzero>` prompt:
+
+```
+promptzero> what's connected?
+```
+
+Expected response (Low risk, read-only):
+
+```
+Flipper Zero — firmware 0.99.1, hardware v7.4
+Battery 84 % | SD card 4.1 GB free / 7.4 GB total
+```
+
 ### Transport options
 
 Every CLI command, web session, and MCP invocation talks to the Flipper through a pluggable **transport**. The default (`serial://`) covers 99% of setups — USB cable to the Flipper — but you can also drive the Flipper **wirelessly over BLE** without a cable, or attach a mock PTY for tests.
