@@ -320,6 +320,25 @@
 
       /* ---------- WebSocket ---------- */
       _connect() {
+        /* Tear down any prior socket before opening a new one. Without
+           this, a stale WS whose onclose hasn't run yet (BFCache, auth
+           retry, a scheduled reconnect racing a still-open socket)
+           keeps delivering messages through its captured closures —
+           every text_delta and tool_status lands twice in the feed and
+           the UI renders each chunk double. Nulling the handlers first
+           makes absolutely sure the closed socket can't emit after
+           close(). */
+        if (this._ws) {
+          try {
+            this._ws.onopen = null;
+            this._ws.onmessage = null;
+            this._ws.onclose = null;
+            this._ws.onerror = null;
+            this._ws.close();
+          } catch (_) {}
+          this._ws = null;
+        }
+
         var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         var url = proto + '//' + location.host + '/ws';
         /* Token travels via the Sec-WebSocket-Protocol negotiation (`bearer,
@@ -327,10 +346,16 @@
            history the way ?token= used to. Server echoes `bearer` back on a
            successful match. */
         var wsArgs = this._token ? ['bearer', this._token] : undefined;
-        try { this._ws = wsArgs ? new WebSocket(url, wsArgs) : new WebSocket(url); }
+        var sock;
+        try { sock = wsArgs ? new WebSocket(url, wsArgs) : new WebSocket(url); }
         catch (_) { this._onWsDown(); return; }
+        this._ws = sock;
 
-        this._ws.onopen = () => {
+        /* Every handler short-circuits if `this._ws` has moved on — a
+           second layer of defence against orphan sockets firing events
+           into the live Alpine state. */
+        sock.onopen = () => {
+          if (this._ws !== sock) return;
           var wasDown = this.connection !== 'online';
           this.connection = 'online';
           this._wsBackoff = 800;
@@ -338,9 +363,13 @@
           this.offlineCard = false;
           if (wasDown) this._showReconnectToast();
         };
-        this._ws.onclose = () => this._onWsDown();
-        this._ws.onerror = () => { /* handled via onclose */ };
-        this._ws.onmessage = (ev) => {
+        sock.onclose = () => {
+          if (this._ws !== sock) return;
+          this._onWsDown();
+        };
+        sock.onerror = () => { /* handled via onclose */ };
+        sock.onmessage = (ev) => {
+          if (this._ws !== sock) return;
           var msg;
           try { msg = JSON.parse(ev.data); } catch (_) { return; }
           this._dispatch(msg);
