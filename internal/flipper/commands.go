@@ -236,7 +236,14 @@ func (f *Flipper) NFCEmulate(filePath string) (string, error) {
 	_, _ = f.InputSend("back", "short")
 	time.Sleep(100 * time.Millisecond)
 	_, _ = f.InputSend("back", "short")
-	if closeErr := f.waitLoaderClosed(10 * time.Second); closeErr != nil {
+	// 20 s budget: live validation on Momentum showed NFC app teardown can
+	// still hold the loader lock past 10 s — the app's "cannot load key
+	// file" modal (or similar error dialogs) delays the shutdown path and
+	// the post-teardown housekeeping window adds another ~3 s on top. The
+	// extra margin eliminates the cascading "application is open" failures
+	// in downstream emulation commands without materially slowing the
+	// happy path (the poll returns as soon as the lock is acquirable).
+	if closeErr := f.waitLoaderClosed(20 * time.Second); closeErr != nil {
 		return out, closeErr
 	}
 	return out, nil
