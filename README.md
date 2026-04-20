@@ -326,6 +326,13 @@ have a better answer for certs than the binary would.
 
 Push-to-talk in CLI mode. Press Enter with no text to record via microphone (requires `sox`). Audio is transcribed via OpenAI Whisper, then processed as a normal command.
 
+Voice mode (optional) requires `sox` for microphone capture and playback:
+```
+Ubuntu/Debian:  apt install sox
+macOS (brew):   brew install sox
+Arch:           pacman -S sox
+```
+
 ### MCP Server (`--mcp`)
 
 Runs as a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio. Add to your Claude Desktop or Claude Code config:

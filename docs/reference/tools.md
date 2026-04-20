@@ -64,6 +64,17 @@ at `/ext/update/<…>/update.fuf`.
 only when you explicitly ask for the raw command, otherwise it
 prefers a dedicated tool.
 
+**Example invocation:**
+```json
+{
+  "command": "device_info"
+}
+```
+This sends `device_info` directly to the Flipper CLI and returns the raw
+output. Classified `high` because the `command` string is passed through
+without type-safety checks or risk classification — any valid (or invalid)
+CLI command can be issued, bypassing the structured tool layer entirely.
+
 ### `log_stream` · low
 `duration_seconds` (int, default 15). Tails the firmware debug log.
 

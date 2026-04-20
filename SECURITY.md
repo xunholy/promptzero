@@ -80,3 +80,13 @@ does not supersede it.
 If you are unsure whether your intended use is authorised, **it probably
 isn't** — consult your legal counsel or the target system's owner before
 proceeding.
+
+## Licensing note
+
+PromptZero is released under AGPL-3.0-or-later. If you run a modified version
+of PromptZero as a service accessible over a network — for example as a hosted
+or SaaS deployment — you must make the modified source code available to the
+users of that service under the same licence. This obligation applies to
+network-accessible deployments; local personal use on your own machine does not
+trigger it. See the `LICENSE` file at the root of this repository for the full
+licence text.
