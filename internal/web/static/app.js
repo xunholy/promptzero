@@ -46,6 +46,9 @@
     return 'line';
   }
 
+  /* Dedup set for classifyError fallback warnings (avoids console spam) */
+  var _classifyWarnedMessages = new Set();
+
   /* Map error content/kind → banner class */
   function classifyError(msg) {
     if (msg && typeof msg.kind === 'string') return msg.kind;
@@ -53,6 +56,12 @@
     if (s.indexOf('cancel') !== -1 || s.indexOf('stopped') !== -1) return 'cancelled';
     if (s.indexOf('flipper') !== -1 || s.indexOf('device') !== -1 || s.indexOf('serial') !== -1 || s.indexOf('disconnect') !== -1) return 'device';
     if (s.indexOf('tool') !== -1) return 'tool';
+    /* Unknown error — warn once per unique message to help identify missing keywords */
+    var raw = String((msg && msg.content) || msg || '');
+    if (raw && !_classifyWarnedMessages.has(raw)) {
+      _classifyWarnedMessages.add(raw);
+      try { console.warn('[pz] classifyError fallback hit for:', raw); } catch (_) {}
+    }
     return 'api';
   }
 
@@ -165,6 +174,21 @@
         if (this.connection === 'online')  return '●';
         if (this.connection === 'offline') return '✕';
         return '○';
+      },
+      /* Rules panel summary: "3 enabled · 1 paused" */
+      get rulesSummary() {
+        var list = this.rulesUI.list;
+        if (!list || list.length === 0) return '0 total';
+        var enabled = 0;
+        var paused  = 0;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].enabled) enabled++;
+          else paused++;
+        }
+        var parts = [];
+        if (enabled > 0) parts.push(enabled + ' enabled');
+        if (paused  > 0) parts.push(paused  + ' paused');
+        return parts.length ? parts.join(' · ') : list.length + ' total';
       },
 
       /* ---------- lifecycle ---------- */
@@ -836,8 +860,8 @@
             }
             this.personaUI.open = false;
           })
-          .catch(() => {
-            this.errorBanner = { kind: 'api', message: 'persona switch failed' };
+          .catch((err) => {
+            this.errorBanner = { kind: 'api', message: 'persona switch failed: ' + (err.message || err) };
           });
       },
 
@@ -861,7 +885,16 @@
           .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
           .then(({ ok, body }) => {
             this.watchUI.loaded = true;
-            if (!ok) { this.watchUI.error = body.error || 'watch unavailable'; return; }
+            if (!ok) {
+              /* Distinguish "watcher not configured" from other errors */
+              var errMsg = body.error || 'watch unavailable';
+              if (errMsg === 'watcher not configured') {
+                this.watchUI.error = 'Watcher not enabled — launch promptzero with `--watch`';
+              } else {
+                this.watchUI.error = errMsg;
+              }
+              return;
+            }
             this.watchUI.error = '';
             this.watchUI.enabled = !!body.enabled;
             this.watchUI.paused = !!body.paused;
@@ -869,7 +902,7 @@
             this.watchUI.rules = Array.isArray(body.rules) ? body.rules : [];
             this.watchUI.events = Array.isArray(body.recent_events) ? body.recent_events : [];
           })
-          .catch((e) => { this.watchUI.loaded = true; this.watchUI.error = String(e); });
+          .catch((e) => { this.watchUI.loaded = true; this.watchUI.error = "couldn't load watch rules: " + (e.message || e); });
       },
       watchPause()  { this._watchToggle('api/watch/pause',  true);  },
       watchResume() { this._watchToggle('api/watch/resume', false); },
@@ -889,7 +922,7 @@
             this.rulesUI.error = '';
             this.rulesUI.list = Array.isArray(body) ? body : [];
           })
-          .catch((e) => { this.rulesUI.loaded = true; this.rulesUI.error = String(e); });
+          .catch((e) => { this.rulesUI.loaded = true; this.rulesUI.error = "couldn't load rules: " + (e.message || e); });
       },
       toggleRule(r) {
         var target = r.enabled ? 'pause' : 'resume';
@@ -1128,7 +1161,7 @@
             if (!ok) { this.validateUI.error = (body && body.error) || 'validate failed'; return; }
             this.validateUI.report = body;
           })
-          .catch((e) => { this.validateUI.error = String(e); })
+          .catch((e) => { this.validateUI.error = 'validate failed: ' + (e.message || e); })
           .finally(() => { this.validateUI.loading = false; });
       },
 

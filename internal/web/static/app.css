@@ -884,17 +884,17 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .pz-gate-btn:disabled       { opacity: 0.45; cursor: not-allowed; }
 
 .pz-gate-approve {
-  background: var(--pz-scan-green);
+  color: var(--pz-scan-green);
   border-color: var(--pz-scan-green);
-  color: var(--pz-bg-base);
 }
-.pz-gate-approve:hover:not(:disabled) { background: #00ff88; border-color: #00ff88; }
+.pz-gate-approve:hover:not(:disabled) { background: rgba(0,230,118,0.12); }
 
 .pz-gate-deny {
-  color: var(--pz-alert-red);
+  background: var(--pz-alert-red);
   border-color: var(--pz-alert-red);
+  color: #fff;
 }
-.pz-gate-deny:hover:not(:disabled) { background: var(--pz-alert-red); color: var(--pz-bg-base); }
+.pz-gate-deny:hover:not(:disabled) { background: #ff5672; border-color: #ff5672; }
 
 .pz-gate-approve-all {
   color: var(--pz-text-dim);

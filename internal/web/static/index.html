@@ -57,6 +57,7 @@
                 :class="{ 'pz-persona-btn-open': personaUI.open }"
                 @click="togglePersonaMenu()"
                 :aria-expanded="personaUI.open ? 'true' : 'false'"
+                aria-haspopup="menu"
                 :aria-label="'persona: ' + (personaUI.current || 'default')"
                 :title="'persona: ' + (personaUI.current || 'default')">
           <span class="pz-persona-glyph" aria-hidden="true">◆</span>
@@ -129,8 +130,8 @@
       <button type="button"
               class="pz-debug-btn"
               @click="openDebug()"
-              title="runtime snapshot"
-              aria-label="runtime snapshot">i</button>
+              title="runtime debug"
+              aria-label="runtime debug">i</button>
     </div>
   </header>
 
@@ -188,13 +189,13 @@
               <template x-if="item.err">
                 <div>
                   <div class="pz-tool-block-label">error</div>
-                  <pre class="pz-tool-block pz-tool-err pz-tool-output" x-text="item.err"></pre>
+                  <pre class="pz-tool-block pz-tool-err pz-tool-output" aria-label="tool error output" x-text="item.err"></pre>
                 </div>
               </template>
               <template x-if="!item.err && (item.output !== null && item.output !== undefined && item.output !== '')">
                 <div>
                   <div class="pz-tool-block-label">output</div>
-                  <pre class="pz-tool-block pz-tool-output" x-text="formatJSON(item.output)"></pre>
+                  <pre class="pz-tool-block pz-tool-output" aria-label="tool output" x-text="formatJSON(item.output)"></pre>
                 </div>
               </template>
             </div>
@@ -253,15 +254,15 @@
         </div>
         <div class="pz-gate-actions">
           <button type="button"
-                  class="pz-gate-btn pz-gate-approve"
-                  @click="respondConfirm('approve')">
-            <span>Approve</span><span class="pz-keyhint">[A]</span>
-          </button>
-          <button type="button"
                   class="pz-gate-btn pz-gate-deny"
                   data-pz-confirm-deny
                   @click="respondConfirm('deny')">
             <span>Deny</span><span class="pz-keyhint">[N]</span>
+          </button>
+          <button type="button"
+                  class="pz-gate-btn pz-gate-approve"
+                  @click="respondConfirm('approve')">
+            <span>Approve</span><span class="pz-keyhint">[A]</span>
           </button>
           <button type="button"
                   class="pz-gate-btn pz-gate-approve-all"
@@ -278,7 +279,8 @@
             x-show="newMessagesPending"
             x-cloak
             @click="scrollToLatest()"
-            aria-label="jump to latest messages">↓ new messages</button>
+            title="↓ new messages"
+            aria-label="↓ new messages">↓ new messages</button>
   </main>
 
   <!-- ================================================================
@@ -367,7 +369,8 @@
     <span class="pz-composer-count pz-tabular"
           :class="charCountClass"
           x-text="input.length"
-          aria-live="off"></span>
+          aria-label="character count"
+          aria-live="polite"></span>
     <button type="submit"
             class="pz-send"
             :disabled="!canSend"
@@ -435,7 +438,7 @@
 
           <h4 class="pz-panel-heading">Rules</h4>
           <template x-if="watchUI.rules.length === 0">
-            <div class="pz-panel-empty">no rules configured</div>
+            <div class="pz-panel-empty">No rules configured — add some to ~/.promptzero/rules.yaml</div>
           </template>
           <template x-for="r in watchUI.rules" :key="r.pattern + r.prompt">
             <div class="pz-watch-rule">
@@ -482,7 +485,7 @@
           <h4 class="pz-panel-heading">
             <span>Rules</span>
             <span class="pz-panel-spacer"></span>
-            <span class="pz-tabular pz-rule-fires" x-text="rulesUI.list.length + ' total'"></span>
+            <span class="pz-tabular pz-rule-fires" x-text="rulesSummary"></span>
           </h4>
           <template x-if="rulesUI.list.length === 0">
             <div class="pz-panel-empty">no rules loaded</div>
@@ -532,7 +535,7 @@
          @click.self="closeDebug()"
          @keydown.escape.window="closeDebug()">
       <div class="pz-modal pz-modal-debug">
-        <div class="pz-modal-title" id="pz-debug-modal-title">RUNTIME SNAPSHOT</div>
+        <div class="pz-modal-title" id="pz-debug-modal-title">RUNTIME DEBUG</div>
         <template x-if="!debugUI.loaded">
           <div class="pz-panel-empty">loading…</div>
         </template>
@@ -961,16 +964,16 @@
                @keydown.enter.prevent="criticalReady && respondConfirm('approve')">
         <div class="pz-gate-actions">
           <button type="button"
-                  class="pz-gate-btn pz-gate-approve"
-                  :disabled="!criticalReady"
-                  @click="respondConfirm('approve')">
-            <span>Approve</span><span class="pz-keyhint">[A]</span>
-          </button>
-          <button type="button"
                   class="pz-gate-btn pz-gate-deny"
                   data-pz-confirm-deny
                   @click="respondConfirm('deny')">
             <span>Deny</span><span class="pz-keyhint">[N]</span>
+          </button>
+          <button type="button"
+                  class="pz-gate-btn pz-gate-approve"
+                  :disabled="!criticalReady"
+                  @click="respondConfirm('approve')">
+            <span>Approve</span><span class="pz-keyhint">[A]</span>
           </button>
         </div>
       </div>
