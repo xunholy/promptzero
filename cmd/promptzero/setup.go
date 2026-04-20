@@ -201,7 +201,7 @@ type runFlags struct {
 func parseFlags() *runFlags {
 	f := &runFlags{}
 	flag.StringVar(&f.cfgPath, "config", "config.yaml", "Path to config file")
-	flag.StringVar(&f.portOverride, "port", "", "Flipper serial port (overrides config; e.g., /dev/ttyACM1 for a second device)")
+	flag.StringVar(&f.portOverride, "port", "", "Flipper serial port (overrides config; e.g. /dev/ttyACM0 (Linux), /dev/tty.usbmodemflip_* (macOS), COM3 (Windows))")
 	flag.StringVar(&f.transportOverride, "transport", "", "Flipper transport URL (overrides --port + config). Schemes: serial:// (USB), mock:// (tests), ble:// (reserved; Phase-B)")
 	flag.BoolVar(&f.webMode, "web", false, "Start web UI mode")
 	flag.IntVar(&f.webPort, "web-port", 0, "Web server port (overrides config)")
@@ -212,10 +212,10 @@ func parseFlags() *runFlags {
 	flag.BoolVar(&f.doInit, "init", false, "Scaffold ~/.promptzero/config.yaml and exit")
 	flag.StringVar(&f.resumeID, "resume", "", "Resume a saved session by id")
 	flag.BoolVar(&f.autoResume, "auto-resume", false, "Auto-resume the most recent session if it's less than 24h old")
-	flag.StringVar(&f.genProvider, "gen-provider", "claude", "LLM provider for payload generation: claude, ollama, openrouter")
-	flag.StringVar(&f.ollamaURL, "ollama-url", "http://localhost:11434", "Ollama server URL")
-	flag.StringVar(&f.ollamaModel, "ollama-model", "llama3.1", "Ollama model for generation")
-	flag.DurationVar(&f.connectTimeout, "connect-timeout", 10*time.Second, "Max time to wait for Flipper CLI prompt (Ctrl+C cancels sooner)")
+	flag.StringVar(&f.genProvider, "gen-provider", "claude", "LLM provider for payload generation: claude|ollama|openrouter (default claude; ollama requires --ollama-url + --ollama-model)")
+	flag.StringVar(&f.ollamaURL, "ollama-url", "http://localhost:11434", "Ollama server URL (default: http://localhost:11434)")
+	flag.StringVar(&f.ollamaModel, "ollama-model", "llama3.1", "Ollama model for generation (default: llama3.1)")
+	flag.DurationVar(&f.connectTimeout, "connect-timeout", 10*time.Second, "Max time to wait for Flipper CLI prompt (default 10s; increase for flaky cables)")
 	flag.BoolVar(&f.yoloMode, "yolo", false, "Skip risk confirmations (shorthand for --confirm-risk=none)")
 	flag.StringVar(&f.confirmRisk, "confirm-risk", "", "Confirmation threshold: none|low|medium|high|critical (default: high)")
 	flag.StringVar(&f.personaName, "persona", "", "Operator persona (default: value from config or 'default')")
@@ -426,7 +426,7 @@ func setupRiskGate(cfg *config.Config, confirmRisk string, yolo bool, p *persona
 	}
 	ai.SetConfirmThreshold(threshold)
 	if enabled {
-		statusOK(fmt.Sprintf("Risk gate %s(threshold: %s)%s", dim, threshold.String(), reset))
+		statusOK(fmt.Sprintf("Risk gate %s(threshold: %s)%s — override with --confirm-risk on next launch", dim, threshold.String(), reset))
 	} else {
 		statusWarn("Risk gate disabled — destructive tools run without prompting")
 	}

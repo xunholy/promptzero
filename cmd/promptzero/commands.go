@@ -240,32 +240,33 @@ func handleValidate(flip *flipper.Flipper, path string) {
 func printHelp() {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  %s%sCommands%s\n", bold, white, reset)
-	fmt.Fprintf(os.Stderr, "  %sConversation%s\n", dim, reset)
+	fmt.Fprintf(os.Stderr, "  %s%sConversation%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/help%s, %s?%s            Show this help\n", cyan, reset, cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reset%s, %s/clear%s      Clear conversation history\n", cyan, reset, cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/quit%s, %s/exit%s, %sq%s    Exit promptzero\n", cyan, reset, cyan, reset, cyan, reset)
-	fmt.Fprintf(os.Stderr, "\n  %sSession%s\n", dim, reset)
+	fmt.Fprintf(os.Stderr, "\n  %s%sSession%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/sessions%s              List saved sessions\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/resume <id>%s           Resume a saved session by id\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/save <name>%s           Save current conversation under <name>\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "\n  %sInfo%s\n", dim, reset)
+	fmt.Fprintf(os.Stderr, "\n  %s%sInfo%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/status%s                Connection, capabilities, Flipper telemetry\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/tools [filter]%s        Enumerate registered tools (grouped)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/history [N]%s           Show last N audit rows (default 20)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit stats%s           Session audit summary\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "    %s/audit find k=v ...%s    Query rows (tool, risk, since, until, contains, success, limit, offset)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/audit query [N]%s       Recent N entries (default 20)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/audit find k=v ...%s    Filter by tool, risk, success, session (and more)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit tail%s            Live tail of new audit rows (Ctrl+C or Enter to stop)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit top tools|risks%s Top-N aggregations (since=24h etc.)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit session <id>%s    Dump a specific session\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit export <path>%s   Write session audit JSON to <path>\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "\n  %sOperator%s\n", dim, reset)
+	fmt.Fprintf(os.Stderr, "\n  %s%sOperator%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/webhooks [test <name>]%s List outbound webhooks with recent deliveries\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/validate <path>%s       Lint a BadUSB .txt payload on the Flipper SD card\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "\n  %sDevice%s\n", dim, reset)
+	fmt.Fprintf(os.Stderr, "\n  %s%sDevice%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "\n  %sInput%s\n", dim, reset)
+	fmt.Fprintf(os.Stderr, "\n  %s%sInput%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %sEnter%s (blank, voice)   In voice mode, records; otherwise no-op\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %sCtrl+C%s                 Cancel in-flight turn (press again within 2s to exit)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %sCtrl+D%s                 Exit on empty input\n", cyan, reset)
@@ -1091,11 +1092,9 @@ func renderDebugSnapshot(w io.Writer, cfg *config.Config, rec *obs.Recorder, p *
 func handlePersona(ai *agent.Agent, reg *persona.Registry, args []string) {
 	if len(args) == 0 {
 		cur := ai.Persona()
-		if cur == nil {
-			fmt.Fprintf(os.Stderr, "  %sno persona active%s\n", dim, reset)
-		} else {
+		if cur != nil {
 			count := len(cur.Tools)
-			scope := fmt.Sprintf("%d tools allowed", count)
+			scope := fmt.Sprintf("%d tools", count)
 			if count == 0 {
 				scope = "all tools"
 			}
@@ -1105,7 +1104,8 @@ func handlePersona(ai *agent.Agent, reg *persona.Registry, args []string) {
 				fmt.Fprintf(os.Stderr, "  %s%s%s\n", dim, cur.Description, reset)
 			}
 		}
-		fmt.Fprintf(os.Stderr, "  %savailable:%s %s\n", dim, reset, strings.Join(reg.Names(), ", "))
+		alts := reg.Names()
+		fmt.Fprintf(os.Stderr, "  %salternatives:%s %s\n", dim, reset, strings.Join(alts, ", "))
 		return
 	}
 	name := args[0]
