@@ -166,26 +166,108 @@ const confirmIdleTimeout = 5 * time.Minute
 
 // confirmWithIdleTimeout invokes the confirm callback in a goroutine and
 // enforces confirmIdleTimeout. On timeout the caller gets DecisionDeny and
-// Run proceeds as if the user declined; the spawned goroutine leaks until
-// the callback eventually returns (expected for blocking UIs). a.mu remains
-// held for the whole wait — Run's contract is that the turn is atomic with
-// respect to history mutation — so callers must budget for confirmIdleTimeout
-// when the agent can appear wedged during operator idle.
+// Run proceeds as if the user declined. a.mu remains held for the whole
+// wait — Run's contract is that the turn is atomic with respect to history
+// mutation — so callers must budget for confirmIdleTimeout when the agent
+// can appear wedged during operator idle.
+//
+// The callback receives a cancellable child ctx derived from the caller's
+// ctx. It is cancelled on timeout, on parent ctx cancellation, or on a
+// successful return — whichever comes first. Callbacks must honour
+// ctx.Done() to avoid blocking after the idle deadline fires; the REPL
+// implementation already does this.
 func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) Decision {
 	timeout := a.confirmIdleTimeout
 	if timeout <= 0 {
 		timeout = confirmIdleTimeout
 	}
+	childCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	t := time.NewTimer(timeout)
+	defer t.Stop()
 	ch := make(chan Decision, 1)
-	go func() { ch <- a.confirmCb(ctx, req) }()
+	go func() { ch <- a.confirmCb(childCtx, req) }()
 	select {
 	case d := <-ch:
 		return d
 	case <-ctx.Done():
 		return DecisionDeny
-	case <-time.After(timeout):
+	case <-t.C:
 		return DecisionDeny
 	}
+}
+
+// compactHistoryLocked trims the in-memory history to at most maxHistory
+// entries, keeping the first 2 (initial context) and the most-recent
+// (maxHistory-2). It must be called with a.mu held. It is safe to call
+// when len(a.history) <= maxHistory — it is a no-op in that case.
+//
+// Invariant: the Anthropic API requires every assistant tool_use block to
+// be paired with a following user tool_result block. compactHistoryLocked
+// ensures the split boundary never separates such a pair: if the first
+// tail entry is a user message whose content is all tool_result blocks,
+// the window is shifted one entry earlier to keep the preceding assistant
+// message with it. If no safe boundary exists within a 4-entry search
+// window, compaction is skipped for this call.
+func (a *Agent) compactHistoryLocked() {
+	if len(a.history) <= maxHistory {
+		return
+	}
+	// Candidate split: keep first 2 + last (maxHistory-2).
+	splitIdx := len(a.history) - (maxHistory - 2)
+	// Safety search: shift splitIdx earlier if it lands in the middle of a
+	// tool_use/tool_result pair (up to 4 positions back).
+	for shift := 0; shift <= 4; shift++ {
+		idx := splitIdx - shift
+		if idx <= 2 {
+			// No room to compact without losing the anchor entries.
+			return
+		}
+		msg := a.history[idx]
+		if msg.Role == anthropic.MessageParamRoleUser && allToolResults(msg) {
+			// Check the message just before: if it is an assistant message
+			// containing tool_use blocks, both must be kept together.
+			if idx > 0 {
+				prev := a.history[idx-1]
+				if prev.Role == anthropic.MessageParamRoleAssistant && hasToolUse(prev) {
+					// This pair must not be split; try shifting further.
+					continue
+				}
+			}
+		}
+		// splitIdx is safe.
+		splitIdx = idx
+		break
+	}
+	tail := a.history[splitIdx:]
+	compacted := make([]anthropic.MessageParam, 2, maxHistory)
+	copy(compacted, a.history[:2])
+	a.history = append(compacted, tail...)
+}
+
+// allToolResults reports whether every content block in msg is a tool_result.
+// Used by compactHistoryLocked to identify user messages that are paired with
+// a preceding assistant tool_use message.
+func allToolResults(msg anthropic.MessageParam) bool {
+	if len(msg.Content) == 0 {
+		return false
+	}
+	for _, b := range msg.Content {
+		if b.OfToolResult == nil {
+			return false
+		}
+	}
+	return true
+}
+
+// hasToolUse reports whether msg contains at least one tool_use content block.
+func hasToolUse(msg anthropic.MessageParam) bool {
+	for _, b := range msg.Content {
+		if b.OfToolUse != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // SetConfirmThreshold configures which risk level triggers a confirmation
@@ -251,13 +333,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		anthropic.NewTextBlock(userInput),
 	))
 
-	// Compact history: keep first 2 entries (initial context) + last (maxHistory-2) entries.
-	if len(a.history) > maxHistory {
-		tail := a.history[len(a.history)-(maxHistory-2):]
-		compacted := make([]anthropic.MessageParam, 2, maxHistory)
-		copy(compacted, a.history[:2])
-		a.history = append(compacted, tail...)
-	}
+	a.compactHistoryLocked()
 
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
@@ -322,6 +398,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 				capResults = append(capResults, anthropic.NewToolResultBlock(tc.ID, capMsg, true))
 			}
 			a.history = append(a.history, anthropic.NewUserMessage(capResults...))
+			a.compactHistoryLocked()
 			a.autoSaveLocked()
 			return capMsg, nil
 		}
@@ -407,6 +484,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		}
 
 		a.history = append(a.history, anthropic.NewUserMessage(toolResults...))
+		a.compactHistoryLocked()
 		a.autoSaveLocked()
 	}
 }
