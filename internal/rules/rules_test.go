@@ -235,3 +235,67 @@ func TestEngine_ToolActionInvokesRunner(t *testing.T) {
 		t.Errorf("tool=%q want vibro", got)
 	}
 }
+
+// TestEngine_ToolActionSaturation verifies that once maxToolActions goroutines
+// are in flight the engine drops additional triggers rather than spawning more.
+func TestEngine_ToolActionSaturation(t *testing.T) {
+	const total = maxToolActions + 3 // try to spawn more than the cap
+
+	// Block all goroutines until we release them so we can control the count
+	// of concurrent in-flight actions.
+	gate := make(chan struct{})
+	var mu sync.Mutex
+	var called []string
+
+	eng := New(Deps{
+		RunTool: func(_ context.Context, tool string, _ map[string]interface{}) (string, error) {
+			<-gate // block until released
+			mu.Lock()
+			called = append(called, tool)
+			mu.Unlock()
+			return "", nil
+		},
+	})
+	eng.Register(Rule{
+		Name:    "sat",
+		Match:   Match{Tool: "trigger"},
+		Actions: []Action{{Kind: ActionTool, Tool: "slow_tool"}},
+		Enabled: true,
+	})
+
+	// Trigger total times; each fires a goroutine that blocks on gate.
+	for i := 0; i < total; i++ {
+		eng.Handle(audit.Entry{Tool: "trigger"})
+	}
+
+	// Give goroutines time to start and hit the gate.
+	time.Sleep(50 * time.Millisecond)
+
+	// The in-flight count must not exceed the cap.
+	if got := eng.inFlight.Load(); got > maxToolActions {
+		t.Errorf("inFlight=%d exceeds cap %d", got, maxToolActions)
+	}
+
+	// Release all blocked goroutines.
+	close(gate)
+
+	// Wait for them to finish.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if eng.inFlight.Load() == 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if eng.inFlight.Load() != 0 {
+		t.Errorf("inFlight=%d after release, expected 0", eng.inFlight.Load())
+	}
+
+	// The number of actual RunTool calls must be <= maxToolActions.
+	mu.Lock()
+	n := len(called)
+	mu.Unlock()
+	if n > maxToolActions {
+		t.Errorf("RunTool called %d times, want <= %d (cap)", n, maxToolActions)
+	}
+}

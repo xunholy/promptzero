@@ -82,28 +82,29 @@ const (
 type ConfirmFunc func(ctx context.Context, req ConfirmRequest) Decision
 
 type Agent struct {
-	mu               sync.Mutex
-	client           *anthropic.Client
-	flipper          *flipper.Flipper
-	marauder         *marauder.Marauder
-	cfg              *config.Config
-	model            string
-	history          []anthropic.MessageParam
-	auditLog         *audit.Log
-	generator        *generate.Generator
-	vision           *vision.Analyzer
-	genLLM           provider.Provider
-	toolStatusCb     func(ToolEvent)
-	textDeltaCb      func(TextDelta)
-	usageCb          func(inTokens, outTokens int64)
-	streamErrCb      func(err error)
-	confirmCb        ConfirmFunc
-	confirmThreshold risk.Level
-	sessionStore     *session.Store
-	sessionID        string
-	persona          *persona.Persona
-	personaAtomic    atomic.Pointer[persona.Persona]
-	maxToolsPerTurn  int
+	mu                 sync.Mutex
+	client             *anthropic.Client
+	flipper            *flipper.Flipper
+	marauder           *marauder.Marauder
+	cfg                *config.Config
+	model              string
+	history            []anthropic.MessageParam
+	auditLog           *audit.Log
+	generator          *generate.Generator
+	vision             *vision.Analyzer
+	genLLM             provider.Provider
+	toolStatusCb       func(ToolEvent)
+	textDeltaCb        func(TextDelta)
+	usageCb            func(inTokens, outTokens int64)
+	streamErrCb        func(err error)
+	confirmCb          ConfirmFunc
+	confirmThreshold   risk.Level
+	confirmIdleTimeout time.Duration
+	sessionStore       *session.Store
+	sessionID          string
+	persona            *persona.Persona
+	personaAtomic      atomic.Pointer[persona.Persona]
+	maxToolsPerTurn    int
 }
 
 func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *Agent {
@@ -145,6 +146,19 @@ func (a *Agent) SetStreamErrorCallback(f func(err error)) { a.streamErrCb = f }
 // this unset so tools execute without prompting.
 func (a *Agent) SetConfirmCallback(f ConfirmFunc) { a.confirmCb = f }
 
+// SetConfirmIdleTimeout overrides how long confirmWithIdleTimeout waits for
+// an operator response before treating silence as a deny. A zero or negative
+// value restores the default (5 minutes).
+func (a *Agent) SetConfirmIdleTimeout(d time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if d <= 0 {
+		a.confirmIdleTimeout = 0
+		return
+	}
+	a.confirmIdleTimeout = d
+}
+
 // confirmIdleTimeout caps how long Run will hold a.mu waiting for the user to
 // answer a confirmation prompt. After this, we treat silence as a deny so
 // the session isn't wedged by a walked-away operator.
@@ -158,6 +172,10 @@ const confirmIdleTimeout = 5 * time.Minute
 // respect to history mutation — so callers must budget for confirmIdleTimeout
 // when the agent can appear wedged during operator idle.
 func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) Decision {
+	timeout := a.confirmIdleTimeout
+	if timeout <= 0 {
+		timeout = confirmIdleTimeout
+	}
 	ch := make(chan Decision, 1)
 	go func() { ch <- a.confirmCb(ctx, req) }()
 	select {
@@ -165,7 +183,7 @@ func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) 
 		return d
 	case <-ctx.Done():
 		return DecisionDeny
-	case <-time.After(confirmIdleTimeout):
+	case <-time.After(timeout):
 		return DecisionDeny
 	}
 }

@@ -128,6 +128,9 @@ func run() error {
 
 	client := anthropic.NewClient()
 	ai := agent.New(&client, flip, cfg)
+	if cfg.Agent.ConfirmIdleTimeout > 0 {
+		ai.SetConfirmIdleTimeout(cfg.Agent.ConfirmIdleTimeout)
+	}
 	statusOK(fmt.Sprintf("Agent ready %s(model: %s)%s", dim, cfg.Model, reset))
 
 	costTracker := setupCostTracker(cfg, ai, rec)

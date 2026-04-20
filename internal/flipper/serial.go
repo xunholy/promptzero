@@ -85,6 +85,14 @@ type Flipper struct {
 	// maxAccumBytes caps the size of the in-flight read buffer for
 	// readUntilPromptCtx / StreamCtx. Zero means use defaultMaxAccumBytes.
 	maxAccumBytes int
+
+	// execTimeout is the per-command read deadline used by ExecCtx.
+	// Zero means use the default (10 s).
+	execTimeout time.Duration
+
+	// writeFileTimeout is the post-payload read deadline used by WriteFileCtx.
+	// Zero means use the default (10 s).
+	writeFileTimeout time.Duration
 }
 
 // SetMaxAccumBytes overrides the per-operation read-buffer cap. Values <= 0
@@ -97,6 +105,30 @@ func (f *Flipper) SetMaxAccumBytes(n int) {
 		return
 	}
 	f.maxAccumBytes = n
+}
+
+// SetExecTimeout overrides the per-command read deadline for ExecCtx. A zero
+// or negative value restores the 10 s default.
+func (f *Flipper) SetExecTimeout(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if d <= 0 {
+		f.execTimeout = 0
+		return
+	}
+	f.execTimeout = d
+}
+
+// SetWriteFileTimeout overrides the post-payload read deadline for
+// WriteFileCtx. A zero or negative value restores the 10 s default.
+func (f *Flipper) SetWriteFileTimeout(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if d <= 0 {
+		f.writeFileTimeout = 0
+		return
+	}
+	f.writeFileTimeout = d
 }
 
 func (f *Flipper) accumCap() int {
@@ -412,11 +444,15 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 		return "", fmt.Errorf("sending command: %w", err)
 	}
 
-	readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	execTO := f.execTimeout
+	if execTO <= 0 {
+		execTO = 10 * time.Second
+	}
+	readCtx, cancel := context.WithTimeout(ctx, execTO)
 	defer cancel()
 	out, err := f.readUntilPromptCtx(readCtx)
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		// 10 s safety net fired — command hung. Stop the firmware, drain, then
+		// safety net fired — command hung. Stop the firmware, drain, then
 		// surface a distinct error so callers can distinguish "hung" from a
 		// real disconnect.
 		_ = f.sendRaw("\x03")
@@ -430,7 +466,7 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
-		return out, fmt.Errorf("command hung: no prompt within 10s")
+		return out, fmt.Errorf("command hung: no prompt within %s", execTO)
 	}
 	f.markDisconnectedIfRelevant(err)
 	return out, err
@@ -605,7 +641,11 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 		written += n
 	}
 
-	readCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	writeTO := f.writeFileTimeout
+	if writeTO <= 0 {
+		writeTO = 10 * time.Second
+	}
+	readCtx, cancel := context.WithTimeout(ctx, writeTO)
 	defer cancel()
 	_, err := f.readUntilPromptCtx(readCtx)
 	f.markDisconnectedIfRelevant(err)

@@ -4,9 +4,40 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+// redactKey masks a secret key for display. It shows the last 4 characters
+// prefixed with "...". Keys shorter than 8 characters are replaced entirely
+// with "redacted" so we never leak a short secret verbatim.
+func redactKey(k string) string {
+	if len(k) < 8 {
+		return "redacted"
+	}
+	return "..." + k[len(k)-4:]
+}
+
+// String implements fmt.Stringer so that %v and %s formatting never prints
+// APIKey or OpenAIKey in plaintext.
+func (c Config) String() string {
+	apiKey := "(unset)"
+	if c.APIKey != "" {
+		apiKey = redactKey(c.APIKey)
+	}
+	openAIKey := "(unset)"
+	if c.OpenAIKey != "" {
+		openAIKey = redactKey(c.OpenAIKey)
+	}
+	return fmt.Sprintf("Config{APIKey:%s OpenAIKey:%s Model:%s}", apiKey, openAIKey, c.Model)
+}
+
+// GoString implements fmt.GoStringer so that %#v formatting never prints
+// APIKey or OpenAIKey in plaintext.
+func (c Config) GoString() string {
+	return c.String()
+}
 
 type Config struct {
 	APIKey        string              `yaml:"api_key"`
@@ -14,6 +45,8 @@ type Config struct {
 	Model         string              `yaml:"model"`
 	Serial        SerialConfig        `yaml:"serial"`
 	Marauder      MarauderConfig      `yaml:"marauder"`
+	Flipper       FlipperConfig       `yaml:"flipper,omitempty"`
+	Agent         AgentConfig         `yaml:"agent,omitempty"`
 	Web           WebConfig           `yaml:"web"`
 	Devices       map[string]Device   `yaml:"devices"`
 	ConfirmRisk   string              `yaml:"confirm_risk,omitempty"`
@@ -24,6 +57,25 @@ type Config struct {
 	Validator     ValidatorConfig     `yaml:"validator,omitempty"`
 	Rules         []RuleConfig        `yaml:"rules,omitempty"`
 	Cost          CostConfig          `yaml:"cost,omitempty"`
+}
+
+// FlipperConfig holds per-operation timeout overrides for the Flipper
+// serial layer. Zero values fall back to the hard-coded defaults (10s).
+type FlipperConfig struct {
+	// ExecTimeout overrides the 10 s per-command read deadline in ExecCtx.
+	ExecTimeout time.Duration `yaml:"exec_timeout,omitempty"`
+	// WriteFileTimeout overrides the 10 s post-payload read deadline in
+	// WriteFileCtx.
+	WriteFileTimeout time.Duration `yaml:"write_file_timeout,omitempty"`
+}
+
+// AgentConfig holds agent-level tunables that can be overridden via the
+// config file. Zero values fall back to the hard-coded defaults.
+type AgentConfig struct {
+	// ConfirmIdleTimeout overrides the 5 m idle-confirmation timeout. When
+	// the operator walks away without answering a confirmation prompt the
+	// agent treats silence as a deny after this duration.
+	ConfirmIdleTimeout time.Duration `yaml:"confirm_idle_timeout,omitempty"`
 }
 
 // ObservabilityConfig tunes the slog handler and Prometheus /metrics

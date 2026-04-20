@@ -20,10 +20,12 @@ package rules
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/audit"
@@ -50,6 +52,12 @@ const (
 	ActionLog     ActionKind = "log"
 	ActionTool    ActionKind = "tool"
 )
+
+// maxToolActions is the concurrency cap on in-flight ActionTool goroutines.
+// When this many goroutines are already running a new rule trigger is
+// dropped with a Warn log rather than spawning an unbounded number of
+// goroutines for a slow or broken tool.
+const maxToolActions = 8
 
 // Action is one step. Fields not relevant to the kind are left zero.
 type Action struct {
@@ -90,6 +98,10 @@ type Engine struct {
 	rules    map[string]*Rule
 	lastFire map[string]time.Time
 	fires    map[string]int // lifetime fire counter per rule (for /rules list)
+
+	// inFlight tracks the current number of ActionTool goroutines. Capped
+	// at maxToolActions; new triggers are rejected when saturated.
+	inFlight atomic.Int64
 }
 
 // New builds an Engine with no rules installed.
@@ -250,11 +262,28 @@ func (e *Engine) fire(r *Rule, entry audit.Entry) {
 				logger.Warn("rule_action_skipped", "kind", string(a.Kind), "reason", "no tool runner")
 				continue
 			}
+			if e.inFlight.Load() >= maxToolActions {
+				logger.Warn("rule_tool_saturated",
+					"rule", r.Name, "tool", a.Tool,
+					"in_flight", e.inFlight.Load(),
+					"cap", maxToolActions,
+					"reason", "too many concurrent tool actions; trigger dropped")
+				continue
+			}
+			e.inFlight.Add(1)
 			go func(tool string, params map[string]interface{}) {
+				defer e.inFlight.Add(-1)
 				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 				defer cancel()
-				if _, err := e.deps.RunTool(ctx, tool, renderParams(params, entry)); err != nil {
-					logger.Warn("rule_tool_failed", "tool", tool, "err", err)
+				_, err := e.deps.RunTool(ctx, tool, renderParams(params, entry))
+				if err != nil {
+					if errors.Is(err, context.DeadlineExceeded) {
+						logger.Warn("rule_tool_timeout",
+							"rule", r.Name, "tool", tool,
+							"timeout", "60s")
+					} else {
+						logger.Warn("rule_tool_failed", "rule", r.Name, "tool", tool, "err", err)
+					}
 				}
 			}(a.Tool, a.Params)
 		default:

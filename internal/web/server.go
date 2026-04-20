@@ -784,6 +784,15 @@ func newID() string {
 	return hex.EncodeToString(b[:])
 }
 
+// CSRF posture: no CSRF middleware is needed on this server.
+// Authentication is performed via the Authorization: Bearer header — not
+// cookies. Browsers enforce the CORS preflight before allowing cross-origin
+// requests to attach custom headers, so a malicious page cannot forge a
+// credentialed request without the token. For unauthenticated operation
+// (loopback-only or explicit web.allow_unauthed_public) the trust model is
+// already 'anyone who can reach the port controls the agent', so CSRF
+// protection would add no meaningful barrier.
+
 // requireAuth wraps an http.HandlerFunc with the bearer-token check. When
 // s.token is empty the wrapper is a passthrough — dev-mode parity with the
 // legacy no-auth behaviour. A non-empty token must arrive in

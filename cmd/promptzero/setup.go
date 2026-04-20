@@ -307,6 +307,15 @@ func connectFlipper(ctx context.Context, sh *signalHandler, cfg *config.Config, 
 		statusWarn(fmt.Sprintf("NFC CLI not available on %s firmware — NFC-detect/emulate tools will error with a hint", caps.FriendlyFork()))
 	}
 
+	// Apply configurable per-operation timeouts. Zero values in the config
+	// leave the flip defaults (10 s) in place.
+	if cfg.Flipper.ExecTimeout > 0 {
+		flip.SetExecTimeout(cfg.Flipper.ExecTimeout)
+	}
+	if cfg.Flipper.WriteFileTimeout > 0 {
+		flip.SetWriteFileTimeout(cfg.Flipper.WriteFileTimeout)
+	}
+
 	return flip, func() { flip.Close() }, nil
 }
 
