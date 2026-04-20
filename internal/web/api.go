@@ -114,7 +114,7 @@ func (s *Server) handlePersonasList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	current := ""
-	if p := s.agent.Persona(); p != nil {
+	if p := s.agent.PersonaSnapshot(); p != nil {
 		current = p.Name
 	}
 	respondJSON(w, http.StatusOK, map[string]any{
@@ -485,7 +485,7 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 	runtime.ReadMemStats(&mem)
 
 	personaName := ""
-	if p := s.agent.Persona(); p != nil {
+	if p := s.agent.PersonaSnapshot(); p != nil {
 		personaName = p.Name
 	}
 

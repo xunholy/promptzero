@@ -579,7 +579,7 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 
 	f.drain()
 
-	cmd := fmt.Sprintf("storage write_chunk %s %d\r", path, len(data))
+	cmd := fmt.Sprintf("storage write_chunk %s %d\r", sanitizeArg(path), len(data))
 	if err := f.sendRaw(cmd); err != nil {
 		f.markDisconnectedIfRelevant(err)
 		return fmt.Errorf("sending write_chunk command: %w", err)

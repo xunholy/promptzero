@@ -74,6 +74,12 @@ func (f *fakeAgent) Persona() *persona.Persona {
 	return f.persona
 }
 
+func (f *fakeAgent) PersonaSnapshot() *persona.Persona {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.persona
+}
+
 func (f *fakeAgent) emitDelta(t agent.TextDelta) {
 	f.mu.Lock()
 	cb := f.textDeltaCb

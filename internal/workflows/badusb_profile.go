@@ -89,7 +89,7 @@ func BadUSBTargetProfile(ctx context.Context, deps Deps, params map[string]inter
 		return cancelledResult("badusb profile", phases, extra), nil
 	}
 	depPhase := runPhase("deploy", "deploy_payload", func() (string, error) {
-		if err := deps.Generator.Deploy(result, path); err != nil {
+		if err := deps.Generator.Deploy(ctx, result, path); err != nil {
 			return "", err
 		}
 		return "wrote to " + result.Path, nil

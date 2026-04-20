@@ -190,6 +190,12 @@ type WebConfig struct {
 	// CORSOrigins — the indirection is intentional so a stray "*" in a
 	// copy-pasted config can't silently disable Origin enforcement.
 	AllowAnyOrigin bool `yaml:"allow_any_origin,omitempty"`
+
+	// AllowUnauthedPublic, when true, falls back to the pre-fix warn-and-continue
+	// behaviour when the server is bound non-loopback without a token. By default
+	// (false) the server refuses to start in that configuration. Set this only in
+	// controlled environments where you accept the open-access risk.
+	AllowUnauthedPublic bool `yaml:"allow_unauthed_public,omitempty"`
 }
 
 type Device struct {

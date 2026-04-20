@@ -112,6 +112,8 @@ REQUIREMENTS:
 	}
 
 	script := cleanOutput(resp.Content, "")
+	// cap at 64KB — catches runaway LLM output; typical BadUSB scripts are <2KB
+	script = capSize(script, 65536)
 
 	return &Result{
 		Type:    "badusb",
@@ -159,6 +161,8 @@ REQUIREMENTS:
 	}
 
 	content := cleanOutput(resp.Content, "")
+	// cap at 128KB — RAW captures can be large; parsed protocol files are tiny
+	content = capSize(content, 131072)
 
 	return &Result{
 		Type:    "subghz",
@@ -204,6 +208,8 @@ REQUIREMENTS:
 	}
 
 	content := cleanOutput(resp.Content, "")
+	// cap at 64KB — multi-signal IR files (universal remotes) can grow
+	content = capSize(content, 65536)
 
 	return &Result{
 		Type:    "ir",
@@ -266,6 +272,8 @@ REQUIREMENTS:
 	}
 
 	content := cleanOutput(resp.Content, "")
+	// cap at 32KB — covers MIFARE Classic 4K with metadata
+	content = capSize(content, 32768)
 
 	return &Result{
 		Type:    "nfc",
@@ -276,7 +284,7 @@ REQUIREMENTS:
 
 // --- Deploy writes generated content to the Flipper SD card ---
 
-func (g *Generator) Deploy(result *Result, path string) error {
+func (g *Generator) Deploy(ctx context.Context, result *Result, path string) error {
 	if path == "" {
 		path = defaultPath(result.Type)
 	}
@@ -287,7 +295,7 @@ func (g *Generator) Deploy(result *Result, path string) error {
 		_, _ = g.flipper.StorageMkdir(dir)
 	}
 
-	if err := g.flipper.StorageWrite(path, result.Content); err != nil {
+	if err := g.flipper.WriteFileCtx(ctx, path, []byte(result.Content)); err != nil {
 		return fmt.Errorf("deploying to %s: %w", path, err)
 	}
 
@@ -311,6 +319,16 @@ func defaultPath(payloadType string) string {
 	default:
 		return "/ext/generated_" + payloadType
 	}
+}
+
+// capSize caps s at max bytes. label is for documentation purposes only.
+// Applied after cleanOutput to bound runaway LLM output before it reaches
+// the Flipper write path or the caller.
+func capSize(s string, max int) string {
+	if len(s) > max {
+		return s[:max]
+	}
+	return s
 }
 
 // cleanOutput strips markdown code fences and other wrapping from LLM output.

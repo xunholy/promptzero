@@ -74,6 +74,7 @@ type agentDriver interface {
 	SetConfirmCallback(f agent.ConfirmFunc)
 	SetPersona(p *persona.Persona)
 	Persona() *persona.Persona
+	PersonaSnapshot() *persona.Persona
 }
 
 // outboundQueue bounds how many pending events a slow consumer may buffer.
@@ -158,6 +159,9 @@ type Server struct {
 	// have to set the flag deliberately AND keep their allow-list free of
 	// the footgun token; that makes the intent auditable from config.
 	allowAnyOrigin bool
+	// allowUnauthedPublic, when true, falls back to warn-and-continue when the
+	// server is bound non-loopback without a token. Default false = fail-closed.
+	allowUnauthedPublic bool
 }
 
 type sessionConn struct {
@@ -291,6 +295,11 @@ func (s *Server) SetCORSOrigins(origins []string) { s.corsOrigins = origins }
 // it. Must be called before Start.
 func (s *Server) SetAllowAnyOrigin(v bool) { s.allowAnyOrigin = v }
 
+// SetAllowUnauthedPublic opts in to warn-and-continue when the server is bound
+// non-loopback without an auth token. When false (default) Start returns an error
+// in that configuration. Must be called before Start.
+func (s *Server) SetAllowUnauthedPublic(v bool) { s.allowUnauthedPublic = v }
+
 // Addr returns the effective host:port the server will bind to, after any
 // loopback-default rewrite applied in NewServer. Use this for display so the
 // "Web UI at ..." status line matches the actual socket.
@@ -351,7 +360,10 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	if s.token == "" && !isLoopback(hostOf(s.addr)) {
-		fmt.Fprintf(os.Stderr, "\x1b[31m●\x1b[0m Web UI bound non-loopback with NO TOKEN set — every /api + /ws is open. Set web.token or PROMPTZERO_WEB_TOKEN.\n")
+		if !s.allowUnauthedPublic {
+			return fmt.Errorf("refusing to bind %s without an auth token; set web.token, bind to 127.0.0.1, or set web.allow_unauthed_public=true to override", s.addr)
+		}
+		fmt.Fprintf(os.Stderr, "\x1b[31m\u25cf\x1b[0m Web UI bound non-loopback with NO TOKEN set — every /api + /ws is open. Set web.token or PROMPTZERO_WEB_TOKEN.\n")
 	}
 
 	srv := &http.Server{Addr: s.addr, Handler: mux}

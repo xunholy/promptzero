@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -101,6 +102,7 @@ type Agent struct {
 	sessionStore     *session.Store
 	sessionID        string
 	persona          *persona.Persona
+	personaAtomic    atomic.Pointer[persona.Persona]
 	maxToolsPerTurn  int
 }
 
@@ -149,9 +151,12 @@ func (a *Agent) SetConfirmCallback(f ConfirmFunc) { a.confirmCb = f }
 const confirmIdleTimeout = 5 * time.Minute
 
 // confirmWithIdleTimeout invokes the confirm callback in a goroutine and
-// enforces confirmIdleTimeout. On timeout the caller gets DecisionDeny; the
-// spawned goroutine leaks until the callback eventually returns (expected
-// for blocking UIs), but a.mu is released and the agent stays responsive.
+// enforces confirmIdleTimeout. On timeout the caller gets DecisionDeny and
+// Run proceeds as if the user declined; the spawned goroutine leaks until
+// the callback eventually returns (expected for blocking UIs). a.mu remains
+// held for the whole wait — Run's contract is that the turn is atomic with
+// respect to history mutation — so callers must budget for confirmIdleTimeout
+// when the agent can appear wedged during operator idle.
 func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) Decision {
 	ch := make(chan Decision, 1)
 	go func() { ch <- a.confirmCb(ctx, req) }()
@@ -194,6 +199,7 @@ func (a *Agent) SetPersona(p *persona.Persona) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.persona = p
+	a.personaAtomic.Store(p)
 }
 
 // Persona returns the currently active persona, or nil when the default
@@ -202,6 +208,14 @@ func (a *Agent) Persona() *persona.Persona {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.persona
+}
+
+// PersonaSnapshot returns the currently active persona without taking a.mu.
+// Intended for read-only callers (debug endpoints, status panels) that must
+// remain responsive even while Run holds the agent mutex. Returns nil when
+// the default persona is active.
+func (a *Agent) PersonaSnapshot() *persona.Persona {
+	return a.personaAtomic.Load()
 }
 
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
@@ -691,7 +705,7 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "fileformat_read":
 		return a.fileformatRead(str(p, "path"))
 	case "fileformat_edit":
-		return a.fileformatEdit(str(p, "path"), p["edits"], str(p, "output_path"))
+		return a.fileformatEdit(ctx, str(p, "path"), p["edits"], str(p, "output_path"))
 	case "fileformat_diff":
 		return a.fileformatDiff(str(p, "path_a"), str(p, "path_b"))
 
@@ -1022,8 +1036,11 @@ func (a *Agent) generatePayload(ctx context.Context, payloadType, description, p
 	}
 
 	if deploy {
-		if err := a.generator.Deploy(result, path); err != nil {
-			return fmt.Sprintf("Generated %s but deploy failed: %v\n\nContent preview:\n%s", payloadType, err, result.Preview), nil
+		deployCtx, deployCancel := context.WithTimeout(ctx, 30*time.Second)
+		deployErr := a.generator.Deploy(deployCtx, result, path)
+		deployCancel()
+		if deployErr != nil {
+			return "", fmt.Errorf("generated %s but deploy failed: %w\n\nContent preview:\n%s", payloadType, deployErr, result.Preview)
 		}
 		return fmt.Sprintf("Generated and deployed %s to %s\n\nPreview:\n%s", payloadType, result.Path, result.Preview), nil
 	}
@@ -1215,7 +1232,7 @@ func (a *Agent) fileformatRead(path string) (string, error) {
 // serializes + writes. outputPath defaults to the input path so callers can
 // edit-in-place without specifying it. Unknown edit keys return an error
 // from the format-specific applier rather than silently no-op'ing.
-func (a *Agent) fileformatEdit(path string, editsIn interface{}, outputPath string) (string, error) {
+func (a *Agent) fileformatEdit(ctx context.Context, path string, editsIn interface{}, outputPath string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("path required")
 	}
@@ -1242,7 +1259,7 @@ func (a *Agent) fileformatEdit(path string, editsIn interface{}, outputPath stri
 	if target == "" {
 		target = path
 	}
-	if err := a.flipper.WriteFile(target, out); err != nil {
+	if err := a.flipper.WriteFileCtx(ctx, target, out); err != nil {
 		return "", fmt.Errorf("write %s: %w", target, err)
 	}
 	return fmt.Sprintf("edited %s (format=%s, %d bytes) → %s", path, format, len(out), target), nil

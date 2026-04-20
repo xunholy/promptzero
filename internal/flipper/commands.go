@@ -637,7 +637,12 @@ func (f *Flipper) StorageRead(path string) (string, error) {
 
 // StorageWrite writes data to a file using the write_chunk protocol.
 func (f *Flipper) StorageWrite(path string, data string) error {
-	return f.WriteFile(path, []byte(data))
+	return f.StorageWriteCtx(context.Background(), path, data)
+}
+
+// StorageWriteCtx is the context-aware variant of StorageWrite.
+func (f *Flipper) StorageWriteCtx(ctx context.Context, path string, data string) error {
+	return f.WriteFileCtx(ctx, path, []byte(data))
 }
 
 // StorageRemove removes a file or directory.
