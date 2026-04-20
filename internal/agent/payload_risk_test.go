@@ -134,8 +134,8 @@ func TestApproveAllDoesNotBypassCritical_TwoTools(t *testing.T) {
 		name string
 		risk risk.Level
 	}{
-		{"subghz_transmit", risk.High},   // High — first; returns ApproveAll
-		{"wifi_deauth", risk.Critical},    // Critical — must still be gated
+		{"subghz_transmit", risk.High}, // High — first; returns ApproveAll
+		{"wifi_deauth", risk.Critical}, // Critical — must still be gated
 	}
 
 	var approveAllRemaining bool
@@ -157,4 +157,3 @@ func TestApproveAllDoesNotBypassCritical_TwoTools(t *testing.T) {
 		t.Errorf("unexpected prompt sequence: %v", seen)
 	}
 }
-
