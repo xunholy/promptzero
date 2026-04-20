@@ -1,5 +1,16 @@
 name: Release
 
+# Consumers verify release checksums with cosign keyless:
+#
+#   cosign verify-blob \
+#     --certificate checksums.txt.pem \
+#     --signature   checksums.txt.sig \
+#     --certificate-identity-regexp 'https://github.com/xunholy/promptzero/\.github/workflows/release\.yaml@refs/tags/v.*' \
+#     --certificate-oidc-issuer    https://token.actions.githubusercontent.com \
+#     checksums.txt
+#
+# The CycloneDX SBOM (promptzero.cdx.json) is attached for dependency auditing.
+
 on:
   push:
     tags:
@@ -7,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -23,6 +35,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache: true
 
       - name: Build all platforms
         env:
@@ -70,6 +83,24 @@ jobs:
           sha256sum *.tar.gz *.zip 2>/dev/null > checksums.txt
           cat checksums.txt
 
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: cyclonedx-json
+          artifact-name: promptzero.cdx.json
+          output-file: dist/promptzero.cdx.json
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign checksums with cosign (keyless)
+        run: |
+          cosign sign-blob --yes \
+            --output-signature dist/checksums.txt.sig \
+            --output-certificate dist/checksums.txt.pem \
+            dist/checksums.txt
+
       - name: Stage install.sh alongside release assets
         run: cp install.sh dist/install.sh
 
@@ -81,4 +112,7 @@ jobs:
             dist/*.tar.gz
             dist/*.zip
             dist/checksums.txt
+            dist/checksums.txt.sig
+            dist/checksums.txt.pem
+            dist/promptzero.cdx.json
             dist/install.sh
