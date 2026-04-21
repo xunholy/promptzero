@@ -24,6 +24,7 @@ import (
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/session"
+	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/vision"
 	"github.com/xunholy/promptzero/internal/workflows"
@@ -117,6 +118,30 @@ type Agent struct {
 	// historical behaviour). EnableDynamicCatalog assigns
 	// a.routeGroups here. Tests substitute a synchronous stub.
 	routerFn routerFunc
+
+	// snapshotMgr captures pre-write copies of Flipper SD files so
+	// /rewind can roll them back. Nil disables the feature (Store
+	// calls are skipped silently). See internal/snapshot.
+	snapshotMgr *snapshot.Manager
+}
+
+// SetSnapshotManager wires an optional pre-write SD snapshotter.
+// Writes through fileformat_edit capture the prior file content into
+// the per-session snapshot tree so /rewind can roll them back. Nil
+// disables the feature.
+func (a *Agent) SetSnapshotManager(m *snapshot.Manager) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.snapshotMgr = m
+}
+
+// SnapshotManager returns the currently installed snapshot manager,
+// or nil when snapshots are disabled. Exposed for /rewind list/restore
+// commands that operate against the live agent.
+func (a *Agent) SnapshotManager() *snapshot.Manager {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.snapshotMgr
 }
 
 func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *Agent {
@@ -1504,10 +1529,35 @@ func (a *Agent) fileformatEdit(ctx context.Context, path string, editsIn interfa
 	if target == "" {
 		target = path
 	}
+	// Snapshot the existing file (best-effort) before we overwrite it
+	// so /rewind can restore. When target != path the source file is
+	// preserved implicitly; we still snapshot target so an out-of-place
+	// edit onto an existing file is undoable.
+	a.snapshotBeforeWrite(ctx, target)
 	if err := a.flipper.WriteFileCtx(ctx, target, out); err != nil {
 		return "", fmt.Errorf("write %s: %w", target, err)
 	}
 	return fmt.Sprintf("edited %s (format=%s, %d bytes) → %s", path, format, len(out), target), nil
+}
+
+// snapshotBeforeWrite reads the current content of path off the
+// Flipper and records it under the active session's snapshot tree.
+// Best-effort: storage_read failures (file doesn't exist yet,
+// transport hiccup) are swallowed — /rewind is a convenience, not
+// load-bearing, and a failed snapshot must never block the write.
+// No-op when the snapshot manager or session id is unset.
+func (a *Agent) snapshotBeforeWrite(_ context.Context, path string) {
+	if a.snapshotMgr == nil || a.sessionID == "" || path == "" {
+		return
+	}
+	raw, err := a.flipper.StorageRead(path)
+	if err != nil {
+		// Target doesn't exist yet (fresh write) — nothing to snapshot.
+		return
+	}
+	if _, err := a.snapshotMgr.Store(a.sessionID, path, []byte(raw)); err != nil {
+		obs.FromCtx(nil).Warn("snapshot_store_failed", "path", path, "err", err)
+	}
 }
 
 // fileformatDiff reads + parses two paths and returns the per-field diff

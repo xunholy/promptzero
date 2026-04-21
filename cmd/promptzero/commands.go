@@ -146,6 +146,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 	case "/audit":
 		ed.writeOutput(func() { handleAudit(deps.auditLog, fields[1:]) })
 		return true, false
+	case "/rewind":
+		ed.writeOutput(func() { handleRewind(deps, strings.TrimSpace(strings.Join(fields[1:], " "))) })
+		return true, false
 	case "/persona":
 		ed.writeOutput(func() { handlePersona(deps.ai, deps.personas, fields[1:]) })
 		return true, false
@@ -457,6 +460,78 @@ func printHistory(auditLog *audit.Log, n int) {
 		}
 		fmt.Fprintf(os.Stderr, "  %s  %s[%s]%s  %s  %s(%dms)%s%s  %s%s%s\n",
 			ts, color, risk, reset, e.Tool, dim, e.Duration, reset, errMark, dim, input, reset)
+	}
+}
+
+// handleRewind services the /rewind REPL command. Supported forms:
+//
+//	/rewind                 — list snapshots for the current session
+//	/rewind list            — same as above
+//	/rewind <id>            — restore the snapshot with the given ID
+//	/rewind <id> dry-run    — show what restore would do, no write
+//
+// Per roadmap P1-09 snapshots are captured before any write through
+// fileformat_edit; this command lets the operator pop the most recent
+// one back onto the Flipper without replaying the whole turn.
+func handleRewind(deps *REPLDeps, rawArgs string) {
+	mgr := deps.ai.SnapshotManager()
+	if mgr == nil {
+		fmt.Fprintf(os.Stderr, "  %srewind: snapshot manager not configured%s\n", dim, reset)
+		return
+	}
+	sessionID := deps.ai.SessionID()
+	if sessionID == "" {
+		fmt.Fprintf(os.Stderr, "  %srewind: no active session — start one with /session save <name>%s\n", dim, reset)
+		return
+	}
+
+	args := strings.Fields(rawArgs)
+	cmd := "list"
+	if len(args) > 0 {
+		cmd = args[0]
+	}
+
+	switch cmd {
+	case "list", "":
+		entries, err := mgr.List(sessionID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● rewind list: %v%s\n", red, err, reset)
+			return
+		}
+		if len(entries) == 0 {
+			fmt.Fprintf(os.Stderr, "  %sno snapshots for session %s%s\n", dim, sessionID, reset)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  %sSnapshots (newest first, %d total):%s\n", dim, len(entries), reset)
+		for _, e := range entries {
+			fmt.Fprintf(os.Stderr, "    %s  %s  (%d bytes)  %s\n", e.ID, e.TakenAt.Format(time.RFC3339), e.SizeBytes, e.OriginalPath)
+		}
+		fmt.Fprintf(os.Stderr, "  %s(use /rewind <id> to restore)%s\n", dim, reset)
+	default:
+		// Any non-"list" arg is treated as a snapshot ID.
+		id := cmd
+		dryRun := false
+		for _, a := range args[1:] {
+			if strings.EqualFold(a, "dry-run") {
+				dryRun = true
+			}
+		}
+		entry, content, err := mgr.Restore(sessionID, id)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● rewind: %v%s\n", red, err, reset)
+			return
+		}
+		if dryRun {
+			fmt.Fprintf(os.Stderr, "  %sdry-run: would write %d bytes to %s%s\n", dim, len(content), entry.OriginalPath, reset)
+			return
+		}
+		ctx, cancel := context.WithTimeout(deps.ctx, 30*time.Second)
+		defer cancel()
+		if err := deps.flip.WriteFileCtx(ctx, entry.OriginalPath, content); err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● rewind write failed: %v%s\n", red, err, reset)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  %s✓ restored %s (%d bytes) from snapshot %s%s\n", green, entry.OriginalPath, len(content), entry.ID, reset)
 	}
 }
 

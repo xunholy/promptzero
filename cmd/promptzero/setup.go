@@ -25,6 +25,7 @@ import (
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/rules"
+	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/web"
 	"github.com/xunholy/promptzero/internal/webhook"
@@ -446,6 +447,16 @@ func setupSessionStore(ai *agent.Agent, resumeID string, autoResume bool) {
 	}
 	ai.SetSessionStore(store)
 	statusOK(fmt.Sprintf("Sessions on-disk %s(id: %s)%s", dim, ai.SessionID(), reset))
+
+	// Snapshot manager: rooted at ~/.promptzero/snapshots. Writes
+	// through fileformat_edit capture the pre-write SD content so
+	// /rewind can restore. Failure to resolve the root is a warning
+	// (operator still gets the session but no undo), not a fatal.
+	if root, rErr := snapshot.DefaultRoot(); rErr == nil {
+		ai.SetSnapshotManager(snapshot.NewManager(root))
+	} else {
+		statusWarn(fmt.Sprintf("Snapshot manager unavailable: %v", rErr))
+	}
 
 	if resumeID != "" {
 		if err := ai.ResumeSession(resumeID); err != nil {
