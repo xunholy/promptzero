@@ -25,6 +25,7 @@ var (
 	basePrompt      = mustReadPrompt("system.tmpl")
 	wifiAppend      = mustReadPrompt("wifi_append.tmpl")
 	workflowsAppend = mustReadPrompt("workflows_append.tmpl")
+	trustAppend     = mustReadPrompt("trust_append.tmpl")
 )
 
 // BuildSystemPrompt assembles the system prompt the agent hands to the
@@ -33,6 +34,9 @@ var (
 // historical persona-override behaviour). The WiFi framing is appended only
 // when the Marauder tool set is still present after persona filtering.
 // The workflow section is appended when composite workflows are registered.
+// The trust-boundary clause is always appended — it governs the
+// <untrusted-hardware-output> wrappers that quarantine attacker-controllable
+// content returned by hardware tools.
 func BuildSystemPrompt(p *persona.Persona, hasWiFi, hasWorkflows bool) string {
 	var b strings.Builder
 	if p != nil && p.SystemPrompt != "" {
@@ -46,5 +50,6 @@ func BuildSystemPrompt(p *persona.Persona, hasWiFi, hasWorkflows bool) string {
 	if hasWiFi {
 		b.WriteString(wifiAppend)
 	}
+	b.WriteString(trustAppend)
 	return b.String()
 }

@@ -475,12 +475,20 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 				})
 			}
 
-			// Audit log
+			// Audit log records the raw, unwrapped output so post-hoc
+			// analysis keeps full fidelity — the quarantine wrapping is
+			// a model-facing concern, not a storage one.
 			if a.auditLog != nil {
 				a.auditLog.RecordCtx(ctx, tc.Name, input, output, toolRisk.String(), audit.LevelAction, duration, !toolErr)
 			}
 
-			toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, output, toolErr))
+			// Quarantine hardware-origin output before it reaches the
+			// model. Strips control characters and, for attacker-
+			// controllable tools, wraps the result in
+			// <untrusted-hardware-output> tags — see quarantine.go for
+			// the allowlist of trusted tools.
+			quarantined := quarantineOutput(tc.Name, output, toolErr)
+			toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, quarantined, toolErr))
 		}
 
 		a.history = append(a.history, anthropic.NewUserMessage(toolResults...))
