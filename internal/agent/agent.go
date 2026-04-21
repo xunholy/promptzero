@@ -75,13 +75,24 @@ const (
 	DecisionApprove    Decision = iota // run this one tool
 	DecisionDeny                       // skip this tool, feed "user denied" back
 	DecisionApproveAll                 // run this and every remaining tool in the current turn
+	DecisionRevise                     // skip this tool; inject the operator's revision as a user turn so the model re-plans
 )
 
+// ConfirmResponse is what a confirm callback returns. Decision is the
+// primary signal; Revision carries free-form text when Decision ==
+// DecisionRevise — the model will see it as a fresh user turn telling
+// it what to change about the pending tool call.
+type ConfirmResponse struct {
+	Decision Decision
+	Revision string
+}
+
 // ConfirmFunc is the callback type used by SetConfirmCallback. Implementations
-// must block until the user (or some other authority) returns a Decision.
-// Honouring ctx cancellation is recommended — a cancelled ctx should return
-// DecisionDeny so the agent short-circuits cleanly.
-type ConfirmFunc func(ctx context.Context, req ConfirmRequest) Decision
+// must block until the user (or some other authority) returns a
+// ConfirmResponse. Honouring ctx cancellation is recommended — a
+// cancelled ctx should return {Decision: DecisionDeny} so the agent
+// short-circuits cleanly.
+type ConfirmFunc func(ctx context.Context, req ConfirmRequest) ConfirmResponse
 
 type Agent struct {
 	mu                 sync.Mutex
@@ -238,18 +249,19 @@ func (a *Agent) SetConfirmIdleTimeout(d time.Duration) {
 const confirmIdleTimeout = 5 * time.Minute
 
 // confirmWithIdleTimeout invokes the confirm callback in a goroutine and
-// enforces confirmIdleTimeout. On timeout the caller gets DecisionDeny and
-// Run proceeds as if the user declined. a.mu remains held for the whole
-// wait — Run's contract is that the turn is atomic with respect to history
-// mutation — so callers must budget for confirmIdleTimeout when the agent
-// can appear wedged during operator idle.
+// enforces confirmIdleTimeout. On timeout the caller gets
+// {DecisionDeny} and Run proceeds as if the user declined. a.mu
+// remains held for the whole wait — Run's contract is that the turn
+// is atomic with respect to history mutation — so callers must
+// budget for confirmIdleTimeout when the agent can appear wedged
+// during operator idle.
 //
 // The callback receives a cancellable child ctx derived from the caller's
 // ctx. It is cancelled on timeout, on parent ctx cancellation, or on a
 // successful return — whichever comes first. Callbacks must honour
 // ctx.Done() to avoid blocking after the idle deadline fires; the REPL
 // implementation already does this.
-func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) Decision {
+func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) ConfirmResponse {
 	timeout := a.confirmIdleTimeout
 	if timeout <= 0 {
 		timeout = confirmIdleTimeout
@@ -258,15 +270,15 @@ func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) 
 	defer cancel()
 	t := time.NewTimer(timeout)
 	defer t.Stop()
-	ch := make(chan Decision, 1)
+	ch := make(chan ConfirmResponse, 1)
 	go func() { ch <- a.confirmCb(childCtx, req) }()
 	select {
-	case d := <-ch:
-		return d
+	case r := <-ch:
+		return r
 	case <-ctx.Done():
-		return DecisionDeny
+		return ConfirmResponse{Decision: DecisionDeny}
 	case <-t.C:
-		return DecisionDeny
+		return ConfirmResponse{Decision: DecisionDeny}
 	}
 }
 
@@ -457,6 +469,13 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	// maybeAppendReflection only when the reflector actually produced
 	// useful text.
 	reflectionsThisTurn := 0
+	// pendingRevisions collects revision prompts emitted by
+	// DecisionRevise in the current turn. After the tool_results
+	// batch is flushed, each revision is appended as a fresh user
+	// message so the next streamOnce sees it alongside the
+	// "operator requested revision" tool_result and can re-plan the
+	// call with the operator's edit.
+	var pendingRevisions []string
 
 	for {
 		resp, err := a.streamOnce(ctx, sysPrompt, tools)
@@ -540,7 +559,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			// critical one.
 			gated := toolRisk == risk.Critical || !approveAllRemaining
 			if a.confirmCb != nil && gated && toolRisk >= a.confirmThreshold {
-				switch a.confirmWithIdleTimeout(ctx, ConfirmRequest{Tool: tc.Name, Input: input, Risk: toolRisk}) {
+				resp := a.confirmWithIdleTimeout(ctx, ConfirmRequest{Tool: tc.Name, Input: input, Risk: toolRisk})
+				switch resp.Decision {
 				case DecisionDeny:
 					const denyMsg = "user denied this action"
 					if a.toolStatusCb != nil {
@@ -551,6 +571,32 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 						a.auditLog.RecordCtx(ctx, tc.Name, input, denyMsg, toolRisk.String(), audit.LevelAction, 0, false)
 					}
 					toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, denyMsg, true))
+					continue
+				case DecisionRevise:
+					// Operator asked for a revision instead of running
+					// the tool. Synthesise a tool_result marking it as
+					// skipped, then inject the revision text as a
+					// fresh user turn via the pending revision stash
+					// so the next streamOnce sees it alongside the
+					// tool_result and can re-plan.
+					revisionText := strings.TrimSpace(resp.Revision)
+					if revisionText == "" {
+						revisionText = "(no revision text provided)"
+					}
+					resultMsg := "operator requested revision instead of running this tool: " + revisionText
+					if a.toolStatusCb != nil {
+						a.toolStatusCb(ToolEvent{Phase: "start", Name: tc.Name, Input: input})
+						a.toolStatusCb(ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: resultMsg, Err: true})
+					}
+					if a.auditLog != nil {
+						a.auditLog.RecordCtx(ctx, tc.Name, input, resultMsg, toolRisk.String(), audit.LevelAction, 0, false)
+					}
+					toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, resultMsg, true))
+					// Track the revision so we can inject it after
+					// the tool_result batch closes (one revision
+					// message per turn is plenty — subsequent
+					// reviews stack naturally).
+					pendingRevisions = append(pendingRevisions, revisionText)
 					continue
 				case DecisionApproveAll:
 					approveAllRemaining = true
@@ -623,6 +669,24 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			// <untrusted-hardware-output> tags — see quarantine.go.
 			quarantined := quarantineOutput(tc.Name, output, toolErr)
 			toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, quarantined, toolErr))
+		}
+
+		// Flush revisions (P1-14): append each revision as a text block
+		// inside the same user message as the tool_results so the
+		// model sees both the "tool skipped" signal and the
+		// operator's edit in one turn. Each revision renders as a
+		// bullet so multi-tool revisions survive cleanly.
+		if len(pendingRevisions) > 0 {
+			var b strings.Builder
+			b.WriteString("The operator has requested revisions instead of running the tool(s) above:\n")
+			for _, rev := range pendingRevisions {
+				b.WriteString("- ")
+				b.WriteString(rev)
+				b.WriteString("\n")
+			}
+			b.WriteString("\nPlease re-plan with these changes.")
+			toolResults = append(toolResults, anthropic.NewTextBlock(b.String()))
+			pendingRevisions = pendingRevisions[:0]
 		}
 
 		a.history = append(a.history, anthropic.NewUserMessage(toolResults...))

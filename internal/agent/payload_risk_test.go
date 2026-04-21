@@ -79,10 +79,10 @@ func TestRunPayloadCriticalRiskGate(t *testing.T) {
 
 	var seenRisk risk.Level
 	var callCount int
-	a.SetConfirmCallback(func(_ context.Context, req ConfirmRequest) Decision {
+	a.SetConfirmCallback(func(_ context.Context, req ConfirmRequest) ConfirmResponse {
 		callCount++
 		seenRisk = req.Risk
-		return DecisionDeny
+		return ConfirmResponse{Decision: DecisionDeny}
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -121,13 +121,13 @@ func TestApproveAllDoesNotBypassCritical_TwoTools(t *testing.T) {
 
 	var seen []string
 	var callCount int
-	a.confirmCb = func(_ context.Context, req ConfirmRequest) Decision {
+	a.confirmCb = func(_ context.Context, req ConfirmRequest) ConfirmResponse {
 		callCount++
 		seen = append(seen, req.Tool)
 		if callCount == 1 {
-			return DecisionApproveAll
+			return ConfirmResponse{Decision: DecisionApproveAll}
 		}
-		return DecisionApprove
+		return ConfirmResponse{Decision: DecisionApprove}
 	}
 
 	toolBatch := []struct {
@@ -144,7 +144,7 @@ func TestApproveAllDoesNotBypassCritical_TwoTools(t *testing.T) {
 		gated := toolRisk == risk.Critical || !approveAllRemaining
 		if a.confirmCb != nil && gated && toolRisk >= a.confirmThreshold {
 			input := json.RawMessage(`{}`)
-			if a.confirmCb(context.Background(), ConfirmRequest{Tool: tc.name, Input: input, Risk: toolRisk}) == DecisionApproveAll {
+			if a.confirmCb(context.Background(), ConfirmRequest{Tool: tc.name, Input: input, Risk: toolRisk}).Decision == DecisionApproveAll {
 				approveAllRemaining = true
 			}
 		}

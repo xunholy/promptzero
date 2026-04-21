@@ -98,12 +98,12 @@ func (f *fakeAgent) emitTool(e agent.ToolEvent) {
 	}
 }
 
-func (f *fakeAgent) confirm(ctx context.Context, req agent.ConfirmRequest) agent.Decision {
+func (f *fakeAgent) confirm(ctx context.Context, req agent.ConfirmRequest) agent.ConfirmResponse {
 	f.mu.Lock()
 	cb := f.confirmCb
 	f.mu.Unlock()
 	if cb == nil {
-		return agent.DecisionDeny
+		return agent.ConfirmResponse{Decision: agent.DecisionDeny}
 	}
 	return cb(ctx, req)
 }
@@ -276,15 +276,15 @@ func TestToolStatusShape(t *testing.T) {
 
 func TestConfirmRoundTrip(t *testing.T) {
 	fa := &fakeAgent{}
-	decisionCh := make(chan agent.Decision, 1)
+	decisionCh := make(chan agent.ConfirmResponse, 1)
 
 	fa.runFn = func(ctx context.Context, input string, f *fakeAgent) (string, error) {
-		d := f.confirm(ctx, agent.ConfirmRequest{
+		r := f.confirm(ctx, agent.ConfirmRequest{
 			Tool:  "subghz_transmit",
 			Input: json.RawMessage(`{"file":"/x.sub"}`),
 			Risk:  3, // Critical
 		})
-		decisionCh <- d
+		decisionCh <- r
 		return "decided", nil
 	}
 
@@ -316,9 +316,9 @@ func TestConfirmRoundTrip(t *testing.T) {
 	}
 
 	select {
-	case d := <-decisionCh:
-		if d != agent.DecisionApprove {
-			t.Errorf("decision = %v, want DecisionApprove", d)
+	case r := <-decisionCh:
+		if r.Decision != agent.DecisionApprove {
+			t.Errorf("decision = %v, want DecisionApprove", r.Decision)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("agent never received decision")

@@ -144,10 +144,10 @@ func TestAgentRun_RiskGatedTool_ConfirmApproves(t *testing.T) {
 		confirmCalls int
 		confirmReq   agent.ConfirmRequest
 	)
-	h.agent.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.Decision {
+	h.agent.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.ConfirmResponse {
 		confirmCalls++
 		confirmReq = req
-		return agent.DecisionApprove
+		return agent.ConfirmResponse{Decision: agent.DecisionApprove}
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -218,8 +218,8 @@ func TestAgentRun_RiskGatedTool_ConfirmDenies(t *testing.T) {
 	}
 	h := newE2EHarness(t, script)
 
-	h.agent.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.Decision {
-		return agent.DecisionDeny
+	h.agent.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.ConfirmResponse {
+		return agent.ConfirmResponse{Decision: agent.DecisionDeny}
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

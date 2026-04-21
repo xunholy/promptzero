@@ -19,7 +19,7 @@ func TestConfirmDenyShortCircuits(t *testing.T) {
 	a := &Agent{confirmThreshold: risk.High}
 
 	called := 0
-	a.confirmCb = func(ctx context.Context, req ConfirmRequest) Decision {
+	a.confirmCb = func(ctx context.Context, req ConfirmRequest) ConfirmResponse {
 		called++
 		if req.Tool != "wifi_deauth" {
 			t.Fatalf("unexpected tool in confirm request: %q", req.Tool)
@@ -27,7 +27,7 @@ func TestConfirmDenyShortCircuits(t *testing.T) {
 		if req.Risk != risk.Critical {
 			t.Fatalf("expected risk Critical for wifi_deauth, got %v", req.Risk)
 		}
-		return DecisionDeny
+		return ConfirmResponse{Decision: DecisionDeny}
 	}
 
 	tc := anthropic.ContentBlockUnion{
@@ -46,7 +46,7 @@ func TestConfirmDenyShortCircuits(t *testing.T) {
 		toolRisk := risk.Classify(call.Name)
 
 		if a.confirmCb != nil && !approveAllRemaining && toolRisk >= a.confirmThreshold {
-			switch a.confirmCb(context.Background(), ConfirmRequest{Tool: call.Name, Input: input, Risk: toolRisk}) {
+			switch a.confirmCb(context.Background(), ConfirmRequest{Tool: call.Name, Input: input, Risk: toolRisk}).Decision {
 			case DecisionDeny:
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(call.ID, "user denied this action", true))
 				continue
@@ -86,9 +86,9 @@ func TestConfirmDenyShortCircuits(t *testing.T) {
 // bypass the callback entirely.
 func TestConfirmBelowThresholdSkipsCallback(t *testing.T) {
 	a := &Agent{confirmThreshold: risk.High}
-	a.confirmCb = func(ctx context.Context, req ConfirmRequest) Decision {
+	a.confirmCb = func(ctx context.Context, req ConfirmRequest) ConfirmResponse {
 		t.Fatalf("callback should not fire for low-risk tool %q", req.Tool)
-		return DecisionDeny
+		return ConfirmResponse{Decision: DecisionDeny}
 	}
 
 	toolRisk := risk.Classify("device_info")
@@ -105,9 +105,9 @@ func TestConfirmApproveAll(t *testing.T) {
 	a := &Agent{confirmThreshold: risk.High}
 
 	calls := 0
-	a.confirmCb = func(ctx context.Context, req ConfirmRequest) Decision {
+	a.confirmCb = func(ctx context.Context, req ConfirmRequest) ConfirmResponse {
 		calls++
-		return DecisionApproveAll
+		return ConfirmResponse{Decision: DecisionApproveAll}
 	}
 
 	tools := []string{"wifi_deauth", "device_reboot", "subghz_transmit"}
@@ -118,7 +118,7 @@ func TestConfirmApproveAll(t *testing.T) {
 		gate := toolRisk == risk.Critical || !approveAllRemaining
 		if a.confirmCb != nil && gate && toolRisk >= a.confirmThreshold {
 			gated++
-			if a.confirmCb(context.Background(), ConfirmRequest{Tool: name, Risk: toolRisk}) == DecisionApproveAll {
+			if a.confirmCb(context.Background(), ConfirmRequest{Tool: name, Risk: toolRisk}).Decision == DecisionApproveAll {
 				approveAllRemaining = true
 			}
 		}
@@ -145,6 +145,42 @@ func TestConfirmApproveAll(t *testing.T) {
 	}
 }
 
+// TestConfirmRevise_DecisionPropagates exercises the P1-14 revise
+// path end-to-end through the gate predicate: a revision decision
+// must surface the operator's Revision string alongside the
+// Decision so the caller knows what edit to inject.
+func TestConfirmRevise_DecisionPropagates(t *testing.T) {
+	a := &Agent{confirmThreshold: risk.High}
+
+	wantRevision := "retry on 315 MHz instead of 433 MHz"
+	a.confirmCb = func(ctx context.Context, req ConfirmRequest) ConfirmResponse {
+		return ConfirmResponse{Decision: DecisionRevise, Revision: wantRevision}
+	}
+
+	resp := a.confirmCb(context.Background(), ConfirmRequest{Tool: "subghz_transmit", Risk: risk.Critical})
+	if resp.Decision != DecisionRevise {
+		t.Fatalf("Decision = %v, want DecisionRevise", resp.Decision)
+	}
+	if resp.Revision != wantRevision {
+		t.Errorf("Revision = %q, want %q", resp.Revision, wantRevision)
+	}
+}
+
+// TestConfirmRevise_EmptyRevisionStillValid — the operator might
+// hit Enter with no revision text. The agent must accept that as a
+// revise decision (not coerce to deny), because the flow elsewhere
+// inserts a placeholder.
+func TestConfirmRevise_EmptyRevisionStillValid(t *testing.T) {
+	a := &Agent{confirmThreshold: risk.High}
+	a.confirmCb = func(ctx context.Context, req ConfirmRequest) ConfirmResponse {
+		return ConfirmResponse{Decision: DecisionRevise, Revision: ""}
+	}
+	resp := a.confirmCb(context.Background(), ConfirmRequest{Tool: "wifi_deauth", Risk: risk.Critical})
+	if resp.Decision != DecisionRevise {
+		t.Errorf("empty revision should still be DecisionRevise, got %v", resp.Decision)
+	}
+}
+
 // TestConfirmCriticalNotBypassedByApproveAll asserts the "critical
 // always prompts" rule directly: approve-all on an earlier non-critical
 // tool must not skip the gate for a later critical tool.
@@ -152,12 +188,12 @@ func TestConfirmCriticalNotBypassedByApproveAll(t *testing.T) {
 	a := &Agent{confirmThreshold: risk.High}
 
 	var seen []string
-	a.confirmCb = func(ctx context.Context, req ConfirmRequest) Decision {
+	a.confirmCb = func(ctx context.Context, req ConfirmRequest) ConfirmResponse {
 		seen = append(seen, req.Tool)
 		if len(seen) == 1 {
-			return DecisionApproveAll
+			return ConfirmResponse{Decision: DecisionApproveAll}
 		}
-		return DecisionApprove
+		return ConfirmResponse{Decision: DecisionApprove}
 	}
 
 	// Mix of risks so a High tool is the first to hit the gate, the
@@ -174,7 +210,7 @@ func TestConfirmCriticalNotBypassedByApproveAll(t *testing.T) {
 	for _, tc := range tools {
 		gate := tc.risk == risk.Critical || !approveAllRemaining
 		if a.confirmCb != nil && gate && tc.risk >= a.confirmThreshold {
-			if a.confirmCb(context.Background(), ConfirmRequest{Tool: tc.name, Risk: tc.risk}) == DecisionApproveAll {
+			if a.confirmCb(context.Background(), ConfirmRequest{Tool: tc.name, Risk: tc.risk}).Decision == DecisionApproveAll {
 				approveAllRemaining = true
 			}
 		}

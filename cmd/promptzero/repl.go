@@ -58,16 +58,29 @@ func truncateArgsTo(raw []byte, max int) string {
 
 // --- Risk confirmation ---------------------------------------------------
 
-// confirmState carries an in-flight risk-confirmation request. The callback
-// goroutine populates it; the REPL event loop drains it on the next key.
-// typing buffers characters while the user spells out "all" + Enter — we
-// refuse to bind approve-all to a single key since one stray paste would
-// disable the risk gate for the rest of the turn.
+// confirmState carries an in-flight risk-confirmation request. The
+// callback goroutine populates it; the REPL event loop drains it on
+// the next key. typing buffers characters while the user spells out
+// "all" (approve-all) or types a revision prompt — we refuse to bind
+// either to a single key since one stray paste would otherwise
+// disable the risk gate or inject revisions for the rest of the
+// turn. typingKind discriminates between "all" and revise modes.
 type confirmState struct {
-	req    agent.ConfirmRequest
-	result chan agent.Decision
-	typing []rune
+	req        agent.ConfirmRequest
+	result     chan agent.ConfirmResponse
+	typing     []rune
+	typingKind confirmTypingKind
 }
+
+// confirmTypingKind records what the buffered characters represent
+// so the Enter handler knows how to interpret them.
+type confirmTypingKind int
+
+const (
+	typingNone confirmTypingKind = iota
+	typingFreeText
+	typingRevise
+)
 
 // decisionLabel maps agent.Decision onto the label the Prom counter expects.
 func decisionLabel(d agent.Decision) string {
@@ -78,6 +91,8 @@ func decisionLabel(d agent.Decision) string {
 		return "approve_all"
 	case agent.DecisionDeny:
 		return "deny"
+	case agent.DecisionRevise:
+		return "revise"
 	default:
 		return "unknown"
 	}
@@ -161,12 +176,19 @@ func resolveConfirmKey(cs *confirmState, k keyEvent, ed *lineEditor) bool {
 	if cs.typing != nil {
 		switch k.kind {
 		case keyEnter:
-			typed := strings.ToLower(strings.TrimSpace(string(cs.typing)))
+			typed := strings.TrimSpace(string(cs.typing))
+			if cs.typingKind == typingRevise {
+				// Any revision text (even empty) finalises the
+				// revise decision; the agent treats empty as a
+				// placeholder and keeps the loop structured.
+				return confirmResolveRevision(cs, typed, ed)
+			}
+			lower := strings.ToLower(typed)
 			var d agent.Decision
 			switch {
-			case critical && typed == "confirm":
+			case critical && lower == "confirm":
 				d = agent.DecisionApprove
-			case !critical && typed == "all":
+			case !critical && lower == "all":
 				d = agent.DecisionApproveAll
 			default:
 				d = agent.DecisionDeny
@@ -193,6 +215,7 @@ func resolveConfirmKey(cs *confirmState, k keyEvent, ed *lineEditor) bool {
 			// No single-key approve path: every rune (even `y`) enters
 			// type-in mode and only the exact word `confirm` authorises.
 			cs.typing = []rune{k.r}
+			cs.typingKind = typingFreeText
 			ed.writeOutput(func() {
 				pad := strings.Repeat(" ", boxPad)
 				fmt.Fprintf(os.Stderr, "%s  %s(type `confirm` then Enter to approve this critical action, Enter to cancel)%s\n",
@@ -205,10 +228,22 @@ func resolveConfirmKey(cs *confirmState, k keyEvent, ed *lineEditor) bool {
 			return confirmResolve(cs, agent.DecisionApprove, ed)
 		case 'n', 'N':
 			return confirmResolve(cs, agent.DecisionDeny, ed)
+		case 'r', 'R':
+			// Revise: enter type-in mode for the revision prompt,
+			// which is forwarded to the model verbatim on Enter.
+			cs.typing = []rune{} // empty buffer — the trigger rune itself is consumed
+			cs.typingKind = typingRevise
+			ed.writeOutput(func() {
+				pad := strings.Repeat(" ", boxPad)
+				fmt.Fprintf(os.Stderr, "%s  %s(type the revision the agent should apply, then Enter; Ctrl+C to cancel)%s\n",
+					pad, dim, reset)
+			})
+			return false
 		default:
 			// Start type-in mode. Buffer the rune and show a hint so the
 			// user knows approve-all needs the full word.
 			cs.typing = []rune{k.r}
+			cs.typingKind = typingFreeText
 			ed.writeOutput(func() {
 				pad := strings.Repeat(" ", boxPad)
 				fmt.Fprintf(os.Stderr, "%s  %s(type `all` then Enter to approve all remaining this turn, Enter to cancel)%s\n",
@@ -232,12 +267,35 @@ func confirmResolve(cs *confirmState, d agent.Decision, ed *lineEditor) bool {
 			label = cyan + "● approved (all remaining)" + reset
 		case agent.DecisionDeny:
 			label = red + "● denied" + reset
+		case agent.DecisionRevise:
+			label = yellow + "● revision requested" + reset
 		}
 		pad := strings.Repeat(" ", boxPad)
 		fmt.Fprintf(os.Stderr, "%s  %s\n", pad, label)
 	})
 	select {
-	case cs.result <- d:
+	case cs.result <- agent.ConfirmResponse{Decision: d}:
+	default:
+	}
+	return true
+}
+
+// confirmResolveRevision finalises the DecisionRevise path — the
+// buffered rune slice becomes the revision text forwarded to the
+// model. Empty revisions are allowed; the agent handles them by
+// treating the revision as an operator-initiated skip with no
+// specific guidance.
+func confirmResolveRevision(cs *confirmState, text string, ed *lineEditor) bool {
+	ed.writeOutput(func() {
+		pad := strings.Repeat(" ", boxPad)
+		display := text
+		if display == "" {
+			display = "(no revision text)"
+		}
+		fmt.Fprintf(os.Stderr, "%s  %s● revision: %s%s\n", pad, yellow, display, reset)
+	})
+	select {
+	case cs.result <- agent.ConfirmResponse{Decision: agent.DecisionRevise, Revision: text}:
 	default:
 	}
 	return true
@@ -548,28 +606,28 @@ func enterREPL(deps *REPLDeps) error {
 	// below) instead of the line editor.
 	var pendingConfirm atomic.Pointer[confirmState]
 	if deps.gateEnabled {
-		ai.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.Decision {
+		ai.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.ConfirmResponse {
 			promptPayload := map[string]any{
 				"tool":  req.Tool,
 				"risk":  req.Risk.String(),
 				"input": string(req.Input),
 			}
 			wh.Fire(webhook.EventRiskPrompted, promptPayload)
-			resultCh := make(chan agent.Decision, 1)
+			resultCh := make(chan agent.ConfirmResponse, 1)
 			pendingConfirm.Store(&confirmState{req: req, result: resultCh})
 			ed.writeOutput(func() {
 				renderConfirmPrompt(req, ui.Cols())
 			})
 			defer pendingConfirm.Store(nil)
-			var decision agent.Decision
+			var resp agent.ConfirmResponse
 			select {
-			case d := <-resultCh:
-				decision = d
+			case r := <-resultCh:
+				resp = r
 			case <-ctx.Done():
-				decision = agent.DecisionDeny
+				resp = agent.ConfirmResponse{Decision: agent.DecisionDeny}
 			}
-			rec.RecordRiskPrompt(req.Tool, decisionLabel(decision))
-			if decision == agent.DecisionDeny {
+			rec.RecordRiskPrompt(req.Tool, decisionLabel(resp.Decision))
+			if resp.Decision == agent.DecisionDeny {
 				denyPayload := map[string]any{
 					"tool":  req.Tool,
 					"risk":  req.Risk.String(),
@@ -577,7 +635,7 @@ func enterREPL(deps *REPLDeps) error {
 				}
 				wh.Fire(webhook.EventRiskDenied, denyPayload)
 			}
-			return decision
+			return resp
 		})
 	}
 

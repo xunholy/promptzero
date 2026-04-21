@@ -424,10 +424,10 @@ func (s *Server) attachAgentCallbacks() {
 		}
 	})
 
-	s.agent.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.Decision {
+	s.agent.SetConfirmCallback(func(ctx context.Context, req agent.ConfirmRequest) agent.ConfirmResponse {
 		ts := s.turn()
 		if ts == nil || ts.owner == nil {
-			return agent.DecisionDeny
+			return agent.ConfirmResponse{Decision: agent.DecisionDeny}
 		}
 		id := newID()
 		ch := make(chan agent.Decision, 1)
@@ -447,11 +447,16 @@ func (s *Server) attachAgentCallbacks() {
 			"confirm_id": id,
 			"turn_id":    ts.id,
 		})
+		// The web UI doesn't surface a revision prompt today; keep
+		// the shape compatible by mapping the legacy Decision channel
+		// into a bare ConfirmResponse. When the web frontend gains
+		// revise support, extend the channel to carry text alongside
+		// the decision.
 		select {
 		case d := <-ch:
-			return d
+			return agent.ConfirmResponse{Decision: d}
 		case <-ctx.Done():
-			return agent.DecisionDeny
+			return agent.ConfirmResponse{Decision: agent.DecisionDeny}
 		}
 	})
 }
