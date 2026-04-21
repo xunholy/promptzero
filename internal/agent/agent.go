@@ -523,8 +523,14 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 // (including prompt-cache breakpoints on the system prompt and tool
 // catalog) lives in buildCachedRequest so cache behaviour can be
 // covered by unit tests without an SDK mock.
+//
+// The main turn is dispatched at the TierPlan cost tier so personas
+// that declare a cheaper plan-tier model (e.g. Haiku for read-only
+// defenders) pay less without needing bespoke agent plumbing. The
+// session fallback — a.model — is used when no persona model is set.
 func (a *Agent) streamOnce(ctx context.Context, sysPrompt string, tools []anthropic.ToolUnionParam) (*anthropic.Message, error) {
-	stream := a.client.Messages.NewStreaming(ctx, buildCachedRequest(a.model, sysPrompt, tools, a.history))
+	model := a.modelForLocked(TierPlan)
+	stream := a.client.Messages.NewStreaming(ctx, buildCachedRequest(model, sysPrompt, tools, a.history))
 	defer stream.Close()
 
 	var msg anthropic.Message

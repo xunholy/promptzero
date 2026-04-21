@@ -97,6 +97,72 @@ default_risk_threshold: medium
 	}
 }
 
+func TestRegistryLoadModelsBlock(t *testing.T) {
+	// Exercise the optional models map: classify on Haiku, plan on
+	// Sonnet, exploit on Opus. Required by the roadmap P0-02 cost-tier
+	// routing flow — a persona author should be able to spell this out
+	// in YAML and have the agent consume it unchanged.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tiered.yaml")
+	yaml := `name: tiered-demo
+description: cost-tier per-call model selection
+system_prompt: You are a tiered persona.
+models:
+  classify: claude-haiku-4-5
+  plan:     claude-sonnet-4-6
+  exploit:  claude-opus-4-7
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	r := NewRegistry()
+	if err := r.Load(path); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	p, ok := r.Get("tiered-demo")
+	if !ok {
+		t.Fatalf("persona not registered")
+	}
+	if p.Models == nil {
+		t.Fatalf("Models map is nil; yaml did not decode")
+	}
+	want := map[string]string{
+		"classify": "claude-haiku-4-5",
+		"plan":     "claude-sonnet-4-6",
+		"exploit":  "claude-opus-4-7",
+	}
+	for k, v := range want {
+		if got := p.Models[k]; got != v {
+			t.Errorf("Models[%q] = %q, want %q", k, got, v)
+		}
+	}
+}
+
+func TestRegistryLoadWithoutModelsIsBackwardsCompatible(t *testing.T) {
+	// Personas that predate the Models field must still load cleanly
+	// with Models left as a nil map. The YAML here mirrors the original
+	// persona schema.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.yaml")
+	yaml := `name: legacy
+description: pre-P0-02 persona
+system_prompt: Legacy.
+tools:
+  - audit_query
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	r := NewRegistry()
+	if err := r.Load(path); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	p, _ := r.Get("legacy")
+	if p.Models != nil && len(p.Models) != 0 {
+		t.Fatalf("Models map should be nil/empty on legacy persona, got %+v", p.Models)
+	}
+}
+
 func TestRegistryLoadDirMissing(t *testing.T) {
 	r := NewRegistry()
 	if err := r.LoadDir(filepath.Join(t.TempDir(), "does-not-exist")); err != nil {

@@ -27,12 +27,20 @@ import (
 // the persona may invoke — an empty slice means "all tools pass through".
 // DefaultRiskThreshold is applied to the agent when non-empty and the user
 // has not already overridden the threshold via config or CLI flag.
+//
+// Models is an optional cost-tier → model-name map. Callers ask the agent
+// for the model to use per tier (classify / generate / plan / exploit)
+// and get back either the persona's configured model or the session's
+// fallback. Designed so recon and intent-routing calls can be served by
+// a cheaper/faster Haiku while exploitation-planning stays on Opus — see
+// docs/specs/roadmap.md P0-02.
 type Persona struct {
-	Name                 string   `yaml:"name"`
-	Description          string   `yaml:"description"`
-	SystemPrompt         string   `yaml:"system_prompt"`
-	Tools                []string `yaml:"tools"`
-	DefaultRiskThreshold string   `yaml:"default_risk_threshold,omitempty"`
+	Name                 string            `yaml:"name"`
+	Description          string            `yaml:"description"`
+	SystemPrompt         string            `yaml:"system_prompt"`
+	Tools                []string          `yaml:"tools"`
+	DefaultRiskThreshold string            `yaml:"default_risk_threshold,omitempty"`
+	Models               map[string]string `yaml:"models,omitempty"`
 }
 
 // Registry holds the set of known personas. Built-ins are merged with any
