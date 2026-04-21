@@ -1,23 +1,35 @@
 package agent
 
-import "github.com/anthropics/anthropic-sdk-go"
+import (
+	"strings"
+
+	"github.com/anthropics/anthropic-sdk-go"
+)
 
 func buildTools() []anthropic.ToolUnionParam {
 	return []anthropic.ToolUnionParam{
 		// --- Sub-GHz ---
-		tool("subghz_transmit",
+		toolEx("subghz_transmit",
 			"Transmit a saved Sub-GHz signal file (.sub). Use for garage doors, remotes, gate openers, car keys, weather stations, or any device operating on Sub-GHz frequencies. Modded firmware unlocks the full frequency range with no restrictions.",
 			props(
 				reqProp("file", "string", "Path to .sub file on Flipper SD card, e.g. /ext/subghz/garage.sub"),
 			),
+			[]ToolExample{
+				{Input: `{"file":"/ext/subghz/garage.sub"}`, Note: "replay a saved garage-door capture"},
+				{Input: `{"file":"/ext/subghz/car_fob.sub"}`, Note: "re-transmit a rolling-code car key capture"},
+			},
 			"file",
 		),
-		tool("subghz_receive",
+		toolEx("subghz_receive",
 			"Capture/receive Sub-GHz signals on a specific frequency. Records signals from nearby transmitters. Full spectrum unlocked.",
 			props(
 				reqProp("frequency", "integer", "Frequency in Hz, e.g. 433920000 for 433.92MHz"),
 				optProp("duration_seconds", "integer", "How long to listen (default 30)"),
 			),
+			[]ToolExample{
+				{Input: `{"frequency":433920000,"duration_seconds":15}`, Note: "common garage-door band, 15 s sweep"},
+				{Input: `{"frequency":315000000,"duration_seconds":30}`, Note: "common car-key band, longer sweep"},
+			},
 			"frequency",
 		),
 		tool("subghz_decode",
@@ -78,11 +90,14 @@ func buildTools() []anthropic.ToolUnionParam {
 				optProp("timeout_seconds", "integer", "How long to wait for a tag (default 30)"),
 			),
 		),
-		tool("nfc_emulate",
+		toolEx("nfc_emulate",
 			"Emulate a saved NFC tag/card. The Flipper becomes the tag — hold it against a reader.",
 			props(
 				reqProp("file", "string", "Path to .nfc file on Flipper SD card"),
 			),
+			[]ToolExample{
+				{Input: `{"file":"/ext/nfc/badge.nfc"}`, Note: "replay a previously captured MIFARE access badge"},
+			},
 			"file",
 		),
 		tool("nfc_subcommand",
@@ -110,12 +125,15 @@ func buildTools() []anthropic.ToolUnionParam {
 			),
 			"protocol", "data",
 		),
-		tool("rfid_write",
+		toolEx("rfid_write",
 			"Write data to a writable RFID tag. Clones data onto a blank T5577 or similar tag.",
 			props(
 				reqProp("protocol", "string", "RFID protocol: EM4100, HIDProx, Indala, AWID, FDX-A, FDX-B, etc."),
 				reqProp("data", "string", "Hex data to write"),
 			),
+			[]ToolExample{
+				{Input: `{"protocol":"EM4100","data":"1A2B3C4D5E"}`, Note: "clone a captured 40-bit EM4100 fob onto a T5577 blank"},
+			},
 			"protocol", "data",
 		),
 
@@ -160,11 +178,14 @@ func buildTools() []anthropic.ToolUnionParam {
 		),
 
 		// --- BadUSB ---
-		tool("badusb_run",
+		toolEx("badusb_run",
 			"Execute a BadUSB/Rubber Ducky script. The Flipper acts as a USB keyboard and types commands on the connected computer. No restrictions on payloads.",
 			props(
 				reqProp("file", "string", "Path to .txt BadUSB script on SD card"),
 			),
+			[]ToolExample{
+				{Input: `{"file":"/ext/badusb/demo.txt"}`, Note: "execute a generated or saved DuckyScript payload"},
+			},
 			"file",
 		),
 		tool("badusb_validate",
@@ -660,6 +681,16 @@ func buildFileFormatTools() []anthropic.ToolUnionParam {
 
 // Helper constructors for clean tool definitions.
 
+// ToolExample is a single canonical input → outcome pair for a tool's
+// description. Examples are rendered into the prompt-cached tool
+// definition so the model sees concrete usage patterns without any
+// per-turn cost. Keep each example short — two lines max — so the
+// cumulative description stays under ~1 KB.
+type ToolExample struct {
+	Input string // JSON for the tool's input params, e.g. `{"file":"/ext/subghz/garage.sub"}`
+	Note  string // short human-readable outcome, e.g. "replays a garage-door capture"
+}
+
 func tool(name, desc string, properties map[string]interface{}, required ...string) anthropic.ToolUnionParam {
 	input := anthropic.ToolInputSchemaParam{
 		Properties: properties,
@@ -674,6 +705,37 @@ func tool(name, desc string, properties map[string]interface{}, required ...stri
 			InputSchema: input,
 		},
 	}
+}
+
+// toolEx is tool() with a few-shot examples block appended to the
+// description. Literature (arXiv 2310.08540 and follow-ups) shows a
+// single canonical example lifts tool-arg accuracy on rare tools by
+// double-digit points; two examples cover the common / edge-case
+// split. The block is deterministic, so the system+tools prompt-cache
+// breakpoint placed in buildCachedRequest still hits on every turn.
+func toolEx(name, desc string, properties map[string]interface{}, examples []ToolExample, required ...string) anthropic.ToolUnionParam {
+	return tool(name, renderExamples(desc, examples), properties, required...)
+}
+
+// renderExamples appends a short "Examples:" section to the tool
+// description. Exposed (package-private) so tests can exercise the
+// rendering shape without reaching through tool().
+func renderExamples(desc string, examples []ToolExample) string {
+	if len(examples) == 0 {
+		return desc
+	}
+	var b strings.Builder
+	b.WriteString(desc)
+	b.WriteString("\n\nExamples:")
+	for _, ex := range examples {
+		b.WriteString("\n- ")
+		b.WriteString(ex.Input)
+		if ex.Note != "" {
+			b.WriteString("  — ")
+			b.WriteString(ex.Note)
+		}
+	}
+	return b.String()
 }
 
 func props(items ...map[string]interface{}) map[string]interface{} {

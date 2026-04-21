@@ -199,11 +199,15 @@ func buildMarauderTools() []anthropic.ToolUnionParam {
 		),
 
 		// --- Evil Portal ---
-		tool("wifi_evil_portal_start",
+		toolEx("wifi_evil_portal_start",
 			"Start an evil portal captive portal. Creates a fake WiFi hotspot that serves a phishing page to capture credentials. Optionally specify an HTML filename on the SD card.",
 			props(
 				optProp("filename", "string", "HTML filename on SD card to serve (empty for default page)"),
 			),
+			[]ToolExample{
+				{Input: `{}`, Note: "serve the Marauder default evil-portal page (auto-detected)"},
+				{Input: `{"filename":"starbucks.html"}`, Note: "serve a generated portal deployed via generate_evil_portal"},
+			},
 		),
 		tool("wifi_evil_portal_stop",
 			"Stop the evil portal.",
