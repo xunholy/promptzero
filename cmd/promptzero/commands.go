@@ -154,6 +154,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 	case "/report":
 		ed.writeOutput(func() { handleReport(deps, fields[1:]) })
 		return true, false
+	case "/attack":
+		ed.writeOutput(func() { handleAttack(deps, fields[1:]) })
+		return true, false
 	case "/persona":
 		ed.writeOutput(func() { handlePersona(deps.ai, deps.personas, fields[1:]) })
 		return true, false
@@ -537,6 +540,42 @@ func handleRewind(deps *REPLDeps, rawArgs string) {
 			return
 		}
 		fmt.Fprintf(os.Stderr, "  %s✓ restored %s (%d bytes) from snapshot %s%s\n", green, entry.OriginalPath, len(content), entry.ID, reset)
+	}
+}
+
+// handleAttack services the /attack REPL command. Manages the agent's
+// ATT&CK constraint set — an optional filter that limits the per-turn
+// tool catalog to tools tagged with one or more MITRE technique IDs
+// (see internal/attack + P1-07). Supported forms:
+//
+//	/attack                 — show the active constraint and any
+//	                          available technique IDs
+//	/attack set T1557.004 T1499   — pin the session to those techniques
+//	/attack clear           — remove the constraint
+func handleAttack(deps *REPLDeps, args []string) {
+	if len(args) == 0 {
+		cur := deps.ai.AttackConstraint()
+		if len(cur) == 0 {
+			fmt.Fprintf(os.Stderr, "  %sattack: no constraint set (all tools allowed)%s\n", dim, reset)
+		} else {
+			fmt.Fprintf(os.Stderr, "  %sattack constraint: %s%s\n", dim, strings.Join(cur, ", "), reset)
+		}
+		fmt.Fprintf(os.Stderr, "  %s(usage: /attack set T1557.004 [T1499 ...] | /attack clear)%s\n", dim, reset)
+		return
+	}
+	switch strings.ToLower(args[0]) {
+	case "set":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %s● attack set: at least one technique id required%s\n", red, reset)
+			return
+		}
+		deps.ai.SetAttackConstraint(args[1:])
+		fmt.Fprintf(os.Stderr, "  %s✓ attack constraint set: %s%s\n", green, strings.Join(deps.ai.AttackConstraint(), ", "), reset)
+	case "clear":
+		deps.ai.SetAttackConstraint(nil)
+		fmt.Fprintf(os.Stderr, "  %s✓ attack constraint cleared%s\n", green, reset)
+	default:
+		fmt.Fprintf(os.Stderr, "  %s● attack: unknown subcommand %q (expected set|clear)%s\n", red, args[0], reset)
 	}
 }
 

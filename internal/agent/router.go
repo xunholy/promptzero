@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/attack"
 )
 
 // Tool groups are the coarse-grained buckets the router reasons over.
@@ -251,4 +252,112 @@ func (a *Agent) DisableDynamicCatalog() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.routerFn = nil
+}
+
+// narrowToolsByAttack filters tools to those tagged with at least one
+// of the provided MITRE ATT&CK technique IDs (per the internal/attack
+// Index). Tools in alwaysOnGroups pass through unchanged so the
+// operator never loses audit / meta primitives mid-constraint.
+//
+// Correctness floors mirror narrowTools:
+//   - empty techniques OR nil index -> input unchanged
+//   - filtered result below minNarrowedTools -> input unchanged
+//
+// The function is deliberately pure + deterministic so it can feed
+// the Haiku router's prompt construction (P0-04) and the future
+// Campaigns runner (P2-19) without sharing agent state.
+func narrowToolsByAttack(tools []anthropic.ToolUnionParam, idx *attack.Index, techniques []string) []anthropic.ToolUnionParam {
+	if len(techniques) == 0 || idx == nil {
+		return tools
+	}
+	allowed := make(map[string]bool, len(techniques))
+	for _, t := range techniques {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			allowed[t] = true
+		}
+	}
+	if len(allowed) == 0 {
+		return tools
+	}
+
+	out := make([]anthropic.ToolUnionParam, 0, len(tools))
+	for _, t := range tools {
+		if t.OfTool == nil {
+			out = append(out, t)
+			continue
+		}
+		g := ToolGroup(t.OfTool.Name)
+		if alwaysOnGroups[g] {
+			out = append(out, t)
+			continue
+		}
+		for _, tag := range idx.TechniquesForTool(t.OfTool.Name) {
+			if allowed[tag] {
+				out = append(out, t)
+				break
+			}
+		}
+	}
+	if len(out) < minNarrowedTools {
+		return tools
+	}
+	return out
+}
+
+// SetAttackIndex wires an ATT&CK index onto the agent so the router
+// and the runtime constraint filter (SetAttackConstraint) can resolve
+// tool-to-technique mappings. Nil detaches the index.
+func (a *Agent) SetAttackIndex(idx *attack.Index) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.attackIdx = idx
+}
+
+// AttackIndex returns the installed ATT&CK index, or nil. Used by
+// /report and the REPL /attack command.
+func (a *Agent) AttackIndex() *attack.Index {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.attackIdx
+}
+
+// SetAttackConstraint limits the agent's per-turn tool catalog to
+// tools tagged with at least one of the given ATT&CK technique IDs.
+// Pass an empty slice to clear the constraint. Unknown IDs are kept
+// verbatim — the filter simply won't match any tool for them, which
+// is the conservative behaviour when a user pastes a technique that
+// isn't in the curated registry yet.
+func (a *Agent) SetAttackConstraint(techniques []string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(techniques) == 0 {
+		a.attackConstraint = nil
+		return
+	}
+	cleaned := make([]string, 0, len(techniques))
+	seen := map[string]bool{}
+	for _, t := range techniques {
+		t = strings.TrimSpace(t)
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		cleaned = append(cleaned, t)
+	}
+	a.attackConstraint = cleaned
+}
+
+// AttackConstraint returns a copy of the current technique-ID
+// constraint set. Returns an empty slice when no constraint is
+// installed.
+func (a *Agent) AttackConstraint() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.attackConstraint) == 0 {
+		return nil
+	}
+	out := make([]string, len(a.attackConstraint))
+	copy(out, a.attackConstraint)
+	return out
 }

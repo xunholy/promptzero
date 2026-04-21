@@ -13,6 +13,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
@@ -567,6 +568,14 @@ func setupRules(cfg *config.Config, wh webhook.Dispatcher, auditLog *audit.Log, 
 		statusOK(fmt.Sprintf("Webhooks %s(%d subscriber%s)%s", dim, n, plural(n), reset))
 	}
 	return engine
+}
+
+// setupAttack wires the default MITRE ATT&CK index onto the agent so
+// the runtime constraint filter (/attack REPL command) and the report
+// generator can resolve tool-to-technique mappings. Pure metadata —
+// no runtime cost unless an operator actively installs a constraint.
+func setupAttack(ai *agent.Agent) {
+	ai.SetAttackIndex(attack.NewDefaultIndex())
 }
 
 // setupDetectors installs the default DetectorEngine on the agent and

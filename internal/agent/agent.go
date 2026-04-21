@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/discover"
@@ -145,6 +146,15 @@ type Agent struct {
 	// and surfaces their verdicts on the tool result (P1-10). Nil
 	// disables the feature (no engine = no verdicts).
 	detectorEngine *rules.DetectorEngine
+
+	// attackIdx maps tools to MITRE ATT&CK technique IDs. Consumed
+	// by the /report generator and the runtime attack-constraint
+	// filter. Set via SetAttackIndex; nil disables both.
+	attackIdx *attack.Index
+	// attackConstraint filters the per-turn tool catalog to tools
+	// tagged with at least one of these technique IDs. Empty
+	// disables the filter (all tools pass through the ATT&CK gate).
+	attackConstraint []string
 }
 
 // SetDetectorEngine installs a rules.DetectorEngine. When set, the
@@ -458,6 +468,15 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	// falls back to the full set so correctness is never sacrificed for
 	// cost.
 	tools = narrowTools(ctx, userInput, tools, a.routerFn)
+
+	// ATT&CK constraint filter (P1-07): when the operator has pinned
+	// the session to one or more technique IDs, drop tools that
+	// aren't tagged with any of those techniques. Always-on meta
+	// groups survive. See router.go's narrowToolsByAttack for
+	// correctness floors.
+	if len(a.attackConstraint) > 0 && a.attackIdx != nil {
+		tools = narrowToolsByAttack(tools, a.attackIdx, a.attackConstraint)
+	}
 
 	maxTools := a.maxToolsPerTurn
 	if maxTools <= 0 {

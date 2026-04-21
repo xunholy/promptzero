@@ -165,6 +165,7 @@ func run() error {
 	ruleEngine := setupRules(cfg, wh, auditLog, rec)
 	fireSessionStarted(cfg, auditLog, wh)
 
+	setupAttack(ai)
 	setupDetectors(&client, ai, cfg)
 
 	genLLM := setupGenerator(cfg, ai, flip, &client, f.genProvider, f.ollamaURL, f.ollamaModel)
