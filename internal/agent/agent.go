@@ -329,6 +329,13 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	ctx, _ = obs.WithTrace(ctx)
 	obs.FromCtx(ctx).Info("turn_started", "input_len", len(userInput))
 
+	// Device-state oracle: inject a fresh <device-state> JSON block as a
+	// prefix on the user turn so the model stops asking "what's
+	// connected?" / "what mode are you in?" every few turns. Stays
+	// outside the prompt-cache window because the snapshot changes
+	// every few seconds (see state_prompt.go).
+	userInput = buildDeviceStateBlock(ctx, a.flipper) + userInput
+
 	a.history = append(a.history, anthropic.NewUserMessage(
 		anthropic.NewTextBlock(userInput),
 	))

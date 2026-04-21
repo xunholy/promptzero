@@ -93,6 +93,10 @@ type Flipper struct {
 	// writeFileTimeout is the post-payload read deadline used by WriteFileCtx.
 	// Zero means use the default (10 s).
 	writeFileTimeout time.Duration
+
+	// state caches the most recent State() snapshot. See state.go — the
+	// cache has its own mutex so state probes never contend with Exec.
+	state stateCache
 }
 
 // SetMaxAccumBytes overrides the per-operation read-buffer cap. Values <= 0
