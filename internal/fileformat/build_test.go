@@ -264,6 +264,124 @@ func TestBuildNFC_UIDLengthAgainstDeviceType(t *testing.T) {
 	}
 }
 
+// ----- Sub-GHz bruteforce -----
+
+func TestBuildSubBruteforce_HappyPath(t *testing.T) {
+	raw, err := BuildSubBruteforce(SubBruteforceParams{
+		Frequency: 433920000,
+		BitCount:  24,
+		StartKey:  0,
+		EndKey:    3,
+		TE:        400,
+	})
+	if err != nil {
+		t.Fatalf("BuildSubBruteforce: %v", err)
+	}
+	parsed, err := ParseSub(raw)
+	if err != nil {
+		t.Fatalf("parse bruteforce output: %v", err)
+	}
+	if parsed.Frequency != 433920000 {
+		t.Errorf("Frequency = %d", parsed.Frequency)
+	}
+	if parsed.Protocol != "RAW" {
+		t.Errorf("Protocol = %q, want RAW", parsed.Protocol)
+	}
+	// 4 keys × 24 bits × 2 samples + 4 sync pairs × 2 = 4*48 + 8 = 200
+	if len(parsed.RawData) != 200 {
+		t.Errorf("RawData len = %d, want 200", len(parsed.RawData))
+	}
+}
+
+func TestBuildSubBruteforce_RejectsBadParams(t *testing.T) {
+	cases := []struct {
+		name string
+		p    SubBruteforceParams
+	}{
+		{"zero frequency", SubBruteforceParams{BitCount: 24, StartKey: 0, EndKey: 3}},
+		{"bit count too small", SubBruteforceParams{Frequency: 433920000, BitCount: 0, StartKey: 0, EndKey: 3}},
+		{"bit count too large", SubBruteforceParams{Frequency: 433920000, BitCount: 64, StartKey: 0, EndKey: 3}},
+		{"end < start", SubBruteforceParams{Frequency: 433920000, BitCount: 24, StartKey: 100, EndKey: 50}},
+		{"range too large", SubBruteforceParams{Frequency: 433920000, BitCount: 24, StartKey: 0, EndKey: maxBruteforceKeys + 1}},
+		{"out-of-band freq", SubBruteforceParams{Frequency: 500, BitCount: 24, StartKey: 0, EndKey: 3}},
+	}
+	for _, c := range cases {
+		if _, err := BuildSubBruteforce(c.p); err == nil {
+			t.Errorf("%s: expected error", c.name)
+		}
+	}
+}
+
+func TestBuildSubBruteforce_DefaultsTE(t *testing.T) {
+	// When TE is zero, the default 400 µs should kick in and produce
+	// a file with exactly the bit-pattern lengths we expect.
+	raw, err := BuildSubBruteforce(SubBruteforceParams{
+		Frequency: 433920000,
+		BitCount:  24,
+		StartKey:  0x000000,
+		EndKey:    0x000000,
+		// TE left zero -> default 400
+	})
+	if err != nil {
+		t.Fatalf("BuildSubBruteforce: %v", err)
+	}
+	parsed, _ := ParseSub(raw)
+	// All-zero key: 24 × (+TE,-3TE) = 24 × (400, -1200) samples,
+	// then sync (TE, -31TE) = (400, -12400).
+	// First two samples must be 400, -1200 (a '0' bit).
+	if parsed.RawData[0] != 400 {
+		t.Errorf("first sample = %d, want 400 (TE)", parsed.RawData[0])
+	}
+	if parsed.RawData[1] != -1200 {
+		t.Errorf("second sample = %d, want -1200 (-3*TE)", parsed.RawData[1])
+	}
+	// Sync: 2nd-to-last should be +400, last should be -12400.
+	n := len(parsed.RawData)
+	if parsed.RawData[n-2] != 400 {
+		t.Errorf("sync start = %d, want 400", parsed.RawData[n-2])
+	}
+	if parsed.RawData[n-1] != -12400 {
+		t.Errorf("sync end = %d, want -12400 (-31*TE)", parsed.RawData[n-1])
+	}
+}
+
+func TestBuildSubBruteforce_BitEncoding(t *testing.T) {
+	// Key 1 at bit_count 8 gives bit pattern 00000001 (MSB first):
+	//   seven 0 bits: (TE, -3TE) each
+	//   one 1 bit:    (3TE, -TE)
+	// Followed by sync (TE, -31TE).
+	raw, err := BuildSubBruteforce(SubBruteforceParams{
+		Frequency: 433920000,
+		BitCount:  8,
+		StartKey:  1,
+		EndKey:    1,
+		TE:        100, // compact test values
+	})
+	if err != nil {
+		t.Fatalf("BuildSubBruteforce: %v", err)
+	}
+	parsed, _ := ParseSub(raw)
+	want := []int32{
+		100, -300, // 0
+		100, -300, // 0
+		100, -300, // 0
+		100, -300, // 0
+		100, -300, // 0
+		100, -300, // 0
+		100, -300, // 0
+		300, -100, // 1 (least significant bit of value 1)
+		100, -3100, // sync
+	}
+	if len(parsed.RawData) != len(want) {
+		t.Fatalf("RawData len = %d, want %d", len(parsed.RawData), len(want))
+	}
+	for i, w := range want {
+		if parsed.RawData[i] != w {
+			t.Errorf("RawData[%d] = %d, want %d", i, parsed.RawData[i], w)
+		}
+	}
+}
+
 func TestNormaliseHexBytes(t *testing.T) {
 	cases := []struct {
 		in, want string

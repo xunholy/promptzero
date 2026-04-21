@@ -101,6 +101,99 @@ func BuildSub(p SubBuildParams) ([]byte, error) {
 	return s.Marshal(), nil
 }
 
+// ----- Sub-GHz brute-force -----
+
+// SubBruteforceParams carries the inputs for BuildSubBruteforce.
+// Produces a RAW .sub file encoding Princeton-style OOK pulses for
+// each key in [StartKey, EndKey]. Frequency + bit count + TE are
+// required; the sweep is capped by maxBruteforceKeys to prevent the
+// caller from generating a megabyte-sized file and thrashing the
+// Flipper SD card.
+type SubBruteforceParams struct {
+	Frequency uint32 // Hz
+	BitCount  int    // typically 24 for Princeton-family protocols
+	StartKey  uint64 // inclusive
+	EndKey    uint64 // inclusive
+	TE        int    // microseconds (defaults to 400 — common Princeton TE)
+	Preset    string // optional; defaulted per-band via defaultSubPreset
+}
+
+// maxBruteforceKeys bounds how many keys one Build invocation will
+// encode into a single RAW .sub file. 10_000 keys × 24 bits × 2
+// samples/bit ≈ 500_000 int32s ≈ 2 MB of RAW data. Past that the
+// file becomes unwieldy for the Flipper UI and the operator should
+// instead run the sweep in windows.
+const maxBruteforceKeys = 10_000
+
+// BuildSubBruteforce constructs a RAW .sub file that sweeps the
+// integer key space [StartKey, EndKey] at BitCount bits. Each key is
+// encoded MSB-first using Princeton-style OOK timing: a '1' bit as
+// +3*TE / -1*TE, a '0' bit as +1*TE / -3*TE. A +1*TE / -31*TE sync
+// gap separates adjacent keys — matches the pattern a PT2240 / SC5262
+// family decoder expects.
+//
+// The tool is agnostic about which protocol actually authorises the
+// target; it just produces a replayable sweep the operator can feed
+// to subghz_transmit. Per-protocol encoding variants (Keeloq rolling
+// codes, CAME 12-bit, Chamberlain) are not modelled — those need
+// protocol-specific state machines and belong in a later enhancement.
+func BuildSubBruteforce(p SubBruteforceParams) ([]byte, error) {
+	if p.Frequency == 0 {
+		return nil, fmt.Errorf("subghz_bruteforce_generate: frequency required")
+	}
+	if p.Frequency < 1_000_000 || p.Frequency > 1_000_000_000 {
+		return nil, fmt.Errorf("subghz_bruteforce_generate: frequency %d Hz out of Flipper CC1101 range (1 MHz–1 GHz)", p.Frequency)
+	}
+	if p.BitCount < 8 || p.BitCount > 32 {
+		return nil, fmt.Errorf("subghz_bruteforce_generate: bit_count %d out of range (8-32)", p.BitCount)
+	}
+	if p.EndKey < p.StartKey {
+		return nil, fmt.Errorf("subghz_bruteforce_generate: end_key %d < start_key %d", p.EndKey, p.StartKey)
+	}
+	count := p.EndKey - p.StartKey + 1
+	if count > maxBruteforceKeys {
+		return nil, fmt.Errorf("subghz_bruteforce_generate: key range %d exceeds cap of %d; sweep in windows", count, maxBruteforceKeys)
+	}
+	te := p.TE
+	if te == 0 {
+		te = 400
+	}
+
+	// Rough upper bound: 2 samples per bit * bits + 2 samples for
+	// sync. Prealloc saves a handful of grows on 10k-key sweeps.
+	rawData := make([]int32, 0, int(count)*(p.BitCount*2+2))
+
+	hi := int32(3 * te)
+	lo := int32(-te)
+	loBit := int32(te)
+	hiBit := int32(-3 * te)
+	syncHi := int32(te)
+	syncLo := int32(-31 * te)
+
+	for k := p.StartKey; k <= p.EndKey; k++ {
+		// MSB-first
+		for bit := p.BitCount - 1; bit >= 0; bit-- {
+			if (k>>uint(bit))&1 == 1 {
+				rawData = append(rawData, hi, lo)
+			} else {
+				rawData = append(rawData, loBit, hiBit)
+			}
+		}
+		rawData = append(rawData, syncHi, syncLo)
+		// Guard against a sweep so pathological that overflow could
+		// hit — u64 keys + u32 count bounds this, but defensive.
+		if k == ^uint64(0) {
+			break
+		}
+	}
+
+	return BuildSub(SubBuildParams{
+		Frequency: p.Frequency,
+		Preset:    p.Preset,
+		RawData:   rawData,
+	})
+}
+
 // defaultSubPreset returns a reasonable preset name for a given
 // frequency. The Flipper firmware accepts any of the listed preset
 // strings; picking one that matches the band keeps the downstream

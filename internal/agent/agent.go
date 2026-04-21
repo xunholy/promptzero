@@ -1013,6 +1013,8 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return a.auditStats()
 
 	// --- Parametric file builders (P1-13) ---
+	case "subghz_bruteforce_generate":
+		return a.subghzBruteforceGenerate(ctx, p)
 	case "subghz_build":
 		return a.subghzBuild(ctx, p)
 	case "rfid_build":
@@ -1713,6 +1715,36 @@ func (a *Agent) snapshotBeforeWrite(ctx context.Context, path string) {
 	if _, err := a.snapshotMgr.Store(a.sessionID, path, []byte(raw)); err != nil {
 		obs.FromCtx(ctx).Warn("snapshot_store_failed", "path", path, "err", err)
 	}
+}
+
+// subghzBruteforceGenerate synthesises a RAW .sub file that sweeps a
+// key range at Princeton-style OOK timing and writes it to the SD
+// card. Useful for replaying a small sweep against a target the
+// operator hasn't been able to capture. See
+// fileformat.BuildSubBruteforce for the encoding details.
+func (a *Agent) subghzBruteforceGenerate(ctx context.Context, p map[string]interface{}) (string, error) {
+	path := str(p, "path")
+	if path == "" {
+		return "", fmt.Errorf("path required")
+	}
+	raw, err := fileformat.BuildSubBruteforce(fileformat.SubBruteforceParams{
+		Frequency: uint32(intOr(p, "frequency", 0)),
+		BitCount:  intOr(p, "bit_count", 0),
+		StartKey:  uint64(intOr(p, "start_key", 0)),
+		EndKey:    uint64(intOr(p, "end_key", 0)),
+		TE:        intOr(p, "te", 0),
+		Preset:    str(p, "preset"),
+	})
+	if err != nil {
+		return "", err
+	}
+	a.snapshotBeforeWrite(ctx, path)
+	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	count := uint64(intOr(p, "end_key", 0)) - uint64(intOr(p, "start_key", 0)) + 1
+	return fmt.Sprintf("built %d-byte bruteforce .sub (%d keys × %d bits) → %s",
+		len(raw), count, intOr(p, "bit_count", 0), path), nil
 }
 
 // subghzBuild synthesises a .sub file from operator parameters and

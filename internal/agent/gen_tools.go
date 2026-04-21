@@ -96,6 +96,19 @@ func buildGenTools() []anthropic.ToolUnionParam {
 		// parameters. Use them instead of generate_* when you know the
 		// exact protocol / fields — the output never has syntactic
 		// errors because a Go builder synthesises the bytes.
+		tool("subghz_bruteforce_generate",
+			"Generate a RAW .sub file containing a Princeton-style key sweep, written to the SD card. Each key is encoded MSB-first with OOK timing (1=long high+short low, 0=short high+long low) plus a 31*TE sync gap between keys. Good for replaying a small sweep against a 24-bit PT2240/SC5262-family remote that the operator hasn't captured. Cap: 10000 keys per invocation — sweep in windows for wider searches.",
+			props(
+				reqProp("path", "string", "Destination on SD card, e.g. /ext/subghz/sweep.sub"),
+				reqProp("frequency", "integer", "Frequency in Hz, e.g. 433920000"),
+				reqProp("bit_count", "integer", "Protocol bit length (typically 24 for Princeton-family)"),
+				reqProp("start_key", "integer", "Inclusive start of the key range"),
+				reqProp("end_key", "integer", "Inclusive end of the key range"),
+				optProp("te", "integer", "Timing element in microseconds (default 400)"),
+				optProp("preset", "string", "Flipper preset name (defaults to OOK 650 async for ISM bands)"),
+			),
+			"path", "frequency", "bit_count", "start_key", "end_key",
+		),
 		tool("subghz_build",
 			"Construct a valid Flipper .sub file from parameters and write it to the SD card. Use when you know the exact frequency, protocol, and key hex — safer than generate_subghz for replaying a captured key. Returns the written path.",
 			props(

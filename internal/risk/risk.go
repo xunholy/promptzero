@@ -97,6 +97,7 @@ var toolLevels = func() map[string]Level {
 		// emulate — the operator still has to invoke subghz_transmit
 		// / rfid_write / nfc_emulate separately.
 		"subghz_build", "rfid_build", "ir_build", "nfc_build",
+		"subghz_bruteforce_generate",
 	)
 
 	// Active transmission, emulation, execution
