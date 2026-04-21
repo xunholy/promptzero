@@ -244,6 +244,16 @@ type NFCBuildParams struct {
 
 // BuildNFC constructs a canonical .nfc capture. The resulting file is
 // suitable for nfc_emulate.
+//
+// UID byte-length is validated against DeviceType so a 4-byte UID
+// paired with "NTAG215" doesn't silently produce a file that would
+// fail every reader probe. Allowed lengths per type follow the
+// published ISO/IEC 14443 tag-family specs:
+//
+//	Mifare Classic 1K/4K/Mini          4 or 7 bytes
+//	Mifare Ultralight / NTAG21x        7 bytes
+//	NTAG215 / NTAG216 / NTAG213        7 bytes
+//	Other / unknown                    any non-empty hex passes (permissive)
 func BuildNFC(p NFCBuildParams) ([]byte, error) {
 	if strings.TrimSpace(p.DeviceType) == "" {
 		return nil, fmt.Errorf("nfc_build: device_type required")
@@ -254,6 +264,9 @@ func BuildNFC(p NFCBuildParams) ([]byte, error) {
 	uid, err := normaliseHexBytes(p.UID)
 	if err != nil {
 		return nil, fmt.Errorf("nfc_build: invalid uid: %w", err)
+	}
+	if err := validateUIDLength(p.DeviceType, uid); err != nil {
+		return nil, err
 	}
 
 	n := &NFCFile{
@@ -275,6 +288,37 @@ func BuildNFC(p NFCBuildParams) ([]byte, error) {
 		n.Blocks[idx] = normalised
 	}
 	return n.Marshal(), nil
+}
+
+// validateUIDLength checks that a normalised UID (space-separated
+// hex, upper-case) has a byte count matching the DeviceType. The
+// normalised form has one space between each hex pair, so the byte
+// count is (len+1) / 3. Unknown device types pass silently — the
+// goal is to catch obvious mismatches, not enforce a closed list.
+func validateUIDLength(deviceType, normalisedUID string) error {
+	byteCount := (len(normalisedUID) + 1) / 3
+	lower := strings.ToLower(strings.TrimSpace(deviceType))
+
+	var allowed []int
+	switch {
+	case strings.Contains(lower, "classic"), strings.Contains(lower, "mini"):
+		allowed = []int{4, 7}
+	case strings.Contains(lower, "ultralight"),
+		strings.Contains(lower, "ntag"),
+		strings.Contains(lower, "mfu"):
+		allowed = []int{7}
+	case strings.Contains(lower, "desfire"), strings.Contains(lower, "plus"):
+		allowed = []int{4, 7}
+	default:
+		return nil // unknown type — don't block the build
+	}
+
+	for _, n := range allowed {
+		if byteCount == n {
+			return nil
+		}
+	}
+	return fmt.Errorf("nfc_build: UID is %d bytes but %s expects %v bytes", byteCount, deviceType, allowed)
 }
 
 // ----- helpers -----

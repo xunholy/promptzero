@@ -228,6 +228,42 @@ func TestBuildNFC_InvalidUIDRejects(t *testing.T) {
 	}
 }
 
+func TestBuildNFC_UIDLengthAgainstDeviceType(t *testing.T) {
+	// Mifare Classic accepts 4 or 7 byte UIDs; NTAG must be 7.
+	// A 4-byte UID on NTAG should reject, catching the exact mismatch
+	// the reviewer flagged.
+	cases := []struct {
+		deviceType string
+		uid        string
+		wantErr    bool
+		hint       string
+	}{
+		{"Mifare Classic", "AA BB CC DD", false, "Classic accepts 4-byte UID"},
+		{"Mifare Classic 1K", "AA BB CC DD EE FF 00", false, "Classic also accepts 7-byte UID"},
+		{"Mifare Classic 1K", "AA BB CC", true, "3-byte UID rejected for Classic"},
+		{"NTAG213", "AA BB CC DD EE FF 00", false, "NTAG213 requires 7-byte UID"},
+		{"NTAG213", "AA BB CC DD", true, "4-byte UID rejected for NTAG213"},
+		{"NTAG215", "AA BB CC DD EE FF 00", false, "NTAG215 requires 7-byte UID"},
+		{"Mifare Ultralight", "AA BB CC DD EE FF 00", false, "Ultralight requires 7-byte UID"},
+		{"Mifare Ultralight", "AA BB CC DD", true, "4-byte UID rejected for Ultralight"},
+		{"Unknown Proprietary Tag", "AA BB", false, "unknown device type is permissive"},
+		{"DESFire", "AA BB CC DD", false, "DESFire accepts 4-byte UID"},
+		{"DESFire", "AA BB CC DD EE FF 00", false, "DESFire accepts 7-byte UID"},
+	}
+	for _, c := range cases {
+		_, err := BuildNFC(NFCBuildParams{DeviceType: c.deviceType, UID: c.uid})
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("%s: expected error (UID=%q, type=%q)", c.hint, c.uid, c.deviceType)
+			}
+		} else {
+			if err != nil {
+				t.Errorf("%s: unexpected error: %v", c.hint, err)
+			}
+		}
+	}
+}
+
 func TestNormaliseHexBytes(t *testing.T) {
 	cases := []struct {
 		in, want string
