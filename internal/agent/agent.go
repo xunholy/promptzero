@@ -898,8 +898,17 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 
 	// --- Flipper: Storage (extended) ---
 	case "storage_copy":
+		// Snapshot the destination (if it already exists) before the
+		// copy so /rewind can restore it — the source stays intact by
+		// definition and doesn't need a snapshot.
+		a.snapshotBeforeWrite(ctx, str(p, "dst"))
 		return a.flipper.StorageCopy(str(p, "src"), str(p, "dst"))
 	case "storage_rename":
+		// Snapshot both ends: the destination might pre-exist (will
+		// be clobbered) and so might the source (rename removes it
+		// from its original path, so the user may want it back).
+		a.snapshotBeforeWrite(ctx, str(p, "src"))
+		a.snapshotBeforeWrite(ctx, str(p, "dst"))
 		return a.flipper.StorageRename(str(p, "src"), str(p, "dst"))
 	case "storage_md5":
 		return a.flipper.StorageMD5(str(p, "path"))
@@ -1364,6 +1373,17 @@ func (a *Agent) generatePayloadWithBypass(ctx context.Context, payloadType, desc
 	}
 
 	if deploy {
+		// Snapshot the destination path before deploying so /rewind
+		// can roll back a bad evil-portal / BadUSB / subghz overwrite.
+		// The resolved path is the caller-supplied value or the
+		// generator's default; the snapshot hook handles the not-yet-
+		// exists case silently.
+		deployPath := path
+		if deployPath == "" {
+			deployPath = defaultGeneratePath(payloadType)
+		}
+		a.snapshotBeforeWrite(ctx, deployPath)
+
 		deployCtx, deployCancel := context.WithTimeout(ctx, 30*time.Second)
 		deployErr := a.generator.Deploy(deployCtx, result, path)
 		deployCancel()
@@ -1619,6 +1639,27 @@ func (a *Agent) fileformatEdit(ctx context.Context, path string, editsIn interfa
 		return "", fmt.Errorf("write %s: %w", target, err)
 	}
 	return fmt.Sprintf("edited %s (format=%s, %d bytes) → %s", path, format, len(out), target), nil
+}
+
+// defaultGeneratePath mirrors the generator package's default-path
+// selection so the agent can snapshot the eventual deploy target
+// before handing off to Deploy. Keeping a parallel implementation
+// here avoids a circular dep on internal/generate and is one
+// switch — easy to maintain in lockstep with generator.defaultPath.
+func defaultGeneratePath(payloadType string) string {
+	switch payloadType {
+	case "evil_portal":
+		return "/ext/apps_data/evil_portal/index.html"
+	case "badusb":
+		return "/ext/badusb/generated_payload.txt"
+	case "subghz":
+		return "/ext/subghz/generated_signal.sub"
+	case "ir":
+		return "/ext/infrared/generated_remote.ir"
+	case "nfc":
+		return "/ext/nfc/generated_tag.nfc"
+	}
+	return ""
 }
 
 // snapshotBeforeWrite reads the current content of path off the
