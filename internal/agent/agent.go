@@ -111,6 +111,12 @@ type Agent struct {
 	// with a diagnostic prompt. Tests substitute a synchronous stub so
 	// the reflexion logic can be exercised without an SDK mock.
 	reflectorFn reflectFunc
+
+	// routerFn is the per-turn tool-group router. Nil means "disabled"
+	// — the full catalog is sent to the main model every turn (the
+	// historical behaviour). EnableDynamicCatalog assigns
+	// a.routeGroups here. Tests substitute a synchronous stub.
+	routerFn routerFunc
 }
 
 func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *Agent {
@@ -373,9 +379,18 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	}
 	// WiFi framing is appended only when the filtered tool set still exposes
 	// WiFi capabilities — personas that prune them (defender, rf-recon, etc.)
-	// should not hear about an ESP32 they can't address.
+	// should not hear about an ESP32 they can't address. The hasWiFi check
+	// runs *before* dynamic narrowing so the system prompt stays stable
+	// (and therefore cache-friendly) across turns.
 	hasWiFi := a.marauder != nil && hasWiFiTool(tools)
 	sysPrompt := BuildSystemPrompt(a.persona, hasWiFi, true)
+
+	// Dynamic tool-catalog narrowing (opt-in via EnableDynamicCatalog):
+	// ask a classification-tier model which groups are relevant to this
+	// turn and trim the tool catalog accordingly. Any router failure
+	// falls back to the full set so correctness is never sacrificed for
+	// cost.
+	tools = narrowTools(ctx, userInput, tools, a.routerFn)
 
 	maxTools := a.maxToolsPerTurn
 	if maxTools <= 0 {

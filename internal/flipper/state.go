@@ -14,12 +14,12 @@ import (
 // probes (SD walk, loader state, log dump) are deliberately excluded.
 type State struct {
 	Connected       bool      `json:"connected"`
-	Fork            string    `json:"fork,omitempty"`              // stock/Momentum/Unleashed/RogueMaster/Xtreme
-	FirmwareVersion string    `json:"firmware_version,omitempty"`  // version string from device_info
-	HardwareName    string    `json:"hardware_name,omitempty"`     // user-settable dolphin name
+	Fork            string    `json:"fork,omitempty"`             // stock/Momentum/Unleashed/RogueMaster/Xtreme
+	FirmwareVersion string    `json:"firmware_version,omitempty"` // version string from device_info
+	HardwareName    string    `json:"hardware_name,omitempty"`    // user-settable dolphin name
 	HardwareUID     string    `json:"hardware_uid,omitempty"`
-	BatteryPct      int       `json:"battery_pct,omitempty"`       // 0-100, 0 if unknown
-	ChargeState     string    `json:"charge_state,omitempty"`      // "charging" / "discharging" / ""
+	BatteryPct      int       `json:"battery_pct,omitempty"`  // 0-100, 0 if unknown
+	ChargeState     string    `json:"charge_state,omitempty"` // "charging" / "discharging" / ""
 	CollectedAt     time.Time `json:"collected_at"`
 }
 

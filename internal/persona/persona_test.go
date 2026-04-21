@@ -158,7 +158,7 @@ tools:
 		t.Fatalf("Load: %v", err)
 	}
 	p, _ := r.Get("legacy")
-	if p.Models != nil && len(p.Models) != 0 {
+	if len(p.Models) != 0 {
 		t.Fatalf("Models map should be nil/empty on legacy persona, got %+v", p.Models)
 	}
 }

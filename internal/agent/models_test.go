@@ -37,11 +37,11 @@ func TestModelFor_PersonaOverrideWins(t *testing.T) {
 	a := agentForModelTest("claude-sonnet-4-6", p)
 
 	cases := map[string]string{
-		TierClassify: "claude-haiku-4-5",   // persona override
-		TierGenerate: "claude-sonnet-4-6",  // falls back to base
-		TierPlan:     "claude-sonnet-4-6",  // falls back to base
-		TierExploit:  "claude-opus-4-7",    // persona override
-		"unknown":    "claude-sonnet-4-6",  // fallback
+		TierClassify: "claude-haiku-4-5",  // persona override
+		TierGenerate: "claude-sonnet-4-6", // falls back to base
+		TierPlan:     "claude-sonnet-4-6", // falls back to base
+		TierExploit:  "claude-opus-4-7",   // persona override
+		"unknown":    "claude-sonnet-4-6", // fallback
 	}
 	for tier, want := range cases {
 		if got := a.ModelFor(tier); got != want {

@@ -1,0 +1,248 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/anthropics/anthropic-sdk-go"
+)
+
+// Tool groups are the coarse-grained buckets the router reasons over.
+// Each tool in the agent catalog maps to exactly one group via
+// ToolGroup. Groups named meta.* are always sent to the main model,
+// regardless of the user's apparent intent — they hold audit primitives,
+// general utilities, and structured format tools the agent may need
+// for any task.
+const (
+	GroupMetaAudit      = "meta.audit"     // always on
+	GroupMetaUtil       = "meta.util"      // always on
+	GroupFlipperSystem  = "flipper.system" // storage, loader, power, etc.
+	GroupFlipperSubGHz  = "flipper.rf.subghz"
+	GroupFlipperIR      = "flipper.rf.ir"
+	GroupFlipperNFC     = "flipper.nfc"
+	GroupFlipperRFID    = "flipper.rfid"
+	GroupFlipperIButton = "flipper.ibutton"
+	GroupFlipperBadUSB  = "flipper.badusb"
+	GroupFlipperHW      = "flipper.hw" // GPIO / I2C / OneWire
+	GroupMarauderWiFi   = "marauder.wifi"
+	GroupGen            = "gen"
+	GroupWorkflows      = "workflows"
+	GroupVision         = "vision"
+)
+
+// alwaysOnGroups names groups that the router is never allowed to
+// drop. Losing audit queries or list_devices mid-turn would make the
+// agent incapable of answering "what happened?" or "what's here?" even
+// when the user's latest question is about RF work.
+var alwaysOnGroups = map[string]bool{
+	GroupMetaAudit: true,
+	GroupMetaUtil:  true,
+}
+
+// ToolGroup returns the logical group a registered tool belongs to.
+// Prefix-matching is used wherever possible so adding a new tool
+// variant (e.g. another subghz_* wrapper) auto-joins the right group
+// with no metadata change. Tools the router can't classify fall back
+// to GroupMetaUtil — shipping them every turn is the safe default.
+//
+// The mapping is intentionally stable and keyed by name string so
+// workflow/persona filtering and dynamic narrowing can share it
+// cheaply without a per-tool metadata struct.
+func ToolGroup(name string) string {
+	switch {
+	case strings.HasPrefix(name, "audit_"):
+		return GroupMetaAudit
+	case name == "list_devices", name == "discover_apps", strings.HasPrefix(name, "fileformat_"):
+		return GroupMetaUtil
+	case strings.HasPrefix(name, "subghz_"):
+		return GroupFlipperSubGHz
+	case strings.HasPrefix(name, "ir_"):
+		return GroupFlipperIR
+	case strings.HasPrefix(name, "nfc_"):
+		return GroupFlipperNFC
+	case strings.HasPrefix(name, "rfid_"):
+		return GroupFlipperRFID
+	case strings.HasPrefix(name, "ibutton_"):
+		return GroupFlipperIButton
+	case strings.HasPrefix(name, "badusb_"):
+		return GroupFlipperBadUSB
+	case strings.HasPrefix(name, "gpio_"), name == "i2c_scan", strings.HasPrefix(name, "onewire_"):
+		return GroupFlipperHW
+	case strings.HasPrefix(name, "wifi_"):
+		return GroupMarauderWiFi
+	case strings.HasPrefix(name, "generate_"), name == "run_payload", name == "generate_deploy_run":
+		return GroupGen
+	case strings.HasPrefix(name, "workflow_"):
+		return GroupWorkflows
+	case name == "analyze_image":
+		return GroupVision
+	case strings.HasPrefix(name, "loader_"),
+		strings.HasPrefix(name, "storage_"),
+		name == "list_apps",
+		name == "flipper_raw_cli",
+		name == "device_reboot",
+		name == "system_info",
+		name == "power_info",
+		name == "led_set",
+		name == "vibro",
+		name == "log_stream",
+		name == "js_run",
+		name == "input_send",
+		name == "bt_hci_info",
+		name == "update_install",
+		name == "power_reboot_dfu",
+		name == "crypto_store_key":
+		return GroupFlipperSystem
+	default:
+		return GroupMetaUtil
+	}
+}
+
+// minNarrowedTools is the lower bound below which narrowing refuses to
+// trim the catalog further — if the router's picks leave the agent
+// with fewer than this many tools, we revert to the full set. Guards
+// against a miscalibrated router silently crippling a session. Three
+// is low enough that legitimate narrow queries ("summarise the audit
+// log") still benefit from the trim but a router that hallucinates
+// one irrelevant group can't render the agent mute.
+const minNarrowedTools = 3
+
+// routerFunc is the external router signature: given the user's input
+// and the set of groups currently available in the catalog, return
+// the set the main model should see. Returning nil / an error causes
+// narrowTools to fall back to the full catalog — "correctness over
+// cost" is the dominant principle here.
+type routerFunc func(ctx context.Context, userInput string, available map[string]bool) (selected map[string]bool, err error)
+
+// narrowTools filters allTools down to those belonging to a group the
+// router selected (plus alwaysOnGroups). Three early-return bail-outs
+// send the full catalog through unchanged:
+//  1. router is nil (feature disabled)
+//  2. router errored or returned empty
+//  3. the narrowed set would be smaller than minNarrowedTools
+//
+// The intent is that a broken or uncertain router can never break a
+// session — worst case we pay full input-token cost for that turn.
+func narrowTools(
+	ctx context.Context,
+	userInput string,
+	allTools []anthropic.ToolUnionParam,
+	router routerFunc,
+) []anthropic.ToolUnionParam {
+	if router == nil {
+		return allTools
+	}
+
+	available := make(map[string]bool, 16)
+	for _, t := range allTools {
+		if t.OfTool == nil {
+			continue
+		}
+		available[ToolGroup(t.OfTool.Name)] = true
+	}
+
+	selected, err := router(ctx, userInput, available)
+	if err != nil || len(selected) == 0 {
+		return allTools
+	}
+
+	out := make([]anthropic.ToolUnionParam, 0, len(allTools))
+	for _, t := range allTools {
+		if t.OfTool == nil {
+			// Tools with no concrete body (future union variants) pass
+			// through unchanged — we can't group them.
+			out = append(out, t)
+			continue
+		}
+		g := ToolGroup(t.OfTool.Name)
+		if alwaysOnGroups[g] || selected[g] {
+			out = append(out, t)
+		}
+	}
+
+	if len(out) < minNarrowedTools {
+		return allTools
+	}
+	return out
+}
+
+// routeGroups is the production router: a single classification-tier
+// call (Haiku by default) that asks the model which groups are relevant
+// to the user's turn. Requires a live Anthropic client; for unit tests
+// inject a synchronous routerFunc into Agent.routerFn instead.
+func (a *Agent) routeGroups(ctx context.Context, userInput string, available map[string]bool) (map[string]bool, error) {
+	if len(available) == 0 {
+		return nil, nil
+	}
+	groups := make([]string, 0, len(available))
+	for g := range available {
+		groups = append(groups, g)
+	}
+	sort.Strings(groups) // deterministic for caching + debuggability
+
+	system := "You are a fast tool-group router for PromptZero, an AI hardware operator. " +
+		"Given the user's turn, return a JSON array of group names (from the provided list) that hold tools the agent will need. " +
+		"Be generous — include adjacent groups if the user's intent spans them — but exclude groups clearly unrelated. " +
+		"Output ONLY the JSON array. No prose, no markdown fences.\n\n" +
+		"Available groups: " + strings.Join(groups, ", ")
+
+	model := a.modelForLocked(TierClassify)
+	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.Model(model),
+		MaxTokens: 128,
+		System:    []anthropic.TextBlockParam{{Text: system}},
+		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(userInput))},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("router: %w", err)
+	}
+
+	var text string
+	for _, b := range resp.Content {
+		if b.Type == "text" {
+			text += b.Text
+		}
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, nil
+	}
+
+	var arr []string
+	if err := json.Unmarshal([]byte(text), &arr); err != nil {
+		// A router that babbles prose instead of JSON is worse than no
+		// router — fall back to full catalog.
+		return nil, fmt.Errorf("router returned non-JSON: %q", text)
+	}
+	selected := make(map[string]bool, len(arr))
+	for _, s := range arr {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			selected[s] = true
+		}
+	}
+	return selected, nil
+}
+
+// EnableDynamicCatalog opts the agent into per-turn tool narrowing via
+// the Haiku-class router. Off by default; operators enable it through
+// config once they've measured the tradeoff (typically a ~500 ms
+// latency bump in exchange for 60-80 % fewer tool-description tokens
+// per turn).
+func (a *Agent) EnableDynamicCatalog() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.routerFn = a.routeGroups
+}
+
+// DisableDynamicCatalog reverts to the full catalog on every turn.
+// Primarily useful for tests that share an agent and want to toggle
+// the feature between cases.
+func (a *Agent) DisableDynamicCatalog() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.routerFn = nil
+}
