@@ -5,9 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
+
+// verifyTimeout caps how long the chain-of-verification pass can
+// block the agent turn. Ten seconds is enough for a Haiku call on a
+// normal link; a hung classifier API wedging the whole turn (Run
+// holds a.mu throughout) is a worse failure mode than an uncertified
+// verdict, so on timeout we degrade to "uncertified" and proceed.
+const verifyTimeout = 10 * time.Second
 
 // Chain-of-verification for generated payloads (P1-16). After a
 // generate_* tool produces content, a classification-tier model pass
@@ -141,7 +149,12 @@ func (a *Agent) verifyPayload(ctx context.Context, payloadType, content string) 
 	}
 
 	model := a.modelForLocked(TierClassify)
-	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	// Enforce a hard timeout so a stalled classifier API can't wedge
+	// the whole agent turn — Run holds a.mu for the duration of
+	// verifyPayload, so "just wait" is not acceptable.
+	callCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
+	defer cancel()
+	resp, err := a.client.Messages.New(callCtx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
 		MaxTokens: 256,
 		System:    []anthropic.TextBlockParam{{Text: system}},
@@ -161,30 +174,76 @@ func (a *Agent) verifyPayload(ctx context.Context, payloadType, content string) 
 }
 
 // parseVerificationVerdict extracts a verdict from the verifier's raw
-// text response. Tolerates markdown fences and prose preambles that
-// Haiku sometimes emits despite the system-prompt instructions; on
-// unrecoverable parse failure returns {Severity:"none", Verified:false}
-// so the caller treats the generation as uncertified rather than
-// failing hard.
+// text response. Robust against: leading prose preambles, markdown
+// fences (both ```json and bare ```), trailing commentary, and
+// case-variant fence tags (```JSON). Strategy: find the first '{' and
+// the last '}' and treat that byte range as candidate JSON. If that
+// doesn't unmarshal, return uncertified.
+//
+// Returning {Severity:"none", Verified:false} on parse failure means
+// the caller treats the generation as uncertified rather than failing
+// hard — a flaky verifier must never block a generation.
 func parseVerificationVerdict(raw string) VerificationVerdict {
 	trimmed := strings.TrimSpace(raw)
-	if strings.HasPrefix(trimmed, "```") {
-		trimmed = strings.TrimPrefix(trimmed, "```json")
-		trimmed = strings.TrimPrefix(trimmed, "```")
-		trimmed = strings.TrimSuffix(trimmed, "```")
-		trimmed = strings.TrimSpace(trimmed)
-	}
 	if trimmed == "" {
 		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}
 	}
+	candidate := extractJSONObject(trimmed)
+	if candidate == "" {
+		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}
+	}
 	var v VerificationVerdict
-	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
+	if err := json.Unmarshal([]byte(candidate), &v); err != nil {
 		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}
 	}
 	if v.Severity == "" {
 		v.Severity = VerifySeverityNone
 	}
 	return v
+}
+
+// extractJSONObject returns the substring of s that looks like a
+// top-level JSON object — from the first '{' to the matching '}'
+// (tracked by brace depth, respecting string literals). Returns "" if
+// the input doesn't contain a balanced object. Intentionally more
+// forgiving than "first { to last }" so strings with braces don't
+// mis-match.
+func extractJSONObject(s string) string {
+	start := strings.Index(s, "{")
+	if start < 0 {
+		return ""
+	}
+	depth := 0
+	inString := false
+	escape := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if escape {
+			escape = false
+			continue
+		}
+		if c == '\\' && inString {
+			escape = true
+			continue
+		}
+		if c == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch c {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[start : i+1]
+			}
+		}
+	}
+	return ""
 }
 
 // verdictSummary renders the verdict as a compact, human-readable

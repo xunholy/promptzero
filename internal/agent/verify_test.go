@@ -55,6 +55,54 @@ func TestParseVerificationVerdict_MissingSeverityDefaults(t *testing.T) {
 	}
 }
 
+func TestParseVerificationVerdict_ProsePreambleStripped(t *testing.T) {
+	// Haiku sometimes chats before the JSON. The brace-depth scanner
+	// must pick out the object anyway.
+	raw := "Sure — here's my verdict.\n{\"severity\":\"high\",\"verified\":true}\n\nLet me know if you need clarification."
+	v := parseVerificationVerdict(raw)
+	if v.Severity != VerifySeverityHigh {
+		t.Errorf("prose preamble should be stripped; got %q", v.Severity)
+	}
+}
+
+func TestParseVerificationVerdict_UppercaseJSONFence(t *testing.T) {
+	// Earlier strip was case-sensitive — verify the extractor copes.
+	raw := "```JSON\n{\"severity\":\"medium\",\"verified\":true}\n```"
+	v := parseVerificationVerdict(raw)
+	if v.Severity != VerifySeverityMedium {
+		t.Errorf("uppercase fence should still parse; got %q", v.Severity)
+	}
+}
+
+func TestParseVerificationVerdict_BraceInsideString(t *testing.T) {
+	// The object contains a literal "{" character inside a string
+	// value. The brace-depth scanner must honour string literals so
+	// it doesn't bail out at the first inner '{'.
+	raw := `{"severity":"low","recommendation":"output should not contain { or } stray","verified":true}`
+	v := parseVerificationVerdict(raw)
+	if v.Severity != VerifySeverityLow {
+		t.Errorf("string-interior brace broke parsing; got %+v", v)
+	}
+	if !strings.Contains(v.Recommendation, "{") {
+		t.Errorf("recommendation truncated: %q", v.Recommendation)
+	}
+}
+
+func TestExtractJSONObject_NoBraces(t *testing.T) {
+	if got := extractJSONObject("no json here"); got != "" {
+		t.Errorf("expected empty on no-JSON input, got %q", got)
+	}
+}
+
+func TestExtractJSONObject_UnbalancedBraces(t *testing.T) {
+	// An unclosed object should return empty rather than the partial
+	// tail — feeding an unbalanced string to json.Unmarshal would
+	// error anyway, but extractJSONObject is defensive.
+	if got := extractJSONObject("{\"severity\":\"high\""); got != "" {
+		t.Errorf("expected empty on unbalanced input, got %q", got)
+	}
+}
+
 func TestShouldBlockDeploy_BypassAlwaysFalse(t *testing.T) {
 	for _, sev := range []string{VerifySeverityHigh, VerifySeverityCritical, VerifySeverityLow, ""} {
 		if shouldBlockDeploy(VerificationVerdict{Severity: sev, Verified: true}, true) {

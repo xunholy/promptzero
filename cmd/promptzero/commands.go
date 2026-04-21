@@ -581,6 +581,16 @@ func handleReport(deps *REPLDeps, args []string) {
 	}
 
 	if save {
+		// Sanitise sessionID before using it as a filename. /report can
+		// accept an arbitrary session id from the operator; without
+		// this, "/report ../../etc/passwd save" would escape the
+		// reports dir. The whitelist matches how session IDs are
+		// actually generated (timestamp + random suffix) — anything
+		// with path separators or dot-segments gets rejected.
+		if !isSafeReportID(sessionID) {
+			fmt.Fprintf(os.Stderr, "  %s● report: session id %q contains unsafe characters%s\n", red, sessionID, reset)
+			return
+		}
 		home, err := os.UserHomeDir()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s● resolving home dir: %v%s\n", red, err, reset)
@@ -603,6 +613,33 @@ func handleReport(deps *REPLDeps, args []string) {
 	// Print to stderr so the report is visible above the REPL prompt.
 	// The report is authored — operators can pipe / copy it.
 	_, _ = os.Stderr.Write(md)
+}
+
+// isSafeReportID returns true when sessionID is composed only of
+// characters that are safe to use as a filename segment. Rejects
+// path separators, dot-segments, control bytes, and whitespace. The
+// accepted set (alphanumeric + dash + underscore) covers every
+// session ID PromptZero produces today and every legal
+// user-provided name for /session save.
+func isSafeReportID(sessionID string) bool {
+	if sessionID == "" {
+		return false
+	}
+	if sessionID == "." || sessionID == ".." || strings.Contains(sessionID, "..") {
+		return false
+	}
+	for _, r := range sessionID {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '-' || r == '_':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func handleAudit(auditLog *audit.Log, args []string) {
