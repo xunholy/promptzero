@@ -705,7 +705,16 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "subghz_transmit":
 		return a.flipper.SubGHzTx(str(p, "file"))
 	case "subghz_receive":
-		return a.flipper.SubGHzRx(uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
+		raw, err := a.flipper.SubGHzRx(uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
+		if err != nil {
+			return raw, err
+		}
+		// Structured parse (P1-17 follow-up) — the model sees
+		// {candidates:[{protocol,frequency,key,bit,te}]} instead of
+		// the raw scan transcript.
+		parsed := flipper.ParseSubGHzReceive(raw)
+		b, _ := json.Marshal(parsed)
+		return string(b), nil
 	case "subghz_decode":
 		return a.flipper.SubGHzDecode(str(p, "file"))
 	case "subghz_bruteforce":
@@ -723,7 +732,13 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 
 	// --- Flipper: NFC ---
 	case "nfc_detect":
-		return a.flipper.NFCDetect(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
+		raw, err := a.flipper.NFCDetect(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
+		if err != nil {
+			return raw, err
+		}
+		parsed := flipper.ParseNFCDetect(raw)
+		b, _ := json.Marshal(parsed)
+		return string(b), nil
 	case "nfc_emulate":
 		return a.flipper.NFCEmulate(str(p, "file"))
 	case "nfc_subcommand":
@@ -799,7 +814,13 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "storage_mkdir":
 		return a.flipper.StorageMkdir(str(p, "path"))
 	case "storage_info":
-		return a.flipper.StorageStat(str(p, "path"))
+		raw, err := a.flipper.StorageStat(str(p, "path"))
+		if err != nil {
+			return raw, err
+		}
+		parsed := flipper.ParseStorageStat(raw)
+		b, _ := json.Marshal(parsed)
+		return string(b), nil
 
 	// --- Flipper: System ---
 	case "system_info":
