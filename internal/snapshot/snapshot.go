@@ -33,12 +33,12 @@ const snapshotTimeLayout = "20060102T150405"
 // Entry is the public metadata record for a saved snapshot. Exposed so
 // /rewind list can render a table without re-parsing filenames.
 type Entry struct {
-	ID           string    `json:"id"`             // base filename without extension
-	OriginalPath string    `json:"original_path"`  // the Flipper path that was about to be overwritten
-	TakenAt      time.Time `json:"taken_at"`       // wall-clock at snapshot time
-	SizeBytes    int       `json:"size_bytes"`     // byte length of the captured content
-	SHA256       string    `json:"sha256"`         // hex digest of the content
-	DataFile     string    `json:"-"`              // absolute path to the .bak file (populated by List / Get)
+	ID           string    `json:"id"`            // base filename without extension
+	OriginalPath string    `json:"original_path"` // the Flipper path that was about to be overwritten
+	TakenAt      time.Time `json:"taken_at"`      // wall-clock at snapshot time
+	SizeBytes    int       `json:"size_bytes"`    // byte length of the captured content
+	SHA256       string    `json:"sha256"`        // hex digest of the content
+	DataFile     string    `json:"-"`             // absolute path to the .bak file (populated by List / Get)
 }
 
 // Manager owns the on-disk snapshot tree and provides Store / List /

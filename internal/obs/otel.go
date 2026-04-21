@@ -9,15 +9,15 @@
 // Span attributes follow the OTel GenAI semantic conventions
 // (gen_ai.*). The set we emit:
 //
-//   gen_ai.system                 = "anthropic"
-//   gen_ai.request.model          = "claude-sonnet-4-6" (etc.)
-//   gen_ai.usage.input_tokens     = int
-//   gen_ai.usage.output_tokens    = int
-//   gen_ai.usage.cache_read_input_tokens     = int
-//   gen_ai.usage.cache_creation_input_tokens = int
-//   gen_ai.response.finish_reasons = "end_turn" | "tool_use" | ...
-//   gen_ai.tool.name              = "wifi_scan_ap"
-//   gen_ai.tool.call.id           = "toolu_..."
+//	gen_ai.system                 = "anthropic"
+//	gen_ai.request.model          = "claude-sonnet-4-6" (etc.)
+//	gen_ai.usage.input_tokens     = int
+//	gen_ai.usage.output_tokens    = int
+//	gen_ai.usage.cache_read_input_tokens     = int
+//	gen_ai.usage.cache_creation_input_tokens = int
+//	gen_ai.response.finish_reasons = "end_turn" | "tool_use" | ...
+//	gen_ai.tool.name              = "wifi_scan_ap"
+//	gen_ai.tool.call.id           = "toolu_..."
 //
 // Per the spec, tool-call spans are emitted as children of the agent
 // turn span so a single trace shows the full request -> tools -> reply

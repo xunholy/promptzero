@@ -30,8 +30,8 @@ func TestManager_StoreAndList(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("List returned %d entries, want 3", len(entries))
 	}
-	// Newest first.
-	if !(entries[0].ID > entries[1].ID && entries[1].ID > entries[2].ID) {
+	// Newest first — each ID's timestamp prefix must monotonically decrease.
+	if entries[0].ID <= entries[1].ID || entries[1].ID <= entries[2].ID {
 		t.Fatalf("entries not sorted newest-first: %+v", entries)
 	}
 	// Metadata is populated.

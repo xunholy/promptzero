@@ -1556,7 +1556,7 @@ func (a *Agent) snapshotBeforeWrite(_ context.Context, path string) {
 		return
 	}
 	if _, err := a.snapshotMgr.Store(a.sessionID, path, []byte(raw)); err != nil {
-		obs.FromCtx(nil).Warn("snapshot_store_failed", "path", path, "err", err)
+		obs.FromCtx(context.Background()).Warn("snapshot_store_failed", "path", path, "err", err)
 	}
 }
 
