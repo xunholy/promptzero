@@ -92,6 +92,11 @@ var toolLevels = func() map[string]Level {
 		"loader_close",
 		"workflow_garage_door_triage",
 		"workflow_phys_pentest_badge_walk",
+		// Parametric file-builders (P1-13). Medium risk because the
+		// build tool writes a file to SD but does not transmit /
+		// emulate — the operator still has to invoke subghz_transmit
+		// / rfid_write / nfc_emulate separately.
+		"subghz_build", "rfid_build", "ir_build", "nfc_build",
 	)
 
 	// Active transmission, emulation, execution

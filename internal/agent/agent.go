@@ -948,6 +948,16 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "audit_stats":
 		return a.auditStats()
 
+	// --- Parametric file builders (P1-13) ---
+	case "subghz_build":
+		return a.subghzBuild(ctx, p)
+	case "rfid_build":
+		return a.rfidBuild(ctx, p)
+	case "ir_build":
+		return a.irBuild(ctx, p)
+	case "nfc_build":
+		return a.nfcBuild(ctx, p)
+
 	// --- File-format editors ---
 	case "fileformat_read":
 		return a.fileformatRead(str(p, "path"))
@@ -1581,6 +1591,143 @@ func (a *Agent) snapshotBeforeWrite(ctx context.Context, path string) {
 	if _, err := a.snapshotMgr.Store(a.sessionID, path, []byte(raw)); err != nil {
 		obs.FromCtx(ctx).Warn("snapshot_store_failed", "path", path, "err", err)
 	}
+}
+
+// subghzBuild synthesises a .sub file from operator parameters and
+// writes it to the SD card via WriteFileCtx. See fileformat.BuildSub
+// for the validation rules — invalid freq / key surfaces back to the
+// caller as a clean error, never a half-written file (the snapshot
+// hook still runs if the path pre-existed).
+func (a *Agent) subghzBuild(ctx context.Context, p map[string]interface{}) (string, error) {
+	path := str(p, "path")
+	if path == "" {
+		return "", fmt.Errorf("path required")
+	}
+	raw, err := fileformat.BuildSub(fileformat.SubBuildParams{
+		Frequency: uint32(intOr(p, "frequency", 0)),
+		Protocol:  str(p, "protocol"),
+		Preset:    str(p, "preset"),
+		Key:       str(p, "key_hex"),
+		Bit:       intOr(p, "bit", 0),
+		TE:        intOr(p, "te", 0),
+	})
+	if err != nil {
+		return "", err
+	}
+	a.snapshotBeforeWrite(ctx, path)
+	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	return fmt.Sprintf("built %d-byte .sub → %s", len(raw), path), nil
+}
+
+// rfidBuild synthesises a .rfid file for LF badge cloning.
+func (a *Agent) rfidBuild(ctx context.Context, p map[string]interface{}) (string, error) {
+	path := str(p, "path")
+	if path == "" {
+		return "", fmt.Errorf("path required")
+	}
+	raw, err := fileformat.BuildRFID(fileformat.RFIDBuildParams{
+		KeyType: str(p, "key_type"),
+		Data:    str(p, "data"),
+	})
+	if err != nil {
+		return "", err
+	}
+	a.snapshotBeforeWrite(ctx, path)
+	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	return fmt.Sprintf("built %d-byte .rfid → %s", len(raw), path), nil
+}
+
+// irBuild synthesises a .ir universal-remote file from an array of
+// signals. Accepts the LLM's loose JSON shape (nested interface{}
+// values from the top-level map) and coerces into typed IRSignals.
+func (a *Agent) irBuild(ctx context.Context, p map[string]interface{}) (string, error) {
+	path := str(p, "path")
+	if path == "" {
+		return "", fmt.Errorf("path required")
+	}
+	rawSignals, ok := p["signals"].([]interface{})
+	if !ok || len(rawSignals) == 0 {
+		return "", fmt.Errorf("signals must be a non-empty array")
+	}
+	signals := make([]fileformat.IRSignal, 0, len(rawSignals))
+	for i, rs := range rawSignals {
+		m, ok := rs.(map[string]interface{})
+		if !ok {
+			return "", fmt.Errorf("signals[%d] must be an object", i)
+		}
+		sig := fileformat.IRSignal{
+			Name:      str(m, "name"),
+			Type:      str(m, "type"),
+			Protocol:  str(m, "protocol"),
+			Address:   str(m, "address"),
+			Command:   str(m, "command"),
+			Frequency: intOr(m, "frequency", 0),
+			DutyCycle: floatOr(m, "duty_cycle", 0),
+		}
+		if arr, ok := m["data"].([]interface{}); ok {
+			sig.Data = make([]int, 0, len(arr))
+			for _, v := range arr {
+				if f, ok := v.(float64); ok {
+					sig.Data = append(sig.Data, int(f))
+				}
+			}
+		}
+		signals = append(signals, sig)
+	}
+	raw, err := fileformat.BuildIR(fileformat.IRBuildParams{
+		Name:    str(p, "name"),
+		Signals: signals,
+	})
+	if err != nil {
+		return "", err
+	}
+	a.snapshotBeforeWrite(ctx, path)
+	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	return fmt.Sprintf("built %d-byte .ir (%d signals) → %s", len(raw), len(signals), path), nil
+}
+
+// nfcBuild synthesises a .nfc file. Blocks is a map<string,string>
+// in the LLM JSON shape (integer keys become string keys); we parse
+// them back into ints.
+func (a *Agent) nfcBuild(ctx context.Context, p map[string]interface{}) (string, error) {
+	path := str(p, "path")
+	if path == "" {
+		return "", fmt.Errorf("path required")
+	}
+	params := fileformat.NFCBuildParams{
+		DeviceType: str(p, "device_type"),
+		UID:        str(p, "uid"),
+		ATQA:       str(p, "atqa"),
+		SAK:        str(p, "sak"),
+		MifareType: str(p, "mifare_type"),
+		Blocks:     map[int]string{},
+	}
+	if blocks, ok := p["blocks"].(map[string]interface{}); ok {
+		for k, v := range blocks {
+			idx, err := strconv.Atoi(k)
+			if err != nil {
+				return "", fmt.Errorf("blocks key %q must be an integer", k)
+			}
+			if hex, ok := v.(string); ok {
+				params.Blocks[idx] = hex
+			}
+		}
+	}
+	raw, err := fileformat.BuildNFC(params)
+	if err != nil {
+		return "", err
+	}
+	a.snapshotBeforeWrite(ctx, path)
+	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	return fmt.Sprintf("built %d-byte .nfc → %s", len(raw), path), nil
 }
 
 // fileformatDiff reads + parses two paths and returns the per-field diff
