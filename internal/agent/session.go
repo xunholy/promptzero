@@ -120,8 +120,21 @@ func (a *Agent) autoSaveLocked() {
 	// Structured handoff artifact: heuristic summary of tool usage,
 	// unresolved user threads, and blocked tools. Embedded in the
 	// persisted session so /session resume and future /report can
-	// consume the structure without replaying the full history.
+	// consume the structure without replaying the full history. The
+	// device_state_at_compact field is populated lazily — autosave
+	// runs under a.mu and a State probe would block it, so we ship a
+	// cached capability snapshot instead (the full State oracle with
+	// battery + SD runs on every user turn elsewhere).
 	handoff := BuildHandoff(a.history)
+	if a.flipper != nil {
+		caps := a.flipper.Capabilities()
+		handoff = handoff.WithDeviceState(map[string]any{
+			"fork":             caps.FriendlyFork(),
+			"firmware_version": caps.FirmwareVersion,
+			"hardware_name":    caps.HardwareName,
+			"hardware_uid":     caps.HardwareUID,
+		})
+	}
 	state := &session.State{
 		ID:        a.sessionID,
 		CreatedAt: time.Now(),

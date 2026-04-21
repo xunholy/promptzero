@@ -151,12 +151,20 @@ func errCodeForTool(toolName, suffix string) string {
 // truncateExcerpt cuts s to at most toolErrExcerptMax bytes, preferring
 // to keep the tail (where hardware error messages typically live). The
 // "…" ellipsis is a 3-byte rune — accounted for in the tail budget so
-// the returned string never exceeds the cap.
+// the returned string never exceeds the cap. A UTF-8-aware forward
+// scan pushes the tail boundary to the next rune start so we never
+// split a multi-byte character (firmware banners occasionally include
+// non-ASCII).
 func truncateExcerpt(s string) string {
 	if len(s) <= toolErrExcerptMax {
 		return s
 	}
 	const ellipsis = "…"
-	tailLen := toolErrExcerptMax - len(ellipsis)
-	return ellipsis + s[len(s)-tailLen:]
+	tailStart := len(s) - (toolErrExcerptMax - len(ellipsis))
+	// Advance to the next valid UTF-8 rune boundary so we never slice
+	// through a multi-byte sequence. Continuation bytes match 10xxxxxx.
+	for tailStart < len(s) && s[tailStart]&0xC0 == 0x80 {
+		tailStart++
+	}
+	return ellipsis + s[tailStart:]
 }

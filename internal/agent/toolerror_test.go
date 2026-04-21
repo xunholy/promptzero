@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // unmarshalToolErr decodes the JSON representation produced by
@@ -135,6 +136,21 @@ func TestTruncateExcerpt_ShortPassthrough(t *testing.T) {
 	out := truncateExcerpt(in)
 	if out != in {
 		t.Fatalf("short input should pass through: got %q", out)
+	}
+}
+
+func TestTruncateExcerpt_NeverSplitsUTF8(t *testing.T) {
+	// Build a string whose byte-level tail-cut would land inside a
+	// multi-byte rune. The Japanese filler characters here are 3
+	// bytes each; the cut boundary (500 - 3 = 497 bytes from end)
+	// will bisect one of them unless the truncator is rune-aware.
+	big := strings.Repeat("あ", 300) // 900 bytes
+	out := truncateExcerpt(big)
+	if !utf8.ValidString(out) {
+		t.Fatalf("truncateExcerpt produced invalid UTF-8: %q", out)
+	}
+	if len(out) > toolErrExcerptMax {
+		t.Fatalf("excerpt longer than cap: %d", len(out))
 	}
 }
 

@@ -30,6 +30,29 @@ type HandoffArtifact struct {
 	Blocked      []HandoffBlocked `json:"blocked,omitempty"`
 	TurnsCovered int              `json:"turns_covered"`
 	GeneratedAt  time.Time        `json:"generated_at"`
+
+	// DeviceStateAtCompact pins the Flipper snapshot we had at
+	// handoff-generation time (fork, firmware, battery, SD info). Used
+	// by /session resume and /report to render "session state at
+	// pause" without re-probing the device. Optional — BuildHandoff
+	// leaves it nil and callers who have a flipper.State on hand call
+	// WithDeviceState on the result.
+	DeviceStateAtCompact json.RawMessage `json:"device_state_at_compact,omitempty"`
+}
+
+// WithDeviceState stamps the given device state (marshalled as JSON)
+// onto the artifact. Returns the mutated receiver so callers can
+// chain: `BuildHandoff(history).WithDeviceState(state)`. Pass a nil
+// value to clear.
+func (h HandoffArtifact) WithDeviceState(state any) HandoffArtifact {
+	if state == nil {
+		h.DeviceStateAtCompact = nil
+		return h
+	}
+	if b, err := json.Marshal(state); err == nil {
+		h.DeviceStateAtCompact = b
+	}
+	return h
 }
 
 // HandoffFinding counts tool invocations of one kind. Useful because a
@@ -193,11 +216,20 @@ func extractBlocked(toolName, rawResult string) HandoffBlocked {
 // truncatePreview cuts s to n bytes, using "…" to mark the boundary.
 // Distinct from the ToolError excerpt helper because previews prefer
 // the head (first sentence of tool output usually carries the useful
-// summary), whereas error excerpts prefer the tail.
+// summary), whereas error excerpts prefer the tail. UTF-8-safe: backs
+// off the head boundary to the nearest rune start so we never split
+// a multi-byte character on the way out.
 func truncatePreview(s string, n int) string {
 	s = strings.TrimSpace(s)
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	// Walk backwards from n while we're sitting inside a
+	// continuation-byte run (10xxxxxx). Keeps the head clean at the
+	// cost of at most 3 bytes of slack.
+	cut := n
+	for cut > 0 && s[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return s[:cut] + "…"
 }

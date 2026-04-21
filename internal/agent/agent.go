@@ -1546,7 +1546,11 @@ func (a *Agent) fileformatEdit(ctx context.Context, path string, editsIn interfa
 // transport hiccup) are swallowed — /rewind is a convenience, not
 // load-bearing, and a failed snapshot must never block the write.
 // No-op when the snapshot manager or session id is unset.
-func (a *Agent) snapshotBeforeWrite(_ context.Context, path string) {
+//
+// Accepts the caller's ctx so the warn log carries the turn's trace
+// ID — snapshot I/O should be visible in the same Jaeger/Tempo trace
+// as the tool call that triggered it.
+func (a *Agent) snapshotBeforeWrite(ctx context.Context, path string) {
 	if a.snapshotMgr == nil || a.sessionID == "" || path == "" {
 		return
 	}
@@ -1556,7 +1560,7 @@ func (a *Agent) snapshotBeforeWrite(_ context.Context, path string) {
 		return
 	}
 	if _, err := a.snapshotMgr.Store(a.sessionID, path, []byte(raw)); err != nil {
-		obs.FromCtx(context.Background()).Warn("snapshot_store_failed", "path", path, "err", err)
+		obs.FromCtx(ctx).Warn("snapshot_store_failed", "path", path, "err", err)
 	}
 }
 

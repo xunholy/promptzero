@@ -144,6 +144,30 @@ func TestBuildHandoff_EmptyHistory(t *testing.T) {
 	}
 }
 
+func TestHandoffArtifact_WithDeviceState(t *testing.T) {
+	h := BuildHandoff(stubHistory()).WithDeviceState(map[string]any{
+		"fork":             "Momentum",
+		"firmware_version": "0.99.1",
+	})
+	if len(h.DeviceStateAtCompact) == 0 {
+		t.Fatalf("DeviceStateAtCompact should be populated after WithDeviceState")
+	}
+	js := h.JSON()
+	if !strings.Contains(js, `"device_state_at_compact"`) {
+		t.Errorf("JSON missing device_state_at_compact key: %s", js)
+	}
+	if !strings.Contains(js, `"Momentum"`) {
+		t.Errorf("JSON missing Momentum fork: %s", js)
+	}
+}
+
+func TestHandoffArtifact_WithDeviceStateNilClears(t *testing.T) {
+	h := BuildHandoff(stubHistory()).WithDeviceState(map[string]any{"x": 1}).WithDeviceState(nil)
+	if len(h.DeviceStateAtCompact) != 0 {
+		t.Errorf("WithDeviceState(nil) should clear the field, got %s", h.DeviceStateAtCompact)
+	}
+}
+
 func TestBuildHandoff_IgnoresSyntheticPrefixes(t *testing.T) {
 	// The state-oracle block injected on every turn must not pollute
 	// OpenThreads with noise like "<device-state>...".
