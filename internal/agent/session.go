@@ -117,11 +117,17 @@ func (a *Agent) autoSaveLocked() {
 		log.Printf("agent: autoSave marshal failed for session %s: %v", a.sessionID, err)
 		return
 	}
+	// Structured handoff artifact: heuristic summary of tool usage,
+	// unresolved user threads, and blocked tools. Embedded in the
+	// persisted session so /session resume and future /report can
+	// consume the structure without replaying the full history.
+	handoff := BuildHandoff(a.history)
 	state := &session.State{
 		ID:        a.sessionID,
 		CreatedAt: time.Now(),
 		Messages:  msgs,
 		Model:     a.model,
+		Handoff:   json.RawMessage(handoff.JSON()),
 	}
 	if existing, err := a.sessionStore.Load(a.sessionID); err == nil {
 		state.CreatedAt = existing.CreatedAt

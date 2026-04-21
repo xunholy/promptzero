@@ -26,6 +26,13 @@ type State struct {
 	Messages  []Message `json:"messages"`
 	Model     string    `json:"model"`
 	Notes     string    `json:"notes,omitempty"`
+
+	// Handoff carries a structured HandoffArtifact (see
+	// internal/agent/handoff.go) as raw JSON so /session resume can
+	// surface findings / open threads / blocked tools without
+	// re-scanning history. Optional; older session files leave it
+	// absent and resume works unchanged.
+	Handoff json.RawMessage `json:"handoff,omitempty"`
 }
 
 type Store struct {
