@@ -354,6 +354,13 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	ctx, _ = obs.WithTrace(ctx)
 	obs.FromCtx(ctx).Info("turn_started", "input_len", len(userInput))
 
+	// Open a gen_ai.agent.turn OTel span. InitOTel installs a noop
+	// tracer when OTEL_EXPORTER_OTLP_ENDPOINT is unset, so this costs
+	// nothing in deployments that don't enable tracing.
+	turnModel := a.modelForLocked(TierPlan)
+	ctx, turnSpan := obs.StartAgentTurn(ctx, turnModel, len(userInput))
+	defer turnSpan.End()
+
 	// Device-state oracle: inject a fresh <device-state> JSON block as a
 	// prefix on the user turn so the model stops asking "what's
 	// connected?" / "what mode are you in?" every few turns. Stays
@@ -506,9 +513,18 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 				a.toolStatusCb(ToolEvent{Phase: "start", Name: tc.Name, Input: input})
 			}
 
+			// Open a child OTel span for this tool call. The span
+			// closes when we set its result attributes below; the ctx
+			// carries it down through executeTool so deeper layers can
+			// attach events if they want to.
+			toolCtx, toolSpan := obs.StartToolCall(ctx, tc.Name, tc.ID, string(input))
+
 			start := time.Now()
-			output, toolErr := a.executeTool(ctx, tc.Name, tc.Input)
+			output, toolErr := a.executeTool(toolCtx, tc.Name, tc.Input)
 			duration := time.Since(start)
+
+			obs.RecordToolResult(toolSpan, len(output), toolErr)
+			toolSpan.End()
 
 			if a.toolStatusCb != nil {
 				a.toolStatusCb(ToolEvent{
@@ -600,6 +616,20 @@ func (a *Agent) streamOnce(ctx context.Context, sysPrompt string, tools []anthro
 			CacheReadTokens:     msg.Usage.CacheReadInputTokens,
 			CacheCreationTokens: msg.Usage.CacheCreationInputTokens,
 		})
+	}
+	// Stamp usage + finish reason onto the current agent-turn span.
+	// trace.SpanFromContext is safe against the noop path — the
+	// returned span drops attribute calls when tracing is disabled.
+	if span := obs.SpanFromCtx(ctx); span != nil {
+		obs.RecordUsage(span,
+			msg.Usage.InputTokens,
+			msg.Usage.OutputTokens,
+			msg.Usage.CacheReadInputTokens,
+			msg.Usage.CacheCreationInputTokens,
+		)
+		if len(msg.StopReason) > 0 {
+			obs.RecordFinishReason(span, string(msg.StopReason))
+		}
 	}
 	return &msg, nil
 }

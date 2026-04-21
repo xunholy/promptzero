@@ -122,6 +122,17 @@ func run() error {
 
 	rec := setupMetrics(cfg)
 
+	// Wire OpenTelemetry tracing. Honours OTEL_EXPORTER_OTLP_ENDPOINT —
+	// when unset, returns a noop shutdown and every span call in the
+	// agent is a cheap drop. The deferred shutdown force-flushes any
+	// pending spans so a crash doesn't lose the final batch.
+	otelShutdown, err := obs.InitOTel(ctx)
+	if err != nil {
+		statusWarn(fmt.Sprintf("OTel init failed (tracing disabled): %v", err))
+	} else {
+		defer func() { _ = otelShutdown(context.Background()) }()
+	}
+
 	if f.mcpMode {
 		return runMCPMode(cfg, flip, f.wifiEnabled)
 	}
