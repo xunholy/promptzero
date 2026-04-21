@@ -617,19 +617,24 @@ func (a *Agent) requireMarauder() error {
 	return nil
 }
 
-// executeTool dispatches a single tool call. The bool indicates whether the
-// returned string represents an error — preferred over the previous
-// strings.HasPrefix(output, "error") check, which mis-flagged any tool that
-// happened to emit text starting with the word "error".
+// executeTool dispatches a single tool call. On failure the returned
+// string is a JSON-encoded ToolError (see toolerror.go) so reflexion
+// (P0-05), detectors (P1-10), and report generation can pattern-match
+// on the error code and remediation hints. The bool indicates whether
+// the returned string represents an error.
 func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMessage) (string, bool) {
 	var params map[string]interface{}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return fmt.Sprintf("error parsing parameters: %v", err), true
+		te := newToolError(name, fmt.Errorf("parse parameters: %w", err), string(input))
+		return te.JSON(), true
 	}
 
 	result, err := a.dispatch(ctx, name, params)
 	if err != nil {
-		return fmt.Sprintf("error: %v", err), true
+		// Use the dispatch result (if any) as the excerpt — some
+		// wrappers return partial output alongside an error.
+		te := newToolError(name, err, result)
+		return te.JSON(), true
 	}
 	return result, false
 }
