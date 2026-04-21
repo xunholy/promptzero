@@ -95,7 +95,7 @@ type Agent struct {
 	genLLM             provider.Provider
 	toolStatusCb       func(ToolEvent)
 	textDeltaCb        func(TextDelta)
-	usageCb            func(inTokens, outTokens int64)
+	usageCb            func(u Usage)
 	streamErrCb        func(err error)
 	confirmCb          ConfirmFunc
 	confirmThreshold   risk.Level
@@ -130,10 +130,23 @@ func (a *Agent) SetGenLLM(p provider.Provider)           { a.genLLM = p }
 func (a *Agent) SetToolStatusCallback(f func(ToolEvent)) { a.toolStatusCb = f }
 func (a *Agent) SetTextDeltaCallback(f func(TextDelta))  { a.textDeltaCb = f }
 
-// SetUsageCallback registers a per-response token counter. Fires once per
-// successful streamOnce with the message's Usage.InputTokens and
-// Usage.OutputTokens. Pass nil to disable.
-func (a *Agent) SetUsageCallback(f func(inTokens, outTokens int64)) { a.usageCb = f }
+// Usage reports token consumption for one successful streamOnce call.
+// InputTokens and OutputTokens are the usual Anthropic counters; the
+// two cache fields track prompt-cache hits (read) and misses that
+// created a new cache (creation). A healthy session shows steadily
+// growing CacheReadTokens and occasional CacheCreationTokens spikes
+// when the cached prefix rotates.
+type Usage struct {
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
+}
+
+// SetUsageCallback registers a per-response token counter. Fires once
+// per successful streamOnce with the message's Usage block, including
+// prompt-cache read / creation tokens. Pass nil to disable.
+func (a *Agent) SetUsageCallback(f func(u Usage)) { a.usageCb = f }
 
 // SetStreamErrorCallback registers a hook that fires when the upstream
 // Messages.NewStreaming call returns an error. Wired to the cost
@@ -506,15 +519,12 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 // streamOnce issues a single streaming Messages request, relays text
 // deltas to the caller's TextDelta callback, and returns the fully
-// accumulated Message once the stream closes.
+// accumulated Message once the stream closes. Request construction
+// (including prompt-cache breakpoints on the system prompt and tool
+// catalog) lives in buildCachedRequest so cache behaviour can be
+// covered by unit tests without an SDK mock.
 func (a *Agent) streamOnce(ctx context.Context, sysPrompt string, tools []anthropic.ToolUnionParam) (*anthropic.Message, error) {
-	stream := a.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
-		Model:     a.model,
-		MaxTokens: 4096,
-		System:    []anthropic.TextBlockParam{{Text: sysPrompt}},
-		Tools:     tools,
-		Messages:  a.history,
-	})
+	stream := a.client.Messages.NewStreaming(ctx, buildCachedRequest(a.model, sysPrompt, tools, a.history))
 	defer stream.Close()
 
 	var msg anthropic.Message
@@ -539,7 +549,12 @@ func (a *Agent) streamOnce(ctx context.Context, sysPrompt string, tools []anthro
 		return nil, err
 	}
 	if a.usageCb != nil {
-		a.usageCb(msg.Usage.InputTokens, msg.Usage.OutputTokens)
+		a.usageCb(Usage{
+			InputTokens:         msg.Usage.InputTokens,
+			OutputTokens:        msg.Usage.OutputTokens,
+			CacheReadTokens:     msg.Usage.CacheReadInputTokens,
+			CacheCreationTokens: msg.Usage.CacheCreationInputTokens,
+		})
 	}
 	return &msg, nil
 }

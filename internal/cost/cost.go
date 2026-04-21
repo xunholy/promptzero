@@ -73,6 +73,19 @@ func (p *Pricer) Cost(model string, inTokens, outTokens int64) float64 {
 		float64(outTokens)/1_000_000*r.OutputPerMTok
 }
 
+// CostWithCache is Cost plus prompt-cache read and creation tokens.
+// Cache reads are billed at 0.1x the normal input rate; cache
+// creations at 1.25x. The multipliers match Anthropic's published
+// pricing as of late 2025; if they drift, this is the only place to
+// update.
+func (p *Pricer) CostWithCache(model string, inTokens, outTokens, cacheReadTokens, cacheCreationTokens int64) float64 {
+	r, _ := p.Rate(model)
+	return float64(inTokens)/1_000_000*r.InputPerMTok +
+		float64(outTokens)/1_000_000*r.OutputPerMTok +
+		float64(cacheReadTokens)/1_000_000*r.InputPerMTok*0.10 +
+		float64(cacheCreationTokens)/1_000_000*r.InputPerMTok*1.25
+}
+
 func normalizeKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
@@ -94,14 +107,16 @@ type Tracker struct {
 	model  string
 	now    func() time.Time
 
-	mu          sync.Mutex
-	inTokens    int64
-	outTokens   int64
-	totalUSD    float64
-	errorRun    int
-	lastErrorAt time.Time
-	offline     bool
-	onOffline   func(bool) // fired on transitions (false→true or true→false)
+	mu                  sync.Mutex
+	inTokens            int64
+	outTokens           int64
+	cacheReadTokens     int64
+	cacheCreationTokens int64
+	totalUSD            float64
+	errorRun            int
+	lastErrorAt         time.Time
+	offline             bool
+	onOffline           func(bool) // fired on transitions (false→true or true→false)
 }
 
 // NewTracker builds a Tracker bound to a specific model. The offline
@@ -129,15 +144,28 @@ func (t *Tracker) SetModel(model string) {
 // AddUsage records one response's input/output token counts and bumps
 // the running USD total. Any successful usage record also clears the
 // consecutive-error run and flips the tracker back online if it was
-// offline.
+// offline. Prefer AddUsageFull for callers that have cache token
+// counters — this wrapper ignores them.
 func (t *Tracker) AddUsage(inTokens, outTokens int64) {
-	if inTokens <= 0 && outTokens <= 0 {
+	t.AddUsageFull(inTokens, outTokens, 0, 0)
+}
+
+// AddUsageFull is the complete version of AddUsage that also records
+// prompt-cache read / creation tokens. Cache-read tokens are billed at
+// ~10 % of the normal input rate (Anthropic's current published
+// number); cache-creation tokens are billed at ~125 % to amortise the
+// cache write. Model rates default to uncached input pricing if no
+// cache rate is configured, so the dollar line is always conservative.
+func (t *Tracker) AddUsageFull(inTokens, outTokens, cacheReadTokens, cacheCreationTokens int64) {
+	if inTokens <= 0 && outTokens <= 0 && cacheReadTokens <= 0 && cacheCreationTokens <= 0 {
 		return
 	}
 	t.mu.Lock()
 	t.inTokens += inTokens
 	t.outTokens += outTokens
-	t.totalUSD += t.pricer.Cost(t.model, inTokens, outTokens)
+	t.cacheReadTokens += cacheReadTokens
+	t.cacheCreationTokens += cacheCreationTokens
+	t.totalUSD += t.pricer.CostWithCache(t.model, inTokens, outTokens, cacheReadTokens, cacheCreationTokens)
 	wasOffline := t.offline
 	t.errorRun = 0
 	t.offline = false
@@ -177,11 +205,13 @@ func (t *Tracker) RecordStreamError() {
 
 // Snapshot is a point-in-time copy of the Tracker's accumulated state.
 type Snapshot struct {
-	Model        string
-	InputTokens  int64
-	OutputTokens int64
-	TotalUSD     float64
-	Offline      bool
+	Model               string
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
+	CacheCreationTokens int64
+	TotalUSD            float64
+	Offline             bool
 }
 
 // Snapshot returns the current state for the /cost REPL command and the
@@ -190,12 +220,27 @@ func (t *Tracker) Snapshot() Snapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return Snapshot{
-		Model:        t.model,
-		InputTokens:  t.inTokens,
-		OutputTokens: t.outTokens,
-		TotalUSD:     t.totalUSD,
-		Offline:      t.offline,
+		Model:               t.model,
+		InputTokens:         t.inTokens,
+		OutputTokens:        t.outTokens,
+		CacheReadTokens:     t.cacheReadTokens,
+		CacheCreationTokens: t.cacheCreationTokens,
+		TotalUSD:            t.totalUSD,
+		Offline:             t.offline,
 	}
+}
+
+// CacheHitRate returns the fraction of prompt-cacheable input tokens
+// that landed on an existing cache (vs. paid full-price for cache
+// creation). Returns 0 when neither counter has moved yet so fresh
+// sessions don't render a divide-by-zero. Intended for /stats and
+// dashboard display.
+func (s Snapshot) CacheHitRate() float64 {
+	total := s.CacheReadTokens + s.CacheCreationTokens
+	if total == 0 {
+		return 0
+	}
+	return float64(s.CacheReadTokens) / float64(total)
 }
 
 // Format returns the single-line human summary used by /cost and
@@ -205,6 +250,11 @@ func (s Snapshot) Format() string {
 	if s.Offline {
 		banner = "  [OFFLINE]"
 	}
-	return fmt.Sprintf("model=%s  input=%d  output=%d  cost=$%.4f%s",
-		s.Model, s.InputTokens, s.OutputTokens, s.TotalUSD, banner)
+	cache := ""
+	if s.CacheReadTokens+s.CacheCreationTokens > 0 {
+		cache = fmt.Sprintf("  cache_read=%d cache_write=%d hit_rate=%.0f%%",
+			s.CacheReadTokens, s.CacheCreationTokens, s.CacheHitRate()*100)
+	}
+	return fmt.Sprintf("model=%s  input=%d  output=%d  cost=$%.4f%s%s",
+		s.Model, s.InputTokens, s.OutputTokens, s.TotalUSD, cache, banner)
 }

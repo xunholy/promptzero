@@ -35,6 +35,78 @@ func TestPricer_OverridesWinOverDefaults(t *testing.T) {
 	}
 }
 
+func TestPricer_CostWithCache(t *testing.T) {
+	// Sonnet: $3/MTok input, $15/MTok output. Cache read = 0.1x input
+	// ($0.30/MTok), cache creation = 1.25x input ($3.75/MTok).
+	// 1M each: 3 + 15 + 0.3 + 3.75 = 22.05
+	p := NewPricer(nil)
+	got := p.CostWithCache("claude-sonnet-4-6", 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+	const want = 22.05
+	if diff := got - want; diff < -0.001 || diff > 0.001 {
+		t.Fatalf("CostWithCache = %f, want %f", got, want)
+	}
+}
+
+func TestTracker_AddUsageFull_AccumulatesCache(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.AddUsageFull(1000, 500, 2000, 100)
+	snap := tr.Snapshot()
+	if snap.InputTokens != 1000 || snap.OutputTokens != 500 {
+		t.Errorf("input/output not recorded: %+v", snap)
+	}
+	if snap.CacheReadTokens != 2000 {
+		t.Errorf("cache_read = %d, want 2000", snap.CacheReadTokens)
+	}
+	if snap.CacheCreationTokens != 100 {
+		t.Errorf("cache_creation = %d, want 100", snap.CacheCreationTokens)
+	}
+	if hr := snap.CacheHitRate(); hr < 0.95 || hr > 0.96 {
+		t.Errorf("CacheHitRate = %f, want ~0.952 (2000/2100)", hr)
+	}
+}
+
+func TestSnapshot_CacheHitRateEmpty(t *testing.T) {
+	// Empty snapshot must not divide by zero.
+	if got := (Snapshot{}).CacheHitRate(); got != 0 {
+		t.Fatalf("CacheHitRate on empty = %f, want 0", got)
+	}
+}
+
+func TestSnapshot_FormatIncludesCacheWhenPresent(t *testing.T) {
+	s := Snapshot{Model: "claude-sonnet-4-6", InputTokens: 100, OutputTokens: 50, CacheReadTokens: 900, CacheCreationTokens: 100}
+	got := s.Format()
+	for _, want := range []string{"cache_read=900", "cache_write=100", "hit_rate=90%"} {
+		if !contains(got, want) {
+			t.Errorf("Format missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestSnapshot_FormatOmitsCacheWhenZero(t *testing.T) {
+	// A tracker that never cached anything should not clutter /cost with
+	// zero cache counters.
+	s := Snapshot{Model: "claude-sonnet-4-6", InputTokens: 100, OutputTokens: 50}
+	got := s.Format()
+	if contains(got, "cache_read") {
+		t.Errorf("Format should hide cache fields when zero: %s", got)
+	}
+}
+
+func contains(haystack, needle string) bool {
+	return len(haystack) >= len(needle) && stringContainsHelper(haystack, needle)
+}
+
+// stringContainsHelper avoids an extra import of strings inside the
+// cost package's test file.
+func stringContainsHelper(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestPricer_UnknownModelIsZero(t *testing.T) {
 	p := NewPricer(nil)
 	if _, ok := p.Rate("made-up-model"); ok {

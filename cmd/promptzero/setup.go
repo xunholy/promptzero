@@ -367,11 +367,13 @@ func setupCostTracker(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder) *c
 			statusOK("Back online — Anthropic API reachable")
 		}
 	})
-	ai.SetUsageCallback(func(in, out int64) {
-		tracker.AddUsage(in, out)
+	ai.SetUsageCallback(func(u agent.Usage) {
+		tracker.AddUsageFull(u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheCreationTokens)
 		if rec != nil {
-			rec.RecordTokens("input", in)
-			rec.RecordTokens("output", out)
+			rec.RecordTokens("input", u.InputTokens)
+			rec.RecordTokens("output", u.OutputTokens)
+			rec.RecordTokens("cache_read", u.CacheReadTokens)
+			rec.RecordTokens("cache_creation", u.CacheCreationTokens)
 		}
 	})
 	ai.SetStreamErrorCallback(func(_ error) {
