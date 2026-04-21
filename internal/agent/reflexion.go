@@ -63,6 +63,12 @@ func maybeAppendReflection(
 // failures tend to have stereotypical fixes (reposition, reconnect,
 // retry with longer timeout, try a different frequency/protocol) and
 // Haiku is reliable when the output shape is tightly bounded.
+//
+// Concurrency contract: the caller MUST hold a.mu. reflect reads
+// a.persona (via modelForLocked) and a.client without re-locking — it
+// only ever runs from inside Run() today, which holds the mutex for
+// the full turn. If this ever gets called from a different path,
+// promote to ModelFor (the public, mutex-acquiring wrapper).
 func (a *Agent) reflect(ctx context.Context, toolName string, input json.RawMessage, output string) string {
 	const system = "You are diagnosing a tool failure for an AI agent controlling a Flipper Zero + ESP32 Marauder. " +
 		"Given the tool name, input, and the raw error output, answer in at most 2 short sentences: " +

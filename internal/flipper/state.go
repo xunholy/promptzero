@@ -12,15 +12,35 @@ import (
 // render into the model's turn context. Carries only fields that help
 // the agent avoid redundant "what's connected?" round-trips; heavyweight
 // probes (SD walk, loader state, log dump) are deliberately excluded.
+//
+// Fields honour `omitempty` wherever missing data is better expressed as
+// absence than as a zero sentinel (notably BatteryPct — a partial fetch
+// that couldn't reach power_info must not surface as "battery: 0%").
 type State struct {
-	Connected       bool      `json:"connected"`
-	Fork            string    `json:"fork,omitempty"`             // stock/Momentum/Unleashed/RogueMaster/Xtreme
-	FirmwareVersion string    `json:"firmware_version,omitempty"` // version string from device_info
-	HardwareName    string    `json:"hardware_name,omitempty"`    // user-settable dolphin name
-	HardwareUID     string    `json:"hardware_uid,omitempty"`
-	BatteryPct      int       `json:"battery_pct,omitempty"`  // 0-100, 0 if unknown
-	ChargeState     string    `json:"charge_state,omitempty"` // "charging" / "discharging" / ""
-	CollectedAt     time.Time `json:"collected_at"`
+	Connected       bool   `json:"connected"`
+	Fork            string `json:"fork,omitempty"`             // stock/Momentum/Unleashed/RogueMaster/Xtreme
+	FirmwareVersion string `json:"firmware_version,omitempty"` // version string from device_info
+	HardwareName    string `json:"hardware_name,omitempty"`    // user-settable dolphin name
+	HardwareUID     string `json:"hardware_uid,omitempty"`
+	BatteryPct      int    `json:"battery_pct,omitempty"`  // 0-100, omitted when unknown
+	ChargeState     string `json:"charge_state,omitempty"` // "charging" / "discharging" / ""
+
+	// Transport identifies how PromptZero is talking to the Flipper
+	// ("serial" / "ble" / "mock"). The agent uses it to warn before
+	// high-throughput operations on the slower BLE path.
+	Transport string `json:"transport,omitempty"`
+
+	// SDPresent reports whether the /ext volume exists at all. When
+	// false, the SD-space fields are omitted and any storage_* tool
+	// call will fail — surfacing this early saves the model a turn.
+	SDPresent bool `json:"sd_present"`
+	// SDTotalBytes and SDFreeBytes track SD capacity in bytes. Zero
+	// values are omitted so a failed storage-info probe doesn't
+	// masquerade as "0 free".
+	SDTotalBytes int64 `json:"sd_total_bytes,omitempty"`
+	SDFreeBytes  int64 `json:"sd_free_bytes,omitempty"`
+
+	CollectedAt time.Time `json:"collected_at"`
 }
 
 // stateCacheTTL bounds how often State() hits the device. Two seconds is
@@ -96,32 +116,52 @@ func (f *Flipper) fetchState(ctx context.Context) (State, error) {
 		HardwareUID:     caps.HardwareUID,
 		CollectedAt:     time.Now(),
 	}
+	if f.transport != nil {
+		st.Transport = f.transport.Kind()
+	}
 
-	// Context respect: skip the serial hop if the caller's deadline is
-	// already blown. The capabilities block above is cheap (atomic load)
-	// and useful even without battery info, so we return what we have.
+	// Context respect: skip the serial hops if the caller's deadline
+	// is already blown. The capabilities block above is cheap (atomic
+	// load) and useful even without battery or SD info, so we return
+	// what we have.
 	if err := ctx.Err(); err != nil {
 		return st, err
 	}
 
-	// Transport absent (tests, mid-reconnect) — we can't probe power.
-	// Partial state from capabilities alone is still useful to the model.
+	// Transport absent (tests, mid-reconnect) — we can't probe power
+	// or storage. Partial state from capabilities alone is still
+	// useful to the model.
 	if f.transport == nil {
 		return st, nil
 	}
 
 	power, err := f.PowerInfoMap()
-	if err != nil {
-		// Partial state is still useful to the model.
-		return st, nil
-	}
-	if v, ok := power["charge_level"]; ok {
-		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 0 && n <= 100 {
-			st.BatteryPct = n
+	if err == nil {
+		if v, ok := power["charge_level"]; ok {
+			if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 0 && n <= 100 {
+				st.BatteryPct = n
+			}
+		}
+		if v, ok := power["charge_state"]; ok {
+			st.ChargeState = strings.TrimSpace(v)
 		}
 	}
-	if v, ok := power["charge_state"]; ok {
-		st.ChargeState = strings.TrimSpace(v)
+	// Storage info lives on a separate CLI verb; a failure here doesn't
+	// invalidate the battery reading we already captured.
+	if sd, err := f.StorageFSInfoMap("/ext"); err == nil {
+		if sd["present"] == "true" {
+			st.SDPresent = true
+			if v, ok := sd["totalSpace"]; ok {
+				if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && n > 0 {
+					st.SDTotalBytes = n
+				}
+			}
+			if v, ok := sd["freeSpace"]; ok {
+				if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && n > 0 {
+					st.SDFreeBytes = n
+				}
+			}
+		}
 	}
 	return st, nil
 }

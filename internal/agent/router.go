@@ -173,6 +173,12 @@ func narrowTools(
 // call (Haiku by default) that asks the model which groups are relevant
 // to the user's turn. Requires a live Anthropic client; for unit tests
 // inject a synchronous routerFunc into Agent.routerFn instead.
+//
+// Concurrency contract: the caller MUST hold a.mu. routeGroups reads
+// a.persona (via modelForLocked) and a.client without re-locking — it
+// only ever runs from inside Run() today, which holds the mutex for
+// the full turn. If this ever gets called from a different path,
+// promote to ModelFor (the public, mutex-acquiring wrapper).
 func (a *Agent) routeGroups(ctx context.Context, userInput string, available map[string]bool) (map[string]bool, error) {
 	if len(available) == 0 {
 		return nil, nil

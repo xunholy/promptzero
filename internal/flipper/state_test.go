@@ -2,11 +2,23 @@ package flipper
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+// jsonMarshalForTest keeps the test file free of package-level name
+// collisions with production helpers. Returns the marshalled string.
+func jsonMarshalForTest(v interface{}) (string, error) {
+	b, err := json.Marshal(v)
+	return string(b), err
+}
+
+func containsSubstring(haystack, needle string) bool {
+	return strings.Contains(haystack, needle)
+}
 
 // newStateFlipperWithCaps returns a Flipper whose capabilities cache is
 // prepopulated and whose transport is nil. fetchState tolerates a nil
@@ -45,6 +57,50 @@ func TestFlipper_State_UsesCapabilities(t *testing.T) {
 	}
 	if st.CollectedAt.IsZero() {
 		t.Errorf("CollectedAt should be set")
+	}
+}
+
+func TestFlipper_State_PartialWhenTransportAbsent(t *testing.T) {
+	// Partial-state path: capabilities populated, no transport.
+	// BatteryPct and SD fields must stay at zero (not leak as "0%
+	// battery / 0 bytes free"), Connected stays true so the agent
+	// still injects the block, and the absent fields marshal out
+	// under omitempty.
+	f := newStateFlipperWithCaps(Capabilities{
+		FirmwareFork:    "Momentum",
+		FirmwareVersion: "0.99.1",
+	})
+	st, err := f.State(context.Background())
+	if err != nil {
+		t.Fatalf("State error unexpected on capabilities-only path: %v", err)
+	}
+	if !st.Connected {
+		t.Fatalf("Connected should be true when capabilities are populated")
+	}
+	if st.BatteryPct != 0 {
+		t.Errorf("BatteryPct leaked through transport-absent path: %d", st.BatteryPct)
+	}
+	if st.SDPresent {
+		t.Errorf("SDPresent must be false when no transport")
+	}
+	if st.SDTotalBytes != 0 || st.SDFreeBytes != 0 {
+		t.Errorf("SD bytes leaked: total=%d free=%d", st.SDTotalBytes, st.SDFreeBytes)
+	}
+	if st.Transport != "" {
+		t.Errorf("Transport should be empty when f.transport is nil, got %q", st.Transport)
+	}
+
+	// JSON encoding of the partial state must omit battery + SD
+	// fields so the model doesn't read "battery 0% SD 0 bytes free"
+	// as real data.
+	body, err := jsonMarshalForTest(st)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	for _, forbidden := range []string{`"battery_pct"`, `"sd_total_bytes"`, `"sd_free_bytes"`, `"transport"`} {
+		if containsSubstring(body, forbidden) {
+			t.Errorf("partial state leaked %s: %s", forbidden, body)
+		}
 	}
 }
 
