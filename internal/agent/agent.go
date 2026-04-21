@@ -977,7 +977,16 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		if err := a.requireMarauder(); err != nil {
 			return "", err
 		}
-		return a.marauder.ScanAP(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
+		// Structured parse (P1-17) so the model sees {aps: [...]},
+		// not a prose table. Falls back to the raw text automatically
+		// when the parser can't extract rows — ScanResult.RawLines
+		// carries anything it couldn't classify.
+		res, err := a.marauder.ScanAPParsed(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(res)
+		return string(b), nil
 	case "wifi_scan_all":
 		if err := a.requireMarauder(); err != nil {
 			return "", err
@@ -1007,7 +1016,12 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		if err := a.requireMarauder(); err != nil {
 			return "", err
 		}
-		return a.marauder.ListAPs()
+		res, err := a.marauder.ListAPsParsed()
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(res)
+		return string(b), nil
 	case "wifi_list_ssids":
 		if err := a.requireMarauder(); err != nil {
 			return "", err
@@ -1017,7 +1031,12 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		if err := a.requireMarauder(); err != nil {
 			return "", err
 		}
-		return a.marauder.ListStations()
+		res, err := a.marauder.ListStationsParsed()
+		if err != nil {
+			return "", err
+		}
+		b, _ := json.Marshal(res)
+		return string(b), nil
 	case "wifi_clear_aps":
 		if err := a.requireMarauder(); err != nil {
 			return "", err
