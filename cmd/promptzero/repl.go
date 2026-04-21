@@ -87,11 +87,19 @@ func decisionLabel(d agent.Decision) string {
 // tool runs. Lives inside ed.writeOutput so it plays nicely with streaming
 // output and tool-status redraws.
 //
+// For risk.High and risk.Critical tools, a multi-line boxed preview
+// (FormatConfirmPreview) is rendered *above* the compact prompt so the
+// operator can review the frequency / file path / payload hex before
+// approving. Low-risk tools fall through to the compact prompt only.
+//
 // Critical tools get a stricter prompt: no single-key approve, no
 // blanket approve-all. The operator must type the word `confirm` so a
 // stray keystroke or approve-all reflex from an earlier tool can't
 // silently authorise something destructive.
 func renderConfirmPrompt(req agent.ConfirmRequest, cols int) {
+	if preview := agent.FormatConfirmPreview(req); preview != "" {
+		fmt.Fprintf(os.Stderr, "\r\033[K\n%s%s%s", yellow, preview, reset)
+	}
 	pad := strings.Repeat(" ", boxPad)
 	// Size the args budget to the terminal width so a long JSON blob can't
 	// overflow into a right-border-munging mess.
