@@ -1,0 +1,207 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/anthropics/anthropic-sdk-go"
+)
+
+// Chain-of-verification for generated payloads (P1-16). After a
+// generate_* tool produces content, a classification-tier model pass
+// analyses it against known failure modes for that payload type and
+// returns a structured verdict. High/critical verdicts block the
+// deploy step unless the caller passes verify_bypass=true.
+//
+// The point isn't to replace the existing validator package (which
+// does static BadUSB sandbox analysis) — it's to catch the LLM-level
+// mistakes a static analyser can't, e.g. "this evil portal posts to
+// /login instead of /get", "this BadUSB script assumes NumLock is
+// off", "this .sub uses a frequency the TX radio can't reach".
+//
+// Verdict severities are grep-friendly strings matching the existing
+// detector (P1-10) and validator (internal/validator) vocabularies:
+//   "none"     — no failure modes detected
+//   "low"      — cosmetic / non-functional issues
+//   "medium"   — may reduce effectiveness, deploy anyway
+//   "high"     — likely to fail / misbehave; deploy is blocked
+//   "critical" — will fire on the wrong target or cause side-effects
+
+// Known severity values.
+const (
+	VerifySeverityNone     = "none"
+	VerifySeverityLow      = "low"
+	VerifySeverityMedium   = "medium"
+	VerifySeverityHigh     = "high"
+	VerifySeverityCritical = "critical"
+)
+
+// VerificationVerdict is the structured output of a verify pass.
+type VerificationVerdict struct {
+	Severity       string   `json:"severity"`
+	FailureModes   []string `json:"failure_modes,omitempty"`
+	Recommendation string   `json:"recommendation,omitempty"`
+	Verified       bool     `json:"verified"`
+}
+
+// verifyFunc is the pluggable per-verification callback. The default
+// production wiring calls an Anthropic classification-tier model
+// (Haiku) with a payload-type-specific system prompt; tests install
+// a synchronous stub to exercise the block / bypass logic without a
+// live client.
+type verifyFunc func(ctx context.Context, payloadType, content string) (VerificationVerdict, error)
+
+// shouldBlockDeploy reports whether a verdict should stop the deploy
+// step from running. Bypass=true forces a deploy regardless of
+// severity — kept separate from the verdict itself so an audit row
+// can show both "verifier said HIGH" and "operator bypassed".
+func shouldBlockDeploy(v VerificationVerdict, bypass bool) bool {
+	if bypass {
+		return false
+	}
+	switch v.Severity {
+	case VerifySeverityHigh, VerifySeverityCritical:
+		return true
+	default:
+		return false
+	}
+}
+
+// verifyPayloadSystemPrompts map each generate_* type to a focused
+// system prompt. Kept short so the Haiku verifier stays fast.
+// Operators who want to customise would override via future config.
+var verifyPayloadSystemPrompts = map[string]string{
+	"evil_portal": "You are reviewing a Flipper Zero Evil Portal HTML payload. Check for: " +
+		"(a) missing or wrong form action (must be '/get'), (b) wrong form method (must be 'GET'), " +
+		"(c) credential fields not named exactly 'email' and 'password', (d) external resource " +
+		"references (img src pointing off-site, CDN links, external CSS — all break when served " +
+		"offline from the Marauder), (e) obvious markdown fence leakage. " +
+		"Output ONLY a JSON object matching {\"severity\":\"none|low|medium|high|critical\"," +
+		"\"failure_modes\":[\"...\"],\"recommendation\":\"...\",\"verified\":true}. " +
+		"Deploy-blocking issues (a/b/c/d) are 'high'; cosmetic issues are 'low'.",
+
+	"badusb": "You are reviewing a Flipper Zero BadUSB DuckyScript payload. Check for: " +
+		"(a) target-OS mismatch (e.g. Windows shortcuts on a macOS target), (b) unbounded loops " +
+		"without a BREAK condition, (c) destructive rm/format/shred invocations that weren't in " +
+		"the description, (d) reliance on NumLock being off when script uses numpad, (e) missing " +
+		"DELAY after GUI key combos so WIN+R opens before typing. " +
+		"Output ONLY a JSON object matching {\"severity\":\"none|low|medium|high|critical\"," +
+		"\"failure_modes\":[\"...\"],\"recommendation\":\"...\",\"verified\":true}. " +
+		"Destructive unintended ops are 'critical'; reliability bugs are 'high'.",
+
+	"subghz": "You are reviewing a Flipper Zero .sub SubGHz signal file. Check for: " +
+		"(a) frequency outside the CC1101 1 MHz-1 GHz range, (b) Preset that doesn't match the band " +
+		"(FSK preset on an OOK-only freq, etc.), (c) Protocol and Key bit-length mismatch, " +
+		"(d) missing required headers (Filetype, Frequency, Preset). " +
+		"Output ONLY a JSON object matching {\"severity\":\"none|low|medium|high|critical\"," +
+		"\"failure_modes\":[\"...\"],\"recommendation\":\"...\",\"verified\":true}. " +
+		"Out-of-band freq is 'critical'; missing headers are 'high'.",
+
+	"ir": "You are reviewing a Flipper Zero .ir universal-remote file. Check for: " +
+		"(a) missing required signal fields (each signal needs a 'name' and either " +
+		"protocol/address/command OR frequency/duty_cycle/data), (b) raw signals with " +
+		"fewer than 4 data samples, (c) address/command hex of the wrong length for the protocol. " +
+		"Output ONLY a JSON object matching {\"severity\":\"none|low|medium|high|critical\"," +
+		"\"failure_modes\":[\"...\"],\"recommendation\":\"...\",\"verified\":true}. " +
+		"Missing required fields are 'high'.",
+
+	"nfc": "You are reviewing a Flipper Zero .nfc tag file. Check for: " +
+		"(a) missing Filetype or UID headers, (b) UID length mismatch for the declared DeviceType " +
+		"(Mifare Classic 1K = 4 or 7 byte UID, NTAG = 7 byte), (c) Block contents that are all zeros " +
+		"when Mifare Classic would normally carry Access Bits + a non-zero key block. " +
+		"Output ONLY a JSON object matching {\"severity\":\"none|low|medium|high|critical\"," +
+		"\"failure_modes\":[\"...\"],\"recommendation\":\"...\",\"verified\":true}. " +
+		"Missing headers are 'high'; UID-length mismatch is 'high'.",
+}
+
+// verifyPayload runs the production verifier: a single Haiku-tier
+// call with a payload-type-specific system prompt. Returns a verdict
+// parsed from the model's JSON output, or a benign {Severity:"none",
+// Verified:false} on any error — a broken verifier must never
+// propagate up through generate_* and block the caller.
+//
+// Concurrency contract: caller MUST hold a.mu (reads a.persona via
+// modelForLocked and a.client without re-locking).
+func (a *Agent) verifyPayload(ctx context.Context, payloadType, content string) (VerificationVerdict, error) {
+	system, ok := verifyPayloadSystemPrompts[payloadType]
+	if !ok {
+		// Unknown payload types skip verification — don't error out.
+		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}, nil
+	}
+
+	// Truncate long content before sending to the verifier — the
+	// first 4000 bytes are almost always enough to catch structural
+	// issues, and sending 60KB of HTML to Haiku on every generate
+	// would defeat the cost argument.
+	trimmed := content
+	if len(trimmed) > 4000 {
+		trimmed = trimmed[:4000] + "\n…(truncated)"
+	}
+
+	model := a.modelForLocked(TierClassify)
+	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.Model(model),
+		MaxTokens: 256,
+		System:    []anthropic.TextBlockParam{{Text: system}},
+		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(trimmed))},
+	})
+	if err != nil {
+		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}, nil
+	}
+
+	var raw string
+	for _, b := range resp.Content {
+		if b.Type == "text" {
+			raw += b.Text
+		}
+	}
+	return parseVerificationVerdict(raw), nil
+}
+
+// parseVerificationVerdict extracts a verdict from the verifier's raw
+// text response. Tolerates markdown fences and prose preambles that
+// Haiku sometimes emits despite the system-prompt instructions; on
+// unrecoverable parse failure returns {Severity:"none", Verified:false}
+// so the caller treats the generation as uncertified rather than
+// failing hard.
+func parseVerificationVerdict(raw string) VerificationVerdict {
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "```") {
+		trimmed = strings.TrimPrefix(trimmed, "```json")
+		trimmed = strings.TrimPrefix(trimmed, "```")
+		trimmed = strings.TrimSuffix(trimmed, "```")
+		trimmed = strings.TrimSpace(trimmed)
+	}
+	if trimmed == "" {
+		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}
+	}
+	var v VerificationVerdict
+	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
+		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}
+	}
+	if v.Severity == "" {
+		v.Severity = VerifySeverityNone
+	}
+	return v
+}
+
+// verdictSummary renders the verdict as a compact, human-readable
+// string for inclusion in the tool result's text payload. The raw
+// JSON goes through as well via the ToolResult JSON handling, but a
+// prose summary helps the operator eyeball what the verifier saw.
+func verdictSummary(v VerificationVerdict) string {
+	if !v.Verified && v.Severity == VerifySeverityNone {
+		return "(verifier: uncertified — check model / payload type)"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "verifier: %s", v.Severity)
+	if len(v.FailureModes) > 0 {
+		fmt.Fprintf(&b, "; issues: %s", strings.Join(v.FailureModes, "; "))
+	}
+	if v.Recommendation != "" {
+		fmt.Fprintf(&b, "; recommendation: %s", v.Recommendation)
+	}
+	return b.String()
+}

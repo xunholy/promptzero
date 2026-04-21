@@ -123,6 +123,11 @@ type Agent struct {
 	// /rewind can roll them back. Nil disables the feature (Store
 	// calls are skipped silently). See internal/snapshot.
 	snapshotMgr *snapshot.Manager
+
+	// verifierFn is the chain-of-verification (P1-16) pre-deploy
+	// callback. Nil means "use a.verifyPayload", the production
+	// Haiku-backed verifier. Tests install a synchronous stub.
+	verifierFn verifyFunc
 }
 
 // SetSnapshotManager wires an optional pre-write SD snapshotter.
@@ -918,15 +923,15 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 
 	// --- Generation Pipeline ---
 	case "generate_evil_portal":
-		return a.generatePayload(ctx, "evil_portal", str(p, "description"), str(p, "path"), str(p, "target_os"), boolOr(p, "deploy", true))
+		return a.generatePayloadWithBypass(ctx, "evil_portal", str(p, "description"), str(p, "path"), str(p, "target_os"), boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 	case "generate_badusb":
-		return a.generatePayload(ctx, "badusb", str(p, "description"), str(p, "path"), str(p, "target_os"), boolOr(p, "deploy", true))
+		return a.generatePayloadWithBypass(ctx, "badusb", str(p, "description"), str(p, "path"), str(p, "target_os"), boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 	case "generate_subghz":
-		return a.generatePayload(ctx, "subghz", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true))
+		return a.generatePayloadWithBypass(ctx, "subghz", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 	case "generate_ir":
-		return a.generatePayload(ctx, "ir", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true))
+		return a.generatePayloadWithBypass(ctx, "ir", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 	case "generate_nfc":
-		return a.generatePayload(ctx, "nfc", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true))
+		return a.generatePayloadWithBypass(ctx, "nfc", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 	case "run_payload":
 		return a.runPayload(str(p, "path"), str(p, "command"))
 	case "generate_deploy_run":
@@ -1285,6 +1290,17 @@ func (a *Agent) workflowDeps() workflows.Deps {
 // --- Generation Pipeline Handlers ---
 
 func (a *Agent) generatePayload(ctx context.Context, payloadType, description, path, targetOS string, deploy bool) (string, error) {
+	return a.generatePayloadWithBypass(ctx, payloadType, description, path, targetOS, deploy, false)
+}
+
+// generatePayloadWithBypass is the internal entry point that honours
+// the chain-of-verification (P1-16): after a generate_* call succeeds,
+// a classification-tier verifier analyses the content for known
+// failure modes. Severity high / critical blocks the deploy step
+// unless bypass is true — the operator can override via the tool's
+// verify_bypass param when they intentionally want to ship a risky
+// payload.
+func (a *Agent) generatePayloadWithBypass(ctx context.Context, payloadType, description, path, targetOS string, deploy, bypass bool) (string, error) {
 	if a.generator == nil {
 		return "", fmt.Errorf("generator not configured — set a generation LLM provider")
 	}
@@ -1311,17 +1327,32 @@ func (a *Agent) generatePayload(ctx context.Context, payloadType, description, p
 		return "", err
 	}
 
+	// Chain-of-verification: Haiku pass against the generated content
+	// before deploy. Errors degrade to an uncertified verdict — they
+	// never block generation.
+	fn := a.verifierFn
+	if fn == nil {
+		fn = a.verifyPayload
+	}
+	verdict, _ := fn(ctx, payloadType, result.Content)
+	summary := verdictSummary(verdict)
+
+	if deploy && shouldBlockDeploy(verdict, bypass) {
+		return fmt.Sprintf("Generated %s but deploy blocked by verifier.\n\n%s\n\nPreview:\n%s\n\nPass verify_bypass=true to override if you accept the risk.",
+			payloadType, summary, result.Preview), nil
+	}
+
 	if deploy {
 		deployCtx, deployCancel := context.WithTimeout(ctx, 30*time.Second)
 		deployErr := a.generator.Deploy(deployCtx, result, path)
 		deployCancel()
 		if deployErr != nil {
-			return "", fmt.Errorf("generated %s but deploy failed: %w\n\nContent preview:\n%s", payloadType, deployErr, result.Preview)
+			return "", fmt.Errorf("generated %s but deploy failed: %w\n\n%s\n\nContent preview:\n%s", payloadType, deployErr, summary, result.Preview)
 		}
-		return fmt.Sprintf("Generated and deployed %s to %s\n\nPreview:\n%s", payloadType, result.Path, result.Preview), nil
+		return fmt.Sprintf("Generated and deployed %s to %s\n\n%s\n\nPreview:\n%s", payloadType, result.Path, summary, result.Preview), nil
 	}
 
-	return fmt.Sprintf("Generated %s (not deployed)\n\nPreview:\n%s", payloadType, result.Preview), nil
+	return fmt.Sprintf("Generated %s (not deployed)\n\n%s\n\nPreview:\n%s", payloadType, summary, result.Preview), nil
 }
 
 func (a *Agent) runPayload(path, command string) (string, error) {
