@@ -105,6 +105,12 @@ type Agent struct {
 	persona            *persona.Persona
 	personaAtomic      atomic.Pointer[persona.Persona]
 	maxToolsPerTurn    int
+
+	// reflectorFn is the per-tool-failure reflection callback. Nil
+	// means "use a.reflect", which calls the classification-tier model
+	// with a diagnostic prompt. Tests substitute a synchronous stub so
+	// the reflexion logic can be exercised without an SDK mock.
+	reflectorFn reflectFunc
 }
 
 func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *Agent {
@@ -376,6 +382,11 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		maxTools = defaultMaxToolCallsPerTurn
 	}
 	toolCallsThisTurn := 0
+	// Cap on how many tool failures in this user turn are allowed to
+	// trigger a reflexion call — see reflexion.go. Incremented by
+	// maybeAppendReflection only when the reflector actually produced
+	// useful text.
+	reflectionsThisTurn := 0
 
 	for {
 		resp, err := a.streamOnce(ctx, sysPrompt, tools)
@@ -496,17 +507,30 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			}
 
 			// Audit log records the raw, unwrapped output so post-hoc
-			// analysis keeps full fidelity — the quarantine wrapping is
-			// a model-facing concern, not a storage one.
+			// analysis keeps full fidelity — the quarantine wrapping
+			// and reflection appends are model-facing concerns, not
+			// storage ones.
 			if a.auditLog != nil {
 				a.auditLog.RecordCtx(ctx, tc.Name, input, output, toolRisk.String(), audit.LevelAction, duration, !toolErr)
+			}
+
+			// Reflexion on failure: when a tool errors, invoke the
+			// classification-tier reflector (Haiku by default) and
+			// append its diagnosis inside a <reflection> block on the
+			// tool result. Capped per turn to avoid loops. See
+			// reflexion.go.
+			if toolErr {
+				fn := a.reflectorFn
+				if fn == nil {
+					fn = a.reflect
+				}
+				output = maybeAppendReflection(ctx, tc.Name, input, output, &reflectionsThisTurn, fn)
 			}
 
 			// Quarantine hardware-origin output before it reaches the
 			// model. Strips control characters and, for attacker-
 			// controllable tools, wraps the result in
-			// <untrusted-hardware-output> tags — see quarantine.go for
-			// the allowlist of trusted tools.
+			// <untrusted-hardware-output> tags — see quarantine.go.
 			quarantined := quarantineOutput(tc.Name, output, toolErr)
 			toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, quarantined, toolErr))
 		}
