@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
@@ -21,6 +22,7 @@ import (
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
+	"github.com/xunholy/promptzero/internal/report"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
@@ -148,6 +150,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 		return true, false
 	case "/rewind":
 		ed.writeOutput(func() { handleRewind(deps, strings.TrimSpace(strings.Join(fields[1:], " "))) })
+		return true, false
+	case "/report":
+		ed.writeOutput(func() { handleReport(deps, fields[1:]) })
 		return true, false
 	case "/persona":
 		ed.writeOutput(func() { handlePersona(deps.ai, deps.personas, fields[1:]) })
@@ -533,6 +538,71 @@ func handleRewind(deps *REPLDeps, rawArgs string) {
 		}
 		fmt.Fprintf(os.Stderr, "  %s✓ restored %s (%d bytes) from snapshot %s%s\n", green, entry.OriginalPath, len(content), entry.ID, reset)
 	}
+}
+
+// handleReport services the /report REPL command.
+//
+//	/report                 — render markdown for the current session
+//	/report <session-id>    — render markdown for a specific session
+//	/report <id> save       — write the report to ~/.promptzero/reports/<id>.md
+func handleReport(deps *REPLDeps, args []string) {
+	if deps.auditLog == nil {
+		fmt.Fprintf(os.Stderr, "  %sreport: audit log not available%s\n", dim, reset)
+		return
+	}
+
+	sessionID := deps.ai.SessionID()
+	save := false
+	for _, a := range args {
+		if strings.EqualFold(a, "save") {
+			save = true
+			continue
+		}
+		if a != "" {
+			sessionID = a
+		}
+	}
+	if sessionID == "" {
+		fmt.Fprintf(os.Stderr, "  %sreport: no active session; start one with /session save <name>%s\n", dim, reset)
+		return
+	}
+
+	entries, err := deps.auditLog.QueryBySession(sessionID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● report query failed: %v%s\n", red, err, reset)
+		return
+	}
+
+	summary := report.Summarise(sessionID, entries, attack.NewDefaultIndex())
+	md, err := report.MarkdownRenderer{}.Render(summary)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● report render failed: %v%s\n", red, err, reset)
+		return
+	}
+
+	if save {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● resolving home dir: %v%s\n", red, err, reset)
+			return
+		}
+		dir := filepath.Join(home, ".promptzero", "reports")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● mkdir reports: %v%s\n", red, err, reset)
+			return
+		}
+		outPath := filepath.Join(dir, sessionID+".md")
+		if err := os.WriteFile(outPath, md, 0o600); err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● write report: %v%s\n", red, err, reset)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  %s✓ report saved to %s (%d bytes)%s\n", green, outPath, len(md), reset)
+		return
+	}
+
+	// Print to stderr so the report is visible above the REPL prompt.
+	// The report is authored — operators can pipe / copy it.
+	_, _ = os.Stderr.Write(md)
 }
 
 func handleAudit(auditLog *audit.Log, args []string) {
