@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Verdict is the structured output of a Detector. Grep-friendly on
@@ -171,4 +173,121 @@ func NewPMKIDValidityDetector(judge JudgeFunc) *LLMDetector {
 // NewNFCCloneFidelityDetector returns the built-in NFC-clone judge.
 func NewNFCCloneFidelityDetector(judge JudgeFunc) *LLMDetector {
 	return &LLMDetector{DetectorName: "nfc_clone_fidelity", SystemPrompt: nfcCloneJudgePrompt, Judge: judge}
+}
+
+// DetectorEngine is a per-tool detector registry with a concurrent
+// evaluator. The agent calls EvaluateFor after a tool invocation and
+// receives every registered detector's Verdict. Multiple detectors
+// can register for the same tool — useful when a single tool has
+// orthogonal success criteria (e.g. wifi_deauth both "disconnected
+// the station" and "didn't trip the vendor's rate-limit").
+//
+// Safe for concurrent registration + evaluation; zero value is NOT
+// usable — call NewDetectorEngine.
+type DetectorEngine struct {
+	mu          sync.RWMutex
+	byTool      map[string][]Detector
+	evalTimeout time.Duration
+}
+
+// NewDetectorEngine returns an Engine with the given per-detector
+// timeout. Timeout caps how long a single detector call can block
+// EvaluateFor — detectors are LLM-backed and a stalled classifier
+// API would otherwise wedge the agent turn. Ten seconds matches the
+// verifier's default (see internal/agent/verify.go).
+func NewDetectorEngine(timeout time.Duration) *DetectorEngine {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	return &DetectorEngine{
+		byTool:      make(map[string][]Detector),
+		evalTimeout: timeout,
+	}
+}
+
+// Register installs a detector to run after any invocation of the
+// named tool. A single detector can be registered against multiple
+// tools (e.g. the deauth-success judge matches both wifi_deauth and
+// wifi_deauth_station_list).
+func (e *DetectorEngine) Register(toolName string, d Detector) {
+	if e == nil || d == nil || toolName == "" {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.byTool[toolName] = append(e.byTool[toolName], d)
+}
+
+// RegisterForMany is a convenience wrapper that registers d against
+// every name in tools. Useful for built-in detectors that should
+// fire on a family of related tools.
+func (e *DetectorEngine) RegisterForMany(tools []string, d Detector) {
+	for _, t := range tools {
+		e.Register(t, d)
+	}
+}
+
+// HasDetectorsFor reports whether the engine has at least one
+// detector registered for toolName. Callers use this to skip the
+// EvaluateFor round-trip entirely when no detector is listening.
+func (e *DetectorEngine) HasDetectorsFor(toolName string) bool {
+	if e == nil {
+		return false
+	}
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return len(e.byTool[toolName]) > 0
+}
+
+// EvaluateFor runs every detector registered for toolName and
+// returns their Verdicts. Detectors run concurrently under the
+// engine's timeout — any detector that errors or times out
+// contributes a VerdictUnknown rather than taking down the whole
+// evaluation. Returns an empty slice when no detectors are
+// registered for the tool.
+func (e *DetectorEngine) EvaluateFor(ctx context.Context, toolName, input, output string) []Verdict {
+	if e == nil {
+		return nil
+	}
+	e.mu.RLock()
+	detectors := append([]Detector(nil), e.byTool[toolName]...)
+	e.mu.RUnlock()
+	if len(detectors) == 0 {
+		return nil
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, e.evalTimeout)
+	defer cancel()
+
+	verdicts := make([]Verdict, len(detectors))
+	var wg sync.WaitGroup
+	for i, d := range detectors {
+		wg.Add(1)
+		go func(i int, d Detector) {
+			defer wg.Done()
+			v, err := d.Evaluate(callCtx, toolName, input, output)
+			if err != nil {
+				v = Verdict{
+					Verdict:    VerdictUnknown,
+					DetectedBy: d.Name(),
+					Evidence:   fmt.Sprintf("detector error: %v", err),
+				}
+			}
+			verdicts[i] = v
+		}(i, d)
+	}
+	wg.Wait()
+	return verdicts
+}
+
+// RegisterBuiltins installs the three built-in detectors against
+// the standard tool surfaces they judge. All share a single
+// JudgeFunc — typically a thin wrapper over the agent's
+// classification-tier Anthropic client. Returns the engine so
+// callers can chain.
+func (e *DetectorEngine) RegisterBuiltins(judge JudgeFunc) *DetectorEngine {
+	e.RegisterForMany([]string{"wifi_deauth", "wifi_deauth_station_list"}, NewDeauthSuccessDetector(judge))
+	e.Register("wifi_sniff_pmkid", NewPMKIDValidityDetector(judge))
+	e.Register("nfc_emulate", NewNFCCloneFidelityDetector(judge))
+	return e
 }

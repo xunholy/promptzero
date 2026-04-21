@@ -23,6 +23,7 @@ import (
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/session"
 	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/validator"
@@ -128,6 +129,23 @@ type Agent struct {
 	// callback. Nil means "use a.verifyPayload", the production
 	// Haiku-backed verifier. Tests install a synchronous stub.
 	verifierFn verifyFunc
+
+	// detectorEngine runs registered detectors after each tool call
+	// and surfaces their verdicts on the tool result (P1-10). Nil
+	// disables the feature (no engine = no verdicts).
+	detectorEngine *rules.DetectorEngine
+}
+
+// SetDetectorEngine installs a rules.DetectorEngine. When set, the
+// agent runs registered detectors after every tool dispatch and
+// appends each verdict in a <detector-verdict> block on the tool
+// result so the main model can factor the signal into its next turn
+// (e.g. a deauth that reports success but the detector calls
+// suspicious).
+func (a *Agent) SetDetectorEngine(e *rules.DetectorEngine) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.detectorEngine = e
 }
 
 // SetSnapshotManager wires an optional pre-write SD snapshotter.
@@ -586,6 +604,17 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 					fn = a.reflect
 				}
 				output = maybeAppendReflection(ctx, tc.Name, input, output, &reflectionsThisTurn, fn)
+			}
+
+			// Detector pass (P1-10): run any registered detectors for
+			// this tool and append their verdicts to the tool output.
+			// Detectors are advisory — a "suspicious" verdict on an
+			// otherwise-successful tool surfaces in the model's next
+			// turn as a <detector-verdict> block so the main model
+			// can decide whether to retry / escalate.
+			if !toolErr && a.detectorEngine != nil && a.detectorEngine.HasDetectorsFor(tc.Name) {
+				verdicts := a.detectorEngine.EvaluateFor(ctx, tc.Name, string(input), output)
+				output = appendDetectorVerdicts(output, verdicts)
 			}
 
 			// Quarantine hardware-origin output before it reaches the

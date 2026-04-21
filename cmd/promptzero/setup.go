@@ -569,6 +569,38 @@ func setupRules(cfg *config.Config, wh webhook.Dispatcher, auditLog *audit.Log, 
 	return engine
 }
 
+// setupDetectors installs the default DetectorEngine on the agent and
+// registers the three built-in detectors (wifi_deauth / PMKID / NFC
+// clone) with a JudgeFunc backed by the session's Anthropic client at
+// the classification cost tier. Operators who don't want auto-
+// detection can disable by passing a nil engine — but the default
+// behaviour is to surface deceptive / suspicious tool results so the
+// agent can react in its next turn.
+func setupDetectors(client *anthropic.Client, ai *agent.Agent, cfg *config.Config) {
+	judge := func(ctx context.Context, system, user string) (string, error) {
+		resp, err := client.Messages.New(ctx, anthropic.MessageNewParams{
+			Model:     anthropic.Model(ai.ModelFor(agent.TierClassify)),
+			MaxTokens: 256,
+			System:    []anthropic.TextBlockParam{{Text: system}},
+			Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(user))},
+		})
+		if err != nil {
+			return "", err
+		}
+		var raw string
+		for _, b := range resp.Content {
+			if b.Type == "text" {
+				raw += b.Text
+			}
+		}
+		return raw, nil
+	}
+	engine := rules.NewDetectorEngine(10 * time.Second).RegisterBuiltins(judge)
+	ai.SetDetectorEngine(engine)
+	statusOK(fmt.Sprintf("Detectors %s(wifi_deauth / pmkid / nfc-clone)%s", dim, reset))
+	_ = cfg // reserved for future config-gated detectors
+}
+
 // setupGenerator picks the generation provider per --gen-provider,
 // falling back to Claude when OpenRouter lacks a key. Wires it onto the
 // agent as both the payload generator and the "gen LLM" used by REPL

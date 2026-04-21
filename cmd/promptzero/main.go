@@ -165,6 +165,8 @@ func run() error {
 	ruleEngine := setupRules(cfg, wh, auditLog, rec)
 	fireSessionStarted(cfg, auditLog, wh)
 
+	setupDetectors(&client, ai, cfg)
+
 	genLLM := setupGenerator(cfg, ai, flip, &client, f.genProvider, f.ollamaURL, f.ollamaModel)
 
 	hasMarauder, marauderClose := setupMarauder(cfg, ai, rec, f.wifiEnabled)
