@@ -16,6 +16,7 @@ import (
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
+	"github.com/xunholy/promptzero/internal/campaign"
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
@@ -160,6 +161,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 		return true, false
 	case "/attack":
 		ed.writeOutput(func() { handleAttack(deps, fields[1:]) })
+		return true, false
+	case "/campaign":
+		ed.writeOutput(func() { handleCampaign(deps, fields[1:]) })
 		return true, false
 	case "/stats":
 		ed.writeOutput(func() { handleStats(deps, fields[1:]) })
@@ -557,6 +561,77 @@ func handleRewind(deps *REPLDeps, rawArgs string) {
 			return
 		}
 		fmt.Fprintf(os.Stderr, "  %s✓ restored %s (%d bytes) from snapshot %s%s\n", green, entry.OriginalPath, len(content), entry.ID, reset)
+	}
+}
+
+// handleCampaign services the /campaign REPL command. Implements
+// the operator-facing slice of roadmap P2-19. Supported forms:
+//
+//	/campaign                    — usage hint
+//	/campaign validate <file>    — parse + cross-check a YAML file
+//	/campaign run <file>         — execute the campaign end-to-end
+//
+// Campaign execution does NOT bypass the risk gate — each step
+// invokes the agent's normal dispatch which still consults the
+// confirm callback. This keeps the human-in-the-loop model intact
+// even when declarative runs issue back-to-back high-risk tools.
+func handleCampaign(deps *REPLDeps, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "  %susage: /campaign validate|run <file>%s\n", dim, reset)
+		return
+	}
+	switch strings.ToLower(args[0]) {
+	case "validate":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %s● validate: file path required%s\n", red, reset)
+			return
+		}
+		c, err := campaign.Load(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● validate: %v%s\n", red, err, reset)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  %s✓ campaign %q valid (%d steps)%s\n", green, c.Name, len(c.Steps), reset)
+	case "run":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %s● run: file path required%s\n", red, reset)
+			return
+		}
+		c, err := campaign.Load(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● run: %v%s\n", red, err, reset)
+			return
+		}
+		runner := campaign.NewRunner(campaign.AgentExecutor{Dispatcher: deps.ai})
+		ctx, cancel := context.WithTimeout(deps.ctx, 10*time.Minute)
+		defer cancel()
+		result := runner.Run(ctx, c)
+		renderCampaignResult(result)
+	default:
+		fmt.Fprintf(os.Stderr, "  %s● campaign: unknown subcommand %q%s\n", red, args[0], reset)
+	}
+}
+
+// renderCampaignResult prints a compact Markdown-ish summary of a
+// RunResult to stderr. The operator gets a quick read of which
+// steps ran, which skipped, which errored, and the total hands-on
+// time. A proper /report-integrated renderer is future work.
+func renderCampaignResult(r campaign.RunResult) {
+	fmt.Fprintf(os.Stderr, "\n  %scampaign %q — %s%s\n", dim, r.Campaign, r.Duration().Round(time.Millisecond), reset)
+	for _, s := range r.StepResults {
+		switch {
+		case s.Skipped:
+			fmt.Fprintf(os.Stderr, "    %s— skipped %s%s  %s%s%s\n", dim, s.StepID, reset, dim, s.SkipReason, reset)
+		case s.Err != nil:
+			fmt.Fprintf(os.Stderr, "    %s✗ %s%s  (%s)  %s%v%s\n", red, s.StepID, reset, s.Duration.Round(time.Millisecond), dim, s.Err, reset)
+		default:
+			fmt.Fprintf(os.Stderr, "    %s✓ %s%s  (%s)%s\n", green, s.StepID, reset, s.Duration.Round(time.Millisecond), reset)
+		}
+	}
+	if r.Succeeded() {
+		fmt.Fprintf(os.Stderr, "  %s✓ campaign succeeded%s\n\n", green, reset)
+	} else {
+		fmt.Fprintf(os.Stderr, "  %s✗ campaign completed with failures%s\n\n", red, reset)
 	}
 }
 

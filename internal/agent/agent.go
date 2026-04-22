@@ -801,6 +801,25 @@ func (a *Agent) requireMarauder() error {
 	return nil
 }
 
+// RunTool exposes the agent's tool-dispatch path so external
+// orchestrators (Campaigns runner, MCP server) can invoke individual
+// tools without going through the full Run loop. Honours the risk
+// gate, reflexion, detector engine, and quarantine layers exactly
+// as Run would — callers get identical semantics to a tool_use
+// arriving from the model.
+//
+// ctx cancellation aborts an in-flight tool call; the returned
+// output is whatever the dispatch layer produced (likely the
+// ToolError JSON on a ctx-cancel error).
+func (a *Agent) RunTool(ctx context.Context, tool string, params map[string]interface{}) (string, error) {
+	if tool == "" {
+		return "", fmt.Errorf("agent: empty tool name")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.dispatch(ctx, tool, params)
+}
+
 // NewForTest constructs a minimal Agent suitable for the eval
 // harness (internal/eval) and cross-package integration tests. No
 // Anthropic client, no Flipper — callers wire up whatever the test

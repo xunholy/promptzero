@@ -10,6 +10,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/attack"
+	"github.com/xunholy/promptzero/internal/campaign"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/session"
 	"github.com/xunholy/promptzero/internal/snapshot"
@@ -37,6 +38,7 @@ func Default(t *testing.T) []Scenario {
 		attackConstraintScenario(t),
 		detectorVerdictScenario(t),
 		toolErrorStructureScenario(t),
+		campaignRunnerScenario(t),
 	}
 }
 
@@ -188,6 +190,67 @@ func detectorVerdictScenario(t *testing.T) Scenario {
 			return nil
 		},
 	}
+}
+
+// campaignRunnerScenario: parse a multi-step campaign, execute
+// against a stub executor, confirm dependency ordering + when-clause
+// gating. Proves P2-19 Campaigns runner end-to-end.
+func campaignRunnerScenario(t *testing.T) Scenario {
+	t.Helper()
+	return Scenario{
+		Name:        "campaign_runner_executes_pipeline",
+		Description: "Campaigns runner parses YAML, sequences steps, honours when-clause gating",
+		Tags:        []string{"campaign"},
+		Run: func() error {
+			yamlDoc := `campaign: eval-demo
+steps:
+  - id: scan
+    tool: wifi_scan_ap
+  - id: pmkid
+    tool: wifi_sniff_pmkid
+    depends_on: scan
+    when: contains "PMKID"
+  - id: audit
+    tool: audit_stats
+    depends_on: scan
+`
+			c, err := campaign.ParseYAML([]byte(yamlDoc))
+			if err != nil {
+				return fmt.Errorf("parse: %w", err)
+			}
+			exec := &evalStubExecutor{responses: map[string]string{
+				"wifi_scan_ap":     "3 APs found; PMKID handshake available",
+				"wifi_sniff_pmkid": "captured",
+				"audit_stats":      "tools: 2",
+			}}
+			result := campaign.NewRunner(exec).Run(context.Background(), c)
+			if !result.Succeeded() {
+				return fmt.Errorf("campaign did not succeed: %+v", result.StepResults)
+			}
+			if len(result.StepResults) != 3 {
+				return fmt.Errorf("expected 3 step results, got %d", len(result.StepResults))
+			}
+			for _, s := range result.StepResults {
+				if s.StepID == "pmkid" && s.Skipped {
+					return fmt.Errorf("pmkid skipped unexpectedly: %+v", s)
+				}
+			}
+			return nil
+		},
+	}
+}
+
+// evalStubExecutor is a tiny campaign.StepExecutor for the eval
+// scenarios.
+type evalStubExecutor struct {
+	responses map[string]string
+}
+
+func (s *evalStubExecutor) Run(ctx context.Context, tool string, params map[string]interface{}) (string, error) {
+	if out, ok := s.responses[tool]; ok {
+		return out, nil
+	}
+	return "", nil
 }
 
 // toolErrorStructureScenario: classify a timeout-like error, confirm

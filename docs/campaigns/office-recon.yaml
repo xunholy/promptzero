@@ -1,0 +1,47 @@
+# office-recon — demo campaign shipped with PromptZero v0.3.0.
+#
+# Authorized 15-minute WiFi reconnaissance sweep: scan for APs,
+# list what was captured, surface audit stats. Every step is
+# read-only (no transmit / deauth / evil portal), so this campaign
+# is safe to run against a live Flipper + Marauder without extra
+# scope confirmation beyond the risk gate.
+#
+# Invoke via the REPL:
+#
+#   /campaign run docs/campaigns/office-recon.yaml
+#
+# Or load + execute programmatically from the internal/campaign API.
+
+campaign: office-recon
+
+scope:
+  authorized_networks:
+    - "Corp-Guest"          # open guest WLAN authorised for the engagement
+  out_of_scope:
+    - "NEIGHBOR-WIFI"       # adjacent residential network — never scan
+    - "Corp-Secure"         # production WLAN — explicit scope exclusion
+
+# No cron schedule in this demo — invoke manually. The Schedule field
+# is parsed but not executed by the current runner; it's a forward-
+# compatible slot for the upcoming cron integration.
+# schedule: "cron: 0 9 * * 1-5"
+
+steps:
+  - id: scan
+    tool: wifi_scan_ap
+    params:
+      duration_seconds: 15
+    timeout: 30s
+
+  - id: list_aps
+    tool: wifi_list_aps
+    depends_on: scan
+    when: length > 0       # only list when the scan returned something
+
+  - id: audit_snapshot
+    tool: audit_stats
+    depends_on: list_aps
+
+report:
+  template: engagement-summary
+  signed: false            # flip to true once cosign signing is wired
