@@ -801,6 +801,46 @@ func (a *Agent) requireMarauder() error {
 	return nil
 }
 
+// NewForTest constructs a minimal Agent suitable for the eval
+// harness (internal/eval) and cross-package integration tests. No
+// Anthropic client, no Flipper — callers wire up whatever the test
+// needs. Not part of the stable API; may change without notice.
+func NewForTest(model string) *Agent {
+	a := &Agent{
+		model:            model,
+		confirmThreshold: 3, // risk.High
+		maxToolsPerTurn:  defaultMaxToolCallsPerTurn,
+	}
+	return a
+}
+
+// HistorySnapshot returns the concatenated user-visible text of the
+// agent's current conversation history. Intended for eval / test
+// scenarios that want to assert the shape of resumed sessions or
+// injected context blocks (e.g. the <handoff-resume> sentinel).
+// Not a stable API.
+func HistorySnapshot(a *Agent) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var b strings.Builder
+	for _, m := range a.history {
+		for _, block := range m.Content {
+			if block.OfText != nil {
+				b.WriteString(block.OfText.Text)
+				b.WriteByte('\n')
+			}
+		}
+	}
+	return b.String()
+}
+
+// NewToolErrorForTest exposes the ToolError classifier to cross-
+// package test code (internal/eval). Mirrors newToolError. Not a
+// stable API.
+func NewToolErrorForTest(toolName string, err error, excerpt string) ToolError {
+	return newToolError(toolName, err, excerpt)
+}
+
 // executeTool dispatches a single tool call. On failure the returned
 // string is a JSON-encoded ToolError (see toolerror.go) so reflexion
 // (P0-05), detectors (P1-10), and report generation can pattern-match

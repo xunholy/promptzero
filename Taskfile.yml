@@ -78,6 +78,13 @@ tasks:
     cmds:
       - go test -race -count=1 ./...
 
+  eval:
+    desc: Golden evaluation harness (roadmap P2-25). Runs integration
+      scenarios against mock transports and reports pass/fail + timing
+      per scenario. CI gate for regressions in top-level agent flows.
+    cmds:
+      - go test -race -count=1 -v -run TestDefaultSuiteAllPass ./internal/eval/...
+
   clean:
     desc: Remove build artefacts.
     cmds:
