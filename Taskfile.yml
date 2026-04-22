@@ -85,6 +85,17 @@ tasks:
     cmds:
       - go test -race -count=1 -v -run TestDefaultSuiteAllPass ./internal/eval/...
 
+  usecases:
+    desc: Run realistic operator tasks against a live Flipper. Short
+      natural-language prompts mapped to the primitives the agent
+      would dispatch. Reports pass/fail + concise summaries per
+      category. Pre-release check that catches "tool returns
+      success=true but did nothing useful" regressions. Requires a
+      Flipper attached at /dev/ttyACM0.
+    cmds:
+      - go build -o /tmp/flipper-usecases ./cmd/flipper-usecases
+      - /tmp/flipper-usecases {{.CLI_ARGS}}
+
   rag:sync-corpus:
     desc: Sync internal/rag/corpus/ from docs/reference + docs/scenarios
       so the BM25 index ships the current authoritative documentation.

@@ -473,7 +473,54 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 		return out, fmt.Errorf("command hung: no prompt within %s", execTO)
 	}
 	f.markDisconnectedIfRelevant(err)
+	if err == nil {
+		if cmdErr := detectUnknownCommand(command, out); cmdErr != nil {
+			return out, cmdErr
+		}
+	}
 	return out, err
+}
+
+// detectUnknownCommand scans a command's raw output for the Flipper
+// firmware's "unknown command" response shape. Returns a structured
+// error so callers can distinguish "command failed" from "command
+// wasn't recognised at all" — the latter usually means we're stuck in
+// a subshell and the shell rejected a command meant for the main
+// context. Previously this case leaked through as a silent success
+// (err=nil, output carries the rejection text), which let primitives
+// that scraped output for fields return empty data and the agent
+// layer above mark the call success=true. Surfacing it as an error
+// stops that thrash at the source.
+//
+// The matcher is deliberately narrow: only strings that start at the
+// beginning of a line with "could not find command `" (Momentum +
+// Unleashed main shell) or "Unknown command" (older forks). Error
+// text that happens to contain these substrings mid-line won't fire.
+func detectUnknownCommand(command, raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "could not find command") ||
+			strings.HasPrefix(line, "Unknown command") {
+			return fmt.Errorf("cli rejected %q: %s", firstWord(command), line)
+		}
+	}
+	return nil
+}
+
+// firstWord returns the first whitespace-separated token of s, or s
+// itself if no whitespace is present. Used to quote just the verb
+// (not the whole command + args) in the "cli rejected" error so the
+// message stays short when args carry paths.
+func firstWord(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, " \t"); i > 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // ExecLong sends a command that may take a while (captures, brute force,
@@ -521,6 +568,11 @@ func (f *Flipper) ExecLongCtx(ctx context.Context, command string, timeout time.
 		return out, nil
 	}
 	f.markDisconnectedIfRelevant(err)
+	if err == nil {
+		if cmdErr := detectUnknownCommand(command, out); cmdErr != nil {
+			return out, cmdErr
+		}
+	}
 	return out, err
 }
 

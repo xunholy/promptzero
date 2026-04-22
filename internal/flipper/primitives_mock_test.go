@@ -107,6 +107,50 @@ func TestLoaderMFKey(t *testing.T) {
 	}
 }
 
+// TestExec_UnknownCommandSurfacesAsError verifies the silent-success
+// fix: a response matching Momentum's "could not find command ..."
+// shape is now an error from Exec, not a nil-err empty-output leak.
+// Operator report that motivated this test: after an NFC subshell
+// session, downstream `subghz rx` / `ir rx` / `bt hci_info` commands
+// were rejected by the CLI with that text, but every primitive
+// reported success=true because Exec didn't detect the rejection.
+// Agents built on the primitives then thrashed, trusting the bad
+// success signal.
+func TestExec_UnknownCommandSurfacesAsError(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("ir", func(args []string) string {
+			return "could not find command `ir`, try `help`"
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, err := flip.IRRx(1 * time.Second)
+	if err == nil {
+		t.Fatal("unknown-command response should surface as an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "cli rejected") {
+		t.Errorf("error should identify the rejection: %v", err)
+	}
+	if !strings.Contains(err.Error(), "ir") {
+		t.Errorf("error should name the rejected verb: %v", err)
+	}
+}
+
+// TestExec_EmptySuccessStaysSuccess ensures the unknown-command
+// detector doesn't false-fire on a command that returns empty
+// output — a lot of Flipper primitives (storage_mkdir, storage_copy,
+// input_send) successfully return nothing.
+func TestExec_EmptySuccessStaysSuccess(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("storage", func(args []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	if _, err := flip.StorageMkdir("/ext/apps_data/test"); err != nil {
+		t.Errorf("empty-output success should not be treated as rejection: %v", err)
+	}
+}
+
 // TestNFCDetect_LoopsScannerUntilCardAppears verifies the fix for the
 // thrashing loop an operator hit in production: Momentum's `nfc
 // scanner` CLI subcommand is a one-shot poll (~1s, prints "Target

@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-04-22
+
+Two live-Flipper session bugs caught by a new operator-task harness —
+both classes of "the tool returned success but did the wrong thing",
+which is the category of failure that most reliably makes the agent
+thrash. Fixed at the primitive layer so every tool inherits the
+improvement.
+
+### Added
+
+- **`cmd/flipper-usecases` — operator-task runner.** Complementary to
+  `flipper-validate`: that binary tests primitives one-by-one; this
+  one tests *intent*, running realistic short natural-language
+  prompts ("scan this NFC card" / "what's on my Flipper" / "listen
+  on 433 MHz for 3 seconds") and reporting concise results. 19 use
+  cases across health / storage / nfc / rfid / subghz / ir / bt /
+  apps / feedback / deliberate-skip categories. Runs against a live
+  Flipper via the existing serial transport — no LLM required. New
+  `task usecases` target.
+
+### Fixed
+
+- **NFC subshell exit left the CLI in the `[nfc]>:` context.** After
+  `NFCDetect` returned (especially on the no-detect path), subsequent
+  `subghz rx` / `ir rx` / `bt hci_info` commands were rejected by the
+  subshell with "could not find command" — yet primitives leaked the
+  rejection text as successful empty output, so the agent saw
+  `success=true` and retried downstream operations on corrupted state.
+  Fix: belt-and-braces exit sequence (Ctrl+C → exit → CR round-trip
+  → optional retry) that verifies the main shell is responsive
+  before returning.
+- **`Exec` / `ExecLongCtx` treated "could not find command" output as
+  a silent success.** Every primitive above these now surfaces a
+  structured `cli rejected "<verb>": <rejection-text>` error when
+  the firmware didn't recognise the command — so the agent (and the
+  use-case runner) see the real state instead of an empty-but-OK
+  response.
+- **`flipper-usecases` SD-info summary showed 0 GB** because the
+  runner read `fs["total"]` / `fs["free"]` while `StorageFSInfoMap`
+  emits `totalSpace` / `freeSpace`. Now reads the correct keys.
+
+### Verified
+
+- `task test:full` — every package passes with `-race` (two new
+  `TestExec_UnknownCommandSurfacesAsError` /
+  `TestExec_EmptySuccessStaysSuccess` regression locks).
+- `task eval` — **12/12 scenarios** pass (unchanged from v0.3.1).
+- `golangci-lint run ./...` — 0 issues.
+- Live-Flipper `task usecases` run against Momentum firmware:
+  **pass=16 skip=3 fail=0** across all nine non-skip categories.
+  Before this release the same run returned incorrect data on
+  SD info, IR, BT, apps, and SubGHz duration — all now correct.
+
 ## [0.3.1] - 2026-04-22
 
 Quality-raising tranche (Batches A–G) plus two direct operator-feedback

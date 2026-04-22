@@ -245,11 +245,38 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 			time.Sleep(sleep)
 		}
 
-		// Exit the NFC subshell cleanly regardless of detection outcome.
+		// Exit the NFC subshell — robust to firmware variants that
+		// consume the first prompt during the transition back to the
+		// main shell. Field experience (use-case run after a no-detect
+		// iteration): downstream commands like "subghz rx" / "ir rx"
+		// failed with "could not find command" because we were still
+		// in the nfc subshell. A single exit+read is not enough; we
+		// send exit, drain, then send a bare carriage return which
+		// the main shell answers with a fresh prompt. If we're still
+		// in the subshell after exit, the bare CR is a no-op there
+		// and the next round will detect the mismatch — but we've
+		// also sent an extra Ctrl+C as belt-and-braces before exit
+		// to cancel any in-flight scanner iteration.
+		_ = f.sendRaw("\x03")
+		ctrlCCtx, ctrlCCancel := context.WithTimeout(context.Background(), 1*time.Second)
+		_, _ = f.readUntilPromptCtx(ctrlCCtx)
+		ctrlCCancel()
+
 		_ = f.sendRaw("exit\r")
 		exitCtx, exitCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		_, _ = f.readUntilPromptCtx(exitCtx)
 		exitCancel()
+
+		// Confirm the main shell is responsive: send a bare CR and
+		// wait briefly for a prompt. If this doesn't land, one more
+		// exit+CR gets us out of a surprise nested state.
+		_ = f.sendRaw("\r")
+		confirmCtx, confirmCancel := context.WithTimeout(context.Background(), 1*time.Second)
+		if _, err := f.readUntilPromptCtx(confirmCtx); err != nil {
+			_ = f.sendRaw("exit\r")
+			_ = f.sendRaw("\r")
+		}
+		confirmCancel()
 
 		if !detected && lastResult == "" {
 			lastResult = "Target lost."
