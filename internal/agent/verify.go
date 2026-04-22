@@ -122,6 +122,14 @@ var verifyPayloadSystemPrompts = map[string]string{
 		"Output ONLY a JSON object matching {\"severity\":\"none|low|medium|high|critical\"," +
 		"\"failure_modes\":[\"...\"],\"recommendation\":\"...\",\"verified\":true}. " +
 		"Missing headers are 'high'; UID-length mismatch is 'high'.",
+
+	"rfid": "You are reviewing a Flipper Zero .rfid LF badge file. Check for: " +
+		"(a) missing Filetype or Key type / Data headers, (b) Data hex length wrong for the Key type " +
+		"(EM4100 = 10 hex chars, HIDProx = 12 hex chars, Indala = varies), (c) Data being a well-known " +
+		"placeholder (all zeros, all F, 0123456789). " +
+		"Output ONLY a JSON object matching {\"severity\":\"none|low|medium|high|critical\"," +
+		"\"failure_modes\":[\"...\"],\"recommendation\":\"...\",\"verified\":true}. " +
+		"Length mismatch is 'high'; placeholder data is 'medium'.",
 }
 
 // verifyPayload runs the production verifier: a single Haiku-tier

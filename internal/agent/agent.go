@@ -1984,11 +1984,15 @@ func (a *Agent) subghzBuild(ctx context.Context, p map[string]interface{}) (stri
 	if err != nil {
 		return "", err
 	}
+	summary, blockMsg := a.runBuildVerification(ctx, "subghz", raw, boolOr(p, "verify_bypass", false))
+	if blockMsg != "" {
+		return blockMsg, nil
+	}
 	a.snapshotBeforeWrite(ctx, path)
 	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
-	return fmt.Sprintf("built %d-byte .sub → %s", len(raw), path), nil
+	return fmt.Sprintf("built %d-byte .sub → %s\n%s", len(raw), path, summary), nil
 }
 
 // rfidBuild synthesises a .rfid file for LF badge cloning.
@@ -2004,11 +2008,15 @@ func (a *Agent) rfidBuild(ctx context.Context, p map[string]interface{}) (string
 	if err != nil {
 		return "", err
 	}
+	summary, blockMsg := a.runBuildVerification(ctx, "rfid", raw, boolOr(p, "verify_bypass", false))
+	if blockMsg != "" {
+		return blockMsg, nil
+	}
 	a.snapshotBeforeWrite(ctx, path)
 	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
-	return fmt.Sprintf("built %d-byte .rfid → %s", len(raw), path), nil
+	return fmt.Sprintf("built %d-byte .rfid → %s\n%s", len(raw), path, summary), nil
 }
 
 // irBuild synthesises a .ir universal-remote file from an array of
@@ -2055,11 +2063,15 @@ func (a *Agent) irBuild(ctx context.Context, p map[string]interface{}) (string, 
 	if err != nil {
 		return "", err
 	}
+	summary, blockMsg := a.runBuildVerification(ctx, "ir", raw, boolOr(p, "verify_bypass", false))
+	if blockMsg != "" {
+		return blockMsg, nil
+	}
 	a.snapshotBeforeWrite(ctx, path)
 	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
-	return fmt.Sprintf("built %d-byte .ir (%d signals) → %s", len(raw), len(signals), path), nil
+	return fmt.Sprintf("built %d-byte .ir (%d signals) → %s\n%s", len(raw), len(signals), path, summary), nil
 }
 
 // nfcBuild synthesises a .nfc file. Blocks is a map<string,string>
@@ -2093,11 +2105,15 @@ func (a *Agent) nfcBuild(ctx context.Context, p map[string]interface{}) (string,
 	if err != nil {
 		return "", err
 	}
+	summary, blockMsg := a.runBuildVerification(ctx, "nfc", raw, boolOr(p, "verify_bypass", false))
+	if blockMsg != "" {
+		return blockMsg, nil
+	}
 	a.snapshotBeforeWrite(ctx, path)
 	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
-	return fmt.Sprintf("built %d-byte .nfc → %s", len(raw), path), nil
+	return fmt.Sprintf("built %d-byte .nfc → %s\n%s", len(raw), path, summary), nil
 }
 
 // fileformatDiff reads + parses two paths and returns the per-field diff
