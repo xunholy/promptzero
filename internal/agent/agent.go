@@ -23,6 +23,7 @@ import (
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
+	"github.com/xunholy/promptzero/internal/rag"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/session"
@@ -161,6 +162,11 @@ type Agent struct {
 	// tagged with at least one of these technique IDs. Empty
 	// disables the filter (all tools pass through the ATT&CK gate).
 	attackConstraint []string
+
+	// ragIndex is the lexical (BM25) retriever over the bundled
+	// documentation corpus (Batch D). Nil falls back to the default
+	// embedded index on first docs_search call.
+	ragIndex *rag.Index
 }
 
 // SetDetectorEngine installs a rules.DetectorEngine. When set, the
@@ -1205,6 +1211,10 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "audit_stats":
 		return a.auditStats()
 
+	// --- RAG / docs retrieval (Batch D) ---
+	case "docs_search":
+		return a.docsSearch(str(p, "query"), intOr(p, "k", 5))
+
 	// --- Parametric file builders (P1-13) ---
 	case "subghz_bruteforce_generate":
 		return a.subghzBruteforceGenerate(ctx, p)
@@ -1754,6 +1764,48 @@ func (a *Agent) auditStats() (string, error) {
 		return "Audit logging not enabled", nil
 	}
 	return a.auditLog.Stats()
+}
+
+// --- RAG / Docs Retrieval (Batch D) ---
+
+// docsSearch runs a BM25 query over the bundled documentation corpus
+// and returns the top-K ranked snippets. The index lazily initialises
+// on first call using the default embedded corpus; SetRAGIndex lets
+// callers inject a custom index (tests, plugins with extra docs).
+func (a *Agent) docsSearch(query string, k int) (string, error) {
+	if query == "" {
+		return "", fmt.Errorf("query required")
+	}
+	if k <= 0 {
+		k = 5
+	}
+	if k > 20 {
+		k = 20
+	}
+	a.mu.Lock()
+	if a.ragIndex == nil {
+		a.ragIndex = rag.DefaultIndex()
+	}
+	idx := a.ragIndex
+	a.mu.Unlock()
+	hits := idx.Search(query, k)
+	if len(hits) == 0 {
+		return fmt.Sprintf("no results for %q", query), nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d results for %q:\n", len(hits), query)
+	for _, h := range hits {
+		fmt.Fprintf(&b, "\n## %s (%s) — score %.2f\n%s\n", h.Doc.Title, h.Doc.Source, h.Score, rag.Snippet(h.Doc.Body, query, 400))
+	}
+	return b.String(), nil
+}
+
+// SetRAGIndex installs a custom RAG index. Nil restores the default
+// embedded corpus on the next docs_search call.
+func (a *Agent) SetRAGIndex(idx *rag.Index) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ragIndex = idx
 }
 
 // --- Device Registry ---

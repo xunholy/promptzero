@@ -44,6 +44,7 @@ var toolLevels = func() map[string]Level {
 		"wifi_clear_aps", "wifi_clear_ssids", "wifi_clear_stations",
 		"wifi_info", "wifi_settings",
 		"audit_query", "audit_export", "audit_stats",
+		"docs_search",
 		"discover_apps",
 		"analyze_image",
 		"list_apps",

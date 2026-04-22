@@ -85,6 +85,17 @@ tasks:
     cmds:
       - go test -race -count=1 -v -run TestDefaultSuiteAllPass ./internal/eval/...
 
+  rag:sync-corpus:
+    desc: Sync internal/rag/corpus/ from docs/reference + docs/scenarios
+      so the BM25 index ships the current authoritative documentation.
+      Run after editing a doc in docs/ that the agent should be able to
+      retrieve via docs_search.
+    cmds:
+      - rm -f internal/rag/corpus/*.md
+      - cp docs/reference/*.md internal/rag/corpus/
+      - cp docs/scenarios/*.md internal/rag/corpus/
+      - echo "corpus synced — remember to run 'task test' and commit the regenerated files"
+
   clean:
     desc: Remove build artefacts.
     cmds:

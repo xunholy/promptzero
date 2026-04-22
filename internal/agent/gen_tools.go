@@ -173,5 +173,15 @@ func buildGenTools() []anthropic.ToolUnionParam {
 			"Show statistics for the current session: total actions, success rate, unique tools used.",
 			props(),
 		),
+
+		// --- RAG / docs retrieval (Batch D) ---
+		tool("docs_search",
+			"Lexical (BM25) search over the bundled PromptZero documentation — tool reference, scenario recipes, prompt patterns. Use when you need exact-term grounding: protocol names (EM4100, PT2240), register quirks (ATQA/SAK), CLI flags, file-format field names. Returns up to K ranked snippets with source paths; read the full doc via fileformat_read or by name.",
+			props(
+				reqProp("query", "string", "Search terms. Space-separated keywords; exact technical terms rank highest."),
+				optProp("k", "integer", "Number of results (default 5, max 20)"),
+			),
+			"query",
+		),
 	}
 }
