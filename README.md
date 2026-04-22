@@ -31,6 +31,18 @@ PromptZero is a natural language AI operator for the [Flipper Zero](https://flip
 
 ---
 
+## Overview
+
+- **[What It Does](#what-it-does)** — capabilities at a glance, [tool surface](#160-tools-across-5-subsystems), [agent-layer features](#agent-layer-features-v030)
+- **[Quick Start](#quick-start)** — [prerequisites](#prerequisites) · [install](#install) · [configure](#configure) · [environment variables](#environment-variables) · [examples](#examples) · [run](#run) · [try it](#try-it) · [transport options](#transport-options)
+- **[Modes](#modes)** — [CLI](#cli-default) · [Web UI](#web-ui---web) · [Voice](#voice---voice) · [MCP Server](#mcp-server---mcp)
+- **[Generation Pipeline](#generation-pipeline)** — [payload types](#supported-payload-types) · [multi-provider generation](#multi-provider-generation)
+- **[Flipper Zero Compatibility](#flipper-zero-compatibility)** — [firmware forks](#firmware) · [serial protocol](#serial-protocol) · [Marauder devboard](#marauder-wifi-devboard)
+- **[Building](#building)** — [cross-compilation](#cross-compilation)
+- **[License](#license)**
+
+---
+
 ## What It Does
 
 PromptZero connects to your Flipper Zero (and optional ESP32 Marauder WiFi devboard) over USB serial, then lets you control everything through natural language powered by Claude.
@@ -74,34 +86,6 @@ promptzero> what's this?  [photo of a remote control]
 | **Operator UX** | `/rewind`, `/report`, `/attack`, `/stats` | Undo SD writes; Markdown engagement reports with ATT&CK heatmap; per-session technique constraint; prompt-cache hit-rate |
 | **Integration** | OpenTelemetry GenAI spans | `gen_ai.*` semantic conventions; honours `OTEL_EXPORTER_OTLP_ENDPOINT`; noop when unset |
 | **Quality** | Detector engine + chain-of-verification | LLM-as-judge on WiFi deauth / PMKID / NFC clone; Haiku pre-deploy verification on generated payloads with severity-blocked deploys |
-
----
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                         USER INPUT                               │
-│              CLI / Web UI / Voice / MCP Client                   │
-└──────────────┬───────────────────────────────────┬───────────────┘
-               │                                   │
-               v                                   v
-┌──────────────────────────┐         ┌─────────────────────────────┐
-│   Claude Agent (tool use)│         │   Generation Pipeline       │
-│   152 tools / audit log  │────────>│   Claude / Ollama / OpenRouter│
-│   risk classification    │         │   generate -> deploy -> run │
-└──────────┬───────────────┘         └─────────────────────────────┘
-           │
-     ┌─────┴──────┐
-     │             │
-     v             v
-┌──────────┐  ┌───────────┐
-│ Flipper  │  │ Marauder  │
-│ Zero     │  │ ESP32     │
-│ USB ACM  │  │ USB ACM   │
-│ (serial) │  │ (serial)  │
-└──────────┘  └───────────┘
-```
 
 ---
 
