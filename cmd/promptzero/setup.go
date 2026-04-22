@@ -574,8 +574,17 @@ func setupRules(cfg *config.Config, wh webhook.Dispatcher, auditLog *audit.Log, 
 // the runtime constraint filter (/attack REPL command) and the report
 // generator can resolve tool-to-technique mappings. Pure metadata —
 // no runtime cost unless an operator actively installs a constraint.
-func setupAttack(ai *agent.Agent) {
-	ai.SetAttackIndex(attack.NewDefaultIndex())
+// Also installs the technique resolver on the audit log so every
+// recorded entry carries the ATT&CK technique IDs for its tool
+// (P1-07 audit path tracking).
+func setupAttack(ai *agent.Agent, auditLog *audit.Log) {
+	idx := attack.NewDefaultIndex()
+	ai.SetAttackIndex(idx)
+	if auditLog != nil {
+		auditLog.SetTechniqueResolver(func(tool string) []string {
+			return idx.TechniquesForTool(tool)
+		})
+	}
 }
 
 // setupDetectors installs the default DetectorEngine on the agent and

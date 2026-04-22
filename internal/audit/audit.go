@@ -43,13 +43,27 @@ type Entry struct {
 	// (rules engine, webhooks, slog) can surface the turn that produced
 	// it. Empty when the caller did not route through obs.WithTrace.
 	TraceID string `json:"trace_id,omitempty"`
+
+	// TechniqueIDs records the MITRE ATT&CK technique IDs the tool
+	// contributes to at recording time (P1-07). Populated by the
+	// agent from the attack.Index; derived, not persisted to the
+	// DB schema. Enables the /report ATT&CK coverage heatmap to
+	// trust entry-time mappings even if the index changes later.
+	TechniqueIDs []string `json:"technique_ids,omitempty"`
 }
 
+// TechniqueResolver is an optional hook that maps a tool name to the
+// ATT&CK technique IDs it contributes to. Installed via SetTechniqueResolver;
+// wired at agent startup to internal/attack's Index (P1-07). Empty
+// slice / nil resolver means entries carry no TechniqueIDs.
+type TechniqueResolver func(toolName string) []string
+
 type Log struct {
-	db        *sql.DB
-	sessionID string
-	path      string
-	lockFile  *os.File
+	db          *sql.DB
+	sessionID   string
+	path        string
+	lockFile    *os.File
+	techResolve TechniqueResolver
 
 	obsMu     sync.RWMutex
 	observers []func(Entry)
@@ -208,18 +222,31 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 		"duration_ms", duration.Milliseconds(),
 		"session_id", l.sessionID,
 	)
+	var techs []string
+	if l.techResolve != nil {
+		techs = l.techResolve(tool)
+	}
 	l.notify(Entry{
-		Timestamp: ts,
-		Tool:      tool,
-		Input:     string(inputJSON),
-		Output:    output,
-		Risk:      risk,
-		Level:     level,
-		SessionID: l.sessionID,
-		Duration:  duration.Milliseconds(),
-		Success:   success,
-		TraceID:   traceID,
+		Timestamp:    ts,
+		Tool:         tool,
+		Input:        string(inputJSON),
+		Output:       output,
+		Risk:         risk,
+		Level:        level,
+		SessionID:    l.sessionID,
+		Duration:     duration.Milliseconds(),
+		Success:      success,
+		TraceID:      traceID,
+		TechniqueIDs: techs,
 	})
+}
+
+// SetTechniqueResolver installs the ATT&CK tool-to-technique mapping
+// used to populate Entry.TechniqueIDs. Pass nil to disable. Safe to
+// call from setup code before Record begins; callers during Record
+// accept the race (the next entry picks up the new resolver).
+func (l *Log) SetTechniqueResolver(fn TechniqueResolver) {
+	l.techResolve = fn
 }
 
 // AddObserver registers a callback fired after every successful Record

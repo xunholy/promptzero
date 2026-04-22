@@ -818,6 +818,15 @@ func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMess
 		// Use the dispatch result (if any) as the excerpt — some
 		// wrappers return partial output alongside an error.
 		te := newToolError(name, err, result)
+		// Pin device state at failure time so the report generator
+		// (P1-11) and post-hoc debugging have a forensic snapshot.
+		// State() uses the 2-second TTL cache so the probe is free
+		// when the state oracle already ran this turn.
+		if a.flipper != nil {
+			if st, err := a.flipper.State(ctx); err == nil && st.Connected {
+				te = te.withDeviceState(&st)
+			}
+		}
 		return te.JSON(), true
 	}
 	return result, false

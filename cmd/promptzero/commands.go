@@ -24,6 +24,7 @@ import (
 	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/report"
 	"github.com/xunholy/promptzero/internal/rules"
+	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
 	"github.com/xunholy/promptzero/internal/voice"
@@ -110,6 +111,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 			fmt.Fprintf(os.Stderr, "  %s\n", s.Format())
 		})
 		return true, false
+	case "/stats":
+		ed.writeOutput(func() { handleStats(deps, nil) })
+		return true, false
 	case "/reconnect":
 		// Force-reconnect to the Flipper. The SetReconnectCallback
 		// registered in the REPL surfaces phase messages in the
@@ -156,6 +160,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 		return true, false
 	case "/attack":
 		ed.writeOutput(func() { handleAttack(deps, fields[1:]) })
+		return true, false
+	case "/stats":
+		ed.writeOutput(func() { handleStats(deps, fields[1:]) })
 		return true, false
 	case "/persona":
 		ed.writeOutput(func() { handlePersona(deps.ai, deps.personas, fields[1:]) })
@@ -475,12 +482,13 @@ func printHistory(auditLog *audit.Log, n int) {
 //
 //	/rewind                 — list snapshots for the current session
 //	/rewind list            — same as above
+//	/rewind <n>             — pop the N most recent snapshots (1-99)
 //	/rewind <id>            — restore the snapshot with the given ID
-//	/rewind <id> dry-run    — show what restore would do, no write
+//	/rewind <id|n> dry-run  — show what restore would do, no write
 //
 // Per roadmap P1-09 snapshots are captured before any write through
-// fileformat_edit; this command lets the operator pop the most recent
-// one back onto the Flipper without replaying the whole turn.
+// fileformat_edit; this command lets the operator pop recent ones
+// back onto the Flipper without replaying the whole turn.
 func handleRewind(deps *REPLDeps, rawArgs string) {
 	mgr := deps.ai.SnapshotManager()
 	if mgr == nil {
@@ -499,6 +507,15 @@ func handleRewind(deps *REPLDeps, rawArgs string) {
 		cmd = args[0]
 	}
 
+	// Pop-N mode: a pure positive integer arg restores the N most
+	// recent snapshots (newest first). Capped at 99 because anything
+	// bigger is almost certainly a session-wide rollback and the
+	// operator should /rewind list first.
+	if n, err := strconv.Atoi(cmd); err == nil && n >= 1 && n <= 99 {
+		rewindSteps(deps, mgr, sessionID, n, hasDryRunFlag(args[1:]))
+		return
+	}
+
 	switch cmd {
 	case "list", "":
 		entries, err := mgr.List(sessionID)
@@ -514,7 +531,7 @@ func handleRewind(deps *REPLDeps, rawArgs string) {
 		for _, e := range entries {
 			fmt.Fprintf(os.Stderr, "    %s  %s  (%d bytes)  %s\n", e.ID, e.TakenAt.Format(time.RFC3339), e.SizeBytes, e.OriginalPath)
 		}
-		fmt.Fprintf(os.Stderr, "  %s(use /rewind <id> to restore)%s\n", dim, reset)
+		fmt.Fprintf(os.Stderr, "  %s(use /rewind <id> or /rewind <n> to restore)%s\n", dim, reset)
 	default:
 		// Any non-"list" arg is treated as a snapshot ID.
 		id := cmd
@@ -541,6 +558,56 @@ func handleRewind(deps *REPLDeps, rawArgs string) {
 		}
 		fmt.Fprintf(os.Stderr, "  %s✓ restored %s (%d bytes) from snapshot %s%s\n", green, entry.OriginalPath, len(content), entry.ID, reset)
 	}
+}
+
+// handleStats services the /stats REPL command. The no-arg form
+// prints a summary of every tracked counter; subcommands drill into
+// one surface so operators who only care about cache health or
+// token spend don't have to eyeball the wider dump.
+//
+//	/stats              — full summary
+//	/stats cache        — prompt-cache reads/writes/hit rate (P0-01)
+//	/stats tokens       — input/output/cache token totals
+func handleStats(deps *REPLDeps, args []string) {
+	if deps.costTracker == nil {
+		fmt.Fprintf(os.Stderr, "  %sstats: cost tracker not installed%s\n", dim, reset)
+		return
+	}
+	snap := deps.costTracker.Snapshot()
+	section := ""
+	if len(args) > 0 {
+		section = strings.ToLower(args[0])
+	}
+	switch section {
+	case "cache":
+		renderCacheStats(snap)
+	case "tokens":
+		renderTokenStats(snap)
+	case "", "all":
+		renderTokenStats(snap)
+		renderCacheStats(snap)
+	default:
+		fmt.Fprintf(os.Stderr, "  %s● stats: unknown section %q (expected cache|tokens|all)%s\n", red, section, reset)
+	}
+}
+
+func renderCacheStats(snap cost.Snapshot) {
+	if snap.CacheReadTokens == 0 && snap.CacheCreationTokens == 0 {
+		fmt.Fprintf(os.Stderr, "  %scache: no prompt-cache traffic yet (set ANTHROPIC_API_KEY and run a turn)%s\n", dim, reset)
+		return
+	}
+	hitRate := snap.CacheHitRate() * 100
+	fmt.Fprintf(os.Stderr, "  prompt cache:\n")
+	fmt.Fprintf(os.Stderr, "    cache_read_tokens:     %d\n", snap.CacheReadTokens)
+	fmt.Fprintf(os.Stderr, "    cache_creation_tokens: %d\n", snap.CacheCreationTokens)
+	fmt.Fprintf(os.Stderr, "    hit_rate:              %.1f%%\n", hitRate)
+}
+
+func renderTokenStats(snap cost.Snapshot) {
+	fmt.Fprintf(os.Stderr, "  tokens:\n")
+	fmt.Fprintf(os.Stderr, "    input:  %d\n", snap.InputTokens)
+	fmt.Fprintf(os.Stderr, "    output: %d\n", snap.OutputTokens)
+	fmt.Fprintf(os.Stderr, "    cost:   $%.4f\n", snap.TotalUSD)
 }
 
 // handleAttack services the /attack REPL command. Manages the agent's
@@ -577,6 +644,61 @@ func handleAttack(deps *REPLDeps, args []string) {
 	default:
 		fmt.Fprintf(os.Stderr, "  %s● attack: unknown subcommand %q (expected set|clear)%s\n", red, args[0], reset)
 	}
+}
+
+// rewindSteps is the pop-N implementation: restores the `n` newest
+// snapshots in reverse-chronological order. A dry-run flag shows
+// what each restore would do without touching the Flipper. The
+// operation is best-effort — a single failed restore logs an error
+// and continues so a partially-reversible batch doesn't strand the
+// operator at an intermediate state.
+func rewindSteps(deps *REPLDeps, mgr *snapshot.Manager, sessionID string, n int, dryRun bool) {
+	entries, err := mgr.List(sessionID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● rewind list: %v%s\n", red, err, reset)
+		return
+	}
+	if len(entries) == 0 {
+		fmt.Fprintf(os.Stderr, "  %sno snapshots to rewind%s\n", dim, reset)
+		return
+	}
+	if n > len(entries) {
+		n = len(entries)
+	}
+	target := entries[:n]
+
+	fmt.Fprintf(os.Stderr, "  %srewinding %d snapshot(s)%s\n", dim, n, reset)
+	for _, e := range target {
+		entry, content, err := mgr.Restore(sessionID, e.ID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● %s restore: %v%s\n", red, e.ID, err, reset)
+			continue
+		}
+		if dryRun {
+			fmt.Fprintf(os.Stderr, "  %sdry-run: would write %d bytes to %s%s\n", dim, len(content), entry.OriginalPath, reset)
+			continue
+		}
+		ctx, cancel := context.WithTimeout(deps.ctx, 30*time.Second)
+		if err := deps.flip.WriteFileCtx(ctx, entry.OriginalPath, content); err != nil {
+			cancel()
+			fmt.Fprintf(os.Stderr, "  %s● %s write failed: %v%s\n", red, entry.OriginalPath, err, reset)
+			continue
+		}
+		cancel()
+		fmt.Fprintf(os.Stderr, "  %s✓ restored %s (%d bytes) from %s%s\n", green, entry.OriginalPath, len(content), entry.ID, reset)
+	}
+}
+
+// hasDryRunFlag scans args for a case-insensitive "dry-run" marker.
+// Returns true when found. Used by both /rewind <id> and /rewind <n>
+// so the flag semantics stay identical.
+func hasDryRunFlag(args []string) bool {
+	for _, a := range args {
+		if strings.EqualFold(a, "dry-run") {
+			return true
+		}
+	}
+	return false
 }
 
 // handleReport services the /report REPL command.

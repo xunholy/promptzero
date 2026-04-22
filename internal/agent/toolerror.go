@@ -3,6 +3,8 @@ package agent
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/flipper"
 )
 
 // ToolError is the canonical shape of a failed tool result, serialised
@@ -12,9 +14,11 @@ import (
 // rather than scraping text.
 //
 // Fields stay flat so the LLM can reason over the shape without nested
-// destructuring. Device state is deliberately excluded — it already
-// ships on every user turn via the state-oracle block (P0-03) and would
-// duplicate otherwise.
+// destructuring. DeviceState is optional — the state-oracle block
+// (P0-03) already ships the current state on every user turn, but
+// capturing it at failure time gives forensic consumers (report
+// generator, post-hoc debugging) a pinned snapshot of what the
+// device looked like when the call blew up.
 type ToolError struct {
 	// Code is a machine-matchable failure class. Uses snake_case.
 	// Examples: "flipper_timeout", "marauder_disconnect",
@@ -47,6 +51,12 @@ type ToolError struct {
 	// ("not ready", "unknown protocol") so the main model doesn't
 	// burn tool-call budget on hopeless retries.
 	Retryable bool `json:"retryable"`
+
+	// DeviceState is the Flipper's state at the time of failure.
+	// Optional — when nil the consumer should fall back to the
+	// per-turn state-oracle block. Populated by the agent when a
+	// flipper.State probe is available at dispatch time.
+	DeviceState *flipper.State `json:"device_state,omitempty"`
 }
 
 // JSON renders the error into the string form the agent splices into
@@ -77,6 +87,12 @@ const toolErrExcerptMax = 500
 // conservative: unknown errors default to code=<group>_error,
 // retryable=true, empty remediation — future detectors can be written
 // against the Code field without breaking on novel messages.
+//
+// DeviceState is deliberately not captured here — it's populated by
+// the agent via withDeviceState() once a cached state snapshot is
+// available. Keeps this helper free of flipper dependencies so
+// non-Flipper-backed tools (future Marauder-only, vision-only, etc.)
+// can still use the same error shape.
 func newToolError(toolName string, err error, excerpt string) ToolError {
 	msg := ""
 	if err != nil {
@@ -146,6 +162,18 @@ func errCodeForTool(toolName, suffix string) string {
 	// Flatten "flipper.rf.subghz" -> "flipper_rf_subghz".
 	flat := strings.ReplaceAll(group, ".", "_")
 	return flat + "_" + suffix
+}
+
+// withDeviceState returns a copy of te with DeviceState set to the
+// agent's cached flipper snapshot, or the receiver unchanged when no
+// state is available. Called at the agent boundary after
+// newToolError so the Flipper dependency stays local to this helper.
+func (te ToolError) withDeviceState(state *flipper.State) ToolError {
+	if state == nil {
+		return te
+	}
+	te.DeviceState = state
+	return te
 }
 
 // truncateExcerpt cuts s to at most toolErrExcerptMax bytes, preferring

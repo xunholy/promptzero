@@ -15,6 +15,7 @@
 package report
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -23,6 +24,11 @@ import (
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
 )
+
+// jsonUnmarshal is a package-private alias so jsonUnmarshalVerdict
+// can depend on encoding/json without re-importing it across files
+// of this package.
+var jsonUnmarshal = json.Unmarshal
 
 // Summary is the intermediate, format-agnostic aggregate of a session's
 // activity. Renderer implementations consume Summary to produce concrete
@@ -43,6 +49,13 @@ type Summary struct {
 	// invocations that contributed to it.
 	ATTACKCoverage map[string]int
 
+	// DetectorVerdicts groups the verdicts the DetectorEngine
+	// emitted during the session. Extracted from each audit entry's
+	// Output by matching the <detector-verdict>{...}</detector-verdict>
+	// block appended by appendDetectorVerdicts. Keyed by detector
+	// name for heatmap display.
+	DetectorVerdicts []DetectorVerdictSummary
+
 	// Timeline is the chronologically ordered entry list. Callers that
 	// only want the summary counts can ignore this; the markdown
 	// renderer uses it for the timeline section.
@@ -52,6 +65,18 @@ type Summary struct {
 	// Gives the report a "hands-on" time estimate distinct from
 	// StartedAt/EndedAt which span idle periods too.
 	TotalDurationMs int64
+}
+
+// DetectorVerdictSummary is one detector's verdict attached to one
+// tool invocation, flattened for report rendering. Auxiliary fields
+// (confidence, evidence) are kept so the Markdown renderer can
+// explain why a verdict landed the way it did.
+type DetectorVerdictSummary struct {
+	Tool       string  `json:"tool"`
+	Verdict    string  `json:"verdict"`
+	Confidence float64 `json:"confidence"`
+	DetectedBy string  `json:"detected_by"`
+	Evidence   string  `json:"evidence,omitempty"`
 }
 
 // Summarise folds a slice of audit entries into a Summary. Entries
@@ -93,8 +118,71 @@ func Summarise(sessionID string, entries []audit.Entry, idx *attack.Index) Summa
 				s.ATTACKCoverage[tid]++
 			}
 		}
+		// Detector verdicts piggyback inside the tool output as
+		// <detector-verdict>{json}</detector-verdict> blocks (see
+		// internal/agent/detectors.go). Extract them and flatten
+		// into the summary so the renderer can surface them.
+		for _, v := range extractVerdicts(e.Output) {
+			s.DetectorVerdicts = append(s.DetectorVerdicts, DetectorVerdictSummary{
+				Tool:       e.Tool,
+				Verdict:    v.Verdict,
+				Confidence: v.Confidence,
+				DetectedBy: v.DetectedBy,
+				Evidence:   v.Evidence,
+			})
+		}
 	}
 	return s
+}
+
+// extractVerdicts pulls every <detector-verdict>{...}</detector-verdict>
+// payload out of an audit entry's output string. Multiple verdicts
+// per output are supported (multi-detector on a single tool).
+// Malformed blocks are skipped — detector output is advisory, never
+// load-bearing.
+func extractVerdicts(output string) []rulesVerdictShape {
+	if !strings.Contains(output, "<detector-verdict>") {
+		return nil
+	}
+	const openTag = "<detector-verdict>"
+	const closeTag = "</detector-verdict>"
+	var out []rulesVerdictShape
+	s := output
+	for {
+		i := strings.Index(s, openTag)
+		if i < 0 {
+			break
+		}
+		j := strings.Index(s[i:], closeTag)
+		if j < 0 {
+			break
+		}
+		body := s[i+len(openTag) : i+j]
+		var v rulesVerdictShape
+		if err := jsonUnmarshalVerdict(body, &v); err == nil && v.Verdict != "" {
+			out = append(out, v)
+		}
+		s = s[i+j+len(closeTag):]
+	}
+	return out
+}
+
+// rulesVerdictShape mirrors rules.Verdict without importing the rules
+// package — report stays dependency-light. Kept private to this
+// package so the rules package remains the sole source of truth for
+// the wire shape.
+type rulesVerdictShape struct {
+	Verdict    string  `json:"verdict"`
+	Confidence float64 `json:"confidence"`
+	DetectedBy string  `json:"detected_by"`
+	Evidence   string  `json:"evidence"`
+}
+
+// jsonUnmarshalVerdict is a shim around encoding/json specialised to
+// the verdict shape. Extracted so tests can fuzz it without an
+// encoding/json import dance.
+func jsonUnmarshalVerdict(s string, v *rulesVerdictShape) error {
+	return jsonUnmarshal([]byte(s), v)
 }
 
 // Renderer turns a Summary into concrete output bytes. Additional
@@ -186,6 +274,33 @@ func (MarkdownRenderer) Render(s Summary) ([]byte, error) {
 		fmt.Fprintf(&b, "\n")
 	}
 
+	// Detector verdicts section — surfaces the rules engine's
+	// LLM-as-judge output. Grouped by verdict class (failure +
+	// suspicious first since those need operator attention; success
+	// + unknown last).
+	if len(s.DetectorVerdicts) > 0 {
+		fmt.Fprintf(&b, "## Detector verdicts\n\n")
+		fmt.Fprintf(&b, "| Tool | Verdict | Confidence | Detector | Evidence |\n|---|---|---|---|---|\n")
+		// Stable ordering: failures / suspicious first, then success,
+		// then unknown. Inside each bucket preserve timeline order.
+		order := map[string]int{"failure": 0, "suspicious": 1, "success": 2, "unknown": 3}
+		sorted := make([]DetectorVerdictSummary, len(s.DetectorVerdicts))
+		copy(sorted, s.DetectorVerdicts)
+		sort.SliceStable(sorted, func(i, j int) bool {
+			return order[sorted[i].Verdict] < order[sorted[j].Verdict]
+		})
+		for _, v := range sorted {
+			fmt.Fprintf(&b, "| `%s` | **%s** | %.2f | `%s` | %s |\n",
+				mdEscape(v.Tool),
+				mdEscape(v.Verdict),
+				v.Confidence,
+				mdEscape(v.DetectedBy),
+				mdEscape(shortEvidence(v.Evidence)),
+			)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
 	// Timeline (compact — one line per entry).
 	fmt.Fprintf(&b, "## Timeline\n\n")
 	for _, e := range s.Timeline {
@@ -219,4 +334,16 @@ func mdEscape(s string) string {
 // uses: "T1557.004" -> "T1557/004". Used for heatmap deep-links.
 func mitreSlug(id string) string {
 	return strings.Replace(id, ".", "/", 1)
+}
+
+// shortEvidence truncates a verdict's evidence string to a single
+// short clause so the detector-verdict table stays readable. Keeps
+// the first sentence up to 120 characters.
+func shortEvidence(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > 120 {
+		s = s[:117] + "…"
+	}
+	s = strings.ReplaceAll(s, "\n", " ")
+	return s
 }

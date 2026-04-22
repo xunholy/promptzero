@@ -64,7 +64,27 @@ func (a *Agent) ResumeSession(id string) error {
 	if state.Model != "" {
 		a.model = state.Model
 	}
+	// Inject the persisted handoff artifact so the model sees the
+	// structured {findings, open_threads, blocked, device_state}
+	// block on its first post-resume turn (P1-08). Without this, the
+	// handoff JSON would stay dormant on disk and the LLM would lose
+	// the compact resumability signal the artifact is built for.
+	if len(state.Handoff) > 0 {
+		a.history = append(a.history,
+			anthropic.NewUserMessage(anthropic.NewTextBlock(handoffResumeContext(state.Handoff))),
+		)
+	}
 	return nil
+}
+
+// handoffResumeContext wraps the persisted HandoffArtifact JSON in a
+// <handoff-resume> sentinel so the model can recognise it as a
+// structured snapshot of the prior session rather than a fresh user
+// question. Kept terse — the artifact itself carries the findings /
+// threads / blocked detail.
+func handoffResumeContext(raw json.RawMessage) string {
+	return "<handoff-resume>\n" + string(raw) + "\n</handoff-resume>\n\n" +
+		"This session was resumed. The block above summarises what happened before the break. Prioritise the open_threads; avoid retrying tools listed in blocked."
 }
 
 // SaveSessionAs persists the current history under a caller-supplied id
@@ -93,6 +113,36 @@ func (a *Agent) SaveSessionAs(name string) error {
 		state.CreatedAt = existing.CreatedAt
 	}
 	return a.sessionStore.Save(state)
+}
+
+// DeleteSession removes a session from the attached store and auto-
+// purges any per-session snapshots (P1-09). Callers that only want
+// the session file removed can use sessionStore.Delete directly;
+// DeleteSession is the sanctioned path for the CLI because it keeps
+// the snapshot tree in lockstep with the session's lifecycle. Errors
+// from the snapshot purge are best-effort — a failed snapshot purge
+// leaves orphaned backup files but doesn't block the session
+// deletion itself.
+func (a *Agent) DeleteSession(id string) error {
+	a.mu.Lock()
+	store := a.sessionStore
+	mgr := a.snapshotMgr
+	a.mu.Unlock()
+	if store == nil {
+		return fmt.Errorf("session store not configured")
+	}
+	if id == "" {
+		return fmt.Errorf("session id is empty")
+	}
+	if err := store.Delete(id); err != nil {
+		return fmt.Errorf("delete session %s: %w", id, err)
+	}
+	if mgr != nil {
+		if err := mgr.Purge(id); err != nil {
+			log.Printf("agent: snapshot purge for session %s failed: %v", id, err)
+		}
+	}
+	return nil
 }
 
 // ListSessions returns every saved session known to the attached store.
