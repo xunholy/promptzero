@@ -26,6 +26,7 @@ import (
 	"github.com/xunholy/promptzero/internal/report"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/snapshot"
+	"github.com/xunholy/promptzero/internal/trainset"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
 	"github.com/xunholy/promptzero/internal/voice"
@@ -165,6 +166,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 	case "/campaign":
 		ed.writeOutput(func() { handleCampaign(deps, fields[1:]) })
 		return true, false
+	case "/export":
+		ed.writeOutput(func() { handleExport(deps.auditLog, fields[1:]) })
+		return true, false
 	case "/stats":
 		ed.writeOutput(func() { handleStats(deps, fields[1:]) })
 		return true, false
@@ -281,6 +285,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/audit top tools|risks%s Top-N aggregations (since=24h etc.)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit session <id>%s    Dump a specific session\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit export <path>%s   Write session audit JSON to <path>\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/export training-set <path>%s  Export audit as JSONL fine-tuning dataset (--format=chat --success-only)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sOperator%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
@@ -633,6 +638,63 @@ func renderCampaignResult(r campaign.RunResult) {
 	} else {
 		fmt.Fprintf(os.Stderr, "  %s✗ campaign completed with failures%s\n\n", red, reset)
 	}
+}
+
+// handleExport services the /export training-set REPL command. Produces
+// a JSONL fine-tuning dataset from the audit log, ready to feed into a
+// LoRA/QLoRA pipeline or a Hugging Face Datasets loader.
+//
+//	/export training-set <path>                              jsonl, all entries
+//	/export training-set <path> --format=chat                OpenAI chat format
+//	/export training-set <path> --success-only               drop failed calls
+//	/export training-set <path> --min-level=warning          critical + warnings only
+func handleExport(auditLog *audit.Log, args []string) {
+	if auditLog == nil {
+		fmt.Fprintf(os.Stderr, "  %s● audit log not initialised — nothing to export%s\n", red, reset)
+		return
+	}
+	if len(args) < 2 || strings.ToLower(args[0]) != "training-set" {
+		fmt.Fprintf(os.Stderr, "  %susage: /export training-set <path> [--format=chat] [--success-only] [--min-level=warning|critical]%s\n", dim, reset)
+		return
+	}
+	path := args[1]
+	opts := trainset.Options{Format: trainset.FormatJSONL}
+	for _, a := range args[2:] {
+		switch {
+		case a == "--success-only":
+			opts.SuccessOnly = true
+		case strings.HasPrefix(a, "--format="):
+			opts.Format = trainset.Format(strings.TrimPrefix(a, "--format="))
+		case strings.HasPrefix(a, "--min-level="):
+			opts.MinLevel = audit.Level(strings.TrimPrefix(a, "--min-level="))
+		case strings.HasPrefix(a, "--system-prompt="):
+			opts.SystemPrompt = strings.TrimPrefix(a, "--system-prompt=")
+		default:
+			fmt.Fprintf(os.Stderr, "  %s● unknown flag %q%s\n", red, a, reset)
+			return
+		}
+	}
+	// Pull the whole log — operators use this after a session, not
+	// at scale. One million rows is orders of magnitude beyond any
+	// realistic single-session capture; log sizes that approach this
+	// deserve a dedicated streaming path, not a bigger cap.
+	entries, err := auditLog.Query(1_000_000)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● read audit: %v%s\n", red, err, reset)
+		return
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● open %s: %v%s\n", red, path, err, reset)
+		return
+	}
+	defer f.Close()
+	n, err := trainset.Export(entries, f, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● export: %v%s\n", red, err, reset)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  %s●%s wrote %d rows (%s) → %s\n", green, reset, n, opts.Format, path)
 }
 
 // handleStats services the /stats REPL command. The no-arg form
