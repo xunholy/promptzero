@@ -53,15 +53,27 @@ promptzero> what's this?  [photo of a remote control]
   I can generate a complete remote file. Want me to create it?
 ```
 
-### 152 Tools Across 5 Subsystems
+### 160+ Tools Across 5 Subsystems
 
 | Subsystem | Tools | Capabilities |
 |-----------|-------|-------------|
 | **Flipper Zero** | 89 | Sub-GHz TX/RX, IR TX/RX, NFC detect/emulate, RFID read/write/emulate, iButton, GPIO, BadUSB, storage, app launcher |
 | **ESP32 Marauder** | 51 | WiFi scan, deauth, beacon spam, probe flood, PMKID capture, evil portal, BLE spam, BT scanning, skimmer detection, network recon, wardriving, MAC spoofing |
-| **AI Generation** | 7 | Evil portal HTML, BadUSB DuckyScript, Sub-GHz .sub files, IR .ir remotes, NFC .nfc tags - all from natural language descriptions |
+| **AI Generation** | 12 | Evil portal HTML, BadUSB DuckyScript, Sub-GHz `.sub` files, IR `.ir` remotes, NFC `.nfc` tags from natural language — **plus parametric builders** (`subghz_build`, `rfid_build`, `ir_build`, `nfc_build`, `subghz_bruteforce_generate`) that synthesise correctly-framed files from typed parameters |
 | **Intelligence** | 2 | Vision analysis (photo -> device ID + attack vector), SD card app/signal discovery |
-| **Audit** | 3 | SQLite audit log, session export (JSON), statistics |
+| **Audit** | 3 | SQLite audit log with MITRE ATT&CK technique tags, session export (JSON), statistics |
+
+### Agent-layer features (v0.3.0)
+
+| Layer | Feature | Why |
+|---|---|---|
+| **Cost** | Anthropic prompt caching + cost-tier model routing | ~70–90% input-token reduction on 3+ turn sessions; recon on Haiku / exploit on Opus |
+| **Reliability** | Reflexion-on-error + structured `ToolError` | Auto-critique on tool failure; machine-readable error codes for audit / report / detector consumers |
+| **Safety** | Prompt-injection quarantine + boxed TX preview + `[R]evise` | Hardware output wrapped as data; high-risk confirms show frequency/modulation/hex with a 2 s delay; `r` to revise instead of deny |
+| **Grounding** | `<device-state>` oracle on every turn | Model always knows fork / firmware / battery / SD / transport |
+| **Operator UX** | `/rewind`, `/report`, `/attack`, `/stats` | Undo SD writes; Markdown engagement reports with ATT&CK heatmap; per-session technique constraint; prompt-cache hit-rate |
+| **Integration** | OpenTelemetry GenAI spans | `gen_ai.*` semantic conventions; honours `OTEL_EXPORTER_OTLP_ENDPOINT`; noop when unset |
+| **Quality** | Detector engine + chain-of-verification | LLM-as-judge on WiFi deauth / PMKID / NFC clone; Haiku pre-deploy verification on generated payloads with severity-blocked deploys |
 
 ---
 

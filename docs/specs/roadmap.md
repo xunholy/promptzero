@@ -36,6 +36,9 @@
 
 ## P0 — Foundations (ship this week)
 
+**Status: ✅ DELIVERED in v0.3.0.** All six P0 items are live on main
+and covered by tests. See `CHANGELOG.md [0.3.0]` for per-item notes.
+
 These are high leverage, low effort, and several later items depend on them.
 
 ### P0-01 — Anthropic prompt caching on system prompt + tool catalog
@@ -161,6 +164,12 @@ These are high leverage, low effort, and several later items depend on them.
 ---
 
 ## P1 — Quality + differentiation (ship this month)
+
+**Status: ✅ DELIVERED in v0.3.0.** All twelve P1 items plus the seven
+P1-b follow-up gaps surfaced by the feature-complete audit are live on
+main. See `CHANGELOG.md [0.3.0]` for per-item notes and coverage of
+deferred sub-items (structured tactic→technique→tool planner is the
+only explicit deferral, tracked with P2-19 Campaigns).
 
 ### P1-07 — ATT&CK-tagged workflows + constrained planner
 
