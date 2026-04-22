@@ -65,6 +65,34 @@ Write through the Flipper's back antenna (LF side), not the NFC face.`,
 	"subghz_receive": `Captures OOK/2FSK in the selected band. duration_seconds bounds the scan.
 Output is a series of Protocol+Frequency+Key+Bit blocks (one per detected signal) plus raw lines.
 Freq+bit mismatch with the target device yields empty candidates — try adjacent ISM bands.`,
+
+	"subghz_rx_raw": `Records raw OOK/2FSK samples to a .sub file rather than decoding protocol.
+Use when subghz_receive returns nothing because the protocol is unknown — rx_raw captures the waveform so subghz_decode can be tried later, or the file can replay as-is via subghz_transmit.
+Files can get large: ~2KB/s at 433 MHz with moderate RF activity.`,
+
+	"rfid_raw_read": `Captures raw 125 kHz LF modulation to a .lfrfid file. Complementary to rfid_read, which parses a known protocol and fails on unknown ones.
+Use raw_read when the badge ISN'T EM4100/HIDProx/Indala/AWID/FDX, then rfid_raw_analyze for pulse stats + best-guess protocol.
+Typical duration: 2-5s. Longer captures help with noisy readers.`,
+
+	"rfid_raw_analyze": `Reads a .lfrfid raw capture and reports frequency, duty cycle, pulse sum, duration sum, protocol guess.
+"Protocol: Unknown" + low pulse count usually means the card wasn't close enough to the antenna — retry.
+Average field near NaN indicates no modulation detected; try a different dwell position on the reader pad.`,
+
+	"ibutton_read": `Reads a Dallas 1-Wire contact key. Auto-detects protocol: Dallas (DS1990A, 64-bit ROM), Cyfral, Metakom.
+Output shape: Key type: <proto> | Data: <hex>. 64-bit Dallas is the most common fob format.
+Firm contact matters — the probe needs ~100ms of steady contact to clock out the ROM.`,
+
+	"ibutton_emulate": `Emulates a previously-read iButton fob. Requires Protocol + Data (hex) matching the original read.
+Dallas fobs expect a 8-byte ROM including the 1-byte family code prefix and 1-byte CRC suffix.
+Emulation tx is bidirectional; the reader polls, the Flipper responds — so the antenna side (iButton pins) must be the contact.`,
+
+	"ibutton_write": `Writes onto a rewritable iButton blank (e.g. RW1990, TM2004).
+Protocol + Data must match the original fob. Most real building fobs are read-only DS1990A and can only be cloned to RW blanks.
+If the write fails with "no response", the blank is either factory-locked or the contact positioning is off.`,
+
+	"nfc_apdu": `Sends raw ISO14443 APDU frames to a detected card. Use for EMV (payment), DESFire, MRTD (passport).
+SELECT PPSE = "00 A4 04 00 0E 32 50 41 59 2E 53 59 53 2E 44 44 46 30 31 00". Response starts with TLV tag 6F.
+Common AIDs: Visa=A000000003, Mastercard=A000000004, Amex=A000000025. No response → card not selected or 14443-4 state missed.`,
 }
 
 // Get returns the cheat sheet for toolName, or "" when no sheet is

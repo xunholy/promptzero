@@ -116,12 +116,17 @@ var verifyPayloadSystemPrompts = map[string]string{
 		"Missing required fields are 'high'.",
 
 	"nfc": "You are reviewing a Flipper Zero .nfc tag file. Check for: " +
-		"(a) missing Filetype or UID headers, (b) UID length mismatch for the declared DeviceType " +
-		"(Mifare Classic 1K = 4 or 7 byte UID, NTAG = 7 byte), (c) Block contents that are all zeros " +
-		"when Mifare Classic would normally carry Access Bits + a non-zero key block. " +
+		"(a) missing Filetype or UID headers; " +
+		"(b) UID length mismatch for the declared DeviceType (Mifare Classic 1K = 4 or 7 byte UID, NTAG = 7 byte); " +
+		"(c) Block contents that are all zeros when Mifare Classic would normally carry Access Bits + a non-zero key block; " +
+		"(d) SAK byte vs declared MifareType mismatch (Classic 1K SAK=08, Classic 4K SAK=18, Ultralight SAK=00, NTAG SAK=00); " +
+		"(e) Mifare Classic sector trailers (blocks 3, 7, 11, 15, ...) with incorrect Access Bits — bytes 6-8 must encode C1/C2/C3 with their inverse pairs, standard value is 'FF 07 80' for free read/write access; " +
+		"(f) Mifare Classic sector trailers missing or zero-filled KeyA (bytes 0-5) or KeyB (bytes 10-15); " +
+		"(g) block index overflow for declared type (Classic 1K = 64 blocks, Classic 4K = 256 blocks, NTAG213 = 45 pages, NTAG215 = 135, NTAG216 = 231); " +
+		"(h) NDEF-only payload marked as Classic (no Access Bits in any sector trailer). " +
 		"Output ONLY a JSON object matching {\"severity\":\"none|low|medium|high|critical\"," +
 		"\"failure_modes\":[\"...\"],\"recommendation\":\"...\",\"verified\":true}. " +
-		"Missing headers are 'high'; UID-length mismatch is 'high'.",
+		"Missing headers, UID/SAK mismatch, Access Bits errors, and block overflow are 'high'; NDEF-on-Classic and placeholder keys are 'medium'.",
 
 	"rfid": "You are reviewing a Flipper Zero .rfid LF badge file. Check for: " +
 		"(a) missing Filetype or Key type / Data headers, (b) Data hex length wrong for the Key type " +

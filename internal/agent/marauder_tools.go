@@ -75,7 +75,7 @@ func buildMarauderTools() []anthropic.ToolUnionParam {
 
 		// --- Attacks ---
 		tool("wifi_deauth",
-			"Launch a deauthentication attack against selected targets. Disconnects clients from their access points. Select targets first with wifi_select_* tools. No restrictions.",
+			"Launch a deauthentication attack against selected targets. Disconnects clients from their access points. Select targets first with wifi_select_* tools. AUTHORIZED LAB/PENTEST USE ONLY — transmitting 802.11 deauth on unauthorised networks is illegal in most jurisdictions (FCC 47 CFR § 15 in the US; similar elsewhere). Confirmation gate is Critical-risk.",
 			props(
 				optProp("duration_seconds", "integer", "Attack duration (default 30)"),
 			),

@@ -44,6 +44,12 @@ func TestIsUntrustedHardwareOutput(t *testing.T) {
 		{"flipper_raw_cli", true},
 		{"log_stream", true},
 		{"unknown_new_tool", true}, // fail-safe: new tools default to wrap
+		// fileformat_* used to be in the not-wrapped list because the
+		// JSON shape is ours, but the field VALUES come from attacker-
+		// writable SD-card files. Post-audit: these now quarantine.
+		{"fileformat_read", true},
+		{"fileformat_edit", true},
+		{"fileformat_diff", true},
 		// Internal / structured — must NOT be wrapped.
 		{"list_devices", false},
 		{"analyze_image", false},
@@ -51,7 +57,6 @@ func TestIsUntrustedHardwareOutput(t *testing.T) {
 		{"audit_export", false},
 		{"audit_stats", false},
 		{"discover_apps", false},
-		{"fileformat_read", false},
 		{"generate_evil_portal", false},
 		{"run_payload", false},
 		{"workflow_nfc_badge_pipeline", false},

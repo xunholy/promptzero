@@ -50,14 +50,6 @@ var notWrappedTools = map[string]struct{}{
 	// Flipper CLI verbatim.
 	"discover_apps": {},
 
-	// Structured file-format JSON — our parser owns the serialisation
-	// shape even though the underlying file can be attacker-controlled.
-	// (The LLM relies on the JSON shape; wrapping would disrupt it. The
-	// parser rejects malformed input.)
-	"fileformat_read": {},
-	"fileformat_edit": {},
-	"fileformat_diff": {},
-
 	// Generation pipeline — output is our own preview/path text.
 	"generate_evil_portal": {},
 	"generate_badusb":      {},

@@ -1817,12 +1817,20 @@ func (a *Agent) docsSearch(query string, k int) (string, error) {
 	if k > 20 {
 		k = 20
 	}
+	// Double-check locking so the lock is only held for the pointer
+	// swap, never for the ~100-500ms DefaultIndex() corpus build.
 	a.mu.Lock()
-	if a.ragIndex == nil {
-		a.ragIndex = rag.DefaultIndex()
-	}
 	idx := a.ragIndex
 	a.mu.Unlock()
+	if idx == nil {
+		built := rag.DefaultIndex()
+		a.mu.Lock()
+		if a.ragIndex == nil {
+			a.ragIndex = built
+		}
+		idx = a.ragIndex
+		a.mu.Unlock()
+	}
 	hits := idx.Search(query, k)
 	if len(hits) == 0 {
 		return fmt.Sprintf("no results for %q", query), nil
