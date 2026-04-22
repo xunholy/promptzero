@@ -1018,6 +1018,8 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return a.flipper.ExecLong(fmt.Sprintf("ir bruteforce %s", flipper.SanitizeArg(str(p, "file"))), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
 
 	// --- Flipper: NFC ---
+	case "nfc_read_save":
+		return a.nfcReadSave(ctx, p)
 	case "nfc_detect":
 		raw, err := a.flipper.NFCDetect(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
 		if err != nil {
@@ -1911,6 +1913,141 @@ func (a *Agent) auditStats() (string, error) {
 		return "Audit logging not enabled", nil
 	}
 	return a.auditLog.Stats()
+}
+
+// --- NFC Read+Save Handler ---
+
+// nfcReadSave is the high-level "scan a fob and save it" tool. The
+// agent repeatedly hit a thrashing failure mode here: operators would
+// say "scan my mifare fob", the model would start with nfc_detect
+// (which only identifies), then reach for nfc_dump_protocol (needs
+// keys), fail, and escalate to flipper_raw_cli + loader_open + input_send
+// trying to drive the on-device NFC app UI. This handler short-circuits
+// all of that: detect, map the firmware's Type string to a BuildNFC-
+// compatible DeviceType, construct the UID-only .nfc file (still
+// valuable for low-security-system proximity cloning even when sector
+// keys are unknown), verify, and write.
+//
+// Full-dump flows that need sector keys remain the mfkey / nested FAP
+// path — nfc_read_save returns a friendly next-step hint when it
+// detects Classic-family tags so the model knows to propose the key-
+// recovery workflow rather than treating the UID-only save as the end
+// of the story.
+func (a *Agent) nfcReadSave(ctx context.Context, p map[string]interface{}) (string, error) {
+	timeout := time.Duration(intOr(p, "timeout_seconds", 15)) * time.Second
+	raw, err := a.flipper.NFCDetect(timeout)
+	if err != nil {
+		return "", fmt.Errorf("nfc_read_save: %w", err)
+	}
+	parsed := flipper.ParseNFCDetect(raw)
+	if !parsed.Detected || parsed.UID == "" {
+		return "no tag detected — hold the tag flat against the back of the Flipper (NFC antenna side) and retry. If it's a 125 kHz LF fob, use rfid_read instead.", nil
+	}
+
+	deviceType := mapNFCTypeToDeviceType(parsed.Type)
+	nfcBytes, err := fileformat.BuildNFC(fileformat.NFCBuildParams{
+		DeviceType: deviceType,
+		UID:        parsed.UID,
+		ATQA:       parsed.ATQA,
+		SAK:        parsed.SAK,
+	})
+	if err != nil {
+		// UID-length mismatch on an odd device. Fall back to a
+		// type-less save so the operator still gets the UID captured —
+		// a later edit can adjust the device type.
+		fallback, ferr := fileformat.BuildNFC(fileformat.NFCBuildParams{
+			DeviceType: "NFC",
+			UID:        parsed.UID,
+			ATQA:       parsed.ATQA,
+			SAK:        parsed.SAK,
+		})
+		if ferr != nil {
+			return "", fmt.Errorf("nfc_read_save: build failed (primary: %v; fallback: %v)", err, ferr)
+		}
+		nfcBytes = fallback
+		deviceType = "NFC"
+	}
+
+	summary, blockMsg := a.runBuildVerification(ctx, "nfc", nfcBytes, boolOr(p, "verify_bypass", false))
+	if blockMsg != "" {
+		return blockMsg, nil
+	}
+
+	outPath := str(p, "path")
+	if outPath == "" {
+		name := str(p, "name")
+		if name == "" {
+			name = "scanned_" + sanitizeFilename(parsed.UID)
+		}
+		outPath = "/ext/nfc/" + name + ".nfc"
+	}
+	a.snapshotBeforeWrite(ctx, outPath)
+	if err := a.flipper.WriteFileCtx(ctx, outPath, nfcBytes); err != nil {
+		return "", fmt.Errorf("write %s: %w", outPath, err)
+	}
+
+	// Tail-hint: for Classic-family tags, the UID-only save alone is
+	// usually not enough for reader-compatibility cloning; point the
+	// model at the key-recovery path so it proposes the right next
+	// step rather than returning "done!" and stopping.
+	nextHint := ""
+	if strings.Contains(strings.ToLower(deviceType), "classic") {
+		nextHint = "\n\nNote: this is a UID-only save — full block data requires sector keys. For cloning against real readers, chain loader_mfkey (with captured reader nonces) → loader_mifare_nested → re-run nfc_dump_protocol once keys are known."
+	}
+	return fmt.Sprintf("saved %s (%s, UID %s) → %s\n%s%s", parsed.Type, deviceType, parsed.UID, outPath, summary, nextHint), nil
+}
+
+// mapNFCTypeToDeviceType translates the scanner's Type string into a
+// DeviceType value BuildNFC + validateUIDLength will accept. Unknown
+// types fall through to "NFC" so the caller can still persist a
+// UID-only record. Keep the switch case-insensitive and match on
+// substrings — the firmware's exact Type strings vary across forks
+// ("Mifare Classic 1K" vs "MIFARE Classic 1K" etc.).
+func mapNFCTypeToDeviceType(typ string) string {
+	lower := strings.ToLower(typ)
+	switch {
+	case strings.Contains(lower, "ntag213"):
+		return "NTAG213"
+	case strings.Contains(lower, "ntag215"):
+		return "NTAG215"
+	case strings.Contains(lower, "ntag216"):
+		return "NTAG216"
+	case strings.Contains(lower, "ultralight"):
+		return "Mifare Ultralight"
+	case strings.Contains(lower, "classic"):
+		return "Mifare Classic"
+	case strings.Contains(lower, "desfire"):
+		return "Mifare DESFire"
+	case strings.Contains(lower, "plus"):
+		return "Mifare Plus"
+	default:
+		return "NFC"
+	}
+}
+
+// sanitizeFilename strips characters that aren't safe in a Flipper SD
+// filename. The firmware accepts most ASCII but colons / slashes /
+// whitespace cause the on-device browser to render poorly; reduce to
+// [0-9A-Za-z_-] for predictability.
+func sanitizeFilename(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9',
+			r >= 'A' && r <= 'Z',
+			r >= 'a' && r <= 'z',
+			r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	out := b.String()
+	if out == "" {
+		return "unknown"
+	}
+	return out
 }
 
 // --- NRF24 / Mousejack Handlers ---

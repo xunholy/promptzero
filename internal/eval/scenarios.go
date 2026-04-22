@@ -48,6 +48,10 @@ func Default(t *testing.T) []Scenario {
 		// NRF24 / Mousejack — parametric builder + parser
 		mousejackPayloadBuildsScenario(t),
 		nrf24TargetParserScenario(t),
+		// NFC scan-and-save — protects against the "agent thrashes
+		// looking for the right tool" regression reported by
+		// operators after the mousejack ship.
+		nfcReadSaveBuildsValidFileScenario(t),
 	}
 }
 
@@ -349,6 +353,42 @@ func placeholderArgScenario(t *testing.T) Scenario {
 				rep := confidence.Evaluate(map[string]any{"target": v}, []string{"target"})
 				if !rep.ShouldAbstain() {
 					return fmt.Errorf("placeholder %q did not abstain: %+v", v, rep)
+				}
+			}
+			return nil
+		},
+	}
+}
+
+// nfcReadSaveBuildsValidFileScenario: the operator report said the
+// agent thrashed through 16+ tool calls (including Critical
+// flipper_raw_cli escalations) trying to scan a Mifare fob because
+// no single "scan and save" tool existed. nfc_read_save is that tool;
+// this scenario locks that BuildNFC produces a valid round-trippable
+// file from the minimum fields the scanner captures (UID + ATQA + SAK)
+// so the save path can't silently degrade to garbage.
+func nfcReadSaveBuildsValidFileScenario(t *testing.T) Scenario {
+	t.Helper()
+	return Scenario{
+		Name:        "nfc_read_save_builds_valid_file",
+		Description: "BuildNFC produces a valid UID-only .nfc from scanner-shaped inputs for every Mifare family",
+		Tags:        []string{"nfc", "regression"},
+		Run: func() error {
+			cases := []fileformat.NFCBuildParams{
+				{DeviceType: "Mifare Classic", UID: "AA BB CC DD", ATQA: "0004", SAK: "08"},
+				{DeviceType: "NTAG215", UID: "04 E3 A1 B2 C3 D4 E5"},
+				{DeviceType: "Mifare Ultralight", UID: "04 11 22 33 44 55 66"},
+			}
+			for i, c := range cases {
+				raw, err := fileformat.BuildNFC(c)
+				if err != nil {
+					return fmt.Errorf("case %d (%s): build: %w", i, c.DeviceType, err)
+				}
+				if !strings.Contains(string(raw), "Filetype: Flipper NFC device") {
+					return fmt.Errorf("case %d: missing Filetype header", i)
+				}
+				if !strings.Contains(string(raw), c.UID) {
+					return fmt.Errorf("case %d: UID missing from file", i)
 				}
 			}
 			return nil

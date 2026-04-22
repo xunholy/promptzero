@@ -86,9 +86,18 @@ func buildTools() []anthropic.ToolUnionParam {
 
 		// --- NFC ---
 		tool("nfc_detect",
-			"Detect an NFC tag/card. Supports MIFARE Classic, MIFARE Ultralight, NTAG, DESFire, EMV bank cards, transit cards, and more. Returns UID, type, and data.",
+			"Detect an NFC tag/card and return UID/ATQA/SAK/Type. Use this when the operator asks what a tag IS. When the operator asks to SCAN / SAVE / CLONE a tag, prefer nfc_read_save — it detects and writes a .nfc file in one call.",
 			props(
 				optProp("timeout_seconds", "integer", "How long to wait for a tag (default 30)"),
+			),
+		),
+		tool("nfc_read_save",
+			"Scan an NFC tag and save it to the SD card as /ext/nfc/<name>.nfc. This is the default tool for operator requests like 'scan this fob', 'read the badge', or 'save this card'. Does a full NFCDetect, constructs a valid .nfc file (UID + ATQA + SAK, device-type-aware), runs the static verifier, and writes via the same snapshot/rewind pipeline as the parametric builders. Works for Classic 1K/4K, NTAG213/215/216, Ultralight. For high-security badges where sector keys are required for full block reads, the UID-only save is still useful as a first pass — chain with loader_mfkey / loader_mifare_nested for key recovery.",
+			props(
+				optProp("name", "string", "Output filename stem (default: scanned_<uid>). Result lands at /ext/nfc/<name>.nfc"),
+				optProp("path", "string", "Full SD path override — when set, takes precedence over name"),
+				optProp("timeout_seconds", "integer", "How long to wait for a tag (default 15 — shorter than nfc_detect to keep the interactive flow snappy)"),
+				optProp("verify_bypass", "boolean", "Skip the static verifier block on high/critical findings"),
 			),
 		),
 		toolEx("nfc_emulate",

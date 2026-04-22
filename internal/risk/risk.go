@@ -80,7 +80,7 @@ var toolLevels = func() map[string]Level {
 		"wifi_save_aps", "wifi_save_ssids", "wifi_load_aps", "wifi_load_ssids",
 		"wifi_set_setting",
 		"wifi_random_mac", "wifi_clone_mac",
-		"nfc_detect", "nfc_subcommand",
+		"nfc_detect", "nfc_subcommand", "nfc_read_save",
 		"generate_evil_portal", "generate_badusb", "generate_subghz", "generate_ir", "generate_nfc",
 		"input_send",
 		"storage_mkdir", "storage_delete",

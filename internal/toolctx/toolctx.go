@@ -34,6 +34,11 @@ Each IRSignal needs a non-empty Name; duplicates allowed across buttons.`,
 NTAG213/215/216: always 7-byte UID, 45/135/231 pages of 4 bytes.
 ATQA/SAK are ISO14443 response bytes; omit for NTAGs. Block 0 carries the UID on Classic.`,
 
+	"nfc_read_save": `THIS is the tool for "scan my fob / badge / card / tag" — NOT nfc_detect alone.
+Does detect → map Type to DeviceType → BuildNFC → verify → write /ext/nfc/<name>.nfc in one call. Default timeout 15s.
+Classic-family tags: the UID-only save works as a first pass, but full block cloning needs sector keys (chain loader_mfkey + loader_mifare_nested). NTAG/Ultralight: UID + ATQA + SAK is usually sufficient.
+If no tag detected after the timeout, the operator likely needs to reposition — flat against the Flipper back (NFC antenna side). For 125 kHz LF prox fobs, use rfid_read.`,
+
 	"subghz_bruteforce_generate": `Encodes Princeton OOK: bit=1 → (+3*TE, -TE); bit=0 → (+TE, -3*TE); sync gap (+TE, -31*TE) between keys.
 Cap: 10000 keys per file. For wider sweeps, issue successive calls with sliding start/end.
 Default TE=400µs matches PT2240/SC5262. RawData produced as int32 microsecond deltas.`,

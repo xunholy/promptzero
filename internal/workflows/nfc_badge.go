@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/fileformat"
 )
 
 // NFCBadgePipeline triages an unknown NFC badge: nfc_detect → protocol
@@ -64,23 +66,45 @@ func NFCBadgePipeline(ctx context.Context, deps Deps, params map[string]interfac
 
 	// --- 2. Protocol-specific follow-up ---
 	var nextSteps []string
+
+	// When attempt_dump is set we always try a UID-only save first —
+	// it's cheap, reliable, and gives the operator a .nfc artefact even
+	// when sector keys are unknown. Previously the Classic branch
+	// launched the NFC Magic FAP (which is for WRITING to magic tags,
+	// not reading), wasting an operator turn. Real scan-and-save now
+	// produces a file under /ext/nfc/scanned_<uid>.nfc.
+	if attemptDump {
+		savePath, saveErr := saveDetectedTag(ctx, deps, info)
+		if saveErr == nil {
+			sp := PhaseResult{
+				Phase:  "uid_save",
+				Tool:   "nfc_read_save",
+				Output: fmt.Sprintf("saved UID-only capture to %s", savePath),
+				OK:     true,
+			}
+			phases = append(phases, sp)
+			recordPhase(deps.Audit, wf, sp, map[string]string{"path": savePath}, "medium")
+			extra["saved_path"] = savePath
+		} else {
+			sp := PhaseResult{
+				Phase:  "uid_save",
+				Tool:   "nfc_read_save",
+				Output: fmt.Sprintf("UID-only save failed: %v", saveErr),
+				OK:     false,
+			}
+			phases = append(phases, sp)
+			recordPhase(deps.Audit, wf, sp, nil, "medium")
+		}
+	}
+
 	switch info.Family {
 	case NFCFamilyMIFAREClassic:
 		nextSteps = append(nextSteps,
+			"UID-only save captured — full block cloning needs sector keys",
 			"Run `loader_mfkey` to recover sector keys from captured reader nonces",
 			"Once keys are known, run `loader_mifare_nested` for full key recovery",
 			"With all keys recovered, `nfc_dump_protocol Mifare_Classic` produces a full dump",
 		)
-		if attemptDump {
-			dp := runPhase("magic_launch", "loader_nfc_magic", func() (string, error) {
-				return deps.Flipper.LoaderNFCMagic()
-			})
-			phases = append(phases, dp)
-			recordPhase(deps.Audit, wf, dp, nil, "high")
-		} else {
-			phases = append(phases, internalPhase("suggest",
-				"MIFARE Classic detected — keys unknown; recommending loader_mfkey before any dump"))
-		}
 
 	case NFCFamilyUltralight:
 		// Read pages 0 and 4 (typical UID + user-data boundary).
@@ -138,6 +162,104 @@ func NFCBadgePipeline(ctx context.Context, deps Deps, params map[string]interfac
 		NextSteps: nextSteps,
 		Extra:     extra,
 	}), nil
+}
+
+// saveDetectedTag writes a UID-only .nfc file to /ext/nfc/ using the
+// same BuildNFC path the agent's nfc_read_save handler uses. Keeps the
+// workflow's automatic save in sync with the single-shot tool so
+// operators see the same file shape regardless of which surface they
+// drove the scan from. Returns the written SD path on success.
+func saveDetectedTag(ctx context.Context, deps Deps, info NFCDetectInfo) (string, error) {
+	if info.UID == "" {
+		return "", fmt.Errorf("nfc_badge: no UID to save")
+	}
+	dt := mapNFCFamilyToDeviceType(info)
+	nfcBytes, err := fileformat.BuildNFC(fileformat.NFCBuildParams{
+		DeviceType: dt,
+		UID:        info.UID,
+		ATQA:       info.ATQA,
+		SAK:        info.SAK,
+	})
+	if err != nil {
+		// Fall back to a generic "NFC" device type so an odd UID
+		// length doesn't block the capture.
+		nfcBytes, err = fileformat.BuildNFC(fileformat.NFCBuildParams{
+			DeviceType: "NFC",
+			UID:        info.UID,
+			ATQA:       info.ATQA,
+			SAK:        info.SAK,
+		})
+		if err != nil {
+			return "", err
+		}
+	}
+	name := sanitizeFilename(info.UID)
+	path := "/ext/nfc/scanned_" + name + ".nfc"
+	if werr := deps.Flipper.WriteFileCtx(ctx, path, nfcBytes); werr != nil {
+		return "", werr
+	}
+	return path, nil
+}
+
+// mapNFCFamilyToDeviceType mirrors the agent-level helper. Duplicated
+// intentionally — the agent and workflows packages don't share a
+// general NFC utility layer, and building one just to DRY two small
+// switches would pull the workflows package into unnecessary import
+// territory.
+func mapNFCFamilyToDeviceType(info NFCDetectInfo) string {
+	t := strings.ToLower(info.Protocol)
+	switch {
+	case strings.Contains(t, "ntag213"):
+		return "NTAG213"
+	case strings.Contains(t, "ntag215"):
+		return "NTAG215"
+	case strings.Contains(t, "ntag216"):
+		return "NTAG216"
+	case strings.Contains(t, "ultralight"):
+		return "Mifare Ultralight"
+	case strings.Contains(t, "classic"):
+		return "Mifare Classic"
+	case strings.Contains(t, "desfire"):
+		return "Mifare DESFire"
+	case strings.Contains(t, "plus"):
+		return "Mifare Plus"
+	}
+	// Fall back to the Family enum when Type is empty/unrecognised.
+	switch info.Family {
+	case NFCFamilyNTAG:
+		return "NTAG215"
+	case NFCFamilyUltralight:
+		return "Mifare Ultralight"
+	case NFCFamilyMIFAREClassic:
+		return "Mifare Classic"
+	case NFCFamilyDESFire:
+		return "Mifare DESFire"
+	default:
+		return "NFC"
+	}
+}
+
+// sanitizeFilename strips unsafe characters from a UID so it can be
+// embedded in an SD-card path. Matches the agent-layer helper.
+func sanitizeFilename(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9',
+			r >= 'A' && r <= 'Z',
+			r >= 'a' && r <= 'z',
+			r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	out := b.String()
+	if out == "" {
+		return "unknown"
+	}
+	return out
 }
 
 // NFCFamily is a coarse classification of the detected NFC tag.

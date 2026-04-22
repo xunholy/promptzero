@@ -96,6 +96,49 @@ func TestDispatch_TargetMemoryInertWithoutStore(t *testing.T) {
 	}
 }
 
+// mapNFCTypeToDeviceType is the helper nfcReadSave uses to translate
+// the firmware's Type string into a BuildNFC-compatible DeviceType.
+// Lock the mapping so a regression that drops NTAG215 / Classic /
+// Ultralight detection trips a clear test instead of silently saving
+// wrong-shape .nfc files.
+func TestMapNFCTypeToDeviceType(t *testing.T) {
+	cases := map[string]string{
+		"NTAG213":            "NTAG213",
+		"NTAG215":            "NTAG215",
+		"NTAG216":            "NTAG216",
+		"Mifare Classic 1K":  "Mifare Classic",
+		"MIFARE CLASSIC 4K":  "Mifare Classic",
+		"Mifare Ultralight":  "Mifare Ultralight",
+		"Mifare DESFire EV1": "Mifare DESFire",
+		"Something else":     "NFC", // unknown → typeless fallback
+		"":                   "NFC",
+	}
+	for input, want := range cases {
+		if got := mapNFCTypeToDeviceType(input); got != want {
+			t.Errorf("mapNFCTypeToDeviceType(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+// sanitizeFilename handles UID → filename stem conversion. Classic UIDs
+// come in as space-separated hex pairs; the filename must drop the
+// spaces without collapsing the bytes.
+func TestSanitizeFilename(t *testing.T) {
+	cases := map[string]string{
+		"AA BB CC DD":          "AA_BB_CC_DD",
+		"aa:bb:cc:dd:ee:ff":    "aa_bb_cc_dd_ee_ff",
+		"04 E3 A1 B2 C3 D4 E5": "04_E3_A1_B2_C3_D4_E5",
+		"":                     "unknown",
+		"   ":                  "___",
+		"legit_name-1":         "legit_name-1",
+	}
+	for input, want := range cases {
+		if got := sanitizeFilename(input); got != want {
+			t.Errorf("sanitizeFilename(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 // NRF24 payload builder wiring: confidence gate must treat name+script
 // as required. An empty params map must abstain through executeTool
 // rather than panic or silently succeed.
