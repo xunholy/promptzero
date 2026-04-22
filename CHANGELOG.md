@@ -7,6 +7,144 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-22
+
+Quality-raising tranche (Batches A–G) plus two direct operator-feedback
+fixes that landed after the live-Flipper run. The broad theme: stop the
+agent from thrashing on tasks an operator can do manually in seconds.
+
+### Added
+
+#### Quality layers
+- **Extended thinking + prospective reflection** (Batch A). Persona YAML
+  gains a `thinking:` map with per-tier token budgets (Sonnet/Opus).
+  Critical-risk tools get a Haiku-backed pre-dispatch critique appended
+  as `<prospective-critique>` so the main model can back off before
+  transmitting.
+- **Per-tool context sheets + target memory** (Batch B). `internal/toolctx`
+  bundles compile-time cheat sheets auto-appended to tool descriptions
+  (Princeton TE timing, ATQA/SAK layouts, BadUSB delay rules, and more).
+  `internal/targetmem` persists per-target facts (BSSIDs, UIDs, freq
+  tuples) across sessions via SQLite; new `target_remember` /
+  `target_recall` / `target_forget` tools.
+- **Verify-everywhere on parametric builders** (Batch C). `subghz_build`
+  / `rfid_build` / `ir_build` / `nfc_build` now run the Haiku verifier
+  on the output bytes before the SD-card write. High/critical verdicts
+  block unless `verify_bypass=true`. New RFID verifier prompt added.
+- **BM25 documentation RAG** (Batch D). `internal/rag` with embedded
+  corpus and `docs_search` tool. Pure-Go lexical retrieval — no
+  embedding service required. Tokeniser splits snake_case tool names
+  so `pmkid` matches `wifi_sniff_pmkid`.
+- **Adversarial scenarios + confidence scoring** (Batch E).
+  `internal/confidence` pre-dispatch scorer abstains on missing
+  required keys or placeholder values (TODO / fixme / `<fill_in>`).
+  Three new eval scenarios (confidence, prompt-injection quarantine,
+  placeholder vocabulary).
+- **Fine-tuning dataset export** (Batch F). `internal/trainset` +
+  `/export training-set <path>` in the REPL. JSONL and OpenAI chat
+  formats. `--success-only` and `--min-level` filters.
+- **Fine-tune operator runbook** (Batch G). `docs/fine-tuning.md` —
+  Axolotl QLoRA config, hardware sizing, vLLM serving recipe, explicit
+  reminder that a local fine-tune does not replace the safety stack.
+
+#### NRF24 Mousejack toolkit (end-to-end)
+Research-first delivery: Momentum firmware has no nrf24 CLI; everything
+routes through the Sniffer + Mousejacker FAPs. This release builds the
+full toolkit around that surface.
+
+- `nrf24_sniff_start` (Medium) — launches the NRF24 Sniffer FAP.
+- `nrf24_list_targets` (Low) — parses `/ext/apps_data/nrfsniff/addresses.txt`
+  with case normalisation and malformed-line warnings.
+- `nrf24_payload_build` (Medium) — synthesises DuckyScript for
+  `/ext/mousejacker/<name>.txt` with a mousejack-specific 5000 ms DELAY
+  cap (2.4 GHz injection loses sync on longer pauses). Runs the BadUSB
+  static validator — same lexical surface, free destructive-pattern
+  detection.
+- `nrf24_mousejack_start` (Critical) — launches the Mousejacker FAP.
+- `workflow_mousejack` — composes list_targets → build_payload →
+  re-gate FAP launch via `ConfirmSubtool` → launch. Approving the
+  composite no longer silently approves keystroke injection.
+
+#### NFC scan-and-save
+- `nfc_read_save` (Medium) — the missing "scan this fob" tool.
+  Composes `NFCDetect → DeviceType mapping → BuildNFC → verify → write`
+  to `/ext/nfc/scanned_<uid>.nfc`. Type mapping covers NTAG213/215/216,
+  Classic 1K/4K, Ultralight, DESFire. Classic-family tails the output
+  with a pointer at `loader_mfkey` + `loader_mifare_nested` so the
+  model proposes key-recovery rather than stopping at UID-only.
+
+#### Campaigns, Eval, and Operator UX
+- **Campaigns** (`workflow_*` composite) — declarative multi-step
+  engagements with dependency gating and when-clauses.
+- **Golden eval harness** — `task eval` runs 12 scenarios covering
+  handoff, snapshots, ATT&CK constraints, detectors, tool errors,
+  campaigns, confidence, prompt-injection quarantine, placeholder
+  vocabulary, mousejack payload validation, NRF24 target parsing,
+  and NFC read-save file shape.
+- **WPA3 / SAE capture path** — `wifi_sniff_sae` tool wrapping the
+  Marauder's raw sniff with a 60 s default and the
+  deauth → capture recipe documented in-result.
+- **SubGHz multi-band sweep** — `subghz_freq_sweep` generates one
+  bruteforce .sub per frequency (315/433.92/868/915 MHz) in one call.
+- **MIFARE attack-chain grounding** — cheat sheets for `loader_mfkey`,
+  `loader_mifare_nested`, `loader_nfc_magic`, `loader_picopass`,
+  `loader_seader`. The primitives already existed; the model now has
+  cached guidance on when to chain each.
+
+### Fixed
+
+- **NFC `scanner` subcommand is one-shot on Momentum** — previously
+  `NFCDetect` ran it once (~1 s) and returned "Target lost" if the
+  card wasn't already on the reader when the call fired. Now loops
+  the subcommand inside the nfc subshell until detection or the
+  caller's timeout budget is exhausted, matching the on-device Read
+  button's UX.
+- **`nfc_read_save` success=true on no-detect** — used to return the
+  helper string with `err=nil`, so audit recorded success and the
+  agent retried forever. Now returns an error on no-detect; audit
+  shows `success=false` and the agent surfaces a clean prompt to
+  the operator instead of thrashing.
+- **Quarantine bypass via `fileformat_read`** — SD-card file values
+  are attacker-writable; the read path now wraps output in
+  `<untrusted-hardware-output>`.
+- **`wifi_deauth` description contradicted its Critical risk tier** —
+  replaced "No restrictions" with "AUTHORIZED LAB/PENTEST USE ONLY"
+  + FCC 47 CFR § 15 pointer.
+- **Workflow per-primitive re-gating** — composite workflows like
+  `workflow_badusb_target_profile` no longer silently approve the
+  internal `badusb_run` call. `ConfirmSubtool` hook re-asks via the
+  same idle-timeout confirm path.
+- **`Run()` held `a.mu` across the 5-minute confirm gate** — added
+  `turnMu` for turn serialisation; `a.mu` is released around
+  `confirmWithIdleTimeout` so `SetPersona` / `RunTool` / status
+  readers can proceed during operator idle.
+- **`requiredKeys` rebuilt the tool catalog on every dispatch call** —
+  2-5 ms tax per tool call eliminated via `sync.Once` cache.
+- **RAG index lazy-init held `a.mu` for the 100-500 ms corpus build** —
+  moved outside the lock via double-check locking.
+- **`--min-level=<typo>` silently dropped the filter** in the
+  trainset exporter. Unknown levels now reject up front instead of
+  mapping to the zero value.
+- **`targetmem` and `confidence` packages shipped as orphans** —
+  `targetmem` now wired via CLI setup + three live tools; `confidence`
+  runs in `executeTool` before `dispatch` and abstains on weak inputs
+  with a `low-confidence input` tool error.
+- **Snapshot retention was unbounded** — `snapshot.Manager.Rotate`
+  trims per-session history to `DefaultRetention = 100` entries,
+  invoked lazily from `storeSnapshot`.
+- **NFC verifier too lenient** — prompt now catches SAK/DeviceType
+  mismatch, MIFARE Classic sector-trailer Access Bits errors,
+  missing/zero KeyA/KeyB, block-count overflow, NDEF-on-Classic.
+
+### Verified
+
+- `task test:full` — every package passes with `-race`.
+- `task eval` — **12/12 scenarios** pass.
+- `golangci-lint run ./...` — 0 issues.
+- Live Flipper validator (Momentum firmware, real Mifare Classic
+  on the reader): **39 pass / 0 fail / 8 skip**. `NFCDetect(8s)`
+  returns `Protocols detected: Mifare Classic` in ~9 s wall-clock.
+
 ## [0.3.0] - 2026-04-22
 
 Landmark release — every item in the P0 and P1 tranches of

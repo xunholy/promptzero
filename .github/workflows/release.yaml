@@ -104,10 +104,42 @@ jobs:
       - name: Stage install.sh alongside release assets
         run: cp install.sh dist/install.sh
 
+      # Extract the CHANGELOG section matching the tag. The pattern
+      # mirrors Keep a Changelog: ## [<version>] - <date>. Falling
+      # back to auto-generated notes when no section is found means a
+      # forgotten CHANGELOG bump never blocks a release. The tag name
+      # flows through an env var (safe pattern) and is then shell-
+      # expanded under double quotes — no direct ${{ ... }} inside
+      # run: so no workflow-injection surface.
+      - name: Extract release notes from CHANGELOG
+        id: extract_notes
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          version="${TAG_NAME#v}"
+          notes_file="dist/release-notes.md"
+          awk -v ver="$version" '
+            /^## \[/{
+              if (capture) { exit }
+              if ($0 ~ "^## \\[" ver "\\]") { capture = 1; next }
+            }
+            capture { print }
+          ' CHANGELOG.md > "$notes_file"
+
+          if [ -s "$notes_file" ]; then
+            echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
+            echo "--- release notes for $TAG_NAME ---"
+            cat "$notes_file"
+          else
+            echo "no CHANGELOG section found for $TAG_NAME; falling back to auto-generated notes"
+            rm -f "$notes_file"
+          fi
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: ${{ steps.extract_notes.outputs.notes_file }}
+          generate_release_notes: ${{ steps.extract_notes.outputs.notes_file == '' }}
           files: |
             dist/*.tar.gz
             dist/*.zip
