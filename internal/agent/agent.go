@@ -896,6 +896,15 @@ func NewToolErrorForTest(toolName string, err error, excerpt string) ToolError {
 	return newToolError(toolName, err, excerpt)
 }
 
+// QuarantineForTest exposes the internal quarantine wrapping helper
+// to the eval harness so adversarial scenarios can assert that
+// hardware-origin output gets framed as untrusted before reaching
+// the main model. Production callers use the unexported
+// quarantineOutput directly.
+func QuarantineForTest(toolName, output string) string {
+	return quarantineOutput(toolName, output, false)
+}
+
 // executeTool dispatches a single tool call. On failure the returned
 // string is a JSON-encoded ToolError (see toolerror.go) so reflexion
 // (P0-05), detectors (P1-10), and report generation can pattern-match
