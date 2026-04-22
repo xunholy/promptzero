@@ -12,6 +12,7 @@ import (
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/campaign"
 	"github.com/xunholy/promptzero/internal/confidence"
+	"github.com/xunholy/promptzero/internal/fileformat"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/session"
 	"github.com/xunholy/promptzero/internal/snapshot"
@@ -44,6 +45,9 @@ func Default(t *testing.T) []Scenario {
 		confidenceAbstainScenario(t),
 		promptInjectionScenario(t),
 		placeholderArgScenario(t),
+		// NRF24 / Mousejack — parametric builder + parser
+		mousejackPayloadBuildsScenario(t),
+		nrf24TargetParserScenario(t),
 	}
 }
 
@@ -346,6 +350,67 @@ func placeholderArgScenario(t *testing.T) Scenario {
 				if !rep.ShouldAbstain() {
 					return fmt.Errorf("placeholder %q did not abstain: %+v", v, rep)
 				}
+			}
+			return nil
+		},
+	}
+}
+
+// mousejackPayloadBuildsScenario: feed the DuckyScript builder a
+// plausible payload, assert it emits bytes containing the keystrokes
+// and the REM comment. Locks the mousejack-specific delay-cap so a
+// regression that raises or drops it trips here.
+func mousejackPayloadBuildsScenario(t *testing.T) Scenario {
+	t.Helper()
+	return Scenario{
+		Name:        "mousejack_payload_builds",
+		Description: "NRF24 Mousejack DuckyScript builder produces a valid payload with the delay cap enforced",
+		Tags:        []string{"nrf24", "mousejack"},
+		Run: func() error {
+			raw, err := fileformat.BuildMousejackPayload(fileformat.MousejackPayloadParams{
+				Script:   "REM benign\nGUI r\nDELAY 500\nSTRING calc\nENTER\n",
+				TargetOS: "windows",
+			})
+			if err != nil {
+				return fmt.Errorf("build: %w", err)
+			}
+			if !strings.Contains(string(raw), "STRING calc") {
+				return fmt.Errorf("payload missing expected keystroke: %q", raw)
+			}
+			// Delay ceiling: 20s must be rejected by default.
+			if _, err := fileformat.BuildMousejackPayload(fileformat.MousejackPayloadParams{
+				Script: "DELAY 20000\n",
+			}); err == nil {
+				return fmt.Errorf("expected 20s DELAY to be rejected")
+			}
+			return nil
+		},
+	}
+}
+
+// nrf24TargetParserScenario: parse a realistic addresses.txt snapshot
+// and confirm it normalises address casing, preserves rate codes, and
+// flags malformed lines as warnings instead of failing the whole read.
+func nrf24TargetParserScenario(t *testing.T) Scenario {
+	t.Helper()
+	return Scenario{
+		Name:        "nrf24_target_parser_handles_real_input",
+		Description: "NRF24 addresses.txt parser normalises case and surfaces bad lines as warnings",
+		Tags:        []string{"nrf24"},
+		Run: func() error {
+			src := "a1:b2:c3:d4:e5,2\nnot-an-address\n11:22:33:44:55,1\n"
+			targets, warnings, err := fileformat.ParseNRF24Addresses(src)
+			if err != nil {
+				return fmt.Errorf("parse: %w", err)
+			}
+			if len(targets) != 2 {
+				return fmt.Errorf("want 2 good targets, got %d", len(targets))
+			}
+			if targets[0].Address != "A1:B2:C3:D4:E5" {
+				return fmt.Errorf("parser should uppercase; got %q", targets[0].Address)
+			}
+			if len(warnings) != 1 {
+				return fmt.Errorf("want 1 warning for malformed line, got %d: %v", len(warnings), warnings)
 			}
 			return nil
 		},

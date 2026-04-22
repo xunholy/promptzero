@@ -1242,9 +1242,23 @@ func (f *Flipper) LoaderSignalGenerator() (string, error) {
 }
 
 // LoaderNRF24Mousejacker launches the "NRF24 Mousejacker" FAP. Requires an
-// external NRF24 devboard on the GPIO header.
+// external NRF24L01+ devboard wired to the Flipper's GPIO header. The FAP
+// takes over the screen and reads target addresses from
+// /ext/apps_data/nrfsniff/addresses.txt plus DuckyScript payloads from
+// /ext/mousejacker/*.txt. Momentum firmware exposes no nrf24 CLI, so all
+// run-time interaction happens through the FAP UI (navigate via
+// input_send; back-button to exit).
 func (f *Flipper) LoaderNRF24Mousejacker() (string, error) {
 	return f.Exec(`loader open "NRF24 Mousejacker"`)
+}
+
+// LoaderNRF24Sniffer launches the companion "NRF24 Sniffer" FAP. The FAP
+// scans 2.4 GHz bands for active wireless-peripheral addresses and writes
+// hits to /ext/apps_data/nrfsniff/addresses.txt (comma-separated
+// address,rate lines). Prerequisite for any Mousejack flow — the FAP UI
+// is operator-driven; there is no CLI equivalent.
+func (f *Flipper) LoaderNRF24Sniffer() (string, error) {
+	return f.Exec(`loader open "NRF24 Sniffer"`)
 }
 
 // LoaderUARTTerminal launches the "UART Terminal" FAP for serial comms on the

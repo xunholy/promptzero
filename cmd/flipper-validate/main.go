@@ -630,6 +630,15 @@ func buildCases() []tcase {
 			skip: "SKIPPED — globally off-limits (puts device into DFU, physical recovery required)"},
 		{category: "badusb", name: "BadUSBRun",
 			skip: "SKIPPED — globally off-limits (keystrokes typed into host; not authorised)"},
+		// NRF24 launchers — require an external NRF24L01+ devboard on
+		// the GPIO header. Launching the FAP itself would freeze the
+		// CLI waiting for the operator to press back. Skip by default;
+		// live validation needs a dedicated harness with input_send to
+		// navigate + exit.
+		{category: "nrf24", name: "LoaderNRF24Sniffer",
+			skip: "SKIPPED — FAP launch would wedge CLI until back-button (needs dedicated NRF24 harness)"},
+		{category: "nrf24", name: "LoaderNRF24Mousejacker",
+			skip: "SKIPPED — FAP launch would wedge CLI + requires NRF24L01+ module on GPIO header"},
 
 		// Reboot LAST — expect serial drop, reconnect logic runs after.
 		{category: "admin", name: "Reboot", reboot: true, run: func(ctx context.Context, f *flipper.Flipper) (string, error) {

@@ -113,6 +113,22 @@ PicoPass cards are HF (13.56 MHz), NOT to be confused with HID Prox (LF 125 kHz 
 	"loader_seader": `SEADER FAP — advanced iClass SE / SEOS attack toolkit (beyond PicoPass scope).
 Requires SEOS diversification keys on the SD card; factory keys are widely published for SE but SEOS itself remains hard target.
 Use for controlled-lab authorised engagements only — many deployments of iClass SE are high-value access systems.`,
+
+	"nrf24_sniff_start": `Launches the NRF24 Sniffer FAP. Passive 2.4 GHz scan that writes captured peripheral addresses to /ext/apps_data/nrfsniff/addresses.txt (one ADDR,RATE per line).
+Requires an NRF24L01+ devboard wired to the GPIO header (pins 2,3,4,5,6,7 — CE=PA2 typical). The Flipper has no nrf24 CLI; operator drives the FAP UI and exits via the back button.
+Momentum firmware typically writes to the nrfsniff/ path; Unleashed/RogueMaster variants may use nrf24_sniffer/ — check both if the list is empty.`,
+
+	"nrf24_list_targets": `Parses /ext/apps_data/nrfsniff/addresses.txt and returns structured targets.
+Rate decoding: 1=1 Mbps (Microsoft wireless), 2=2 Mbps (Logitech Unifying / MX family), 250=250 kbps (rare).
+Empty result means run nrf24_sniff_start first. Warnings surface malformed lines without failing the read.`,
+
+	"nrf24_payload_build": `Synthesises a DuckyScript payload for /ext/mousejacker/<name>.txt. Runs the BadUSB static validator (same lexical format), so destructive patterns (rm -rf, reverse shells, persistence) block by default.
+Mousejack-specific rule: DELAY capped at 5000 ms by default — 2.4 GHz injection loses sync on longer pauses. Override via max_delay_ms if you know better.
+Common injection patterns: GUI r / DELAY 500 / STRING powershell -c "..." / ENTER. Keep scripts under ~30 lines for reliability.`,
+
+	"nrf24_mousejack_start": `Launches the NRF24 Mousejacker FAP. The FAP reads targets from /ext/apps_data/nrfsniff/addresses.txt and payloads from /ext/mousejacker/ — populate BOTH before launching.
+Critical-risk: this leads directly to keystroke injection into the paired host, same blast radius as BadUSB.
+PromptZero cannot script the FAP beyond launching it; keystroke sequence runs under operator UI control. Back button exits.`,
 }
 
 // Get returns the cheat sheet for toolName, or "" when no sheet is

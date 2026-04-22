@@ -644,6 +644,18 @@ func buildWorkflowTools() []anthropic.ToolUnionParam {
 			),
 			"description", "target_os",
 		),
+		tool("workflow_mousejack",
+			"NRF24 Mousejack engagement composite: read existing sniffer targets (/ext/apps_data/nrfsniff/addresses.txt), build a DuckyScript payload for /ext/mousejacker/<name>.txt, re-gate the FAP launch through the operator confirmation hook, then launch the Mousejacker FAP. Does NOT run the sniffer itself — call nrf24_sniff_start first if the target list is empty. Critical-risk: culminates in keystroke injection at the paired host.",
+			props(
+				reqProp("name", "string", "Payload filename (written to /ext/mousejacker/<name>.txt)"),
+				reqProp("script", "string", "DuckyScript body"),
+				optProp("target_os", "string", "windows | macos | linux (default windows)"),
+				optProp("max_delay_ms", "integer", "Override the 5000 ms DELAY ceiling"),
+				optProp("addresses_path", "string", "Override the sniffer output path"),
+				optProp("launch", "boolean", "Launch the FAP after deploy (default true). Set false to stage only."),
+			),
+			"name", "script",
+		),
 	}
 }
 

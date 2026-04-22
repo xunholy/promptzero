@@ -46,6 +46,7 @@ var toolLevels = func() map[string]Level {
 		"audit_query", "audit_export", "audit_stats",
 		"docs_search",
 		"target_recall",
+		"nrf24_list_targets",
 		"discover_apps",
 		"analyze_image",
 		"list_apps",
@@ -100,6 +101,11 @@ var toolLevels = func() map[string]Level {
 		// / rfid_write / nfc_emulate separately.
 		"subghz_build", "rfid_build", "ir_build", "nfc_build",
 		"subghz_bruteforce_generate", "subghz_freq_sweep",
+		// NRF24 — sniffer is passive 2.4 GHz scan (Medium), payload
+		// build writes a DuckyScript file to SD (Medium). Medium is
+		// the correct tier because nothing injects until a separate
+		// Critical tool (nrf24_mousejack_start) launches the FAP.
+		"nrf24_sniff_start", "nrf24_payload_build",
 		// Target memory mutators (Batch B). Medium because a wrong
 		// Remember/Forget can mislead future sessions, but nothing
 		// transmits over the air.
@@ -153,6 +159,11 @@ var toolLevels = func() map[string]Level {
 		"flipper_raw_cli",
 		"loader_subghz_bruteforcer",
 		"loader_nrf24mousejacker",
+		// NRF24 Mousejacker FAP launch — immediately precedes
+		// keystroke injection into the target's paired host. Same
+		// blast radius as badusb_run; same tier.
+		"nrf24_mousejack_start",
+		"workflow_mousejack",
 		"js_run",
 		"power_reboot_dfu",
 		"update_install",

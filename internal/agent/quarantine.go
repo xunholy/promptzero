@@ -68,6 +68,7 @@ var notWrappedTools = map[string]struct{}{
 	"workflow_phys_pentest_badge_walk":  {},
 	"workflow_hw_recon_blackbox_device": {},
 	"workflow_badusb_target_profile":    {},
+	"workflow_mousejack":                {},
 }
 
 // isUntrustedHardwareOutput reports whether a tool's successful output

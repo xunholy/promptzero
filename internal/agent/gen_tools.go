@@ -187,6 +187,37 @@ func buildGenTools() []anthropic.ToolUnionParam {
 			props(),
 		),
 
+		// --- NRF24 / Mousejack (2.4 GHz wireless peripherals) ---
+		// Flipper Zero's NRF24 functionality is FAP-only — Momentum
+		// firmware exposes no nrf24 CLI subcommand. This tool family
+		// wraps the FAP launchers + the SD-card artefacts (sniffer
+		// output, DuckyScript payloads) the FAPs consume.
+		tool("nrf24_sniff_start",
+			"Launch the NRF24 Sniffer FAP. Scans 2.4 GHz bands for active wireless-peripheral addresses (Logitech Unifying, Microsoft Wireless, some keyboards/mice) and writes hits to /ext/apps_data/nrfsniff/addresses.txt. Requires an NRF24L01+ module wired to the Flipper GPIO header. Operator drives the UI; exit via the back button.",
+			props(),
+		),
+		tool("nrf24_list_targets",
+			"Read and parse the NRF24 Sniffer's captured address list from /ext/apps_data/nrfsniff/addresses.txt. Returns a JSON array of {address, rate} entries. Invalid lines are returned as warnings. Run this before building a mousejack payload so the operator sees which targets are live.",
+			props(
+				optProp("path", "string", "SD path to the addresses file (default /ext/apps_data/nrfsniff/addresses.txt)"),
+			),
+		),
+		tool("nrf24_payload_build",
+			"Synthesise a DuckyScript keystroke payload for the NRF24 Mousejacker FAP and write it to /ext/mousejacker/<name>.txt. The script is validated against the mousejack-specific DELAY ceiling (2.4 GHz injection loses sync on long pauses) and run through the BadUSB static validator for destructive-pattern detection. High/critical validator hits block write unless verify_bypass=true.",
+			props(
+				reqProp("name", "string", "Payload filename (written to /ext/mousejacker/<name>.txt)"),
+				reqProp("script", "string", "DuckyScript body — STRING/DELAY/GUI combos the FAP will replay at the remote keyboard"),
+				optProp("target_os", "string", "Target OS hint: windows, macos, linux (default windows)"),
+				optProp("max_delay_ms", "integer", "Override the default 5000 ms DELAY ceiling"),
+				optProp("verify_bypass", "boolean", "Skip the block on critical static-validator findings"),
+			),
+			"name", "script",
+		),
+		tool("nrf24_mousejack_start",
+			"Launch the NRF24 Mousejacker FAP. The FAP reads targets from /ext/apps_data/nrfsniff/addresses.txt and payloads from /ext/mousejacker/ — populate both before launching. Keystroke injection happens via the FAP UI; PromptZero cannot drive it beyond input_send button presses. Back button exits. Critical-risk tool.",
+			props(),
+		),
+
 		// --- RAG / docs retrieval (Batch D) ---
 		tool("docs_search",
 			"Lexical (BM25) search over the bundled PromptZero documentation — tool reference, scenario recipes, prompt patterns. Use when you need exact-term grounding: protocol names (EM4100, PT2240), register quirks (ATQA/SAK), CLI flags, file-format field names. Returns up to K ranked snippets with source paths; read the full doc via fileformat_read or by name.",

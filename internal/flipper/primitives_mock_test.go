@@ -106,6 +106,31 @@ func TestLoaderMFKey(t *testing.T) {
 	}
 }
 
+// TestLoaderNRF24Sniffer covers the companion sniffer FAP launcher added
+// alongside the existing Mousejacker loader. Verifies the exact quoted
+// name the FAP registry expects.
+func TestLoaderNRF24Sniffer(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("loader", func(args []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	if _, err := flip.LoaderNRF24Sniffer(); err != nil {
+		t.Fatalf("LoaderNRF24Sniffer: %v", err)
+	}
+	want := `loader open "NRF24 Sniffer"`
+	var found bool
+	for _, l := range m.Lines() {
+		if strings.TrimSpace(l) == want {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected %q; lines=%v", want, m.Lines())
+	}
+}
+
 // TestLoaderSubGHzBruteforcerQuotesName verifies that a multi-word FAP name
 // is sent as a single quoted argument so the Flipper CLI parses it as one
 // application identifier rather than splitting on whitespace.

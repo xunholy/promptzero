@@ -7,7 +7,12 @@ import (
 	"testing"
 
 	"github.com/xunholy/promptzero/internal/targetmem"
+	"github.com/xunholy/promptzero/internal/toolctx"
 )
+
+// toolctxHas is a local helper so the wiring test doesn't reach into
+// unexported state — it defers to the package's own presence check.
+func toolctxHas(name string) bool { return toolctx.Has(name) }
 
 // wiring_test covers the post-review fixes that plug Batch B (target
 // memory) and Batch E (confidence) into the live dispatch path. The
@@ -88,6 +93,37 @@ func TestDispatch_TargetMemoryInertWithoutStore(t *testing.T) {
 	}
 	if !strings.Contains(out, "target memory not initialised") {
 		t.Errorf("error should explain why: %q", out)
+	}
+}
+
+// NRF24 payload builder wiring: confidence gate must treat name+script
+// as required. An empty params map must abstain through executeTool
+// rather than panic or silently succeed.
+func TestDispatch_NRF24PayloadBuildAbstainsOnEmptyParams(t *testing.T) {
+	a := agentForModelTest("claude-sonnet-4-6", nil)
+	out, isErr := a.executeTool(context.Background(), "nrf24_payload_build", json.RawMessage(`{}`))
+	if !isErr {
+		t.Fatalf("empty params must abstain: %q", out)
+	}
+	if !strings.Contains(out, "low-confidence") {
+		t.Errorf("abstention marker missing: %q", out)
+	}
+}
+
+// Lock the surface area: every new NRF24 tool carries a toolctx sheet
+// so the model sees guidance at registration time. A future refactor
+// that drops a sheet should fail this test with a specific name.
+func TestNRF24_ToolctxCoverage(t *testing.T) {
+	required := []string{
+		"nrf24_sniff_start",
+		"nrf24_list_targets",
+		"nrf24_payload_build",
+		"nrf24_mousejack_start",
+	}
+	for _, name := range required {
+		if !toolctxHas(name) {
+			t.Errorf("tool %q missing cheat sheet", name)
+		}
 	}
 }
 

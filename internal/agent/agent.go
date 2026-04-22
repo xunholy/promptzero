@@ -1274,6 +1274,16 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "docs_search":
 		return a.docsSearch(str(p, "query"), intOr(p, "k", 5))
 
+	// --- NRF24 / Mousejack ---
+	case "nrf24_sniff_start":
+		return a.flipper.LoaderNRF24Sniffer()
+	case "nrf24_mousejack_start":
+		return a.flipper.LoaderNRF24Mousejacker()
+	case "nrf24_list_targets":
+		return a.nrf24ListTargets(ctx, str(p, "path"))
+	case "nrf24_payload_build":
+		return a.nrf24PayloadBuild(ctx, p)
+
 	// --- Target memory (Batch B) ---
 	case "target_remember":
 		return a.targetRemember(p)
@@ -1319,6 +1329,8 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return workflows.HWReconBlackbox(ctx, a.workflowDeps(), p)
 	case "workflow_badusb_target_profile":
 		return workflows.BadUSBTargetProfile(ctx, a.workflowDeps(), p)
+	case "workflow_mousejack":
+		return workflows.Mousejack(ctx, a.workflowDeps(), p)
 
 	// --- Marauder WiFi ---
 	case "wifi_scan_ap":
@@ -1899,6 +1911,72 @@ func (a *Agent) auditStats() (string, error) {
 		return "Audit logging not enabled", nil
 	}
 	return a.auditLog.Stats()
+}
+
+// --- NRF24 / Mousejack Handlers ---
+
+// nrf24ListTargets reads the NRF24 Sniffer FAP's captured address list
+// from the SD card and returns it as structured JSON. Missing file is
+// returned as a friendly "no targets yet" message, not an error — the
+// caller should launch the sniffer FAP first.
+func (a *Agent) nrf24ListTargets(ctx context.Context, path string) (string, error) {
+	if path == "" {
+		path = "/ext/apps_data/nrfsniff/addresses.txt"
+	}
+	raw, err := a.flipper.StorageRead(path)
+	if err != nil {
+		// The FAP writes the file only after a successful scan.
+		// Surface an actionable message rather than a raw serial err.
+		return fmt.Sprintf("no NRF24 targets captured yet (%s not readable: %v). Run nrf24_sniff_start first.", path, err), nil
+	}
+	targets, warnings, err := fileformat.ParseNRF24Addresses(raw)
+	if err != nil {
+		return fmt.Sprintf("addresses.txt unparseable: %v\n\nRaw content:\n%s", err, raw), nil
+	}
+	payload := map[string]interface{}{
+		"path":     path,
+		"targets":  targets,
+		"warnings": warnings,
+	}
+	b, _ := json.Marshal(payload)
+	return string(b), nil
+}
+
+// nrf24PayloadBuild synthesises a DuckyScript payload for the NRF24
+// Mouse Jacker FAP and writes it to /ext/mousejacker/<name>.txt. Runs
+// the same static validator the BadUSB path uses — DuckyScript is the
+// same lexical surface so destructive patterns are caught identically.
+// High/critical findings block the SD write unless verify_bypass=true.
+func (a *Agent) nrf24PayloadBuild(ctx context.Context, p map[string]interface{}) (string, error) {
+	name := str(p, "name")
+	script := str(p, "script")
+	if name == "" {
+		return "", fmt.Errorf("name required")
+	}
+	if script == "" {
+		return "", fmt.Errorf("script required")
+	}
+	raw, err := fileformat.BuildMousejackPayload(fileformat.MousejackPayloadParams{
+		Script:     script,
+		TargetOS:   str(p, "target_os"),
+		MaxDelayMS: intOr(p, "max_delay_ms", 0),
+	})
+	if err != nil {
+		return "", err
+	}
+	// Reuse the BadUSB static validator — DuckyScript is the same
+	// lexical surface, so rm_rf / reverse shell / persistence rules
+	// are a free lift.
+	rep := validator.Validate(name, string(raw))
+	if rep.Has(validator.SeverityCritical) && !boolOr(p, "verify_bypass", false) {
+		return fmt.Sprintf("mousejack payload blocked by static validator.\n\n%s\n\nPass verify_bypass=true to override.", renderValidatorReport(rep)), nil
+	}
+	path := "/ext/mousejacker/" + name + ".txt"
+	a.snapshotBeforeWrite(ctx, path)
+	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	return fmt.Sprintf("built %d-byte mousejack payload → %s\n%s", len(raw), path, renderValidatorReport(rep)), nil
 }
 
 // --- RAG / Docs Retrieval (Batch D) ---
