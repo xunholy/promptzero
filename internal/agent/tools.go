@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/toolctx"
 )
 
 func buildTools() []anthropic.ToolUnionParam {
@@ -701,7 +702,7 @@ func tool(name, desc string, properties map[string]interface{}, required ...stri
 	return anthropic.ToolUnionParam{
 		OfTool: &anthropic.ToolParam{
 			Name:        name,
-			Description: anthropic.String(desc),
+			Description: anthropic.String(toolctx.EnrichDescription(name, desc)),
 			InputSchema: input,
 		},
 	}
