@@ -174,8 +174,21 @@ var cases = []Usecase{
 			if !parsed.Detected {
 				return "no tag detected after 8s (place a card on the NFC antenna to exercise this)", nil
 			}
-			return fmt.Sprintf("detected %s, UID=%s, SAK=%s",
-				parsed.Type, parsed.UID, parsed.SAK), nil
+			var parts []string
+			parts = append(parts, "detected "+parsed.Type)
+			if parsed.UID != "" {
+				parts = append(parts, "UID="+parsed.UID)
+			}
+			if parsed.ATQA != "" {
+				parts = append(parts, "ATQA="+parsed.ATQA)
+			}
+			if parsed.SAK != "" {
+				parts = append(parts, "SAK="+parsed.SAK)
+			}
+			if parsed.UID == "" {
+				parts = append(parts, "(Momentum's scanner outputs protocol only; UID harvest needs nfc_dump_protocol / loader_mfkey for Classic)")
+			}
+			return strings.Join(parts, ", "), nil
 		},
 	},
 	{
@@ -191,6 +204,9 @@ var cases = []Usecase{
 			parsed := flipper.ParseNFCDetect(raw)
 			if !parsed.Detected {
 				return "no tag detected — place card on NFC antenna and retry", nil
+			}
+			if parsed.UID == "" {
+				return fmt.Sprintf("detected %s but scanner returned no UID on this firmware — full capture needs nfc_dump_protocol (keys required for Classic)", parsed.Type), nil
 			}
 			dt := mapTypeToDeviceType(parsed.Type)
 			nfcBytes, err := fileformat.BuildNFC(fileformat.NFCBuildParams{

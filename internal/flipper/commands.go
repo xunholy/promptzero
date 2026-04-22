@@ -245,6 +245,18 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 			time.Sleep(sleep)
 		}
 
+		// Note on UID harvest: Momentum's scanner subcommand
+		// identifies the protocol family ("Protocols detected:
+		// Mifare Classic") but does NOT emit UID/ATQA/SAK. The
+		// scanner's internal ISO14443-A poll halts the card after
+		// SELECT, so a raw WUPA+ANTICOLL follow-up from here hits
+		// the card in HALT with no field active and returns Timeout.
+		// Real UID capture requires the protocol-specific dump
+		// subcommand (`dump -p <proto> <path>`) which runs its own
+		// field-management and anticol sequence. See the handler
+		// layer: nfc_read_save chains to nfc_dump_protocol when the
+		// scanner didn't produce a UID.
+
 		// Exit the NFC subshell — robust to firmware variants that
 		// consume the first prompt during the transition back to the
 		// main shell. Field experience (use-case run after a no-detect
@@ -290,14 +302,27 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 // parsing happens in flipper.ParseNFCDetect at the caller layer; this
 // just needs a reliable "card present" signal so NFCDetect can stop
 // iterating the moment something lands on the reader.
+//
+// Two firmware shapes to cover:
+//
+//   - Older stock/Unleashed: emits a "UID: ..." line + ATQA/SAK/Type
+//     block. A real detection always has "UID:".
+//   - Momentum (and later Unleashed rebases): scanner outputs
+//     "Protocols detected: Mifare Classic" and omits UID entirely.
+//     UID harvest requires a follow-up command the loop doesn't own.
+//
+// Both shapes imply a card in range. The loop breaks on either so
+// the caller doesn't wait out the full timeout budget on a firmware
+// that uses the newer output.
 func looksLikeNFCDetection(raw string) bool {
 	lower := strings.ToLower(raw)
 	if strings.Contains(lower, "target lost") {
 		return false
 	}
-	// A real detection always emits UID. The scanner occasionally
-	// prefixes with "[ISO14443..." but UID is the load-bearing line.
-	return strings.Contains(lower, "uid:") || strings.Contains(lower, "uid =")
+	return strings.Contains(lower, "uid:") ||
+		strings.Contains(lower, "uid =") ||
+		strings.Contains(lower, "protocols detected:") ||
+		strings.Contains(lower, "protocol detected:")
 }
 
 // NFCEmulate launches the NFC emulation app via the loader, waits for the

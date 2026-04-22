@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-04-23
+
+Scanner-loop fix for Momentum firmware. The v0.3.2 work got the loop
+iterating correctly but still reported "no tag detected" on a card
+that was clearly in range, because the parser and detection signal
+were tuned for the older firmware output shape that includes a
+`UID:` line. Momentum's scanner subcommand emits only
+`Protocols detected: Mifare Classic` (no UID/ATQA/SAK) — the loop
+kept retrying until timeout looking for a UID that will never appear
+at this layer.
+
+### Changed
+
+- **Scanner-loop detection signal now matches Momentum's shape.**
+  `looksLikeNFCDetection` recognises both the older
+  `UID:` / `UID =` form AND the newer `Protocols detected:` /
+  `Protocol detected:` form. The loop breaks immediately on either
+  so live scan time drops from the full 8 s timeout budget to
+  ~1.2 s when a card is present.
+- **`ParseNFCDetect` fills `Type` from `Protocols detected:`** when
+  no explicit `Type:` line is present. Callers see
+  `Detected=true` with a concrete protocol family even on firmware
+  that doesn't emit UID from scanner alone.
+
+### Fixed
+
+- **NFC use case reported "no tag detected" on a card in range.**
+  Root cause: older detection signal only accepted `UID:` as a
+  "card present" marker. Now fixed — live-Flipper `task usecases
+  -- -category=nfc` run with a Mifare Classic on the reader
+  reports `detected Mifare Classic` in 1.2 s.
+- **`nfc_read_save` handler was silent about the Momentum UID gap.**
+  Now returns an actionable message pointing at
+  `nfc_dump_protocol` + `loader_mfkey` when scanner detected a
+  Classic family but didn't provide UID, so operators know the
+  next step instead of staring at a half-done scan.
+
+### Verified
+
+- `task test:full` — every package passes with `-race`
+  (new `TestParseNFCDetect_MomentumProtocolOnly` locks the parser
+  against this regression).
+- `task eval` — **12/12 scenarios** pass.
+- `golangci-lint run ./...` — 0 issues.
+- Live-Flipper `task usecases` with Mifare Classic on reader:
+  **pass=16 skip=3 fail=0** (unchanged counts, NFC detection
+  latency 8.7 s → 1.2 s, correct protocol family reported).
+
 ## [0.3.2] - 2026-04-22
 
 Two live-Flipper session bugs caught by a new operator-task harness —

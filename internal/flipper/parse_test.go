@@ -77,6 +77,31 @@ func TestParseNFCDetect_Empty(t *testing.T) {
 	}
 }
 
+// TestParseNFCDetect_MomentumProtocolOnly locks the shorter output shape
+// Momentum firmware emits from `nfc scanner`. The scanner returns
+// protocol family only — no UID/ATQA/SAK — and older parsers left
+// Detected=false, which made the agent's scan-loop thrash. The parser
+// now sets Detected=true and fills Type from the "Protocols detected:"
+// line so callers can surface identification even when UID harvest
+// needs a follow-up command.
+func TestParseNFCDetect_MomentumProtocolOnly(t *testing.T) {
+	raw := `Press Ctrl+C to abort
+
+Protocols detected: Mifare Classic
+
+[nfc]`
+	r := ParseNFCDetect(raw)
+	if !r.Detected {
+		t.Fatal("Momentum scanner output should mark Detected=true")
+	}
+	if r.Type != "Mifare Classic" {
+		t.Errorf("Type = %q, want Mifare Classic", r.Type)
+	}
+	if r.UID != "" {
+		t.Errorf("UID should be empty for this firmware shape, got %q", r.UID)
+	}
+}
+
 func TestParseNFCDetect_ColonSeparator(t *testing.T) {
 	// Some firmware versions use colons as byte separators: "04:A5:B3:..."
 	raw := `[ISO14443-3a]

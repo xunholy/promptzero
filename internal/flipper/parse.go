@@ -36,6 +36,16 @@ var (
 	nfcTypeRE     = regexp.MustCompile(`(?im)^\s*Type\s*[:=]\s*(.+)\s*$`)
 	nfcTechRE     = regexp.MustCompile(`\[([^\]]+)\]`)
 	nfcNotFoundRE = regexp.MustCompile(`(?i)(target lost|no.{0,10}(tag|card)|not found|timeout)`)
+
+	// Momentum's scanner subcommand emits a shorter output shape:
+	//   "Protocols detected: Mifare Classic"
+	// instead of the fuller UID/ATQA/SAK/Type block older firmware (and
+	// our test fixtures) produce. The scanner identifies the protocol
+	// family but does NOT collect UID on its own — operators need a
+	// follow-up read (nfc_apdu / nfc_raw_frame / nfc_dump_protocol)
+	// to harvest the full identity. We still mark Detected=true on
+	// this shape so callers can surface "card identified" immediately.
+	nfcProtocolsRE = regexp.MustCompile(`(?im)^\s*Protocols? detected\s*[:=]\s*(.+?)\s*$`)
 )
 
 // ParseNFCDetect parses the output of the nfc subshell scanner
@@ -56,6 +66,14 @@ func ParseNFCDetect(raw string) NFCDetectResult {
 	}
 	if m := nfcTypeRE.FindStringSubmatch(raw); m != nil {
 		r.Type = strings.TrimSpace(m[1])
+	}
+	// Momentum's "Protocols detected: <type>" takes priority when the
+	// explicit Type: line is absent, so callers still see a concrete
+	// Type string and Detected=true on the newer output shape.
+	if r.Type == "" {
+		if m := nfcProtocolsRE.FindStringSubmatch(raw); m != nil {
+			r.Type = strings.TrimSpace(m[1])
+		}
 	}
 	if m := nfcTechRE.FindStringSubmatch(raw); m != nil {
 		r.Technology = strings.TrimSpace(m[1])
