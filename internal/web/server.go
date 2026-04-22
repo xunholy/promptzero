@@ -110,7 +110,7 @@ type Server struct {
 	mu          sync.Mutex
 	conns       map[*sessionConn]struct{}
 	currentTurn *turnState
-	confirms    map[string]chan agent.Decision
+	confirms    map[string]chan agent.ConfirmResponse
 
 	// Optional data sources for the REPL-parity panels. Nil when the host
 	// process has not wired a given subsystem — handlers return 503 with a
@@ -185,7 +185,11 @@ type wsInbound struct {
 	TurnID    string `json:"turn_id,omitempty"`
 	ConfirmID string `json:"confirm_id,omitempty"`
 	Decision  string `json:"decision,omitempty"`
-	T         string `json:"t,omitempty"`
+	// Revision carries the operator's revision text when
+	// Decision == "revise" (see agent.DecisionRevise). Empty for
+	// every other decision kind.
+	Revision string `json:"revision,omitempty"`
+	T        string `json:"t,omitempty"`
 }
 
 // NewServer creates a web server bound to addr. If the host portion of addr
@@ -201,7 +205,7 @@ func NewServer(addr string, ag agentDriver, v *voice.Engine) *Server {
 		voice:             v,
 		addr:              addr,
 		conns:             make(map[*sessionConn]struct{}),
-		confirms:          make(map[string]chan agent.Decision),
+		confirms:          make(map[string]chan agent.ConfirmResponse),
 		heartbeatInterval: 30 * time.Second,
 		heartbeatTimeout:  60 * time.Second,
 		writeTimeout:      30 * time.Second,
@@ -430,7 +434,7 @@ func (s *Server) attachAgentCallbacks() {
 			return agent.ConfirmResponse{Decision: agent.DecisionDeny}
 		}
 		id := newID()
-		ch := make(chan agent.Decision, 1)
+		ch := make(chan agent.ConfirmResponse, 1)
 		s.mu.Lock()
 		s.confirms[id] = ch
 		s.mu.Unlock()
@@ -447,14 +451,14 @@ func (s *Server) attachAgentCallbacks() {
 			"confirm_id": id,
 			"turn_id":    ts.id,
 		})
-		// The web UI doesn't surface a revision prompt today; keep
-		// the shape compatible by mapping the legacy Decision channel
-		// into a bare ConfirmResponse. When the web frontend gains
-		// revise support, extend the channel to carry text alongside
-		// the decision.
+		// Full ConfirmResponse carries both the decision and the
+		// revision text — DecisionRevise from a future web client
+		// reaches the agent intact rather than silently collapsing
+		// to DecisionApprove via the zero-value of the old narrow
+		// channel.
 		select {
-		case d := <-ch:
-			return agent.ConfirmResponse{Decision: d}
+		case r := <-ch:
+			return r
 		case <-ctx.Done():
 			return agent.ConfirmResponse{Decision: agent.DecisionDeny}
 		}
@@ -609,7 +613,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				s.sendTo(c, map[string]any{"type": "status", "content": "conversation reset"})
 			}()
 		case "confirm_response":
-			s.deliverConfirm(msg.ConfirmID, decodeDecision(msg.Decision))
+			s.deliverConfirm(msg.ConfirmID, agent.ConfirmResponse{
+				Decision: decodeDecision(msg.Decision),
+				Revision: msg.Revision,
+			})
 		case "cancel":
 			s.cancelTurn(c, msg.TurnID)
 		}
@@ -660,7 +667,7 @@ func (s *Server) runHeartbeat(ctx context.Context, c *sessionConn) {
 	}
 }
 
-func (s *Server) deliverConfirm(id string, d agent.Decision) {
+func (s *Server) deliverConfirm(id string, resp agent.ConfirmResponse) {
 	s.mu.Lock()
 	ch, ok := s.confirms[id]
 	s.mu.Unlock()
@@ -668,7 +675,7 @@ func (s *Server) deliverConfirm(id string, d agent.Decision) {
 		return
 	}
 	select {
-	case ch <- d:
+	case ch <- resp:
 	default:
 	}
 }
@@ -763,6 +770,8 @@ func decodeDecision(s string) agent.Decision {
 		return agent.DecisionApprove
 	case "approve_all":
 		return agent.DecisionApproveAll
+	case "revise":
+		return agent.DecisionRevise
 	default:
 		return agent.DecisionDeny
 	}

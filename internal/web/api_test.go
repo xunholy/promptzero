@@ -31,7 +31,7 @@ func apiServer(t *testing.T, fa *fakeAgent) (*Server, *httptest.Server) {
 		agent:             fa,
 		addr:              "127.0.0.1:0",
 		conns:             make(map[*sessionConn]struct{}),
-		confirms:          make(map[string]chan agent.Decision),
+		confirms:          make(map[string]chan agent.ConfirmResponse),
 		heartbeatInterval: 100 * time.Millisecond,
 		heartbeatTimeout:  2 * time.Second,
 		writeTimeout:      2 * time.Second,

@@ -135,6 +135,24 @@ func TestParseStorageStat_Empty(t *testing.T) {
 	}
 }
 
+// Guard against firmware that emits an error banner after an
+// erroneous "File" line. The error path must win — otherwise a
+// failing storage_stat returns Exists=true which would mislead every
+// downstream caller (including the agent that uses it to decide
+// whether to snapshot the path before overwriting).
+func TestParseStorageStat_ErrorAfterFileLine(t *testing.T) {
+	raw := `File, size: 0
+Storage error: not found
+> `
+	r := ParseStorageStat(raw)
+	if r.Exists {
+		t.Errorf("Exists = true with error banner present: %+v", r)
+	}
+	if r.Error != "not found" {
+		t.Errorf("Error = %q, want 'not found'", r.Error)
+	}
+}
+
 // ----- subghz receive -----
 
 const sgRxSingleProtocol = `

@@ -272,6 +272,13 @@ const confirmIdleTimeout = 5 * time.Minute
 // ctx.Done() to avoid blocking after the idle deadline fires; the REPL
 // implementation already does this.
 func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) ConfirmResponse {
+	// Snapshot the callback and timeout under the turn-held lock
+	// BEFORE spawning the goroutine. Using local copies means a
+	// concurrent SetConfirmCallback / SetConfirmIdleTimeout can't
+	// race the callback invocation, and the -race detector has no
+	// complaint regardless of how callbacks get swapped over a
+	// session's lifetime.
+	cb := a.confirmCb
 	timeout := a.confirmIdleTimeout
 	if timeout <= 0 {
 		timeout = confirmIdleTimeout
@@ -281,7 +288,12 @@ func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) 
 	t := time.NewTimer(timeout)
 	defer t.Stop()
 	ch := make(chan ConfirmResponse, 1)
-	go func() { ch <- a.confirmCb(childCtx, req) }()
+	// The goroutine relies on childCtx being cancelled (via the
+	// deferred cancel() above) so a well-behaved callback will
+	// unblock promptly after timeout / ctx cancel. Callbacks that
+	// only watch the outer ctx are API violations; the contract is
+	// documented on ConfirmFunc.
+	go func() { ch <- cb(childCtx, req) }()
 	select {
 	case r := <-ch:
 		return r
@@ -1787,7 +1799,7 @@ func defaultGeneratePath(payloadType string) string {
 // ID — snapshot I/O should be visible in the same Jaeger/Tempo trace
 // as the tool call that triggered it.
 func (a *Agent) snapshotBeforeWrite(ctx context.Context, path string) {
-	if a.snapshotMgr == nil || a.sessionID == "" || path == "" {
+	if !a.snapshotEligible(path) {
 		return
 	}
 	raw, err := a.flipper.StorageRead(path)
@@ -1795,7 +1807,22 @@ func (a *Agent) snapshotBeforeWrite(ctx context.Context, path string) {
 		// Target doesn't exist yet (fresh write) — nothing to snapshot.
 		return
 	}
-	if _, err := a.snapshotMgr.Store(a.sessionID, path, []byte(raw)); err != nil {
+	a.storeSnapshot(ctx, path, []byte(raw))
+}
+
+// snapshotEligible returns true when the combination of session
+// state, snapshot manager, and path makes this call a candidate
+// for an actual Store. Extracted as a predicate so tests can drive
+// the decision logic without a real Flipper transport.
+func (a *Agent) snapshotEligible(path string) bool {
+	return a.snapshotMgr != nil && a.sessionID != "" && path != ""
+}
+
+// storeSnapshot writes the given content under the current
+// session's snapshot tree. Errors are logged with trace-ID
+// propagation via ctx and swallowed — snapshots are advisory.
+func (a *Agent) storeSnapshot(ctx context.Context, path string, content []byte) {
+	if _, err := a.snapshotMgr.Store(a.sessionID, path, content); err != nil {
 		obs.FromCtx(ctx).Warn("snapshot_store_failed", "path", path, "err", err)
 	}
 }
@@ -1810,11 +1837,19 @@ func (a *Agent) subghzBruteforceGenerate(ctx context.Context, p map[string]inter
 	if path == "" {
 		return "", fmt.Errorf("path required")
 	}
+	// Cache the params as locals so the success-message key count
+	// uses the same values that went into the file (avoids a drift
+	// risk where a future intOr refactor returns different values on
+	// successive calls).
+	startKey := uint64(intOr(p, "start_key", 0))
+	endKey := uint64(intOr(p, "end_key", 0))
+	bitCount := intOr(p, "bit_count", 0)
+
 	raw, err := fileformat.BuildSubBruteforce(fileformat.SubBruteforceParams{
 		Frequency: uint32(intOr(p, "frequency", 0)),
-		BitCount:  intOr(p, "bit_count", 0),
-		StartKey:  uint64(intOr(p, "start_key", 0)),
-		EndKey:    uint64(intOr(p, "end_key", 0)),
+		BitCount:  bitCount,
+		StartKey:  startKey,
+		EndKey:    endKey,
 		TE:        intOr(p, "te", 0),
 		Preset:    str(p, "preset"),
 	})
@@ -1825,9 +1860,9 @@ func (a *Agent) subghzBruteforceGenerate(ctx context.Context, p map[string]inter
 	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
-	count := uint64(intOr(p, "end_key", 0)) - uint64(intOr(p, "start_key", 0)) + 1
+	count := endKey - startKey + 1
 	return fmt.Sprintf("built %d-byte bruteforce .sub (%d keys × %d bits) → %s",
-		len(raw), count, intOr(p, "bit_count", 0), path), nil
+		len(raw), count, bitCount, path), nil
 }
 
 // subghzBuild synthesises a .sub file from operator parameters and

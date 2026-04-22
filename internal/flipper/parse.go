@@ -116,11 +116,17 @@ var (
 	storageFileRE  = regexp.MustCompile(`(?im)^\s*File`)
 )
 
-// ParseStorageStat parses `storage stat <path>` output. Sets Exists
-// based on the presence of a File/Directory line AND the absence of a
-// "Storage error:" banner.
+// ParseStorageStat parses `storage stat <path>` output. Order matters:
+// the "Storage error:" check runs FIRST so interleaved output like
+// "File\nStorage error: not found" (seen on some firmware forks)
+// doesn't produce a false-positive Exists=true. When both markers
+// appear, the error takes precedence — the file-regex matches anywhere
+// on any line (case-insensitive), so a naked File/Directory check
+// without the error gate would misclassify the error path.
 func ParseStorageStat(raw string) StorageStatResult {
 	r := StorageStatResult{Raw: strings.TrimSpace(raw)}
+	// Error path wins: even if a "File" line is present, an error
+	// banner means the path doesn't resolve.
 	if m := storageErrorRE.FindStringSubmatch(raw); m != nil {
 		r.Error = strings.TrimSpace(m[1])
 		return r

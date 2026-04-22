@@ -24,7 +24,7 @@ func newAuthTestServer(t *testing.T, token string, origins []string) (*Server, *
 		agent:             &fakeAgent{},
 		addr:              "127.0.0.1:0",
 		conns:             make(map[*sessionConn]struct{}),
-		confirms:          make(map[string]chan agent.Decision),
+		confirms:          make(map[string]chan agent.ConfirmResponse),
 		heartbeatInterval: 100 * time.Millisecond,
 		heartbeatTimeout:  2 * time.Second,
 		writeTimeout:      2 * time.Second,
