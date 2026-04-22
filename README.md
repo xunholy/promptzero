@@ -94,7 +94,7 @@ promptzero> what's this?  [photo of a remote control]
 ### Prerequisites
 
 > [!IMPORTANT]
-> - **Flipper Zero** with modded firmware (Momentum, Unleashed, or RogueMaster)
+> - **Flipper Zero** — modded firmware supported (Momentum, Unleashed, or RogueMaster)
 > - **Anthropic API key** (`ANTHROPIC_API_KEY`)
 > - **Optional:** ESP32 Marauder WiFi devboard, OpenAI API key (for voice), sox (for CLI voice)
 > - **Building from source only:** Go 1.25+
