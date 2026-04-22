@@ -168,9 +168,15 @@ func buildMarauderTools() []anthropic.ToolUnionParam {
 			),
 		),
 		tool("wifi_sniff_raw",
-			"Capture all raw WiFi packets on the current channel.",
+			"Capture all raw WiFi packets on the current channel. Also the tool of record for WPA3/SAE material: there is no dedicated 'sniff sae' Marauder command, so the procedure is: wifi_set_channel → wifi_deauth (forces reconnect) → wifi_sniff_raw (captures the SAE Commit/Confirm). The PCAP lands on the Marauder SD card for offline extraction.",
 			props(
 				optProp("duration_seconds", "integer", "Duration (default 30)"),
+			),
+		),
+		tool("wifi_sniff_sae",
+			"Alias for wifi_sniff_raw scoped to a WPA3/SAE target. Select the AP with wifi_select_ap, then call this — it runs sniff_raw with a 60s default and documents the deauth→reconnect recipe in the tool result. WPA3 networks voluntarily emit SAE Commit frames on association, so a fresh deauth improves yield.",
+			props(
+				optProp("duration_seconds", "integer", "Duration (default 60)"),
 			),
 		),
 

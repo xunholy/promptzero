@@ -99,7 +99,7 @@ var toolLevels = func() map[string]Level {
 		// emulate — the operator still has to invoke subghz_transmit
 		// / rfid_write / nfc_emulate separately.
 		"subghz_build", "rfid_build", "ir_build", "nfc_build",
-		"subghz_bruteforce_generate",
+		"subghz_bruteforce_generate", "subghz_freq_sweep",
 		// Target memory mutators (Batch B). Medium because a wrong
 		// Remember/Forget can mislead future sessions, but nothing
 		// transmits over the air.
@@ -118,7 +118,7 @@ var toolLevels = func() map[string]Level {
 		"wifi_beacon_spam", "wifi_beacon_random", "wifi_beacon_clone",
 		"wifi_beacon_rickroll", "wifi_beacon_funny",
 		"wifi_probe_flood",
-		"wifi_sniff_pmkid",
+		"wifi_sniff_pmkid", "wifi_sniff_sae",
 		"wifi_evil_portal_start", "wifi_evil_portal_stop",
 		"wifi_ble_spam",
 		"wifi_join",

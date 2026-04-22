@@ -113,6 +113,25 @@ func BadUSBTargetProfile(ctx context.Context, deps Deps, params map[string]inter
 		if ctx.Err() != nil {
 			return cancelledResult("badusb profile", phases, extra), nil
 		}
+		// Per-primitive re-gate: operator approval of the workflow
+		// does NOT imply approval of the High-risk BadUSB run. Ask
+		// again before the Flipper types keys into the host.
+		if !gateSubtool(ctx, deps, "badusb_run", map[string]string{"path": result.Path}, "high") {
+			deniedP := PhaseResult{
+				Phase:  "run",
+				Tool:   "badusb_run",
+				Output: "sub-step denied by operator",
+				OK:     false,
+			}
+			phases = append(phases, deniedP)
+			recordPhase(deps.Audit, wf, deniedP, map[string]string{"path": result.Path}, "high")
+			return encode(Result{
+				Summary:   "BadUSB payload generated but run denied by operator",
+				Phases:    phases,
+				NextSteps: []string{"Run manually from the Flipper if you reconsider", "Or regenerate with a safer payload description"},
+				Extra:     extra,
+			}), nil
+		}
 		runP := runPhase("run", "badusb_run", func() (string, error) {
 			return deps.Flipper.BadUSBRun(result.Path)
 		})

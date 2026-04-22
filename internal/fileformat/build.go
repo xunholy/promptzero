@@ -125,6 +125,56 @@ type SubBruteforceParams struct {
 // instead run the sweep in windows.
 const maxBruteforceKeys = 10_000
 
+// SubFreqSweepParams carries the inputs for BuildSubBruteforceSweep.
+// Produces one RAW .sub byte stream per frequency in the list, each
+// sweeping the same [StartKey, EndKey] range at BitCount bits. The
+// caller pairs the returned byte streams with per-frequency filenames
+// and writes them separately.
+type SubFreqSweepParams struct {
+	Frequencies []uint32 // Hz, one file produced per entry
+	BitCount    int
+	StartKey    uint64
+	EndKey      uint64
+	TE          int
+	Preset      string
+}
+
+// BuildSubBruteforceSweep generates one .sub file per frequency in
+// p.Frequencies, each covering the same key range. This is the
+// "multi-band bruteforce" workflow the RF specialist audit flagged as
+// missing — garage-door reconnaissance often cycles the same
+// Princeton-family key space across 315 MHz, 433.92 MHz, 868 MHz, and
+// 915 MHz before narrowing to one band.
+//
+// Returns a map of frequency → raw bytes so the caller can choose its
+// own filename scheme (typically sweep_<freq>.sub). All validation
+// runs per-frequency; a single invalid entry fails the whole call
+// rather than writing some files and leaving others unbuilt.
+func BuildSubBruteforceSweep(p SubFreqSweepParams) (map[uint32][]byte, error) {
+	if len(p.Frequencies) == 0 {
+		return nil, fmt.Errorf("subghz_freq_sweep: frequencies list empty")
+	}
+	if len(p.Frequencies) > 16 {
+		return nil, fmt.Errorf("subghz_freq_sweep: %d frequencies exceeds cap of 16; split the call", len(p.Frequencies))
+	}
+	out := make(map[uint32][]byte, len(p.Frequencies))
+	for _, f := range p.Frequencies {
+		raw, err := BuildSubBruteforce(SubBruteforceParams{
+			Frequency: f,
+			BitCount:  p.BitCount,
+			StartKey:  p.StartKey,
+			EndKey:    p.EndKey,
+			TE:        p.TE,
+			Preset:    p.Preset,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("freq %d Hz: %w", f, err)
+		}
+		out[f] = raw
+	}
+	return out, nil
+}
+
 // BuildSubBruteforce constructs a RAW .sub file that sweeps the
 // integer key space [StartKey, EndKey] at BitCount bits. Each key is
 // encoded MSB-first using Princeton-style OOK timing: a '1' bit as

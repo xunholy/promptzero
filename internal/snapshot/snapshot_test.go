@@ -103,6 +103,70 @@ func TestManager_Purge(t *testing.T) {
 	}
 }
 
+func TestManager_Rotate_KeepsNewest(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(root)
+	const session = "sess-rotate"
+
+	// Seed 5 snapshots. Store uses a timestamp + sha256 prefix in the
+	// ID; tiny sleeps ensure unique timestamps so sort-order is
+	// well-defined.
+	for i := 0; i < 5; i++ {
+		if _, err := m.Store(session, "/ext/file.sub", []byte{byte(i)}); err != nil {
+			t.Fatalf("Store %d: %v", i, err)
+		}
+		time.Sleep(1100 * time.Millisecond)
+	}
+
+	deleted, err := m.Rotate(session, 2)
+	if err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+	if deleted != 3 {
+		t.Errorf("deleted = %d, want 3", deleted)
+	}
+	remaining, err := m.List(session)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(remaining) != 2 {
+		t.Errorf("remaining = %d, want 2 after rotation", len(remaining))
+	}
+}
+
+func TestManager_Rotate_NoOpBelowKeep(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(root)
+	const session = "sess-rotate-noop"
+
+	for i := 0; i < 2; i++ {
+		if _, err := m.Store(session, "/ext/x.sub", []byte{byte(i)}); err != nil {
+			t.Fatalf("Store %d: %v", i, err)
+		}
+		time.Sleep(1100 * time.Millisecond)
+	}
+	deleted, err := m.Rotate(session, 5)
+	if err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0 (fewer entries than keep cap)", deleted)
+	}
+}
+
+func TestManager_Rotate_UsesDefaultRetention(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(root)
+	// Session dir that doesn't exist yet must no-op.
+	deleted, err := m.Rotate("missing-sess", 0)
+	if err != nil {
+		t.Errorf("missing session should not error: %v", err)
+	}
+	if deleted != 0 {
+		t.Errorf("deleted = %d, want 0", deleted)
+	}
+}
+
 func TestManager_Store_AtomicRenameLeavesNoTmp(t *testing.T) {
 	// After a successful Store there should be no stray .tmp files
 	// (writeAtomic must rename them into place).

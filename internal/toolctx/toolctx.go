@@ -93,6 +93,26 @@ If the write fails with "no response", the blank is either factory-locked or the
 	"nfc_apdu": `Sends raw ISO14443 APDU frames to a detected card. Use for EMV (payment), DESFire, MRTD (passport).
 SELECT PPSE = "00 A4 04 00 0E 32 50 41 59 2E 53 59 53 2E 44 44 46 30 31 00". Response starts with TLV tag 6F.
 Common AIDs: Visa=A000000003, Mastercard=A000000004, Amex=A000000025. No response → card not selected or 14443-4 state missed.`,
+
+	"loader_mfkey": `Launches the MFKey32 FAP for Mifare Classic key recovery from captured reader nonces.
+Prerequisite: nonces are already on the SD card from a "key32.log" capture (nfc detect with a target reader, or sniffed traffic).
+MFKey32 runs offline and brute-forces in ~minutes. Keys land in /ext/nfc/mfkey32.nfc; merge them into your .nfc target file's key block.`,
+
+	"loader_mifare_nested": `Launches the Mifare Nested FAP for sector-key recovery when AT LEAST ONE key is already known.
+Standard chain: nfc_detect → try default keys (FFFFFFFFFFFF, A0A1A2A3A4A5) → if one hits, loader_mifare_nested to derive the rest.
+Nested is fast (seconds per sector) but fails against hardened cards — those need hardnested, which the firmware does not yet include.`,
+
+	"loader_nfc_magic": `Launches the NFC Magic FAP — writes UIDs and locked blocks to "magic" Mifare Classic tags (gen1a, gen4).
+Use only with known-compatible magic blanks; gen1a accepts unlock via "direct write" command, gen2 requires backdoor key.
+Most modern access-control readers detect and reject gen1a clones — test on the target reader before the engagement.`,
+
+	"loader_picopass": `HID iClass / PicoPass tooling via the PicoPass FAP.
+Prerequisites: a PicoPass-compatible antenna and the iClass bypass keys already on the SD card at /ext/nfc/assets/iclass_bypass_keys.bin.
+PicoPass cards are HF (13.56 MHz), NOT to be confused with HID Prox (LF 125 kHz via rfid_read).`,
+
+	"loader_seader": `SEADER FAP — advanced iClass SE / SEOS attack toolkit (beyond PicoPass scope).
+Requires SEOS diversification keys on the SD card; factory keys are widely published for SE but SEOS itself remains hard target.
+Use for controlled-lab authorised engagements only — many deployments of iClass SE are high-value access systems.`,
 }
 
 // Get returns the cheat sheet for toolName, or "" when no sheet is

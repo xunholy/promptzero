@@ -43,6 +43,30 @@ type Deps struct {
 	Generator    *generate.Generator
 	GenLLM       provider.Provider // raw LLM access for workflows that need ad-hoc summaries
 	Capabilities flipper.Capabilities
+
+	// ConfirmSubtool is an optional hook workflows call before
+	// dispatching a High/Critical primitive internally. Returns true
+	// to proceed, false to skip the sub-step. Nil disables the
+	// additional gate (back-compat with tests and orchestrators that
+	// already confirmed the workflow as a whole).
+	//
+	// Rationale: approving workflow_X once at the agent confirm gate
+	// used to silently approve every destructive primitive the
+	// workflow chained. This hook re-asks the operator for each such
+	// sub-step so an approval of the composite doesn't imply an
+	// approval of every radio transmission inside it.
+	ConfirmSubtool func(ctx context.Context, tool string, input interface{}, riskLevel string) bool
+}
+
+// gateSubtool centralises the ConfirmSubtool check so workflows get a
+// one-liner before their risky primitives. Returns true to proceed,
+// false when the operator declined (workflow should skip the step
+// and surface it in the phase record).
+func gateSubtool(ctx context.Context, deps Deps, tool string, input interface{}, riskLevel string) bool {
+	if deps.ConfirmSubtool == nil {
+		return true
+	}
+	return deps.ConfirmSubtool(ctx, tool, input, riskLevel)
 }
 
 // Workflow is the common signature every composite implements. Params come

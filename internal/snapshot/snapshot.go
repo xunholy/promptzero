@@ -182,6 +182,55 @@ func (m *Manager) Purge(sessionID string) error {
 	return nil
 }
 
+// DefaultRetention is the number of most-recent snapshots a session
+// keeps when Rotate is called without an explicit value. Tuned for
+// the typical pentest session (a few dozen write operations) with
+// headroom — 100 entries at a mean of ~30 KB each is ~3 MB per
+// session, trivial even on cramped SD cards. Longer sessions should
+// Purge between phases or raise the keep value explicitly.
+const DefaultRetention = 100
+
+// Rotate trims the per-session snapshot tree down to the most recent
+// 'keep' entries, deleting older .bak/.json pairs. Intended to run
+// periodically (e.g. on session save, between workflow phases) so
+// long-running sessions don't accumulate unbounded undo history.
+//
+// A keep value of 0 or negative defaults to DefaultRetention. The
+// newest entries (highest timestamp-prefixed IDs) are preserved.
+// Nothing is deleted when the current count is at or below keep.
+//
+// Returns the number of snapshots deleted. Missing session dirs are
+// a no-op (returns 0, nil) — rotate is safe to call before any
+// snapshots have landed.
+func (m *Manager) Rotate(sessionID string, keep int) (int, error) {
+	if keep <= 0 {
+		keep = DefaultRetention
+	}
+	entries, err := m.List(sessionID)
+	if err != nil {
+		return 0, err
+	}
+	if len(entries) <= keep {
+		return 0, nil
+	}
+	// List returns newest-first; drop everything past the keep index.
+	toDelete := entries[keep:]
+	dir := filepath.Join(m.root, sessionID)
+	var deleted int
+	for _, e := range toDelete {
+		metaPath := filepath.Join(dir, e.ID+".json")
+		dataPath := filepath.Join(dir, e.ID+".bak")
+		// Best-effort removal — a missing partner file (interrupted
+		// Store call) shouldn't block the rest of the rotation.
+		_ = os.Remove(metaPath)
+		if err := os.Remove(dataPath); err != nil && !os.IsNotExist(err) {
+			return deleted, fmt.Errorf("snapshot rotate %s: %w", e.ID, err)
+		}
+		deleted++
+	}
+	return deleted, nil
+}
+
 // writeAtomic writes data to path via a sibling .tmp file + rename so
 // a crash never leaves a truncated snapshot. The rename is atomic on
 // POSIX; on Windows it's best-effort but still safer than direct

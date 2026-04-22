@@ -2,6 +2,7 @@ package fileformat
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -342,6 +343,64 @@ func TestBuildSubBruteforce_DefaultsTE(t *testing.T) {
 	}
 	if parsed.RawData[n-1] != -12400 {
 		t.Errorf("sync end = %d, want -12400 (-31*TE)", parsed.RawData[n-1])
+	}
+}
+
+func TestBuildSubBruteforceSweep_PerFrequency(t *testing.T) {
+	out, err := BuildSubBruteforceSweep(SubFreqSweepParams{
+		Frequencies: []uint32{315000000, 433920000, 868350000},
+		BitCount:    24,
+		StartKey:    0,
+		EndKey:      10,
+	})
+	if err != nil {
+		t.Fatalf("BuildSubBruteforceSweep: %v", err)
+	}
+	if len(out) != 3 {
+		t.Fatalf("expected 3 files, got %d", len(out))
+	}
+	for _, f := range []uint32{315000000, 433920000, 868350000} {
+		body, ok := out[f]
+		if !ok {
+			t.Errorf("missing %d Hz output", f)
+			continue
+		}
+		if !bytes.Contains(body, []byte(fmt.Sprintf("Frequency: %d", f))) {
+			t.Errorf("%d Hz body does not carry its frequency header", f)
+		}
+	}
+}
+
+func TestBuildSubBruteforceSweep_RejectsEmpty(t *testing.T) {
+	if _, err := BuildSubBruteforceSweep(SubFreqSweepParams{BitCount: 24}); err == nil {
+		t.Error("empty frequencies list should error")
+	}
+}
+
+func TestBuildSubBruteforceSweep_RejectsBandCap(t *testing.T) {
+	freqs := make([]uint32, 20)
+	for i := range freqs {
+		freqs[i] = 433920000
+	}
+	if _, err := BuildSubBruteforceSweep(SubFreqSweepParams{
+		Frequencies: freqs,
+		BitCount:    24,
+		StartKey:    0,
+		EndKey:      5,
+	}); err == nil {
+		t.Error("20 frequencies should exceed cap")
+	}
+}
+
+func TestBuildSubBruteforceSweep_PropagatesInnerValidation(t *testing.T) {
+	_, err := BuildSubBruteforceSweep(SubFreqSweepParams{
+		Frequencies: []uint32{500},
+		BitCount:    24,
+		StartKey:    0,
+		EndKey:      5,
+	})
+	if err == nil {
+		t.Error("out-of-band frequency should propagate error")
 	}
 }
 

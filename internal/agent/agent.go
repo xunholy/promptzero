@@ -99,6 +99,14 @@ type ConfirmResponse struct {
 type ConfirmFunc func(ctx context.Context, req ConfirmRequest) ConfirmResponse
 
 type Agent struct {
+	// turnMu serialises whole turns. Held for the full duration of
+	// Run / RunTool. Distinct from mu so Run can release mu during
+	// long-blocking idle periods (notably confirmWithIdleTimeout —
+	// which can block for up to 5 minutes waiting for the operator)
+	// without letting a concurrent Run race into the middle of a
+	// partially-advanced history.
+	turnMu sync.Mutex
+
 	mu                 sync.Mutex
 	client             *anthropic.Client
 	flipper            *flipper.Flipper
@@ -280,11 +288,14 @@ const confirmIdleTimeout = 5 * time.Minute
 
 // confirmWithIdleTimeout invokes the confirm callback in a goroutine and
 // enforces confirmIdleTimeout. On timeout the caller gets
-// {DecisionDeny} and Run proceeds as if the user declined. a.mu
-// remains held for the whole wait — Run's contract is that the turn
-// is atomic with respect to history mutation — so callers must
-// budget for confirmIdleTimeout when the agent can appear wedged
-// during operator idle.
+// {DecisionDeny} and Run proceeds as if the user declined.
+//
+// Concurrency contract: callers MUST NOT hold a.mu across this call
+// (Run releases a.mu around the confirm gate specifically so field
+// readers don't block on a walked-away operator). turnMu SHOULD be
+// held to prevent a second Run from racing mid-gate. The callback
+// itself is snapshotted under a brief lock to stay safe against
+// SetConfirmCallback.
 //
 // The callback receives a cancellable child ctx derived from the caller's
 // ctx. It is cancelled on timeout, on parent ctx cancellation, or on a
@@ -292,14 +303,18 @@ const confirmIdleTimeout = 5 * time.Minute
 // ctx.Done() to avoid blocking after the idle deadline fires; the REPL
 // implementation already does this.
 func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) ConfirmResponse {
-	// Snapshot the callback and timeout under the turn-held lock
-	// BEFORE spawning the goroutine. Using local copies means a
-	// concurrent SetConfirmCallback / SetConfirmIdleTimeout can't
-	// race the callback invocation, and the -race detector has no
-	// complaint regardless of how callbacks get swapped over a
-	// session's lifetime.
+	// Snapshot the callback and timeout under a brief lock BEFORE
+	// spawning the goroutine. Using local copies means a concurrent
+	// SetConfirmCallback / SetConfirmIdleTimeout can't race the
+	// callback invocation, and the -race detector has no complaint
+	// regardless of how callbacks get swapped over a session's
+	// lifetime. Callers do not need to hold a.mu when entering this
+	// function — Run specifically releases it so other field readers
+	// aren't blocked on a walked-away operator.
+	a.mu.Lock()
 	cb := a.confirmCb
 	timeout := a.confirmIdleTimeout
+	a.mu.Unlock()
 	if timeout <= 0 {
 		timeout = confirmIdleTimeout
 	}
@@ -446,6 +461,12 @@ func (a *Agent) PersonaSnapshot() *persona.Persona {
 }
 
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
+	// turnMu enforces single-turn-at-a-time; mu is field-level and
+	// gets briefly released during the confirm gate so other readers
+	// (SetPersona, status panels) aren't blocked by a walked-away
+	// operator.
+	a.turnMu.Lock()
+	defer a.turnMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -614,7 +635,14 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			// critical one.
 			gated := toolRisk == risk.Critical || !approveAllRemaining
 			if a.confirmCb != nil && gated && toolRisk >= a.confirmThreshold {
+				// Release a.mu while the confirm callback waits on
+				// the operator. turnMu still guards against a
+				// second Run starting; field readers (SetPersona,
+				// PersonaSnapshot, the observability status panel)
+				// can now proceed during the idle window.
+				a.mu.Unlock()
 				resp := a.confirmWithIdleTimeout(ctx, ConfirmRequest{Tool: tc.Name, Input: input, Risk: toolRisk})
+				a.mu.Lock()
 				switch resp.Decision {
 				case DecisionDeny:
 					const denyMsg = "user denied this action"
@@ -859,6 +887,10 @@ func (a *Agent) RunTool(ctx context.Context, tool string, params map[string]inte
 	if tool == "" {
 		return "", fmt.Errorf("agent: empty tool name")
 	}
+	// turnMu serialises against Run so RunTool doesn't race into a
+	// mid-turn confirm gate. mu protects field access inside dispatch.
+	a.turnMu.Lock()
+	defer a.turnMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.dispatch(ctx, tool, params)
@@ -1253,6 +1285,8 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	// --- Parametric file builders (P1-13) ---
 	case "subghz_bruteforce_generate":
 		return a.subghzBruteforceGenerate(ctx, p)
+	case "subghz_freq_sweep":
+		return a.subghzFreqSweep(ctx, p)
 	case "subghz_build":
 		return a.subghzBuild(ctx, p)
 	case "rfid_build":
@@ -1446,6 +1480,18 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 			return "", err
 		}
 		return a.marauder.SniffRaw(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
+	case "wifi_sniff_sae":
+		if err := a.requireMarauder(); err != nil {
+			return "", err
+		}
+		// SAE capture is raw sniff with a 60s default — the Commit /
+		// Confirm exchange tends to be sparse, so the extra dwell
+		// noticeably improves yield.
+		out, err := a.marauder.SniffRaw(time.Duration(intOr(p, "duration_seconds", 60)) * time.Second)
+		if err != nil {
+			return out, err
+		}
+		return "sae capture via raw sniff:\n" + out + "\n\nExtract SAE Commit/Confirm frames from the resulting PCAP on the Marauder SD card. Pair with a fresh wifi_deauth if no material was captured.", nil
 	case "wifi_ble_spam":
 		if err := a.requireMarauder(); err != nil {
 			return "", err
@@ -1576,14 +1622,55 @@ func (a *Agent) workflowDeps() workflows.Deps {
 		caps = a.flipper.Capabilities()
 	}
 	return workflows.Deps{
-		Flipper:      a.flipper,
-		Marauder:     a.marauder,
-		Vision:       a.vision,
-		Audit:        a.auditLog,
-		Generator:    a.generator,
-		GenLLM:       a.genLLM,
-		Capabilities: caps,
+		Flipper:        a.flipper,
+		Marauder:       a.marauder,
+		Vision:         a.vision,
+		Audit:          a.auditLog,
+		Generator:      a.generator,
+		GenLLM:         a.genLLM,
+		Capabilities:   caps,
+		ConfirmSubtool: a.workflowConfirmHook,
 	}
+}
+
+// workflowConfirmHook routes a workflow's internal sub-tool
+// confirmation request through the same idle-timeout-aware gate as
+// the top-level Run dispatch. Called while a.mu is held by Run's
+// dispatch loop; releases a.mu for the duration of the prompt to
+// avoid wedging field readers on operator idle.
+//
+// Returns true when the operator approves (or no confirm callback
+// is installed — back-compat with test / MCP harnesses), false
+// otherwise. The workflow is expected to record the denial as a
+// phase result rather than treating it as an error.
+func (a *Agent) workflowConfirmHook(ctx context.Context, tool string, input interface{}, riskLevel string) bool {
+	if a.confirmCb == nil {
+		return true
+	}
+	// Only gate High/Critical primitives — Low/Medium sub-steps
+	// remain silent to avoid confirmation fatigue on pipelines that
+	// do dozens of Medium-risk reads per run.
+	if !strings.EqualFold(riskLevel, "high") && !strings.EqualFold(riskLevel, "critical") {
+		return true
+	}
+	var level risk.Level
+	if strings.EqualFold(riskLevel, "critical") {
+		level = risk.Critical
+	} else {
+		level = risk.High
+	}
+	// Serialise the input to raw JSON the way the top-level gate
+	// shows it — matches what operators already see in the primary
+	// confirm prompt and keeps the UX consistent across layers.
+	rawInput, _ := json.Marshal(input)
+	a.mu.Unlock()
+	resp := a.confirmWithIdleTimeout(ctx, ConfirmRequest{
+		Tool:  tool,
+		Input: rawInput,
+		Risk:  level,
+	})
+	a.mu.Lock()
+	return resp.Decision == DecisionApprove || resp.Decision == DecisionApproveAll
 }
 
 // --- Generation Pipeline Handlers ---
@@ -1624,6 +1711,19 @@ func (a *Agent) generatePayloadWithBypass(ctx context.Context, payloadType, desc
 
 	if err != nil {
 		return "", err
+	}
+
+	// Static validator gate — runs before the Haiku classifier and is
+	// deterministic / offline. For payload types that have one
+	// (BadUSB, Evil Portal), a Critical finding blocks deploy unless
+	// the operator explicitly bypasses. For types without a static
+	// validator, this step is a no-op and the Haiku layer remains
+	// the primary guard.
+	if staticRep, haveStatic := runStaticValidator(payloadType, result.Path, result.Content); haveStatic {
+		if deploy && staticRep.Has(validator.SeverityCritical) && !bypass {
+			return fmt.Sprintf("Generated %s but static validator blocked deploy.\n\n%s\n\nPreview:\n%s\n\nPass verify_bypass=true to override.",
+				payloadType, renderValidatorReport(staticRep), result.Preview), nil
+		}
 	}
 
 	// Chain-of-verification: Haiku pass against the generated content
@@ -1841,6 +1941,40 @@ func (a *Agent) docsSearch(query string, k int) (string, error) {
 		fmt.Fprintf(&b, "\n## %s (%s) — score %.2f\n%s\n", h.Doc.Title, h.Doc.Source, h.Score, rag.Snippet(h.Doc.Body, query, 400))
 	}
 	return b.String(), nil
+}
+
+// runStaticValidator dispatches to the per-payload-type static validator
+// and returns the report plus a flag indicating whether a validator
+// was available. Payload types without a static validator get
+// (zero, false) — the Haiku chain-of-verification still runs.
+func runStaticValidator(payloadType, path, content string) (validator.Report, bool) {
+	switch payloadType {
+	case "badusb":
+		return validator.Validate(path, content), true
+	case "evil_portal":
+		return validator.ValidateEvilPortal(path, content), true
+	default:
+		return validator.Report{}, false
+	}
+}
+
+// renderValidatorReport flattens a Report into a short multi-line
+// string for inclusion in a tool-result payload. Keeps the highest-
+// severity finding visible without dumping every info/warn hit.
+func renderValidatorReport(r validator.Report) string {
+	if len(r.Findings) == 0 {
+		return fmt.Sprintf("static validator: %s (no findings)", r.Severity)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "static validator: %s — %d finding(s)\n", r.Severity, len(r.Findings))
+	for _, f := range r.Findings {
+		if f.Line > 0 {
+			fmt.Fprintf(&b, "  [%s] L%d %s: %s\n", f.Severity, f.Line, f.Rule, f.Message)
+		} else {
+			fmt.Fprintf(&b, "  [%s] %s: %s\n", f.Severity, f.Rule, f.Message)
+		}
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // SetRAGIndex installs a custom RAG index. Nil restores the default
@@ -2104,9 +2238,20 @@ func (a *Agent) snapshotEligible(path string) bool {
 // storeSnapshot writes the given content under the current
 // session's snapshot tree. Errors are logged with trace-ID
 // propagation via ctx and swallowed — snapshots are advisory.
+//
+// After each successful Store, Rotate is invoked with the default
+// retention to trim the oldest entries if the session has accumulated
+// more than snapshot.DefaultRetention undo points. Rotation errors
+// degrade to a warning — they never block the write path.
 func (a *Agent) storeSnapshot(ctx context.Context, path string, content []byte) {
 	if _, err := a.snapshotMgr.Store(a.sessionID, path, content); err != nil {
 		obs.FromCtx(ctx).Warn("snapshot_store_failed", "path", path, "err", err)
+		return
+	}
+	if deleted, err := a.snapshotMgr.Rotate(a.sessionID, 0); err != nil {
+		obs.FromCtx(ctx).Warn("snapshot_rotate_failed", "err", err)
+	} else if deleted > 0 {
+		obs.FromCtx(ctx).Info("snapshot_rotated", "deleted", deleted)
 	}
 }
 
@@ -2146,6 +2291,52 @@ func (a *Agent) subghzBruteforceGenerate(ctx context.Context, p map[string]inter
 	count := endKey - startKey + 1
 	return fmt.Sprintf("built %d-byte bruteforce .sub (%d keys × %d bits) → %s",
 		len(raw), count, bitCount, path), nil
+}
+
+// subghzFreqSweep builds one bruteforce .sub per frequency and writes
+// each to dir/sweep_<freq>.sub. Intended for multi-band reconnaissance
+// where the same Princeton-family key sweep should be replayable on
+// several ISM bands.
+func (a *Agent) subghzFreqSweep(ctx context.Context, p map[string]interface{}) (string, error) {
+	dir := str(p, "dir")
+	if dir == "" {
+		return "", fmt.Errorf("dir required")
+	}
+	freqs, ok := p["frequencies"].([]interface{})
+	if !ok || len(freqs) == 0 {
+		return "", fmt.Errorf("frequencies must be a non-empty array")
+	}
+	freqU32 := make([]uint32, 0, len(freqs))
+	for i, v := range freqs {
+		f, ok := v.(float64)
+		if !ok {
+			return "", fmt.Errorf("frequencies[%d] must be a number", i)
+		}
+		freqU32 = append(freqU32, uint32(f))
+	}
+	built, err := fileformat.BuildSubBruteforceSweep(fileformat.SubFreqSweepParams{
+		Frequencies: freqU32,
+		BitCount:    intOr(p, "bit_count", 0),
+		StartKey:    uint64(intOr(p, "start_key", 0)),
+		EndKey:      uint64(intOr(p, "end_key", 0)),
+		TE:          intOr(p, "te", 0),
+		Preset:      str(p, "preset"),
+	})
+	if err != nil {
+		return "", err
+	}
+	// Strip trailing slashes so path joins don't double them.
+	dir = strings.TrimRight(dir, "/")
+	var summary []string
+	for freq, raw := range built {
+		path := fmt.Sprintf("%s/sweep_%d.sub", dir, freq)
+		a.snapshotBeforeWrite(ctx, path)
+		if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
+			return "", fmt.Errorf("write %s: %w", path, err)
+		}
+		summary = append(summary, fmt.Sprintf("%s (%d B)", path, len(raw)))
+	}
+	return fmt.Sprintf("built %d bruteforce files:\n%s", len(built), strings.Join(summary, "\n")), nil
 }
 
 // subghzBuild synthesises a .sub file from operator parameters and
