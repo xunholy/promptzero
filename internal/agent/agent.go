@@ -1941,7 +1941,14 @@ func (a *Agent) nfcReadSave(ctx context.Context, p map[string]interface{}) (stri
 	}
 	parsed := flipper.ParseNFCDetect(raw)
 	if !parsed.Detected || parsed.UID == "" {
-		return "no tag detected — hold the tag flat against the back of the Flipper (NFC antenna side) and retry. If it's a 125 kHz LF fob, use rfid_read instead.", nil
+		// Return as an error (not a string with err=nil) so the
+		// dispatch layer marks the tool call success=false. The
+		// previous shape logged success=true despite the card
+		// never being saved, which caused the agent to retry in a
+		// tight loop hoping for a different outcome. Failing loud
+		// gets the operator a prompt to reposition the card
+		// instead of silent retries.
+		return "", fmt.Errorf("nfc_read_save: no tag detected after %s — hold the tag flat against the NFC (front) side of the Flipper and retry. For 125 kHz LF prox fobs use rfid_read instead", timeout)
 	}
 
 	deviceType := mapNFCTypeToDeviceType(parsed.Type)

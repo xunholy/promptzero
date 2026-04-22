@@ -176,41 +176,101 @@ func (f *Flipper) NFCDetect(timeout time.Duration) (string, error) {
 			return "", fmt.Errorf("waiting for nfc prompt: %w", err)
 		}
 
-		// Run the scanner subcommand.
-		if err := f.sendRaw("scanner\r"); err != nil {
-			return "", fmt.Errorf("sending scanner command: %w", err)
-		}
-		result, err := f.readUntilPrompt(timeout)
-		if err != nil {
-			// Scanner ran for the full budget without detecting a tag — treat as
-			// streaming success (same semantics as ExecLongCtx). Stop the firmware,
-			// drain back to the [nfc] subshell prompt, then exit cleanly.
-			_ = f.sendRaw("\x03")
-			drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			_, drainErr := f.readUntilPromptCtx(drainCtx)
-			drainCancel()
-			if drainErr != nil && !errors.Is(drainErr, context.DeadlineExceeded) && !errors.Is(drainErr, context.Canceled) {
-				return result, fmt.Errorf("nfc scanner drain: %w", drainErr)
+		// Momentum's `nfc scanner` is a ONE-SHOT poll — it runs a single
+		// PCD cycle (~0.8-1.2s), prints "Target lost" when nothing is
+		// in the field, and returns to the prompt. To match the on-
+		// device "Read" button's UX (wait up to N seconds for the
+		// operator to place the card), we loop the subcommand until
+		// detection or the overall timeout is exhausted.
+		//
+		// Keep the last non-empty scanner transcript so callers that
+		// inspect Raw output still see something useful even if the
+		// final iteration returned a bare prompt.
+		deadline := time.Now().Add(timeout)
+		var lastResult string
+		const perScanBudget = 4 * time.Second // generous per-iteration cap vs the ~1s typical
+
+		detected := false
+		for {
+			// Send the scanner subcommand.
+			if err := f.sendRaw("scanner\r"); err != nil {
+				_ = f.sendRaw("exit\r")
+				return lastResult, fmt.Errorf("sending scanner command: %w", err)
 			}
-			_ = f.sendRaw("exit\r")
-			exitCtx, exitCancel := context.WithTimeout(context.Background(), 2*time.Second)
-			_, _ = f.readUntilPromptCtx(exitCtx)
-			exitCancel()
-			return result, nil
+			budget := time.Until(deadline)
+			if budget > perScanBudget {
+				budget = perScanBudget
+			}
+			if budget <= 0 {
+				// Overall timeout already expired; treat as no-detect.
+				break
+			}
+			result, err := f.readUntilPrompt(budget)
+			if err != nil {
+				// Single iteration didn't return to the prompt in
+				// time — stop the firmware and drain. Usually means
+				// the scanner is running long (card being read).
+				_ = f.sendRaw("\x03")
+				drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
+				drained, _ := f.readUntilPromptCtx(drainCtx)
+				drainCancel()
+				// Union the interrupted read and the drained bytes so
+				// a detection mid-read isn't lost.
+				combined := result + drained
+				if combined != "" {
+					lastResult = combined
+				}
+			} else if result != "" {
+				lastResult = result
+			}
+
+			// Did this iteration detect a tag?
+			if looksLikeNFCDetection(lastResult) {
+				detected = true
+				break
+			}
+
+			// Not detected — check the overall budget before retrying.
+			// Short sleep keeps the CPU polite and gives the operator
+			// a moment to reposition the card. Cap the sleep at the
+			// remaining budget so the loop exits promptly on timeout.
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				break
+			}
+			sleep := 200 * time.Millisecond
+			if remaining < sleep {
+				sleep = remaining
+			}
+			time.Sleep(sleep)
 		}
 
-		// Exit the NFC subshell.
-		if err := f.sendRaw("exit\r"); err != nil {
-			f.sendRaw("\x03") // force exit
-			return result, fmt.Errorf("exiting nfc subshell: %w", err)
-		}
-		if _, err := f.readUntilPrompt(5 * time.Second); err != nil {
-			f.sendRaw("\x03")  // force exit
-			return result, nil // return result despite exit error
-		}
+		// Exit the NFC subshell cleanly regardless of detection outcome.
+		_ = f.sendRaw("exit\r")
+		exitCtx, exitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_, _ = f.readUntilPromptCtx(exitCtx)
+		exitCancel()
 
-		return result, nil
+		if !detected && lastResult == "" {
+			lastResult = "Target lost."
+		}
+		return lastResult, nil
 	})
+}
+
+// looksLikeNFCDetection is a cheap pre-check used by the scanner loop
+// to decide whether another poll cycle is needed. Full structured
+// parsing happens in flipper.ParseNFCDetect at the caller layer; this
+// just needs a reliable "card present" signal so NFCDetect can stop
+// iterating the moment something lands on the reader.
+func looksLikeNFCDetection(raw string) bool {
+	lower := strings.ToLower(raw)
+	if strings.Contains(lower, "target lost") {
+		return false
+	}
+	// A real detection always emits UID. The scanner occasionally
+	// prefixes with "[ISO14443..." but UID is the load-bearing line.
+	return strings.Contains(lower, "uid:") || strings.Contains(lower, "uid =")
 }
 
 // NFCEmulate launches the NFC emulation app via the loader, waits for the

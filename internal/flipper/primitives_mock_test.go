@@ -5,6 +5,7 @@ package flipper_test
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -103,6 +104,84 @@ func TestLoaderMFKey(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected to see %q; lines=%v", wantSuffix, lines)
+	}
+}
+
+// TestNFCDetect_LoopsScannerUntilCardAppears verifies the fix for the
+// thrashing loop an operator hit in production: Momentum's `nfc
+// scanner` CLI subcommand is a one-shot poll (~1s, prints "Target
+// lost" when nothing's on the reader, returns to the prompt), so a
+// single call can't give the operator time to place the card. The
+// primitive now retries scanner inside the subshell until detection
+// or the overall timeout is exhausted.
+//
+// This test fires scanner three times: the first two return the
+// "target lost" shape, the third emits a real detection. NFCDetect
+// must stop iterating on the third call and return the detection
+// transcript, not the last "target lost" blob.
+func TestNFCDetect_LoopsScannerUntilCardAppears(t *testing.T) {
+	// Atomic — the mock serves handlers on its own goroutine, so a
+	// plain int would race against the test assertion below.
+	var scannerCalls atomic.Int32
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(args []string) string { return stockDeviceInfo }),
+		mock.WithHandler("nfc", func(args []string) string {
+			// Entering the nfc subshell — return nothing; the mock
+			// emits the default prompt.
+			return ""
+		}),
+		mock.WithHandler("scanner", func(args []string) string {
+			n := scannerCalls.Add(1)
+			if n < 3 {
+				return "Scanning...\r\nTarget lost.\r\n"
+			}
+			return "[ISO14443-3a (NFC-A)]\r\nUID: 04 A5 B3 1D 2C 4F 80\r\nATQA: 00 44\r\nSAK: 00\r\nType: NTAG215\r\n"
+		}),
+		mock.WithHandler("exit", func(args []string) string {
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	got, err := flip.NFCDetect(10 * time.Second)
+	if err != nil {
+		t.Fatalf("NFCDetect: %v", err)
+	}
+	if !strings.Contains(got, "NTAG215") {
+		t.Errorf("expected detection transcript, got %q", got)
+	}
+	if scannerCalls.Load() < 3 {
+		t.Errorf("scanner was only called %d times; loop should have retried until success", scannerCalls.Load())
+	}
+}
+
+// TestNFCDetect_TimesOutCleanly verifies the companion behaviour —
+// when no card ever appears, NFCDetect still returns (with the final
+// "Target lost." transcript) so the handler above it can surface a
+// proper error. Importantly, it must NOT hang forever retrying.
+func TestNFCDetect_TimesOutCleanly(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(args []string) string { return stockDeviceInfo }),
+		mock.WithHandler("nfc", func(args []string) string { return "" }),
+		mock.WithHandler("scanner", func(args []string) string {
+			return "Scanning...\r\nTarget lost.\r\n"
+		}),
+		mock.WithHandler("exit", func(args []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	start := time.Now()
+	got, err := flip.NFCDetect(2 * time.Second)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("NFCDetect: %v", err)
+	}
+	if elapsed > 4*time.Second {
+		t.Errorf("NFCDetect took %v; should respect the 2s budget", elapsed)
+	}
+	if !strings.Contains(strings.ToLower(got), "target lost") {
+		t.Errorf("expected Target lost transcript when budget exhausts; got %q", got)
 	}
 }
 

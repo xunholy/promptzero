@@ -568,6 +568,13 @@ func buildCases() []tcase {
 		{category: "nfc", name: "NFCAPDU(SELECT PPSE)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
 			return f.NFCAPDU("00A404000E325041592E5359532E444446303100", 4*time.Second)
 		}, allowEmpty: true, rxTolerant: true},
+		// NFCDetect — 8s budget gives the scanner loop up to ~7 iterations
+		// before timing out. Passes cleanly whether or not a card is
+		// present (the primitive returns either a detection transcript
+		// or the last "Target lost" blob, never an error).
+		{category: "nfc", name: "NFCDetect(8s)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
+			return f.NFCDetect(8 * time.Second)
+		}, allowEmpty: true, rxTolerant: true},
 		{category: "nfc", name: "NFCMFURead(0)", run: func(ctx context.Context, f *flipper.Flipper) (string, error) {
 			return f.NFCMFURead(0, 4*time.Second)
 		}, allowEmpty: true, rxTolerant: true},
