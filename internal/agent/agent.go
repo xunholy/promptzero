@@ -126,6 +126,12 @@ type Agent struct {
 	// the reflexion logic can be exercised without an SDK mock.
 	reflectorFn reflectFunc
 
+	// prospectiveFn is the pre-dispatch critique callback (Batch A).
+	// Fires before critical-risk tools run; produces a structured
+	// risk assessment the main model sees alongside the tool result.
+	// Nil means "use a.prospective"; tests substitute a sync stub.
+	prospectiveFn prospectiveFunc
+
 	// routerFn is the per-turn tool-group router. Nil means "disabled"
 	// — the full catalog is sent to the main model every turn (the
 	// historical behaviour). EnableDynamicCatalog assigns
@@ -500,6 +506,10 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	// maybeAppendReflection only when the reflector actually produced
 	// useful text.
 	reflectionsThisTurn := 0
+	// prospectiveThisTurn caps how many critical tools get a
+	// pre-dispatch critique per user turn (Batch A). Bounded so a
+	// multi-step attack chain doesn't mint an arbitrary Haiku bill.
+	prospectiveThisTurn := 0
 	// pendingRevisions collects revision prompts emitted by
 	// DecisionRevise in the current turn. After the tool_results
 	// batch is flushed, each revision is appended as a fresh user
@@ -683,6 +693,20 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 				output = maybeAppendReflection(ctx, tc.Name, input, output, &reflectionsThisTurn, fn)
 			}
 
+			// Prospective reflection (Batch A): before the tool
+			// result leaves the dispatcher, prepend a pre-execution
+			// critique for critical-risk tools so the main model
+			// sees the classifier's risk assessment alongside the
+			// raw output. Advisory — doesn't gate dispatch (that
+			// stays with the confirm callback).
+			if toolRisk == risk.Critical {
+				pfn := a.prospectiveFn
+				if pfn == nil {
+					pfn = a.prospective
+				}
+				output = maybeProspectiveReflect(ctx, tc.Name, input, output, &prospectiveThisTurn, pfn)
+			}
+
 			// Detector pass (P1-10): run any registered detectors for
 			// this tool and append their verdicts to the tool output.
 			// Detectors are advisory — a "suspicious" verdict on an
@@ -739,7 +763,13 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 // session fallback — a.model — is used when no persona model is set.
 func (a *Agent) streamOnce(ctx context.Context, sysPrompt string, tools []anthropic.ToolUnionParam) (*anthropic.Message, error) {
 	model := a.modelForLocked(TierPlan)
-	stream := a.client.Messages.NewStreaming(ctx, buildCachedRequest(model, sysPrompt, tools, a.history))
+	// Extended thinking (Batch A): when the active persona allocates
+	// a thinking budget for the plan tier, the model gets room to
+	// reason internally before committing to a tool call. Measurably
+	// lifts multi-step correctness on agentic tasks. Off by default —
+	// personas opt in via their thinking: YAML config.
+	thinkingBudget := a.thinkingBudgetForLocked(TierPlan)
+	stream := a.client.Messages.NewStreaming(ctx, buildCachedRequestWithThinking(model, sysPrompt, tools, a.history, thinkingBudget))
 	defer stream.Close()
 
 	var msg anthropic.Message

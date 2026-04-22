@@ -53,3 +53,34 @@ func (a *Agent) modelForLocked(tier string) string {
 	}
 	return a.model
 }
+
+// ThinkingBudgetFor returns the extended-thinking token budget for
+// the given tier. Returns 0 when no budget is configured (thinking
+// disabled). Values below the Anthropic minimum of 1024 are raised
+// to 1024; values above the per-request MaxTokens are clamped by
+// buildCachedRequest at send time. Takes a.mu briefly.
+func (a *Agent) ThinkingBudgetFor(tier string) int64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.thinkingBudgetForLocked(tier)
+}
+
+// thinkingBudgetForLocked is ThinkingBudgetFor without the mutex
+// acquisition. Caller must hold a.mu.
+func (a *Agent) thinkingBudgetForLocked(tier string) int64 {
+	if a.persona == nil || a.persona.Thinking == nil {
+		return 0
+	}
+	budget, ok := a.persona.Thinking[tier]
+	if !ok || budget <= 0 {
+		return 0
+	}
+	// Anthropic requires >=1024; nudge smaller values to the floor
+	// so a misspecified persona still produces valid requests
+	// instead of surfacing the API error to the operator.
+	const minBudget int64 = 1024
+	if budget < minBudget {
+		return minBudget
+	}
+	return budget
+}

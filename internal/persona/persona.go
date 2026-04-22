@@ -41,6 +41,15 @@ type Persona struct {
 	Tools                []string          `yaml:"tools"`
 	DefaultRiskThreshold string            `yaml:"default_risk_threshold,omitempty"`
 	Models               map[string]string `yaml:"models,omitempty"`
+	// Thinking is an optional per-tier extended-thinking budget in
+	// tokens. Keys match the model tier names (classify / generate /
+	// plan / exploit). A positive value enables Claude's interleaved
+	// thinking mode for that tier — the model allocates up to
+	// BudgetTokens on internal reasoning before committing to a
+	// response. Budgets must be >=1024 and <MaxTokens; the agent
+	// caps them at a safe default when out of range. Absent or zero
+	// values leave thinking disabled (the pre-Batch-A behaviour).
+	Thinking map[string]int64 `yaml:"thinking,omitempty"`
 }
 
 // Registry holds the set of known personas. Built-ins are merged with any
