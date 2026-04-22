@@ -45,6 +45,7 @@ var toolLevels = func() map[string]Level {
 		"wifi_info", "wifi_settings",
 		"audit_query", "audit_export", "audit_stats",
 		"docs_search",
+		"target_recall",
 		"discover_apps",
 		"analyze_image",
 		"list_apps",
@@ -99,6 +100,10 @@ var toolLevels = func() map[string]Level {
 		// / rfid_write / nfc_emulate separately.
 		"subghz_build", "rfid_build", "ir_build", "nfc_build",
 		"subghz_bruteforce_generate",
+		// Target memory mutators (Batch B). Medium because a wrong
+		// Remember/Forget can mislead future sessions, but nothing
+		// transmits over the air.
+		"target_remember", "target_forget",
 	)
 
 	// Active transmission, emulation, execution

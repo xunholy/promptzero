@@ -183,5 +183,32 @@ func buildGenTools() []anthropic.ToolUnionParam {
 			),
 			"query",
 		),
+
+		// --- Target memory (Batch B) ---
+		tool("target_remember",
+			"Persist facts about a target across sessions. Keyed by (identifier, kind). Use after a scan/detect to record what the operator learned — BSSIDs with SSID + channel, NFC UIDs with tag type, Sub-GHz captures with frequency + protocol. Facts are arbitrary JSON.",
+			props(
+				reqProp("identifier", "string", "Stable identifier: BSSID, card UID hex, freq+protocol tuple, etc."),
+				optProp("kind", "string", "One of bssid, nfc_uid, rfid_data, subghz, ibutton (default bssid)"),
+				optProp("facts", "object", "Free-form JSON object with the facts to store"),
+			),
+			"identifier",
+		),
+		tool("target_recall",
+			"Look up remembered facts for a target, or list recent targets when no identifier is supplied. Use at session start or before a tool call to see what PromptZero already knows about a specific BSSID / UID / frequency.",
+			props(
+				optProp("identifier", "string", "If omitted, returns the most-recently-seen targets"),
+				optProp("kind", "string", "Kind of identifier (default bssid)"),
+				optProp("limit", "integer", "Max rows when listing recent (default 10)"),
+			),
+		),
+		tool("target_forget",
+			"Remove a target and its facts from memory. Used by operators who want to reset the store for a given device, or to drop stale facts after a site re-survey.",
+			props(
+				reqProp("identifier", "string", "Target identifier to forget"),
+				optProp("kind", "string", "Kind of identifier (default bssid)"),
+			),
+			"identifier",
+		),
 	}
 }

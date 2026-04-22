@@ -189,6 +189,29 @@ func TestExport_EmptyInputStillValidJSON(t *testing.T) {
 	}
 }
 
+func TestExport_UnknownMinLevelRejected(t *testing.T) {
+	// Regression: --min-level=warnig used to silently pass every row
+	// because levelAtLeast mapped both unknown got and want to 0,
+	// making 0 >= 0 always true. Export now validates up front.
+	var buf bytes.Buffer
+	_, err := Export(sampleEntries(), &buf, Options{MinLevel: audit.Level("warnig")})
+	if err == nil {
+		t.Fatal("unknown min_level should error")
+	}
+	if !strings.Contains(err.Error(), "warnig") {
+		t.Errorf("error should echo bad value: %v", err)
+	}
+}
+
+func TestLevelAtLeast_UnknownGotBelowEverything(t *testing.T) {
+	if levelAtLeast(audit.Level("bogus"), audit.LevelInfo) {
+		t.Error("unknown got should never be >= any known want")
+	}
+	if !levelAtLeast(audit.LevelCritical, audit.LevelWarning) {
+		t.Error("critical should rank above warning")
+	}
+}
+
 func TestExport_EmptyEntriesWritesNothing(t *testing.T) {
 	var buf bytes.Buffer
 	n, err := Export(nil, &buf, Options{})

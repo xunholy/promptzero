@@ -14,6 +14,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
+	"github.com/xunholy/promptzero/internal/confidence"
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/discover"
 	"github.com/xunholy/promptzero/internal/fileformat"
@@ -28,6 +29,7 @@ import (
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/session"
 	"github.com/xunholy/promptzero/internal/snapshot"
+	"github.com/xunholy/promptzero/internal/targetmem"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/vision"
 	"github.com/xunholy/promptzero/internal/workflows"
@@ -167,6 +169,12 @@ type Agent struct {
 	// documentation corpus (Batch D). Nil falls back to the default
 	// embedded index on first docs_search call.
 	ragIndex *rag.Index
+
+	// targetMem is the persistent target store (Batch B). Nil disables
+	// the target_* tools and short-circuits Remember/Recall — operators
+	// who haven't opted in or who hit a DB open failure at startup
+	// still get a working agent without the facts feature.
+	targetMem *targetmem.Store
 }
 
 // SetDetectorEngine installs a rules.DetectorEngine. When set, the
@@ -917,6 +925,16 @@ func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMess
 		return te.JSON(), true
 	}
 
+	// Batch E — pre-dispatch confidence check. Missing required keys
+	// or placeholder values ("TODO", "<fill_in>", empty strings) cause
+	// the dispatch to abstain rather than act on shaky arguments. The
+	// abstention message is structured so the main loop can iterate
+	// (it looks like a tool error without device-state pinning).
+	if rep := confidence.Evaluate(params, requiredKeys(name, a.marauder != nil)); rep.ShouldAbstain() {
+		te := newToolError(name, fmt.Errorf("low-confidence input — abstaining: %s", rep.Reason), string(input))
+		return te.JSON(), true
+	}
+
 	result, err := a.dispatch(ctx, name, params)
 	if err != nil {
 		// Use the dispatch result (if any) as the excerpt — some
@@ -1223,6 +1241,14 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	// --- RAG / docs retrieval (Batch D) ---
 	case "docs_search":
 		return a.docsSearch(str(p, "query"), intOr(p, "k", 5))
+
+	// --- Target memory (Batch B) ---
+	case "target_remember":
+		return a.targetRemember(p)
+	case "target_recall":
+		return a.targetRecall(p)
+	case "target_forget":
+		return a.targetForget(p)
 
 	// --- Parametric file builders (P1-13) ---
 	case "subghz_bruteforce_generate":
@@ -1815,6 +1841,96 @@ func (a *Agent) SetRAGIndex(idx *rag.Index) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.ragIndex = idx
+}
+
+// SetTargetMemory installs the persistent target store. Nil leaves the
+// target_* tools inert (dispatch returns a friendly error) — callers
+// who failed to open the DB at startup still get a working agent.
+func (a *Agent) SetTargetMemory(s *targetmem.Store) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.targetMem = s
+}
+
+// --- Target Memory Handlers (Batch B) ---
+
+func (a *Agent) targetRemember(p map[string]interface{}) (string, error) {
+	a.mu.Lock()
+	s := a.targetMem
+	a.mu.Unlock()
+	if s == nil {
+		return "", fmt.Errorf("target memory not initialised")
+	}
+	id := str(p, "identifier")
+	if id == "" {
+		return "", fmt.Errorf("identifier required")
+	}
+	kind := str(p, "kind")
+	t := targetmem.Target{Identifier: id, Kind: kind}
+	if facts, ok := p["facts"]; ok {
+		t.Facts = facts
+	}
+	if err := s.Remember(t); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("remembered %s (%s)", id, t.Kind), nil
+}
+
+func (a *Agent) targetRecall(p map[string]interface{}) (string, error) {
+	a.mu.Lock()
+	s := a.targetMem
+	a.mu.Unlock()
+	if s == nil {
+		return "", fmt.Errorf("target memory not initialised")
+	}
+	id := str(p, "identifier")
+	if id == "" {
+		// No ID → list recent.
+		n := intOr(p, "limit", 10)
+		recent, err := s.Recent(n)
+		if err != nil {
+			return "", err
+		}
+		if len(recent) == 0 {
+			return "no remembered targets", nil
+		}
+		b, _ := json.Marshal(recent)
+		return string(b), nil
+	}
+	kind := str(p, "kind")
+	if kind == "" {
+		kind = targetmem.KindBSSID
+	}
+	t, ok, err := s.Lookup(id, kind)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return fmt.Sprintf("no facts for %s (%s)", id, kind), nil
+	}
+	b, _ := json.Marshal(t)
+	return string(b), nil
+}
+
+func (a *Agent) targetForget(p map[string]interface{}) (string, error) {
+	a.mu.Lock()
+	s := a.targetMem
+	a.mu.Unlock()
+	if s == nil {
+		return "", fmt.Errorf("target memory not initialised")
+	}
+	id := str(p, "identifier")
+	if id == "" {
+		return "", fmt.Errorf("identifier required")
+	}
+	kind := str(p, "kind")
+	if kind == "" {
+		kind = targetmem.KindBSSID
+	}
+	if err := s.Forget(id, kind); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("forgot %s (%s)", id, kind), nil
 }
 
 // --- Device Registry ---

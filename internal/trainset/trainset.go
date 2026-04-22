@@ -90,11 +90,28 @@ type ChatRow struct {
 
 const defaultChatSystemPrompt = "You are PromptZero, a hardware-pentest CLI agent. When the operator describes a goal, select a tool and produce its JSON arguments."
 
+// knownLevels enumerates the audit.Level values Export recognises.
+// Extracted so Validate and levelAtLeast share one source of truth.
+var knownLevels = map[audit.Level]int{
+	audit.LevelInfo:     1,
+	audit.LevelAction:   2,
+	audit.LevelWarning:  3,
+	audit.LevelCritical: 4,
+}
+
 // Export writes each filtered entry to w according to opts.Format.
 // Returns the number of rows emitted and the first write/encode error.
+// An unknown opts.MinLevel is rejected upfront rather than silently
+// failing open — a typo like --min-level=warnig must not quietly drop
+// the filter.
 func Export(entries []audit.Entry, w io.Writer, opts Options) (int, error) {
 	if opts.Format == "" {
 		opts.Format = FormatJSONL
+	}
+	if opts.MinLevel != "" {
+		if _, ok := knownLevels[opts.MinLevel]; !ok {
+			return 0, fmt.Errorf("unknown min_level %q (valid: info, action, warning, critical)", opts.MinLevel)
+		}
 	}
 	bw := bufio.NewWriter(w)
 	defer bw.Flush()
@@ -134,16 +151,15 @@ func keep(e audit.Entry, opts Options) bool {
 }
 
 // levelAtLeast reports whether got is at least want in the audit.Level
-// ordering. Unknown levels are treated as below every known level so a
-// malformed DB row can't accidentally leak through a MinLevel filter.
+// ordering. Unknown got is treated as below every known want so a
+// malformed DB row can't accidentally leak through a MinLevel filter
+// (want is validated in Export before we get here).
 func levelAtLeast(got, want audit.Level) bool {
-	order := map[audit.Level]int{
-		audit.LevelInfo:     1,
-		audit.LevelAction:   2,
-		audit.LevelWarning:  3,
-		audit.LevelCritical: 4,
+	gotRank, gotOk := knownLevels[got]
+	if !gotOk {
+		return false
 	}
-	return order[got] >= order[want]
+	return gotRank >= knownLevels[want]
 }
 
 func toRecord(e audit.Entry) Record {

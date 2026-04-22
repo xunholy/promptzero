@@ -27,6 +27,7 @@ import (
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/snapshot"
+	"github.com/xunholy/promptzero/internal/targetmem"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/web"
 	"github.com/xunholy/promptzero/internal/webhook"
@@ -457,6 +458,19 @@ func setupSessionStore(ai *agent.Agent, resumeID string, autoResume bool) {
 		ai.SetSnapshotManager(snapshot.NewManager(root))
 	} else {
 		statusWarn(fmt.Sprintf("Snapshot manager unavailable: %v", rErr))
+	}
+
+	// Target memory: per-target facts persisted across sessions (Batch
+	// B). DB open failure is a warning — the target_* tools become
+	// inert but the rest of the agent still runs.
+	if tmPath, tmErr := targetmem.DefaultPath(); tmErr == nil {
+		if store, tmOpenErr := targetmem.Open(tmPath); tmOpenErr == nil {
+			ai.SetTargetMemory(store)
+		} else {
+			statusWarn(fmt.Sprintf("Target memory unavailable: %v", tmOpenErr))
+		}
+	} else {
+		statusWarn(fmt.Sprintf("Target memory path unresolved: %v", tmErr))
 	}
 
 	if resumeID != "" {
