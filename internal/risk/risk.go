@@ -83,7 +83,7 @@ var toolLevels = func() map[string]Level {
 		"nfc_detect", "nfc_subcommand", "nfc_read_save",
 		"generate_evil_portal", "generate_badusb", "generate_subghz", "generate_ir", "generate_nfc",
 		"input_send",
-		"storage_mkdir", "storage_delete",
+		"storage_mkdir", "storage_delete", "storage_write",
 		"subghz_rx_raw",
 		"nfc_mfu_rdbl", "nfc_dump_protocol",
 		"rfid_raw_read",

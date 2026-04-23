@@ -1148,16 +1148,48 @@ func (f *Flipper) NFCMFUWrite(page int, hexData string, timeout time.Duration) (
 	return f.NFCSubcommand(fmt.Sprintf("mfu wrbl %d %s", page, safe), timeout)
 }
 
-// NFCDumpProtocol dumps tag contents for a specific MIFARE protocol via the
-// nfc subshell (e.g. "Mifare_Classic", "Mifare_Ultralight"). Fork-gated.
+// NFCDumpProtocol dumps tag contents for a specific NFC protocol via the
+// nfc subshell. Callers pass the canonical friendly name
+// ("Mifare_Classic", "Mifare_Ultralight", "Mifare_Plus", "FeliCa"); the
+// wrapper translates to the firmware's accepted token.
+//
 // Subshell verb (stock/Unleashed): dump <protocol>
-// Subshell verb (Momentum): dump -p <protocol>
+// Subshell verb (Momentum):        dump -p <token>   (token is mfc/mfu/mfp/felica)
+//
+// Pass an empty string to skip the protocol arg entirely — Momentum's
+// `dump` (no -p) auto-detects the protocol and writes a .nfc file in
+// /ext/nfc/dump-YYYYMMDD-HHMMSS.nfc. That auto-save shape is the real
+// "scan and save" workflow on Momentum and is preferred when the
+// caller doesn't already know the protocol.
 func (f *Flipper) NFCDumpProtocol(protocol string, timeout time.Duration) (string, error) {
+	if strings.TrimSpace(protocol) == "" {
+		return f.NFCSubcommand("dump", timeout)
+	}
 	safe := sanitizeArg(protocol)
 	if f.Capabilities().NFCFlaggedArgs {
-		return f.NFCSubcommand(fmt.Sprintf("dump -p %s", safe), timeout)
+		token := momentumDumpProtocolToken(safe)
+		return f.NFCSubcommand(fmt.Sprintf("dump -p %s", token), timeout)
 	}
 	return f.NFCSubcommand(fmt.Sprintf("dump %s", safe), timeout)
+}
+
+// momentumDumpProtocolToken maps the canonical friendly name to the short
+// token Momentum's `dump -p` parser accepts. Anything unrecognised is
+// passed through unchanged so callers that already know the token aren't
+// surprised by a silent rewrite.
+func momentumDumpProtocolToken(canonical string) string {
+	switch strings.ToLower(strings.ReplaceAll(canonical, " ", "_")) {
+	case "mifare_classic", "mfclassic", "classic":
+		return "mfc"
+	case "mifare_ultralight", "ultralight", "ntag", "ntag213", "ntag215", "ntag216":
+		return "mfu"
+	case "mifare_plus", "mf_plus":
+		return "mfp"
+	case "felica":
+		return "felica"
+	default:
+		return canonical
+	}
 }
 
 // --- RFID (capability-gap primitives) ---

@@ -249,6 +249,14 @@ func buildTools() []anthropic.ToolUnionParam {
 			),
 			"path",
 		),
+		tool("storage_write",
+			"Write content to a file on the Flipper SD card. Overwrites any existing file at path. Use the generate_* or *_build tools when you need a structured Flipper payload (.sub/.nfc/.ir/.rfid/BadUSB) — those build and validate; storage_write is the bare-bytes escape hatch when you already have the exact content.",
+			props(
+				reqProp("path", "string", "Destination file path (e.g. /ext/apps_data/notes.txt)"),
+				reqProp("content", "string", "Exact bytes to write (UTF-8)"),
+			),
+			"path", "content",
+		),
 		tool("storage_delete",
 			"Delete a file or directory from the Flipper SD card.",
 			props(

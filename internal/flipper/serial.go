@@ -768,8 +768,26 @@ func (f *Flipper) readUntilPromptCtx(ctx context.Context) (string, error) {
 // (CSI is `\x1b[` + digits/semicolons + a letter), so a direct
 // bytes.LastIndex on the raw buffer is both correct and preserves the offset
 // into accum without the ANSI-stripped index drift.
+//
+// We only search the tail of b — the prompt is always at the end of the
+// stream, never mid-output. Capping the scan window keeps the cost flat as
+// captures grow into the megabyte range. The window must overlap the
+// previous search by len(prompt)-1 so a prompt that straddled two reads
+// is still found.
 func indexOfPrompt(b []byte) int {
-	return bytes.LastIndex(b, []byte(">: "))
+	const window = 1024
+	if len(b) < 3 {
+		return -1
+	}
+	searchStart := 0
+	if len(b) > window {
+		searchStart = len(b) - window
+	}
+	idx := bytes.LastIndex(b[searchStart:], []byte(">: "))
+	if idx < 0 {
+		return -1
+	}
+	return idx + searchStart
 }
 
 // parseResponse strips ANSI, normalizes line endings, drops the command echo

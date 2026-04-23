@@ -113,16 +113,13 @@ func (f *fakeAgent) confirm(ctx context.Context, req agent.ConfirmRequest) agent
 func startTestServer(t *testing.T, fa *fakeAgent) (*websocket.Conn, func()) {
 	t.Helper()
 
-	s := &Server{
-		agent:             fa,
-		addr:              "127.0.0.1:0",
-		conns:             make(map[*sessionConn]struct{}),
-		confirms:          make(map[string]chan agent.ConfirmResponse),
-		heartbeatInterval: 100 * time.Millisecond,
-		heartbeatTimeout:  2 * time.Second,
-		writeTimeout:      2 * time.Second,
-	}
-	s.attachAgentCallbacks()
+	s := NewServer("127.0.0.1:0", fa, nil)
+	// Tighten the production defaults so test failures surface in seconds,
+	// not minutes. Going through NewServer keeps every other field — like
+	// requestQueue — initialised in lockstep with prod.
+	s.heartbeatInterval = 100 * time.Millisecond
+	s.heartbeatTimeout = 2 * time.Second
+	s.writeTimeout = 2 * time.Second
 
 	ts := httptest.NewServer(http.HandlerFunc(s.handleWebSocket))
 	url := "ws" + strings.TrimPrefix(ts.URL, "http")

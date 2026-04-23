@@ -256,16 +256,19 @@ func (e *DetectorEngine) EvaluateFor(ctx context.Context, toolName, input, outpu
 		return nil
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, e.evalTimeout)
-	defer cancel()
-
 	verdicts := make([]Verdict, len(detectors))
 	var wg sync.WaitGroup
 	for i, d := range detectors {
 		wg.Add(1)
 		go func(i int, d Detector) {
 			defer wg.Done()
-			v, err := d.Evaluate(callCtx, toolName, input, output)
+
+			// Apply per-detector timeout to prevent a single stalled
+			// classifier from blocking the entire evaluation round.
+			detCtx, cancel := context.WithTimeout(ctx, e.evalTimeout)
+			defer cancel()
+
+			v, err := d.Evaluate(detCtx, toolName, input, output)
 			if err != nil {
 				v = Verdict{
 					Verdict:    VerdictUnknown,

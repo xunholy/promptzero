@@ -388,14 +388,18 @@ func TestNFCRawFrame_MomentumFlaggedArgs(t *testing.T) {
 }
 
 // TestNFCDumpProtocol_MomentumFlaggedArgs verifies that on Momentum,
-// NFCDumpProtocol emits `dump -p <protocol>` instead of `dump <protocol>`.
+// NFCDumpProtocol emits `dump -p <token>` where <token> is the short
+// firmware-accepted form (mfc/mfu/mfp/felica), not the verbose canonical
+// name. Validated against real Momentum hardware: the verbose form is
+// rejected with `Unable to parse value 'Mifare_Classic' for key 'p'`.
 func TestNFCDumpProtocol_MomentumFlaggedArgs(t *testing.T) {
-	const proto = "Mifare_Classic"
+	const canonical = "Mifare_Classic"
+	const wantToken = "mfc"
 	m := mock.Spawn(t,
 		mock.WithHandler("device_info", func(_ []string) string { return momentumDeviceInfo }),
 		mock.WithHandler("nfc", func(_ []string) string { return "" }),
 		mock.WithHandler("dump", func(args []string) string {
-			if len(args) >= 2 && args[0] == "-p" && args[1] == proto {
+			if len(args) >= 2 && args[0] == "-p" && args[1] == wantToken {
 				return "Dump complete"
 			}
 			return ""
@@ -404,12 +408,12 @@ func TestNFCDumpProtocol_MomentumFlaggedArgs(t *testing.T) {
 	)
 	flip := connectAndDetect(t, m)
 
-	out, err := flip.NFCDumpProtocol(proto, 5*time.Second)
+	out, err := flip.NFCDumpProtocol(canonical, 5*time.Second)
 	if err != nil {
 		t.Fatalf("NFCDumpProtocol (Momentum): %v (out=%q)", err, out)
 	}
 
-	wantLine := "dump -p " + proto
+	wantLine := "dump -p " + wantToken
 	found := false
 	for _, l := range m.Lines() {
 		if strings.TrimSpace(l) == wantLine {
@@ -418,7 +422,8 @@ func TestNFCDumpProtocol_MomentumFlaggedArgs(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("expected flagged form %q; lines=%v", wantLine, m.Lines())
+		t.Errorf("expected flagged form %q (canonical %q → Momentum token %q); lines=%v",
+			wantLine, canonical, wantToken, m.Lines())
 	}
 }
 

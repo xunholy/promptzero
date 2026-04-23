@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1098,6 +1099,18 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return a.flipper.StorageList(str(p, "path"))
 	case "storage_read":
 		return a.flipper.StorageRead(str(p, "path"))
+	case "storage_write":
+		// Mirrors the MCP wrapper exactly so the LLM can fulfill direct
+		// "write this content to /ext/foo.txt" requests without needing
+		// a fileformat-specific helper. The generation-pipeline tools
+		// (generate_*, *_build) still cover the structured-payload path
+		// — this is the bare-bytes escape hatch for the same surface
+		// MCP clients have always had.
+		path := str(p, "path")
+		if err := a.flipper.StorageWriteCtx(ctx, path, str(p, "content")); err != nil {
+			return "", err
+		}
+		return "ok", nil
 	case "storage_delete":
 		return a.flipper.StorageRemove(str(p, "path"))
 	case "storage_mkdir":
@@ -1112,7 +1125,11 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return string(b), nil
 
 	// --- Flipper: System ---
-	case "system_info":
+	// system_info is the agent-side name; device_info is the MCP-side
+	// name (and the firmware's own CLI verb). Accept both so the
+	// dispatcher matches whichever form a caller used. Both already
+	// classify as Low in internal/risk so the gate behaves identically.
+	case "system_info", "device_info":
 		return a.flipper.DeviceInfo()
 	case "power_info":
 		return a.flipper.PowerInfo()
@@ -1940,7 +1957,7 @@ func (a *Agent) nfcReadSave(ctx context.Context, p map[string]interface{}) (stri
 		return "", fmt.Errorf("nfc_read_save: %w", err)
 	}
 	parsed := flipper.ParseNFCDetect(raw)
-	if !parsed.Detected || parsed.UID == "" {
+	if !parsed.Detected {
 		// Return as an error (not a string with err=nil) so the
 		// dispatch layer marks the tool call success=false. The
 		// previous shape logged success=true despite the card
@@ -1949,6 +1966,16 @@ func (a *Agent) nfcReadSave(ctx context.Context, p map[string]interface{}) (stri
 		// gets the operator a prompt to reposition the card
 		// instead of silent retries.
 		return "", fmt.Errorf("nfc_read_save: no tag detected after %s — hold the tag flat against the NFC (front) side of the Flipper and retry. For 125 kHz LF prox fobs use rfid_read instead", timeout)
+	}
+	// Momentum's `nfc scanner` identifies the protocol family
+	// ("Protocols detected: Mifare Classic") but does NOT emit
+	// UID/ATQA/SAK — those require the dump command which runs its own
+	// anticol sequence. Fall back to dump (auto-detect, no -p) which
+	// scans, identifies, AND writes a complete .nfc file with the real
+	// UID + sector data. We rename the dump's auto-named file to the
+	// caller's requested path so the API contract is preserved.
+	if parsed.UID == "" {
+		return a.nfcReadSaveViaDump(ctx, parsed, p, timeout)
 	}
 
 	deviceType := mapNFCTypeToDeviceType(parsed.Type)
@@ -2002,6 +2029,63 @@ func (a *Agent) nfcReadSave(ctx context.Context, p map[string]interface{}) (stri
 		nextHint = "\n\nNote: this is a UID-only save — full block data requires sector keys. For cloning against real readers, chain loader_mfkey (with captured reader nonces) → loader_mifare_nested → re-run nfc_dump_protocol once keys are known."
 	}
 	return fmt.Sprintf("saved %s (%s, UID %s) → %s\n%s%s", parsed.Type, deviceType, parsed.UID, outPath, summary, nextHint), nil
+}
+
+// dumpSavedPathRE captures the file path from Momentum's `dump` output
+// banner: `Dump saved to '/ext/nfc/dump-YYYYMMDD-HHMMSS.nfc'`.
+var dumpSavedPathRE = regexp.MustCompile(`Dump saved to '([^']+)'`)
+
+// nfcReadSaveViaDump is the Momentum-specific fallback for nfcReadSave
+// when `nfc scanner` identified a tag but didn't emit UID. It calls the
+// auto-detect dump (no -p), captures the firmware's saved-file path,
+// and renames to the caller's requested path.
+//
+// Why this exists: Momentum's CLI splits "what protocol is this card?"
+// from "give me its UID and contents" across two subcommands. scanner
+// answers the first; dump answers the second AND writes a complete
+// .nfc file as a side effect. nfcReadSave's API contract is one call →
+// one saved file → return path, so we have to drive both.
+func (a *Agent) nfcReadSaveViaDump(ctx context.Context, scan flipper.NFCDetectResult, p map[string]interface{}, timeout time.Duration) (string, error) {
+	dumpOut, err := a.flipper.NFCDumpProtocol("", timeout)
+	if err != nil {
+		return "", fmt.Errorf("nfc_read_save: dump fallback failed: %w", err)
+	}
+	m := dumpSavedPathRE.FindStringSubmatch(dumpOut)
+	if len(m) != 2 {
+		return "", fmt.Errorf("nfc_read_save: dump returned no saved-file path (output: %q)", strings.TrimSpace(dumpOut))
+	}
+	dumpedPath := m[1]
+
+	// Resolve the caller's desired output path. Same naming logic as the
+	// happy path so the API contract is identical regardless of which
+	// branch we took.
+	outPath := str(p, "path")
+	if outPath == "" {
+		name := str(p, "name")
+		if name == "" {
+			// We don't have UID at this point (that's why we took this
+			// branch), so use a timestamp-derived suffix.
+			name = "scanned_" + time.Now().UTC().Format("20060102_150405")
+		}
+		outPath = "/ext/nfc/" + name + ".nfc"
+	}
+
+	// Move the dump's auto-named file to the caller's requested path.
+	// If they happen to match, skip the rename — saves a CLI round-trip
+	// and avoids "destination exists" on firmwares that reject self-renames.
+	if outPath != dumpedPath {
+		a.snapshotBeforeWrite(ctx, outPath)
+		if _, err := a.flipper.StorageRename(dumpedPath, outPath); err != nil {
+			return "", fmt.Errorf("nfc_read_save: rename %s → %s failed: %w (original dump preserved)", dumpedPath, outPath, err)
+		}
+	}
+
+	deviceType := mapNFCTypeToDeviceType(scan.Type)
+	nextHint := ""
+	if strings.Contains(strings.ToLower(deviceType), "classic") {
+		nextHint = "\n\nNote: full sector data requires keys. If the dump shows blocks past sector 0, you already have them — otherwise chain loader_mfkey (with captured reader nonces) → loader_mifare_nested to recover keys."
+	}
+	return fmt.Sprintf("saved %s (%s, via auto-detect dump) → %s%s", scan.Type, deviceType, outPath, nextHint), nil
 }
 
 // mapNFCTypeToDeviceType translates the scanner's Type string into a

@@ -346,12 +346,12 @@ func (s *Server) registerFlipperTools() {
 			return f.NFCMFUWrite(int(na(a, "page")), sa(a, "hex"), durationParam(a, "timeout_seconds", 10*time.Second))
 		})
 
-	s.add("nfc_dump_protocol", "Dump all readable contents of a protocol-matched NFC tag.",
+	s.add("nfc_dump_protocol", "Dump all readable contents of a protocol-matched NFC tag. Pass an empty string to skip the protocol filter — on Momentum that auto-detects + dumps + writes the .nfc file in one step (the realistic 'scan and save' shape).",
 		[]mcp.ToolOption{
-			mcp.WithString("protocol", mcp.Required(), mcp.Description("Protocol name (Mifare_Classic, Mifare_Ultralight, ...)")),
+			mcp.WithString("protocol", mcp.Description("Canonical protocol name: Mifare_Classic, Mifare_Ultralight, Mifare_Plus, FeliCa. The wrapper translates to firmware-specific tokens (Momentum needs mfc/mfu/mfp/felica; stock takes the verbose form). Pass empty string for auto-detect.")),
 			mcp.WithNumber("timeout_seconds", mcp.Description("Wait time (default 30)")),
 		},
-		[]string{"protocol"},
+		nil,
 		func(_ context.Context, a map[string]interface{}) (string, error) {
 			return f.NFCDumpProtocol(sa(a, "protocol"), durationParam(a, "timeout_seconds", 30*time.Second))
 		})

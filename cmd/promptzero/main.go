@@ -137,6 +137,10 @@ func run() error {
 		return runMCPMode(cfg, flip, f.wifiEnabled)
 	}
 
+	if err := cfg.RequireAPIKey(); err != nil {
+		return err
+	}
+
 	client := anthropic.NewClient()
 	ai := agent.New(&client, flip, cfg)
 	if cfg.Agent.ConfirmIdleTimeout > 0 {

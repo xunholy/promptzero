@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,11 +144,11 @@ func Open(dbPath string) (*Log, error) {
 	// Audit log can contain secrets embedded in tool inputs/outputs. Tighten
 	// the mode now that the file is guaranteed to exist.
 	if err := os.Chmod(actualPath, 0o600); err != nil {
-		log.Printf("audit: chmod %s: %v", actualPath, err)
+		obs.Default().Warn("audit_chmod_failed", "path", actualPath, "err", err)
 	}
 
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		log.Printf("audit: enabling WAL journal mode failed: %v", err)
+		obs.Default().Warn("audit_wal_enable_failed", "err", err)
 	}
 
 	return &Log{
@@ -210,7 +209,7 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 		success,
 	)
 	if err != nil {
-		log.Printf("audit: failed to record %s: %v", tool, err)
+		obs.Default().Warn("audit_record_failed", "tool", tool, "err", err)
 		return
 	}
 	traceID := obs.TraceID(ctx)
@@ -268,14 +267,14 @@ func (l *Log) AddObserver(fn func(Entry)) {
 // crash audit recording, so they are run in a deferred-recover block.
 func (l *Log) notify(e Entry) {
 	l.obsMu.RLock()
-	obs := make([]func(Entry), len(l.observers))
-	copy(obs, l.observers)
+	observers := make([]func(Entry), len(l.observers))
+	copy(observers, l.observers)
 	l.obsMu.RUnlock()
-	for _, fn := range obs {
+	for _, fn := range observers {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("audit: observer panicked: %v", r)
+					obs.Default().Error("audit_observer_panicked", "recovered", fmt.Sprintf("%v", r))
 				}
 			}()
 			fn(e)

@@ -86,6 +86,7 @@ func ToolGroup(name string) string {
 		name == "flipper_raw_cli",
 		name == "device_reboot",
 		name == "system_info",
+		name == "device_info",
 		name == "power_info",
 		name == "led_set",
 		name == "vibro",
