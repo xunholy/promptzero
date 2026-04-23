@@ -31,6 +31,7 @@ import (
 	"github.com/xunholy/promptzero/internal/session"
 	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/targetmem"
+	toolsreg "github.com/xunholy/promptzero/internal/tools"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/vision"
 	"github.com/xunholy/promptzero/internal/workflows"
@@ -874,6 +875,26 @@ func (a *Agent) requireMarauder() error {
 	return nil
 }
 
+// deps returns a fully-populated Deps bag so registry-backed handlers
+// have access to every facility the agent has. Wired once per dispatch
+// call to ensure session-scoped fields (sessionID, snapshotMgr) are
+// current.
+func (a *Agent) deps() *toolsreg.Deps {
+	return &toolsreg.Deps{
+		Flipper:   a.flipper,
+		Marauder:  a.marauder,
+		Audit:     a.auditLog,
+		Config:    a.cfg,
+		Generator: a.generator,
+		GenLLM:    a.genLLM,
+		Vision:    a.vision,
+		Snapshot:  a.snapshotMgr,
+		SessionID: a.sessionID,
+		RAG:       a.ragIndex,
+		TargetMem: a.targetMem,
+	}
+}
+
 // RunTool exposes the agent's tool-dispatch path so external
 // orchestrators (Campaigns runner, MCP server) can invoke individual
 // tools without going through the full Run loop. Honours the risk
@@ -988,6 +1009,13 @@ func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMess
 }
 
 func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interface{}) (string, error) {
+	// Registry short-circuit: if the tool is registered in the central
+	// registry, invoke its handler directly. Falls through to the legacy
+	// switch for tools not yet migrated. The risk gate runs in executeTool
+	// (before dispatch is called), so this path inherits the gate for free.
+	if spec, ok := toolsreg.Get(name); ok {
+		return spec.Handler(ctx, a.deps(), p)
+	}
 	switch name {
 	// --- Flipper: Sub-GHz ---
 	case "subghz_transmit":
@@ -1021,14 +1049,6 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	// --- Flipper: NFC ---
 	case "nfc_read_save":
 		return a.nfcReadSave(ctx, p)
-	case "nfc_detect":
-		raw, err := a.flipper.NFCDetect(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
-		if err != nil {
-			return raw, err
-		}
-		parsed := flipper.ParseNFCDetect(raw)
-		b, _ := json.Marshal(parsed)
-		return string(b), nil
 	case "nfc_emulate":
 		return a.flipper.NFCEmulate(str(p, "file"))
 	case "nfc_subcommand":
@@ -1099,18 +1119,6 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return a.flipper.StorageList(str(p, "path"))
 	case "storage_read":
 		return a.flipper.StorageRead(str(p, "path"))
-	case "storage_write":
-		// Mirrors the MCP wrapper exactly so the LLM can fulfill direct
-		// "write this content to /ext/foo.txt" requests without needing
-		// a fileformat-specific helper. The generation-pipeline tools
-		// (generate_*, *_build) still cover the structured-payload path
-		// — this is the bare-bytes escape hatch for the same surface
-		// MCP clients have always had.
-		path := str(p, "path")
-		if err := a.flipper.StorageWriteCtx(ctx, path, str(p, "content")); err != nil {
-			return "", err
-		}
-		return "ok", nil
 	case "storage_delete":
 		return a.flipper.StorageRemove(str(p, "path"))
 	case "storage_mkdir":
@@ -1125,12 +1133,6 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return string(b), nil
 
 	// --- Flipper: System ---
-	// system_info is the agent-side name; device_info is the MCP-side
-	// name (and the firmware's own CLI verb). Accept both so the
-	// dispatcher matches whichever form a caller used. Both already
-	// classify as Low in internal/risk so the gate behaves identically.
-	case "system_info", "device_info":
-		return a.flipper.DeviceInfo()
 	case "power_info":
 		return a.flipper.PowerInfo()
 	case "device_reboot":

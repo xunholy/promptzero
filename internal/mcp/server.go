@@ -25,6 +25,7 @@ import (
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/risk"
+	toolsreg "github.com/xunholy/promptzero/internal/tools"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/workflows"
 )
@@ -61,6 +62,7 @@ func NewServer(f *flipper.Flipper, m *marauder.Marauder) *Server {
 	if m != nil {
 		s.registerMarauderTools()
 	}
+	s.registerFromRegistry()
 	s.registerPersonaPrompts()
 
 	return s
@@ -281,13 +283,6 @@ func (s *Server) registerFlipperTools() {
 		})
 
 	// --- NFC ---
-	s.add("nfc_detect", "Detect an NFC tag and return UID/type/data.",
-		[]mcp.ToolOption{mcp.WithNumber("timeout_seconds", mcp.Description("Wait time (default 30)"))},
-		nil,
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.NFCDetect(durationParam(a, "timeout_seconds", 30*time.Second))
-		})
-
 	s.add("nfc_emulate", "Emulate a saved NFC tag/card.",
 		[]mcp.ToolOption{mcp.WithString("file", mcp.Required(), mcp.Description("Path to .nfc file"))},
 		[]string{"file"},
@@ -563,18 +558,6 @@ func (s *Server) registerFlipperTools() {
 		func(_ context.Context, a map[string]interface{}) (string, error) {
 			return f.StorageRead(sa(a, "path"))
 		})
-	s.add("storage_write", "Write content to the SD card.",
-		[]mcp.ToolOption{
-			mcp.WithString("path", mcp.Required(), mcp.Description("File path")),
-			mcp.WithString("content", mcp.Required(), mcp.Description("File content")),
-		},
-		[]string{"path", "content"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			if err := f.StorageWrite(sa(a, "path"), sa(a, "content")); err != nil {
-				return "", err
-			}
-			return "ok", nil
-		})
 	s.add("storage_delete", "Delete a file or directory.",
 		[]mcp.ToolOption{mcp.WithString("path", mcp.Required(), mcp.Description("Path to delete"))},
 		[]string{"path"},
@@ -649,11 +632,6 @@ func (s *Server) registerFlipperTools() {
 		})
 
 	// --- System ---
-	s.add("device_info", "Get Flipper device information. Read-only.",
-		nil, nil,
-		func(_ context.Context, _ map[string]interface{}) (string, error) {
-			return f.DeviceInfo()
-		})
 	s.add("power_info", "Get battery/power information. Read-only.",
 		nil, nil,
 		func(_ context.Context, _ map[string]interface{}) (string, error) {
@@ -1145,6 +1123,90 @@ func (s *Server) registerPersonaPrompts() {
 		})
 		s.prompts = append(s.prompts, promptName)
 	}
+}
+
+// --- Registry adapter ---
+
+// registerFromRegistry wires every non-AgentOnly Spec from the central
+// tool registry into the MCP server. This is the adapter that bridges
+// internal/tools into the MCP host. Called from NewServer after the
+// legacy register* chain so that, during Waves 0-4, the registry-backed
+// tools are registered without the legacy s.add() calls that were
+// removed in the same wave commit.
+func (s *Server) registerFromRegistry() {
+	for _, spec := range toolsreg.All() {
+		if spec.AgentOnly {
+			continue
+		}
+		opts := optsFromSchema(spec.Schema, spec.Required)
+		names := append([]string{spec.Name}, spec.Aliases...)
+		for _, name := range names {
+			specCopy := spec
+			nameCopy := name
+			s.add(nameCopy, specCopy.Description, opts, specCopy.Required,
+				func(ctx context.Context, args map[string]interface{}) (string, error) {
+					return specCopy.Handler(ctx, s.deps(), args)
+				})
+		}
+	}
+}
+
+// deps returns a Deps bag populated with only the transports the MCP
+// server has access to. The LLM-specific fields (Generator, Vision,
+// Snapshot, etc.) are nil — only non-AgentOnly handlers are called
+// through this path, so they must degrade gracefully on nil fields.
+func (s *Server) deps() *toolsreg.Deps {
+	return &toolsreg.Deps{
+		Flipper:  s.flipper,
+		Marauder: s.marauder,
+	}
+}
+
+// optsFromSchema converts a JSON Schema object into mcp.ToolOption entries.
+// Only top-level property types are handled: string, integer, number,
+// boolean, array, object. Properties listed in required get mcp.Required().
+func optsFromSchema(schema []byte, required []string) []mcp.ToolOption {
+	if len(schema) == 0 {
+		return nil
+	}
+	var s struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &s); err != nil || len(s.Properties) == 0 {
+		return nil
+	}
+	reqSet := make(map[string]bool, len(required))
+	for _, r := range required {
+		reqSet[r] = true
+	}
+	var opts []mcp.ToolOption
+	for name, propRaw := range s.Properties {
+		var prop struct {
+			Type        string `json:"type"`
+			Description string `json:"description"`
+		}
+		if err := json.Unmarshal(propRaw, &prop); err != nil {
+			continue
+		}
+		var propOpts []mcp.PropertyOption
+		propOpts = append(propOpts, mcp.Description(prop.Description))
+		if reqSet[name] {
+			propOpts = append(propOpts, mcp.Required())
+		}
+		switch prop.Type {
+		case "string":
+			opts = append(opts, mcp.WithString(name, propOpts...))
+		case "integer", "number":
+			opts = append(opts, mcp.WithNumber(name, propOpts...))
+		case "boolean":
+			opts = append(opts, mcp.WithBoolean(name, propOpts...))
+		case "array":
+			opts = append(opts, mcp.WithArray(name, propOpts...))
+		case "object":
+			opts = append(opts, mcp.WithObject(name, propOpts...))
+		}
+	}
+	return opts
 }
 
 // --- Argument helpers ---

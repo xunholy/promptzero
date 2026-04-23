@@ -1,14 +1,28 @@
 package agent
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/toolctx"
+	toolsreg "github.com/xunholy/promptzero/internal/tools"
 )
 
 func buildTools() []anthropic.ToolUnionParam {
-	return []anthropic.ToolUnionParam{
+	// Registry-backed prepass: emit one entry per registered Spec (and per
+	// Alias) so the LLM sees every migrated tool. The legacy slice below
+	// covers tools not yet in the registry. Wave 5 collapses both into one.
+	var regTools []anthropic.ToolUnionParam
+	for _, spec := range toolsreg.All() {
+		propsMap := schemaToProps(spec.Schema)
+		regTools = append(regTools, tool(spec.Name, spec.Description, propsMap, spec.Required...))
+		for _, alias := range spec.Aliases {
+			regTools = append(regTools, tool(alias, spec.Description, propsMap, spec.Required...))
+		}
+	}
+
+	legacy := []anthropic.ToolUnionParam{
 		// --- Sub-GHz ---
 		toolEx("subghz_transmit",
 			"Transmit a saved Sub-GHz signal file (.sub). Use for garage doors, remotes, gate openers, car keys, weather stations, or any device operating on Sub-GHz frequencies. Modded firmware unlocks the full frequency range with no restrictions.",
@@ -85,12 +99,6 @@ func buildTools() []anthropic.ToolUnionParam {
 		),
 
 		// --- NFC ---
-		tool("nfc_detect",
-			"Detect an NFC tag/card and return UID/ATQA/SAK/Type. Use this when the operator asks what a tag IS. When the operator asks to SCAN / SAVE / CLONE a tag, prefer nfc_read_save — it detects and writes a .nfc file in one call.",
-			props(
-				optProp("timeout_seconds", "integer", "How long to wait for a tag (default 30)"),
-			),
-		),
 		tool("nfc_read_save",
 			"Scan an NFC tag and save it to the SD card as /ext/nfc/<name>.nfc. This is the default tool for operator requests like 'scan this fob', 'read the badge', or 'save this card'. Does a full NFCDetect, constructs a valid .nfc file (UID + ATQA + SAK, device-type-aware), runs the static verifier, and writes via the same snapshot/rewind pipeline as the parametric builders. Works for Classic 1K/4K, NTAG213/215/216, Ultralight. For high-security badges where sector keys are required for full block reads, the UID-only save is still useful as a first pass — chain with loader_mfkey / loader_mifare_nested for key recovery.",
 			props(
@@ -249,14 +257,6 @@ func buildTools() []anthropic.ToolUnionParam {
 			),
 			"path",
 		),
-		tool("storage_write",
-			"Write content to a file on the Flipper SD card. Overwrites any existing file at path. Use the generate_* or *_build tools when you need a structured Flipper payload (.sub/.nfc/.ir/.rfid/BadUSB) — those build and validate; storage_write is the bare-bytes escape hatch when you already have the exact content.",
-			props(
-				reqProp("path", "string", "Destination file path (e.g. /ext/apps_data/notes.txt)"),
-				reqProp("content", "string", "Exact bytes to write (UTF-8)"),
-			),
-			"path", "content",
-		),
 		tool("storage_delete",
 			"Delete a file or directory from the Flipper SD card.",
 			props(
@@ -280,10 +280,6 @@ func buildTools() []anthropic.ToolUnionParam {
 		),
 
 		// --- System ---
-		tool("system_info",
-			"Get Flipper Zero device information: firmware version, hardware revision, uptime, etc.",
-			props(),
-		),
 		tool("power_info",
 			"Get battery and power information: charge level, voltage, charging status.",
 			props(),
@@ -595,6 +591,7 @@ func buildTools() []anthropic.ToolUnionParam {
 			props(),
 		),
 	}
+	return append(regTools, legacy...)
 }
 
 // buildWorkflowTools returns every composite pentest workflow tool. Each
@@ -707,6 +704,22 @@ func buildFileFormatTools() []anthropic.ToolUnionParam {
 			"path_a", "path_b",
 		),
 	}
+}
+
+// schemaToProps converts the "properties" object from a JSON Schema into the
+// map[string]interface{} that tool() / anthropic.ToolInputSchemaParam.Properties
+// expects. Returns nil for an empty or unparseable schema.
+func schemaToProps(schema json.RawMessage) map[string]interface{} {
+	if len(schema) == 0 {
+		return nil
+	}
+	var s struct {
+		Properties map[string]interface{} `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &s); err != nil || len(s.Properties) == 0 {
+		return nil
+	}
+	return s.Properties
 }
 
 // Helper constructors for clean tool definitions.
