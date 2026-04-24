@@ -1,7 +1,6 @@
 // Package tools — argument-extraction helpers.
 //
-// Copied from internal/agent/agent.go (str/intOr/floatOr/boolOr). The
-// originals remain in the agent package until Wave 5 cleanup; from Wave 1
+// Copied from internal/agent/agent.go (str/intOr/floatOr/boolOr). From Wave 1
 // onwards all registry handlers use these copies so the helpers are
 // co-located with the Spec definitions rather than across package lines.
 package tools

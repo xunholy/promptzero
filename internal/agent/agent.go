@@ -494,8 +494,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 	a.compactHistoryLocked()
 
-	// All tools are now in the registry; buildTools() includes them all via the
-	// prepass. buildGenTools/buildWorkflowTools would duplicate them — skip.
+	// All tools are in the central registry; buildTools() covers them all.
 	tools := buildTools()
 
 	if a.persona != nil && len(a.persona.Tools) > 0 {

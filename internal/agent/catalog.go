@@ -7,14 +7,11 @@ import (
 )
 
 // ToolNames returns the names of every tool currently registered with the
-// agent, in builder order. When hasMarauder is true the Marauder/WiFi tools
-// are appended after the generation tools. Exposed so the CLI can render
-// /tools without reaching into the private builder functions.
+// agent, in builder order. Exposed so the CLI can render /tools without
+// reaching into the private builder functions.
 func ToolNames(hasMarauder bool) []string {
-	_ = hasMarauder // retained for API compatibility; Wave 3 unified WiFi tools into registry
+	_ = hasMarauder // retained for API compatibility; all tools are now in the registry
 	tools := buildTools()
-	tools = append(tools, buildGenTools()...)
-	tools = append(tools, buildWorkflowTools()...)
 	out := make([]string, 0, len(tools))
 	for _, t := range tools {
 		if t.OfTool == nil {
@@ -25,16 +22,9 @@ func ToolNames(hasMarauder bool) []string {
 	return out
 }
 
-// requiredKeysCache holds the tool-name → required-keys mapping for
-// both possible marauder-availability states. Built lazily on first
-// access via sync.Once so a Go-test agent that never runs the
-// dispatch path doesn't pay the catalog-build cost.
-//
-// The cache is complete because both builder sets are static (pure
-// functions of literals). A tool added to the catalog without a
-// cache reload would miss confidence checks — but tools are only
-// registered via these two builder functions, so a refactor that
-// adds a third would be caught by the risk-coverage test.
+// requiredKeysCache holds the tool-name → required-keys mapping.
+// Built lazily on first access via sync.Once so a Go-test agent that
+// never runs the dispatch path doesn't pay the catalog-build cost.
 var (
 	requiredKeysOnce         sync.Once
 	requiredKeysNoMarauder   map[string][]string
@@ -52,22 +42,16 @@ func initRequiredKeysCache() {
 		}
 		return m
 	}
+	// All tools are in the registry; buildTools() returns the full catalog.
 	base := buildTools()
-	base = append(base, buildGenTools()...)
-	base = append(base, buildWorkflowTools()...)
 	requiredKeysNoMarauder = extract(base)
-	// WiFi/Marauder tools are now in the registry, surfaced via base (buildTools prepass).
-	// requiredKeysWithMarauder is identical to the base set after Wave 3.
-	withM := append([]anthropic.ToolUnionParam{}, base...)
-	requiredKeysWithMarauder = extract(withM)
+	// WiFi/Marauder tools are in the registry, so both maps are identical.
+	requiredKeysWithMarauder = extract(base)
 }
 
 // requiredKeys returns the list of required JSON-schema keys declared
 // by the tool named name, or nil if the tool is unknown. Used by the
-// Batch E confidence check at dispatch time so it knows which keys
-// have to be present-and-non-placeholder. O(1) after the first call;
-// the post-review audit flagged the previous implementation's full
-// catalog rebuild per dispatch as a 2-5ms tax on every tool call.
+// Batch E confidence check at dispatch time. O(1) after the first call.
 func requiredKeys(name string, hasMarauder bool) []string {
 	requiredKeysOnce.Do(initRequiredKeysCache)
 	if hasMarauder {

@@ -14,6 +14,13 @@ import (
 // of test ordering.
 var initialRegistrySize int
 
+// initialSpecs is the snapshot of the full production registry captured before
+// any test can call resetForTest(). TestRegistryCoverage iterates over this
+// slice instead of calling tools.All() at test-run time, which would see a
+// partial registry if TestNames_IncludesAliases (or any other spec_test.go
+// test) has already reset it.
+var initialSpecs []tools.Spec
+
 func TestMain(m *testing.M) {
 	// tools.Names() counts every invocable name: canonical names plus aliases.
 	// The runbook §D cumulative counts use this metric (e.g. device_info +
@@ -21,6 +28,7 @@ func TestMain(m *testing.M) {
 	// but the Wave 0 test used All() = 3, so Wave 1 switches to Names()
 	// to align with the runbook's "34 entries" target).
 	initialRegistrySize = len(tools.Names())
+	initialSpecs = tools.All()
 	os.Exit(m.Run())
 }
 
@@ -43,6 +51,7 @@ func TestRegistrySize(t *testing.T) {
 	// AgentOnly specs cumulative: list_devices (W1), subghz_bruteforce,
 	// ir_bruteforce (W2), nrf24_sniff_start, nrf24_list_targets (W3),
 	// plus all 33 Wave 4 specs except the 3 MCP-accessible workflows = 38 total.
+	// Wave 5: no new specs — deletion only.
 	const expected = 179
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

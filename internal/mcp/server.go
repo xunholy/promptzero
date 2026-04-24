@@ -196,11 +196,9 @@ func (s *Server) registerPersonaPrompts() {
 // --- Registry adapter ---
 
 // registerFromRegistry wires every non-AgentOnly Spec from the central
-// tool registry into the MCP server. This is the adapter that bridges
-// internal/tools into the MCP host. Called from NewServer after the
-// legacy register* chain so that, during Waves 0-4, the registry-backed
-// tools are registered without the legacy s.add() calls that were
-// removed in the same wave commit.
+// tool registry into the MCP server. This is the sole registration path
+// after Wave 5 — all legacy s.add() calls were removed during the
+// migration waves.
 func (s *Server) registerFromRegistry() {
 	for _, spec := range toolsreg.All() {
 		if spec.AgentOnly {

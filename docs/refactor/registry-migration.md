@@ -545,27 +545,51 @@ those 3 workflows with an interactive gate anyway).
 
 Registry size after Wave 4: full catalog — **~200** specs total.
 
-### Wave 5 — cleanup (task #12)
+### Wave 5 — cleanup (task #12) ✅ COMPLETE
 
-1. Delete every remaining `s.add()` in `internal/mcp/server.go`. Keep
-   only `registerPersonaPrompts` and the helper funcs (`sa`, `na`,
-   `ba`, `durationParam`, etc. — still used by the registry adapter).
-2. Delete the agent-side `switch name {...}` body in
-   `internal/agent/agent.go:dispatch`. The method becomes a
-   registry-only lookup:
-   ```go
-   s, ok := tools.Get(name)
-   if !ok { return "", fmt.Errorf("unknown tool: %s", name) }
-   return s.Handler(ctx, a.deps(), p)
-   ```
-3. Delete `buildTools` / `buildGenTools` / `buildMarauderTools` /
-   `buildWorkflowTools` / `buildFileFormatTools` (or collapse them into
-   a single `buildToolsFromRegistry`).
-4. Keep `internal/agent/router.go` as-is — it still consumes
-   `ToolGroup(name)`, but now that function can delegate to
-   `tools.Get(name).Group` directly.
+**Commit:** `tools(wave5): cleanup dead code + finalize migration`
 
-Registry size: unchanged from Wave 4.
+#### What was done
+
+1. **`internal/agent/tools.go`** — deleted `buildWorkflowTools()` and its 8
+   `tool("…")` calls; removed dead `optProp` helper (no longer referenced by
+   any non-test code or test file after `buildWorkflowTools` gone); updated
+   `buildTools()` comment to remove wave-specific language.
+
+2. **`internal/agent/gen_tools.go`** — deleted entirely. All 33 tools it
+   declared were migrated to the central registry in Wave 4; `buildTools()`
+   already emits them via the registry prepass. Deleting also fixed a latent
+   duplicate-name bug in `ToolNames()` (those tools appeared twice).
+
+3. **`internal/agent/catalog.go`** — removed `buildGenTools()` and
+   `buildWorkflowTools()` calls from `ToolNames()` and
+   `initRequiredKeysCache()`. Both functions now call only `buildTools()`
+   which covers the full 179-tool registry. Simplified
+   `requiredKeysWithMarauder` initialisation (was a copy of base; now
+   assigns base directly). Updated comments to remove wave references.
+
+4. **Stale comments updated** in `internal/mcp/server.go`
+   (`registerFromRegistry` docstring), `internal/agent/marauder_tools.go`
+   (Wave 5 note), `internal/tools/args.go` (package comment), and
+   `internal/agent/agent.go` (per-turn tool build comment).
+
+5. **`internal/tools/registry_coverage_test.go`** — new test
+   `TestRegistryCoverage` verifies for every Spec in the registry that:
+   - `Description` is non-empty
+   - `Schema` is valid JSON
+   - `Handler` is non-nil
+   - `Spec.Risk` matches `risk.Classify(spec.Name)`
+   Future drift (mismatched risk level, forgotten description, nil handler)
+   is caught at CI time. 179 subtests, all green.
+
+#### What was NOT removed (conservative choices)
+
+- `buildMarauderTools()` (returns nil) — retained because
+  `tools_examples_test.go` references it; safe no-op.
+- `renderExamples`, `toolEx`, `ToolExample`, `props`, `reqProp` — all
+  exercised by `tools_examples_test.go`; kept.
+
+Registry size: unchanged from Wave 4 — **179 names** (canonical + aliases).
 
 ---
 
@@ -964,3 +988,67 @@ pattern.
 ---
 
 *End of runbook.*
+
+---
+
+## Migration retrospective
+
+The registry migration concluded with Wave 5 on 2026-04-24.
+
+### Summary stats
+
+| Metric | Value |
+|---|---|
+| Total commits | 6 (Wave 0 architect + Waves 1–5) |
+| Hardware gates passed | 5 × 49 checks = 245 hardware checks total |
+| Final registry size | 179 names (canonical + aliases) |
+| Final legacy `s.add()` calls | 0 |
+| Final agent `case` dispatch branches | 0 |
+| Final `tool("…")` declarations in `internal/agent/tools.go` | 0 |
+
+### Files added under `internal/tools/`
+
+| File | Lines |
+|---|---|
+| `spec.go` | 384 (pre-existing, significantly grown) |
+| `wifi.go` | 944 |
+| `generate.go` | 493 |
+| `build.go` | 352 |
+| `loader.go` | 266 |
+| `workflows.go` | 209 |
+| `system.go` | 166 |
+| `storage.go` | 162 |
+| `nrf24.go` | 158 |
+| `nfc.go` | 153 |
+| `subghz.go` | 137 |
+| `marauder.go` | 137 |
+| `fileformat.go` | 134 |
+| `target.go` | 131 |
+| `rfid.go` | 118 |
+| `rag.go` | 102 |
+| `hw.go` | 89 |
+| `badusb.go` | 86 |
+| `ir.go` | 99 |
+| `args.go` | 61 |
+| `audit.go` | 73 |
+| `vision.go` | 45 |
+| `ibutton.go` | 54 |
+| `js.go` | 27 |
+
+### Files removed
+
+| File | Reason |
+|---|---|
+| `internal/agent/gen_tools.go` | All 33 tools migrated to registry in Wave 4; dead after Wave 5 catalog cleanup |
+
+### Net LOC delta in key files (Wave 0 baseline → Wave 5)
+
+| File | Insertions | Deletions | Net |
+|---|---|---|---|
+| `internal/mcp/server.go` | ~70 | ~1000 | −930 |
+| `internal/agent/agent.go` | ~30 | ~1780 | −1750 |
+| `internal/agent/tools.go` | ~140 | ~520 | −380 |
+
+The three files collectively shed ~3,060 lines of duplicated
+registration/dispatch code, replaced by the single-source-of-truth
+registry in `internal/tools/`.
