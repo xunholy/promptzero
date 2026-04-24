@@ -348,3 +348,14 @@ func resetForTest() {
 	byAlias = map[string]string{}
 	order = nil
 }
+
+// RequireMarauder returns a friendly error when the optional Marauder
+// devboard is not connected. WiFi and Marauder handlers call this
+// before invoking any d.Marauder method, mirroring the agent's
+// requireMarauder() shape (internal/agent/agent.go:870).
+func (d *Deps) RequireMarauder() error {
+	if d == nil || d.Marauder == nil {
+		return fmt.Errorf("WiFi devboard not connected — use --wifi flag")
+	}
+	return nil
+}

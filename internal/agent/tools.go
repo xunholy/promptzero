@@ -222,15 +222,13 @@ type ToolCatalogEntry struct {
 }
 
 // ToolCatalog returns every registered tool's name + description, in the
-// same builder order as ToolNames. Marauder/WiFi entries are appended when
-// hasMarauder is true.
+// same builder order as ToolNames. WiFi/Marauder tools are now surfaced via
+// the registry-backed prepass in buildTools() regardless of hasMarauder.
 func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
+	_ = hasMarauder // retained for API compatibility; Wave 3 unified WiFi tools into registry
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
 	tools = append(tools, buildWorkflowTools()...)
-	if hasMarauder {
-		tools = append(tools, buildMarauderTools()...)
-	}
 	out := make([]ToolCatalogEntry, 0, len(tools))
 	for _, t := range tools {
 		if t.OfTool == nil {

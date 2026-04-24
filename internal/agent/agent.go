@@ -502,9 +502,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
 	tools = append(tools, buildWorkflowTools()...)
-	if a.marauder != nil {
-		tools = append(tools, buildMarauderTools()...)
-	}
+
 	if a.persona != nil && len(a.persona.Tools) > 0 {
 		tools = persona.FilterTools(tools, a.persona.Tools)
 	}
@@ -867,13 +865,6 @@ func (a *Agent) Reset() {
 	a.history = nil
 }
 
-func (a *Agent) requireMarauder() error {
-	if a.marauder == nil {
-		return fmt.Errorf("WiFi devboard not connected — use --wifi flag")
-	}
-	return nil
-}
-
 // deps returns a fully-populated Deps bag so registry-backed handlers
 // have access to every facility the agent has. Wired once per dispatch
 // call to ensure session-scoped fields (sessionID, snapshotMgr) are
@@ -1057,12 +1048,8 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return a.docsSearch(str(p, "query"), intOr(p, "k", 5))
 
 	// --- NRF24 / Mousejack ---
-	case "nrf24_sniff_start":
-		return a.flipper.LoaderNRF24Sniffer()
 	case "nrf24_mousejack_start":
 		return a.flipper.LoaderNRF24Mousejacker()
-	case "nrf24_list_targets":
-		return a.nrf24ListTargets(ctx, str(p, "path"))
 	case "nrf24_payload_build":
 		return a.nrf24PayloadBuild(ctx, p)
 
@@ -1105,294 +1092,6 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return workflows.BadUSBTargetProfile(ctx, a.workflowDeps(), p)
 	case "workflow_mousejack":
 		return workflows.Mousejack(ctx, a.workflowDeps(), p)
-
-	// --- Marauder WiFi ---
-	case "wifi_scan_ap":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		// Structured parse (P1-17) so the model sees {aps: [...]},
-		// not a prose table. Falls back to the raw text automatically
-		// when the parser can't extract rows — ScanResult.RawLines
-		// carries anything it couldn't classify.
-		res, err := a.marauder.ScanAPParsed(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
-		if err != nil {
-			return "", err
-		}
-		b, _ := json.Marshal(res)
-		return string(b), nil
-	case "wifi_scan_all":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.ScanAll(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
-	case "wifi_stop_scan":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.StopScan()
-	case "wifi_select_ap":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SelectAP(str(p, "indices"))
-	case "wifi_select_station":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SelectStation(str(p, "indices"))
-	case "wifi_select_ssid":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SelectSSID(str(p, "indices"))
-	case "wifi_list_aps":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		res, err := a.marauder.ListAPsParsed()
-		if err != nil {
-			return "", err
-		}
-		b, _ := json.Marshal(res)
-		return string(b), nil
-	case "wifi_list_ssids":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.ListSSIDs()
-	case "wifi_list_stations":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		res, err := a.marauder.ListStationsParsed()
-		if err != nil {
-			return "", err
-		}
-		b, _ := json.Marshal(res)
-		return string(b), nil
-	case "wifi_clear_aps":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.ClearAPs()
-	case "wifi_clear_ssids":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.ClearSSIDs()
-	case "wifi_clear_stations":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.ClearStations()
-	case "wifi_deauth":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.DeauthAttack(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_deauth_station_list":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.DeauthToStationList(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_beacon_spam":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.BeaconSpamList(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_beacon_random":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.BeaconSpamRandom(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_beacon_clone":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.BeaconSpamClone(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_beacon_rickroll":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.BeaconSpamRickroll(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_beacon_funny":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.BeaconSpamFunny(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_probe_flood":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.ProbeFlood(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_csa_attack":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.CSAAttack(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_sae_flood":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SAEFlood(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_sniff_pmkid":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SniffPMKID(intOr(p, "channel", 0), boolOr(p, "deauth", false), boolOr(p, "list_only", false), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
-	case "wifi_sniff_beacon":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SniffBeacon(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_sniff_deauth":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SniffDeauth(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_sniff_probe":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SniffProbe(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_sniff_pwnagotchi":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SniffPwnagotchi(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_sniff_raw":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SniffRaw(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_sniff_sae":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		// SAE capture is raw sniff with a 60s default — the Commit /
-		// Confirm exchange tends to be sparse, so the extra dwell
-		// noticeably improves yield.
-		out, err := a.marauder.SniffRaw(time.Duration(intOr(p, "duration_seconds", 60)) * time.Second)
-		if err != nil {
-			return out, err
-		}
-		return "sae capture via raw sniff:\n" + out + "\n\nExtract SAE Commit/Confirm frames from the resulting PCAP on the Marauder SD card. Pair with a fresh wifi_deauth if no material was captured.", nil
-	case "wifi_ble_spam":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.BLESpam(str(p, "mode"), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
-	case "wifi_sniff_bt":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SniffBT(str(p, "target_type"), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
-	case "wifi_sniff_skimmer":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SniffSkimmer(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_evil_portal_start":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.EvilPortalStart(str(p, "filename"))
-	case "wifi_evil_portal_stop":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.StopScan()
-	case "wifi_add_ssid":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.AddSSID(str(p, "name"))
-	case "wifi_remove_ssid":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.RemoveSSID(intOr(p, "index", 0))
-	case "wifi_generate_ssids":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.GenerateSSIDs(intOr(p, "count", 10))
-	case "wifi_join":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.Join(intOr(p, "ap_index", 0), str(p, "password"))
-	case "wifi_ping_scan":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.PingScan(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
-	case "wifi_arp_scan":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.ARPScan(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
-	case "wifi_port_scan":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.PortScan(intOr(p, "ip_index", 0), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
-	case "wifi_random_mac":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.RandomAPMAC()
-	case "wifi_clone_mac":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.CloneAPMAC(intOr(p, "ap_index", 0))
-	case "wifi_save_aps":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SaveAPs()
-	case "wifi_save_ssids":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SaveSSIDs()
-	case "wifi_load_aps":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.LoadAPs()
-	case "wifi_load_ssids":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.LoadSSIDs()
-	case "wifi_settings":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.Settings()
-	case "wifi_set_setting":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SetSetting(str(p, "name"), str(p, "value"))
-	case "wifi_set_channel":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.SetChannel(intOr(p, "channel", 1))
-	case "wifi_info":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.Info()
-	case "wifi_reboot":
-		if err := a.requireMarauder(); err != nil {
-			return "", err
-		}
-		return a.marauder.Reboot()
 
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
@@ -1897,33 +1596,6 @@ func sanitizeFilename(s string) string {
 }
 
 // --- NRF24 / Mousejack Handlers ---
-
-// nrf24ListTargets reads the NRF24 Sniffer FAP's captured address list
-// from the SD card and returns it as structured JSON. Missing file is
-// returned as a friendly "no targets yet" message, not an error — the
-// caller should launch the sniffer FAP first.
-func (a *Agent) nrf24ListTargets(ctx context.Context, path string) (string, error) {
-	if path == "" {
-		path = "/ext/apps_data/nrfsniff/addresses.txt"
-	}
-	raw, err := a.flipper.StorageRead(path)
-	if err != nil {
-		// The FAP writes the file only after a successful scan.
-		// Surface an actionable message rather than a raw serial err.
-		return fmt.Sprintf("no NRF24 targets captured yet (%s not readable: %v). Run nrf24_sniff_start first.", path, err), nil
-	}
-	targets, warnings, err := fileformat.ParseNRF24Addresses(raw)
-	if err != nil {
-		return fmt.Sprintf("addresses.txt unparseable: %v\n\nRaw content:\n%s", err, raw), nil
-	}
-	payload := map[string]interface{}{
-		"path":     path,
-		"targets":  targets,
-		"warnings": warnings,
-	}
-	b, _ := json.Marshal(payload)
-	return string(b), nil
-}
 
 // nrf24PayloadBuild synthesises a DuckyScript payload for the NRF24
 // Mouse Jacker FAP and writes it to /ext/mousejacker/<name>.txt. Runs

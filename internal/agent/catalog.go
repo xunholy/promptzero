@@ -11,12 +11,10 @@ import (
 // are appended after the generation tools. Exposed so the CLI can render
 // /tools without reaching into the private builder functions.
 func ToolNames(hasMarauder bool) []string {
+	_ = hasMarauder // retained for API compatibility; Wave 3 unified WiFi tools into registry
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
 	tools = append(tools, buildWorkflowTools()...)
-	if hasMarauder {
-		tools = append(tools, buildMarauderTools()...)
-	}
 	out := make([]string, 0, len(tools))
 	for _, t := range tools {
 		if t.OfTool == nil {
@@ -58,8 +56,9 @@ func initRequiredKeysCache() {
 	base = append(base, buildGenTools()...)
 	base = append(base, buildWorkflowTools()...)
 	requiredKeysNoMarauder = extract(base)
+	// WiFi/Marauder tools are now in the registry, surfaced via base (buildTools prepass).
+	// requiredKeysWithMarauder is identical to the base set after Wave 3.
 	withM := append([]anthropic.ToolUnionParam{}, base...)
-	withM = append(withM, buildMarauderTools()...)
 	requiredKeysWithMarauder = extract(withM)
 }
 
