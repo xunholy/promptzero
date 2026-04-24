@@ -1,5 +1,7 @@
 package risk
 
+import "sync"
+
 type Level int
 
 const (
@@ -69,6 +71,13 @@ var toolLevels = func() map[string]Level {
 		"marauder_led_set", "marauder_led_rainbow",
 		// v0.5 security: hash_identify is pure offline format detection
 		"hash_identify",
+		// v0.6 OSS-expansion: passive analysis bridge — runs urh-ng in
+		// a sandboxed container against a Flipper .sub capture, no I/O.
+		"urh_decode_sub",
+		// v0.6 OSS-expansion: stateless classifier (no I/O), and
+		// keeloq_decrypt with a known key (no transmission).
+		"defense_classify_advertisement",
+		"keeloq_decrypt",
 	)
 
 	// Captures, scans, file writes
@@ -117,6 +126,16 @@ var toolLevels = func() map[string]Level {
 		// Remember/Forget can mislead future sessions, but nothing
 		// transmits over the air.
 		"target_remember", "target_forget",
+		// v0.6 OSS-expansion: container bridges that produce host-side
+		// artifacts (extracted firmware tree, compiled .fap binary).
+		// Medium because they write to host filesystem; no RF or
+		// network attack surface beyond the docker daemon.
+		"firmware_extract", "fap_build",
+		// v0.6 OSS-expansion: keeloq_dictionary tries published
+		// manufacturer keys against a captured ciphertext. Medium
+		// because a hit recovers a key that enables transmission, but
+		// the lookup itself is a 1-byte-per-vendor table check.
+		"keeloq_dictionary",
 	)
 
 	// Active transmission, emulation, execution
@@ -185,15 +204,58 @@ var toolLevels = func() map[string]Level {
 		"workflow_rolljam_lab_demo",
 		// v0.5 security: offline dictionary hash cracking (same tier as subghz_bruteforce)
 		"hash_crack_dictionary",
+		// v0.6 OSS-expansion: KeeLoq CPU brute-force can run for hours
+		// against a multi-billion-key range; once recovered, the key
+		// enables open-air rolling-code replay. Same tier as
+		// subghz_bruteforce.
+		"keeloq_bruteforce",
 	)
 
 	return m
 }()
 
-// Classify returns the risk level for a given tool name. Tools that have not
-// been explicitly classified default to High so an unknown capability is
-// gated behind a confirmation rather than silently auto-approved.
+// runtimeLevels is the post-init overlay used by federated tools (internal/mcpfed)
+// and any other code path that needs to publish a risk level after the static
+// init has run. Reads are checked first in Classify so an explicit Register
+// always wins over the static fallback.
+var (
+	runtimeMu     sync.RWMutex
+	runtimeLevels = map[string]Level{}
+)
+
+// Register publishes a risk level for tool at runtime. Used by mcpfed to
+// classify federated MCP tools after their annotations are read at startup.
+// A second Register call for the same tool overrides the previous level —
+// the most recent assertion wins.
+func Register(tool string, level Level) {
+	if tool == "" {
+		return
+	}
+	runtimeMu.Lock()
+	runtimeLevels[tool] = level
+	runtimeMu.Unlock()
+}
+
+// Unregister removes a runtime entry. Falls through to the static toolLevels
+// map and ultimately the High default. Used in tests to keep the runtime
+// overlay clean between cases.
+func Unregister(tool string) {
+	runtimeMu.Lock()
+	delete(runtimeLevels, tool)
+	runtimeMu.Unlock()
+}
+
+// Classify returns the risk level for a given tool name. The runtime overlay
+// is consulted first; otherwise the static toolLevels map; otherwise High
+// (the safe default — an unknown capability is gated behind a confirmation
+// rather than silently auto-approved).
 func Classify(tool string) Level {
+	runtimeMu.RLock()
+	if l, ok := runtimeLevels[tool]; ok {
+		runtimeMu.RUnlock()
+		return l
+	}
+	runtimeMu.RUnlock()
 	if l, ok := toolLevels[tool]; ok {
 		return l
 	}
@@ -201,10 +263,17 @@ func Classify(tool string) Level {
 }
 
 // ClassifyExplicit returns the registered risk level and true if the tool
-// has an explicit classification, or (High, false) if the tool fell through
-// to the safe default. Used by the agent-package coverage test to detect
-// drift between the tool catalogue and this registry.
+// has an explicit classification (either from the runtime overlay or the
+// static map), or (High, false) if the tool fell through to the safe
+// default. Used by the agent-package coverage test to detect drift between
+// the tool catalogue and this registry.
 func ClassifyExplicit(tool string) (Level, bool) {
+	runtimeMu.RLock()
+	if l, ok := runtimeLevels[tool]; ok {
+		runtimeMu.RUnlock()
+		return l, true
+	}
+	runtimeMu.RUnlock()
 	l, ok := toolLevels[tool]
 	return l, ok
 }
