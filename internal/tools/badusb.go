@@ -1,0 +1,86 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/validator"
+)
+
+// runBadUSBValidator reads the script off the Flipper SD card and runs it
+// through the BadUSB sandbox validator. Returns the Report or an error if
+// the file can't be read. Mirrors agent.validateBadUSB with Deps substituted
+// for the Agent receiver.
+//
+// The Enabled *bool is tri-state: nil = default on, false = explicit off.
+// When the validator is disabled an empty info-severity report is returned
+// (no findings, no block). This ensures the pre-flight gate is a no-op when
+// the operator explicitly opts out — the BadUSBRun still proceeds.
+func runBadUSBValidator(d *Deps, path string) (validator.Report, error) {
+	if path == "" {
+		return validator.Report{}, fmt.Errorf("path required")
+	}
+	if d.Config != nil {
+		if en := d.Config.Validator.BadUSB.Enabled; en != nil && !*en {
+			return validator.Report{Name: path}, nil
+		}
+	}
+	raw, err := d.Flipper.StorageRead(path)
+	if err != nil {
+		return validator.Report{}, fmt.Errorf("storage read %s: %w", path, err)
+	}
+	return validator.Validate(path, raw), nil
+}
+
+func init() {
+	// badusb_run includes the pre-flight validator gate (§F.2). This gate was
+	// previously absent from MCP mode — registering via the registry silently
+	// adds it, which is a security improvement for MCP clients.
+	Register(Spec{
+		Name: "badusb_run",
+		Description: "Execute a BadUSB/Rubber Ducky script. The Flipper acts as a USB keyboard and types commands on the connected computer. The pre-flight validator runs before execution; critical findings are blocked unless allow_critical is set in config.\n\nExamples:\n" +
+			`- {"file":"/ext/badusb/demo.txt"}  — execute a generated or saved DuckyScript payload`,
+		Schema:    json.RawMessage(`{"type":"object","properties":{"file":{"type":"string","description":"Path to .txt BadUSB script on SD card"}}}`),
+		Required:  []string{"file"},
+		Risk:      risk.High,
+		Group:     GroupFlipperBadUSB,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+			path := str(p, "file")
+			if rep, err := runBadUSBValidator(d, path); err == nil {
+				if rep.Severity == validator.SeverityCritical {
+					if d.Config == nil || !d.Config.Validator.BadUSB.AllowCritical {
+						return "", fmt.Errorf("badusb_run blocked by sandbox validator:\n%s\nSet validator.badusb.allow_critical=true to override, or call badusb_validate to triage", rep.RenderText())
+					}
+				}
+				if rep.Severity == validator.SeverityWarn {
+					if d.Config != nil && d.Config.Validator.BadUSB.WarnAction == "block" {
+						return "", fmt.Errorf("badusb_run blocked (warn-action=block):\n%s", rep.RenderText())
+					}
+				}
+			}
+			return d.Flipper.BadUSBRun(path)
+		},
+	})
+
+	Register(Spec{
+		Name:        "badusb_validate",
+		Description: "Dry-run a BadUSB/DuckyScript payload through the pre-flight validator without executing it. Flags rm -rf /, reverse shells, persistence, defense-disable, and other dangerous patterns. Returns structured JSON with Severity and Findings.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{"file":{"type":"string","description":"Path to .txt BadUSB script on SD card"}}}`),
+		Required:    []string{"file"},
+		Risk:        risk.Low,
+		Group:       GroupFlipperBadUSB,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+			path := str(p, "file")
+			rep, err := runBadUSBValidator(d, path)
+			if err != nil {
+				return "", err
+			}
+			out, _ := json.Marshal(rep)
+			return string(out), nil
+		},
+	})
+}
