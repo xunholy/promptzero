@@ -1,0 +1,17 @@
+# out-of-scope.yaml
+#
+# Canonical tokens from upstream awesome-flipperzero lists that are
+# intentionally not implemented in PromptZero.  The coverage-diff tool
+# subtracts these from the gap report so they don't appear as actionable
+# candidates.
+#
+# Canonical form: lowercase, all '-', '_', and ' ' removed.
+# Examples:
+#   nfc_magic  →  nfcmagic
+#   ble-spam   →  blespam
+#   NFC Magic  →  nfcmagic
+#
+# Add entries here as you triage the weekly report.  Commit the updated file
+# so the next scheduled run reflects your decisions.
+
+tokens: []
