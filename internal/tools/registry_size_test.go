@@ -25,7 +25,13 @@ func TestMain(m *testing.M) {
 }
 
 func TestRegistrySize(t *testing.T) {
-	const expected = 34 // Wave 1: 33 Specs + 1 alias (system_info). Bumped per wave.
+	// Wave 2: 34 (Wave 1 cumulative) + 50 new specs (no aliases) = 84.
+	// The 50 new specs are: 7 subghz + 6 ir + 8 nfc (7 new primitives +
+	// nfc_detect from Wave 0 already counted) + 14 loader FAPs + 7 rfid +
+	// 3 ibutton + 2 badusb + 1 js + 3 fileformat = 50 new names.
+	// 3 of these are AgentOnly: list_devices (Wave 1), subghz_bruteforce,
+	// ir_bruteforce.
+	const expected = 84
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

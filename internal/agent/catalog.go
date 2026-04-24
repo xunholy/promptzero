@@ -14,7 +14,6 @@ func ToolNames(hasMarauder bool) []string {
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
 	tools = append(tools, buildWorkflowTools()...)
-	tools = append(tools, buildFileFormatTools()...)
 	if hasMarauder {
 		tools = append(tools, buildMarauderTools()...)
 	}
@@ -58,7 +57,6 @@ func initRequiredKeysCache() {
 	base := buildTools()
 	base = append(base, buildGenTools()...)
 	base = append(base, buildWorkflowTools()...)
-	base = append(base, buildFileFormatTools()...)
 	requiredKeysNoMarauder = extract(base)
 	withM := append([]anthropic.ToolUnionParam{}, base...)
 	withM = append(withM, buildMarauderTools()...)

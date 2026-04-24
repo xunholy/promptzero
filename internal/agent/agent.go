@@ -502,7 +502,6 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	tools := buildTools()
 	tools = append(tools, buildGenTools()...)
 	tools = append(tools, buildWorkflowTools()...)
-	tools = append(tools, buildFileFormatTools()...)
 	if a.marauder != nil {
 		tools = append(tools, buildMarauderTools()...)
 	}
@@ -1017,149 +1016,9 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return spec.Handler(ctx, a.deps(), p)
 	}
 	switch name {
-	// --- Flipper: Sub-GHz ---
-	case "subghz_transmit":
-		return a.flipper.SubGHzTx(str(p, "file"))
-	case "subghz_receive":
-		raw, err := a.flipper.SubGHzRx(uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
-		if err != nil {
-			return raw, err
-		}
-		// Structured parse (P1-17 follow-up) — the model sees
-		// {candidates:[{protocol,frequency,key,bit,te}]} instead of
-		// the raw scan transcript.
-		parsed := flipper.ParseSubGHzReceive(raw)
-		b, _ := json.Marshal(parsed)
-		return string(b), nil
-	case "subghz_decode":
-		return a.flipper.SubGHzDecode(str(p, "file"))
-	case "subghz_bruteforce":
-		return a.flipper.ExecLong(fmt.Sprintf("subghz bruteforce %s %d", flipper.SanitizeArg(str(p, "file")), intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
-
-	// --- Flipper: IR ---
-	case "ir_transmit":
-		return a.flipper.IRTxParsed(str(p, "protocol"), str(p, "address"), str(p, "command"))
-	case "ir_transmit_raw":
-		return a.flipper.IRTxRaw(uint32(intOr(p, "frequency", 38000)), floatOr(p, "duty_cycle", 0.33), str(p, "data"))
-	case "ir_receive":
-		return a.flipper.IRRx(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
-	case "ir_bruteforce":
-		return a.flipper.ExecLong(fmt.Sprintf("ir bruteforce %s", flipper.SanitizeArg(str(p, "file"))), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
-
-	// --- Flipper: NFC ---
+	// --- Flipper: NFC (agent-only) ---
 	case "nfc_read_save":
 		return a.nfcReadSave(ctx, p)
-	case "nfc_emulate":
-		return a.flipper.NFCEmulate(str(p, "file"))
-	case "nfc_subcommand":
-		return a.flipper.NFCSubcommand(str(p, "subcommand"), time.Duration(intOr(p, "timeout_seconds", 30))*time.Second)
-
-	// --- Flipper: RFID ---
-	case "rfid_read":
-		return a.flipper.RFIDRead(ctx, str(p, "mode"), time.Duration(intOr(p, "timeout_seconds", 15))*time.Second)
-	case "rfid_emulate":
-		return a.flipper.RFIDEmulate(str(p, "protocol"), str(p, "data"), time.Duration(intOr(p, "duration_seconds", 10))*time.Second)
-	case "rfid_write":
-		return a.flipper.RFIDWrite(str(p, "protocol"), str(p, "data"))
-
-	// --- Flipper: iButton ---
-	case "ibutton_read":
-		return a.flipper.IButtonRead(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
-	case "ibutton_emulate":
-		return a.flipper.IButtonEmulate(str(p, "protocol"), str(p, "hex_data"), time.Duration(intOr(p, "duration_seconds", 10))*time.Second)
-	case "ibutton_write":
-		return a.flipper.IButtonWrite(str(p, "hex_data"))
-
-	// --- Flipper: BadUSB ---
-	case "badusb_run":
-		path := str(p, "file")
-		if rep, err := a.validateBadUSB(path); err == nil {
-			if rep.Severity == validator.SeverityCritical && !a.cfg.Validator.BadUSB.AllowCritical {
-				return "", fmt.Errorf("badusb_run blocked by sandbox validator:\n%s\nSet validator.badusb.allow_critical=true to override, or call badusb_validate to triage", rep.RenderText())
-			}
-			if rep.Severity == validator.SeverityWarn && a.cfg.Validator.BadUSB.WarnAction == "block" {
-				return "", fmt.Errorf("badusb_run blocked (warn-action=block):\n%s", rep.RenderText())
-			}
-		}
-		return a.flipper.BadUSBRun(path)
-	case "badusb_validate":
-		path := str(p, "file")
-		rep, err := a.validateBadUSB(path)
-		if err != nil {
-			return "", err
-		}
-		out, _ := json.Marshal(rep)
-		return string(out), nil
-
-	// --- Flipper: Sub-GHz (extended) ---
-	case "subghz_tx_key":
-		return a.flipper.SubGHzTxKey(str(p, "key_hex"), uint32(intOr(p, "frequency", 0)), uint32(intOr(p, "te", 0)), intOr(p, "repeat", 0))
-	case "subghz_rx_raw":
-		return a.flipper.SubGHzRxRaw(uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
-	case "subghz_chat":
-		return a.flipper.SubGHzChat(uint32(intOr(p, "frequency", 0)), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
-
-	// --- Flipper: IR (extended) ---
-	case "ir_decode_file":
-		return a.flipper.IRDecodeFile(str(p, "path"))
-	case "ir_universal_list":
-		return a.flipper.IRUniversalList(str(p, "library"))
-
-	// --- Flipper: NFC (extended subshell) ---
-	case "nfc_raw_frame":
-		return a.flipper.NFCRawFrame(str(p, "hex"), time.Duration(intOr(p, "timeout_seconds", 10))*time.Second)
-	case "nfc_apdu":
-		return a.flipper.NFCAPDU(str(p, "hex"), time.Duration(intOr(p, "timeout_seconds", 10))*time.Second)
-	case "nfc_mfu_rdbl":
-		return a.flipper.NFCMFURead(intOr(p, "page", 0), time.Duration(intOr(p, "timeout_seconds", 10))*time.Second)
-	case "nfc_mfu_wrbl":
-		return a.flipper.NFCMFUWrite(intOr(p, "page", 0), str(p, "hex"), time.Duration(intOr(p, "timeout_seconds", 10))*time.Second)
-	case "nfc_dump_protocol":
-		return a.flipper.NFCDumpProtocol(str(p, "protocol"), time.Duration(intOr(p, "timeout_seconds", 30))*time.Second)
-	case "loader_nfc_magic":
-		return a.flipper.LoaderNFCMagic()
-	case "loader_mfkey":
-		return a.flipper.LoaderMFKey()
-	case "loader_mifare_nested":
-		return a.flipper.LoaderMifareNested()
-	case "loader_picopass":
-		return a.flipper.LoaderPicopass()
-	case "loader_seader":
-		return a.flipper.LoaderSeader()
-
-	// --- Flipper: RFID (extended) ---
-	case "rfid_raw_read":
-		return a.flipper.RFIDRawRead(str(p, "mode"), str(p, "file"), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
-	case "rfid_raw_analyze":
-		return a.flipper.RFIDRawAnalyze(str(p, "file"))
-	case "rfid_raw_emulate":
-		return a.flipper.RFIDRawEmulate(str(p, "file"), time.Duration(intOr(p, "duration_seconds", 30))*time.Second)
-	case "loader_t5577_multiwriter":
-		return a.flipper.LoaderT5577MultiWriter()
-
-	// --- Flipper: Scripting ---
-	case "js_run":
-		return a.flipper.JSRun(str(p, "path"), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
-
-	// --- Flipper: Loader FAP shortcuts (Sub-GHz / misc) ---
-	case "loader_subghz_bruteforcer":
-		return a.flipper.LoaderSubGHzBruteforcer()
-	case "loader_subghz_playlist":
-		return a.flipper.LoaderSubGHzPlaylist()
-	case "loader_protoview":
-		return a.flipper.LoaderProtoView()
-	case "loader_spectrum_analyzer":
-		return a.flipper.LoaderSpectrumAnalyzer()
-	case "loader_signal_generator":
-		return a.flipper.LoaderSignalGenerator()
-	case "loader_nrf24mousejacker":
-		return a.flipper.LoaderNRF24Mousejacker()
-	case "loader_uart_terminal":
-		return a.flipper.LoaderUARTTerminal()
-	case "loader_spi_mem_manager":
-		return a.flipper.LoaderSPIMemManager()
-	case "loader_unitemp":
-		return a.flipper.LoaderUnitemp()
 
 	// --- Generation Pipeline ---
 	case "generate_evil_portal":
@@ -1228,14 +1087,6 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return a.irBuild(ctx, p)
 	case "nfc_build":
 		return a.nfcBuild(ctx, p)
-
-	// --- File-format editors ---
-	case "fileformat_read":
-		return a.fileformatRead(str(p, "path"))
-	case "fileformat_edit":
-		return a.fileformatEdit(ctx, str(p, "path"), p["edits"], str(p, "output_path"))
-	case "fileformat_diff":
-		return a.fileformatDiff(str(p, "path_a"), str(p, "path_b"))
 
 	// --- Composite Workflows ---
 	case "workflow_nfc_badge_pipeline":
@@ -2285,99 +2136,6 @@ func (a *Agent) targetForget(p map[string]interface{}) (string, error) {
 	return fmt.Sprintf("forgot %s (%s)", id, kind), nil
 }
 
-// --- File-format Handlers ---
-
-// validateBadUSB reads the script off the Flipper SD card and runs it
-// through the BadUSB sandbox validator. Returns the Report or an error
-// if the file can't be read. The enabled check is honored here so the
-// caller can branch on "validator disabled" without duplicating the
-// config lookup.
-func (a *Agent) validateBadUSB(path string) (validator.Report, error) {
-	if path == "" {
-		return validator.Report{}, fmt.Errorf("path required")
-	}
-	// Enabled *bool is tri-state: nil = default on, false = explicit off.
-	if en := a.cfg.Validator.BadUSB.Enabled; en != nil && !*en {
-		return validator.Report{Name: path}, nil
-	}
-	raw, err := a.flipper.StorageRead(path)
-	if err != nil {
-		return validator.Report{}, fmt.Errorf("storage read %s: %w", path, err)
-	}
-	return validator.Validate(path, raw), nil
-}
-
-// fileformatRead pulls a Flipper capture via storage_read, parses it, and
-// returns structural JSON so the LLM sees named fields rather than one
-// giant string. The wrapper envelope ({path, format, file}) keeps the
-// format tag at the top level so the model can pivot without parsing the
-// body.
-func (a *Agent) fileformatRead(path string) (string, error) {
-	if path == "" {
-		return "", fmt.Errorf("path required")
-	}
-	raw, err := a.flipper.StorageRead(path)
-	if err != nil {
-		return "", fmt.Errorf("storage read %s: %w", path, err)
-	}
-	model, format, err := fileformat.LoadFile(path, []byte(raw))
-	if err != nil {
-		return "", fmt.Errorf("parse %s: %w", path, err)
-	}
-	envelope := map[string]interface{}{
-		"path":   path,
-		"format": string(format),
-		"file":   model,
-	}
-	b, err := json.MarshalIndent(envelope, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-// fileformatEdit reads + parses, applies the top-level edits map, then
-// serializes + writes. outputPath defaults to the input path so callers can
-// edit-in-place without specifying it. Unknown edit keys return an error
-// from the format-specific applier rather than silently no-op'ing.
-func (a *Agent) fileformatEdit(ctx context.Context, path string, editsIn interface{}, outputPath string) (string, error) {
-	if path == "" {
-		return "", fmt.Errorf("path required")
-	}
-	edits, ok := editsIn.(map[string]interface{})
-	if !ok || len(edits) == 0 {
-		return "", fmt.Errorf("edits must be a non-empty object")
-	}
-	raw, err := a.flipper.StorageRead(path)
-	if err != nil {
-		return "", fmt.Errorf("storage read %s: %w", path, err)
-	}
-	model, format, err := fileformat.LoadFile(path, []byte(raw))
-	if err != nil {
-		return "", fmt.Errorf("parse %s: %w", path, err)
-	}
-	if err := fileformat.ApplyEdits(format, model, edits); err != nil {
-		return "", fmt.Errorf("apply edits: %w", err)
-	}
-	out, err := fileformat.SaveFile(format, model)
-	if err != nil {
-		return "", fmt.Errorf("serialize: %w", err)
-	}
-	target := outputPath
-	if target == "" {
-		target = path
-	}
-	// Snapshot the existing file (best-effort) before we overwrite it
-	// so /rewind can restore. When target != path the source file is
-	// preserved implicitly; we still snapshot target so an out-of-place
-	// edit onto an existing file is undoable.
-	a.snapshotBeforeWrite(ctx, target)
-	if err := a.flipper.WriteFileCtx(ctx, target, out); err != nil {
-		return "", fmt.Errorf("write %s: %w", target, err)
-	}
-	return fmt.Sprintf("edited %s (format=%s, %d bytes) → %s", path, format, len(out), target), nil
-}
-
 // defaultGeneratePath mirrors the generator package's default-path
 // selection so the agent can snapshot the eventual deploy target
 // before handing off to Deploy. Keeping a parallel implementation
@@ -2684,39 +2442,6 @@ func (a *Agent) nfcBuild(ctx context.Context, p map[string]interface{}) (string,
 		return "", fmt.Errorf("write %s: %w", path, err)
 	}
 	return fmt.Sprintf("built %d-byte .nfc → %s\n%s", len(raw), path, summary), nil
-}
-
-// fileformatDiff reads + parses two paths and returns the per-field diff
-// as JSON. Format mismatches surface as same_format=false, empty entries.
-func (a *Agent) fileformatDiff(pathA, pathB string) (string, error) {
-	if pathA == "" || pathB == "" {
-		return "", fmt.Errorf("path_a and path_b are both required")
-	}
-	rawA, err := a.flipper.StorageRead(pathA)
-	if err != nil {
-		return "", fmt.Errorf("storage read %s: %w", pathA, err)
-	}
-	rawB, err := a.flipper.StorageRead(pathB)
-	if err != nil {
-		return "", fmt.Errorf("storage read %s: %w", pathB, err)
-	}
-	modelA, formatA, err := fileformat.LoadFile(pathA, []byte(rawA))
-	if err != nil {
-		return "", fmt.Errorf("parse %s: %w", pathA, err)
-	}
-	modelB, formatB, err := fileformat.LoadFile(pathB, []byte(rawB))
-	if err != nil {
-		return "", fmt.Errorf("parse %s: %w", pathB, err)
-	}
-	result, err := fileformat.Diff(formatA, modelA, formatB, modelB)
-	if err != nil {
-		return "", err
-	}
-	b, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }
 
 // --- Helpers ---

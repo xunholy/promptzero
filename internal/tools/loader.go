@@ -77,4 +77,190 @@ func init() {
 			return string(b), nil
 		},
 	})
+
+	// --- NFC loader FAPs (Wave 2) ---
+
+	Register(Spec{
+		Name:        "loader_nfc_magic",
+		Description: "Launch the NFC Magic FAP — writes UIDs to 'magic' MIFARE tags that allow cloning of locked blocks. Requires the FAP to be installed on the SD card; call list_apps if unsure.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.High,
+		Group:       GroupFlipperNFC,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderNFCMagic()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_mfkey",
+		Description: "Launch the MFKey32 FAP — recovers MIFARE Classic sector keys from captured reader nonces. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.High,
+		Group:       GroupFlipperNFC,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderMFKey()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_mifare_nested",
+		Description: "Launch the Mifare Nested FAP — nested-attack key recovery for MIFARE Classic once at least one key is known. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.High,
+		Group:       GroupFlipperNFC,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderMifareNested()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_picopass",
+		Description: "Launch the PicoPass FAP — HID iClass / PicoPass tag tooling. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.High,
+		Group:       GroupFlipperNFC,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderPicopass()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_seader",
+		Description: "Launch the SEADER FAP — advanced HID iClass SE attack toolkit. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.High,
+		Group:       GroupFlipperNFC,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderSeader()
+		},
+	})
+
+	// --- SubGHz / misc loader FAPs (Wave 2) ---
+
+	Register(Spec{
+		Name:        "loader_subghz_bruteforcer",
+		Description: "Launch the Sub-GHz Bruteforcer FAP — performs large code-sweep attacks across known protocols. Critical: emits enormous amounts of RF, likely illegal outside a shielded lab. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.Critical,
+		Group:       GroupFlipperSubGHz,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderSubGHzBruteforcer()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_subghz_playlist",
+		Description: "Launch the Sub-GHz Playlist FAP — replays a sequence of .sub captures in order. Active transmission. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.High,
+		Group:       GroupFlipperSubGHz,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderSubGHzPlaylist()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_protoview",
+		Description: "Launch the ProtoView FAP — visualises raw Sub-GHz signals for protocol inspection. Receive-only scanning. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.Medium,
+		Group:       GroupFlipperSubGHz,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderProtoView()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_spectrum_analyzer",
+		Description: "Launch the Spectrum Analyzer FAP — shows RF power across a frequency range. Receive-only. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.Medium,
+		Group:       GroupFlipperSubGHz,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderSpectrumAnalyzer()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_signal_generator",
+		Description: "Launch the Signal Generator FAP — drives a square wave on a GPIO pin at a configurable frequency. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.Medium,
+		Group:       GroupFlipperSubGHz,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderSignalGenerator()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_nrf24mousejacker",
+		Description: "Launch the NRF24 Mousejacker FAP — attack tool against 2.4 GHz wireless mice/keyboards. Requires both an external NRF24 devboard on the GPIO header AND the FAP installed. Critical (arbitrary keystroke injection).",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.Critical,
+		Group:       GroupFlipperSystem,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderNRF24Mousejacker()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_uart_terminal",
+		Description: "Launch the UART Terminal FAP — bidirectional serial console on the Flipper's GPIO pins, useful for UART recon on target boards. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.Medium,
+		Group:       GroupFlipperSystem,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderUARTTerminal()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_spi_mem_manager",
+		Description: "Launch the SPI Mem Manager FAP — reads and writes SPI flash chips via the GPIO header. Useful for firmware extraction on embedded targets. Requires the FAP to be installed.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.Medium,
+		Group:       GroupFlipperSystem,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderSPIMemManager()
+		},
+	})
+
+	Register(Spec{
+		Name:        "loader_unitemp",
+		Description: "Launch the Unitemp FAP — reads external temperature/humidity sensors (DHT, DS18B20, BMP280, ...) over the GPIO header. Read-only.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:    nil,
+		Risk:        risk.Low,
+		Group:       GroupFlipperSystem,
+		AgentOnly:   false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderUnitemp()
+		},
+	})
 }
