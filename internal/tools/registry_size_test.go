@@ -52,7 +52,10 @@ func TestRegistrySize(t *testing.T) {
 	// ir_bruteforce (W2), nrf24_sniff_start, nrf24_list_targets (W3),
 	// plus all 33 Wave 4 specs except the 3 MCP-accessible workflows = 38 total.
 	// Wave 5: no new specs — deletion only.
-	const expected = 179
+	// v0.5 task #6 (firmware_introspect): +1 new spec (no aliases).
+	// v0.5 task #10 (MCP/security): +4 new specs (no aliases):
+	//   hash_identify, hash_crack_dictionary, port_scan_tcp, http_enum_common
+	const expected = 184
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

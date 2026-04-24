@@ -61,11 +61,14 @@ var toolLevels = func() map[string]Level {
 		"fileformat_read", "fileformat_diff",
 		"badusb_validate",
 		"system_info",
+		"firmware_introspect", // v0.5 wave-1: read-only capability oracle
 		"workflow_hw_recon_blackbox_device",
 		// Marauder GPS, counters, storage, and LED (all read-only or trivial writes)
 		"marauder_gps_data", "marauder_gps_field", "marauder_nmea",
 		"marauder_packet_count", "marauder_storage_ls",
 		"marauder_led_set", "marauder_led_rainbow",
+		// v0.5 security: hash_identify is pure offline format detection
+		"hash_identify",
 	)
 
 	// Captures, scans, file writes
@@ -148,6 +151,12 @@ var toolLevels = func() map[string]Level {
 		"workflow_nfc_badge_pipeline",
 		"workflow_wifi_target_to_hashcat",
 		"workflow_badusb_target_profile",
+		// v0.5 security: host-side active recon (same tier as wifi_port_scan)
+		"port_scan_tcp",
+		"http_enum_common",
+		// TODO(v0.5 risk-review): mfoc_attack, mfcuk_attack, mfkey32_recover,
+		// iclass_loclass_recover are classified High by tasks #7/#8 — to be
+		// added here when those tasks land.
 	)
 
 	// Destructive, attack, brute force. flipper_raw_cli is here because it's
@@ -172,6 +181,8 @@ var toolLevels = func() map[string]Level {
 		"power_reboot_dfu",
 		"update_install",
 		"workflow_rolljam_lab_demo",
+		// v0.5 security: offline dictionary hash cracking (same tier as subghz_bruteforce)
+		"hash_crack_dictionary",
 	)
 
 	return m
