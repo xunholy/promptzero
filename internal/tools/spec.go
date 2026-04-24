@@ -59,6 +59,12 @@ const (
 	GroupGen            Group = "gen"
 	GroupWorkflows      Group = "workflows"
 	GroupVision         Group = "vision"
+
+	// GroupSecurity covers host-side security tools (hash analysis,
+	// network scanning, HTTP enumeration). Single group for v0.5; may
+	// be split into per-family subgroups (GroupSecurityHash,
+	// GroupSecurityRecon, etc.) in v0.6 if the tool count grows past ~10.
+	GroupSecurity Group = "security"
 )
 
 // Handler is the single unified tool handler signature. Ctx is the turn

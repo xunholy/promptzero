@@ -1,0 +1,137 @@
+name: Upstream Coverage Diff
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC — gives the team a Monday-morning gap report.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        description: 'Bypass HTTP cache (force fresh fetch)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write   # required only for the optional issue-comment step
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  coverage-diff:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Generate coverage diff report
+        id: report
+        # continue-on-error prevents a broken upstream README from
+        # red-X-ing any other CI job. The artifact upload below uses
+        # if: always() so the (potentially partial) report is still
+        # captured even on fetch errors.
+        continue-on-error: true
+        env:
+          CGO_ENABLED: "1"
+          INPUT_NO_CACHE: ${{ inputs.no_cache }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          OUTDIR="docs/coverage"
+          OUTFILE="${OUTDIR}/weekly-${DATE}.md"
+          mkdir -p "${OUTDIR}"
+
+          NO_CACHE_FLAG=""
+          if [ "${INPUT_NO_CACHE}" = "true" ]; then
+            NO_CACHE_FLAG="--no-cache"
+          fi
+
+          go run ./cmd/coverage-diff \
+            --out-of-scope="${OUTDIR}/out-of-scope.yaml" \
+            ${NO_CACHE_FLAG} \
+            > "${OUTFILE}"
+
+          LINES=$(wc -l < "${OUTFILE}")
+          echo "report_file=${OUTFILE}" >> "$GITHUB_OUTPUT"
+          echo "report_date=${DATE}"    >> "$GITHUB_OUTPUT"
+          echo "report_lines=${LINES}"  >> "$GITHUB_OUTPUT"
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-diff-${{ steps.report.outputs.report_date || 'latest' }}
+          path: docs/coverage/weekly-*.md
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Post summary to GitHub step summary
+        if: always()
+        env:
+          REPORT_FILE: ${{ steps.report.outputs.report_file }}
+        run: |
+          if [ -n "${REPORT_FILE}" ] && [ -f "${REPORT_FILE}" ]; then
+            cat "${REPORT_FILE}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Report not generated (all upstream fetches may have failed)." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Comment on tracking issue
+        # Only post on scheduled runs and only when the report step did not hard-fail.
+        # Requires a 'coverage-diff' label on the open tracking issue.
+        if: >
+          always() &&
+          github.event_name == 'schedule' &&
+          steps.report.outcome != 'failure'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        env:
+          REPORT_FILE: ${{ steps.report.outputs.report_file }}
+          REPORT_DATE: ${{ steps.report.outputs.report_date }}
+        with:
+          script: |
+            const fs = require('fs');
+            const date = process.env.REPORT_DATE || new Date().toISOString().slice(0, 10);
+            const reportFile = process.env.REPORT_FILE || '';
+
+            let body;
+            try {
+              if (!reportFile) throw new Error('REPORT_FILE not set');
+              const content = fs.readFileSync(reportFile, 'utf8');
+              // GitHub issue comments cap at ~65 536 bytes; truncate gracefully.
+              const truncated = content.length > 60000
+                ? content.slice(0, 60000) + '\n\n_[truncated — see full artifact]_\n'
+                : content;
+              body = `## Upstream coverage diff — ${date}\n\n${truncated}`;
+            } catch (e) {
+              body = `## Upstream coverage diff — ${date}\n\n_Report not available: ${e.message}_`;
+            }
+
+            // Find the open issue labelled 'coverage-diff' (if any).
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'coverage-diff',
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (issues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues[0].number,
+                body,
+              });
+              console.log(`Posted to issue #${issues[0].number}`);
+            } else {
+              console.log('No open issue with label "coverage-diff" found — skipping comment.');
+            }

@@ -7,6 +7,32 @@
 // internal/risk.Classify, surfaced to the client as MCP annotations
 // (readOnlyHint, destructiveHint, openWorldHint). Operators can use those
 // hints to gate destructive calls in their MCP client.
+//
+// # MCP resources
+//
+// Built-in wordlists are exposed as static MCP resources so clients can
+// introspect their contents before invoking hash_crack_dictionary or
+// http_enum_common:
+//
+//   - promptzero://wordlists/common.txt   — ~500-entry HTTP common-paths list
+//   - promptzero://wordlists/passwords.txt — ~100-entry common-password list
+//
+// # _confirmed ↔ Risk-tier equivalence (for MCP client integrations)
+//
+// Some reference MCPs (e.g. pm3-mcp) require a `{"_confirmed": true}` arg
+// on every destructive tool call. PromptZero uses a different mechanism:
+// the Spec.Risk field and the corresponding MCP tool annotations. The
+// equivalence table is:
+//
+//	pm3-mcp tier    →  PromptZero Risk      →  MCP annotations
+//	read-only       →  Low                  →  readOnlyHint:true,   destructiveHint:false
+//	allowed-write   →  Medium               →  readOnlyHint:false,  destructiveHint:false
+//	approval-write  →  High / Critical      →  readOnlyHint:false,  destructiveHint:true
+//
+// MCP clients (Claude Desktop, Claude Code) can gate Critical-tier calls
+// using their built-in auto-approve settings keyed on destructiveHint:true.
+// No `_confirmed` arg is added to PromptZero schemas — enforcement is
+// at the client layer via annotations, not schema validation.
 package mcp
 
 import (
@@ -24,16 +50,18 @@ import (
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/risk"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
+	"github.com/xunholy/promptzero/internal/wordlists"
 )
 
 // Server is the stdio MCP server wrapping a connected Flipper and
 // optional Marauder sidecar.
 type Server struct {
-	flipper  *flipper.Flipper
-	marauder *marauder.Marauder
-	srv      *mcpserver.MCPServer
-	tools    []string
-	prompts  []string
+	flipper   *flipper.Flipper
+	marauder  *marauder.Marauder
+	srv       *mcpserver.MCPServer
+	tools     []string
+	prompts   []string
+	resources []string
 }
 
 type toolHandler func(ctx context.Context, args map[string]interface{}) (string, error)
@@ -49,10 +77,15 @@ func NewServer(f *flipper.Flipper, m *marauder.Marauder) *Server {
 		"1.0.0",
 		mcpserver.WithToolCapabilities(true),
 		mcpserver.WithPromptCapabilities(false),
+		// Enable resource capabilities so built-in wordlists are introspectable.
+		// subscribe=false (no per-resource subscription), listChanged=false
+		// (static wordlists never change at runtime).
+		mcpserver.WithResourceCapabilities(false, false),
 	)
 
 	s.registerFromRegistry()
 	s.registerPersonaPrompts()
+	s.registerWordlistResources()
 
 	return s
 }
@@ -74,6 +107,13 @@ func (s *Server) ToolNames() []string {
 func (s *Server) PromptNames() []string {
 	out := make([]string, len(s.prompts))
 	copy(out, s.prompts)
+	return out
+}
+
+// ResourceNames returns the list of registered MCP resource URIs.
+func (s *Server) ResourceNames() []string {
+	out := make([]string, len(s.resources))
+	copy(out, s.resources)
 	return out
 }
 
@@ -190,6 +230,64 @@ func (s *Server) registerPersonaPrompts() {
 			}, nil
 		})
 		s.prompts = append(s.prompts, promptName)
+	}
+}
+
+// --- Registration: built-in wordlist resources ---
+
+// registerWordlistResources exposes the embedded wordlists as MCP resources
+// under the promptzero://wordlists/ scheme. MCP clients can read these
+// resources to inspect available word lists before invoking
+// hash_crack_dictionary or http_enum_common with the built-in wordlists.
+//
+// Registered resources:
+//   - promptzero://wordlists/common.txt   — HTTP common-paths wordlist (CC0)
+//   - promptzero://wordlists/passwords.txt — common-password wordlist (CC0)
+func (s *Server) registerWordlistResources() {
+	type entry struct {
+		uri     string
+		name    string
+		desc    string
+		content func() string
+	}
+
+	entries := []entry{
+		{
+			uri:  "promptzero://wordlists/common.txt",
+			name: "common.txt",
+			desc: "Built-in HTTP common-paths wordlist (~500 entries, CC0-1.0). " +
+				"Pass 'promptzero://wordlists/common.txt' as the wordlist argument " +
+				"to http_enum_common to use this list.",
+			content: wordlists.CommonRaw,
+		},
+		{
+			uri:  "promptzero://wordlists/passwords.txt",
+			name: "passwords.txt",
+			desc: "Built-in common-password wordlist (~100 entries, CC0-1.0). " +
+				"Pass 'promptzero://wordlists/passwords.txt' as the wordlist argument " +
+				"to hash_crack_dictionary to use this list.",
+			content: wordlists.PasswordsRaw,
+		},
+	}
+
+	for _, e := range entries {
+		e := e // capture loop variable
+		resource := mcp.NewResource(
+			e.uri,
+			e.name,
+			mcp.WithResourceDescription(e.desc),
+			mcp.WithMIMEType("text/plain"),
+		)
+		s.srv.AddResource(resource, func(_ context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+			return []mcp.ResourceContents{
+				mcp.TextResourceContents{
+					URI:      req.Params.URI,
+					MIMEType: "text/plain",
+					Text:     e.content(),
+				},
+			}, nil
+		})
+		s.resources = append(s.resources, e.uri)
 	}
 }
 

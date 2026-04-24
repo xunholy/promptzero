@@ -7,6 +7,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-25
+
+v0.5 opens the offensive-capability expansion track. This release
+absorbs attack-tool coverage from established pentest projects as
+**native Go code** — no outbound MCP federation, no runtime deps on
+external tools, `go build` still produces a single binary. Five
+shipping deliverables across research, firmware introspection,
+offline key recovery, host-side security recon, and CI tooling.
+
+Driven end-to-end by a 12-agent development team: 1 architect + 4
+parallel researchers + 5 parallel engineers (2 retries after the
+first pair stalled) + 1 tester + 1 security reviewer, orchestrated
+through the same wave + hardware-gate pattern that shipped v0.4.
+
+### Added — offensive capabilities
+
+- **`firmware_introspect` Spec** (Low risk, `GroupFlipperSystem`) —
+  capability oracle. Returns the connected Flipper's fork
+  (OFW/Unleashed/Momentum/Xtreme/RogueMaster), version band, commit,
+  build date, and a 23-flag feature bitmap the LLM consults before
+  any fork-gated tool call. Eliminates trial-and-error on heterogeneous
+  firmware. Backed by 15 real `device_info` fixtures (3 per fork) and
+  expanded detection rules for 8 new capabilities beyond the v0.4 set.
+
+- **`iclass_loclass_recover` Spec** (High, `GroupFlipperNFC`) — pure-Go
+  port of the loclass attack against HID iCLASS Elite (High Security).
+  Recovers per-site `Kcus` from 8 captured reader-authentication
+  exchanges. Algorithm from García/de Koning Gans/Verdult/Meriac
+  ESORICS 2012; clean-reimpl, not a source-port. All 5 published
+  sub-primitive vectors (Hash0, Hash1, Hash2, PermuteKey, DoReaderMAC)
+  pass. Offline only — no card I/O.
+  New package: `internal/iclass/` (1,296 LOC).
+
+- **4 Tier-1 host-side recon Specs** in new `internal/tools/security.go`
+  (group: `GroupSecurity`):
+  - `hash_identify` (Low) — heuristic hash-format detection for
+    MD5/SHA-1/SHA-256/SHA-512/NTLM/bcrypt/Argon2 etc.
+  - `hash_crack_dictionary` (Critical) — pure-Go offline dictionary
+    attack. Algorithms include NTLM (MD4 of UTF-16LE) and bcrypt.
+  - `port_scan_tcp` (High) — TCP connect scan via `net.Dial` with
+    concurrency cap and per-port timeout.
+  - `http_enum_common` (High) — directory/file enumeration against
+    HTTP servers with built-in wordlist corpus.
+
+- **`internal/wordlists/`** — embedded password + directory wordlist
+  subsets (SecLists top-N + dirb common.txt subset). Exposed as MCP
+  resources (`promptzero://wordlists/...`) and consumable by the
+  Tier-1 recon Specs.
+
+- **`mfoc_attack`, `mfcuk_attack`, `mfkey32_recover` Specs** (High,
+  `GroupFlipperNFC`) — registered as **stubs** for v0.5. Handlers
+  return a structured "scheduled for v0.5.1" message with operator
+  workaround (use `loader_mfkey` FAP for in-device mfkey32; use
+  `nfc_dump_protocol mfc` for capture). The 34 KB algorithm
+  reference at `docs/refactor/mifare-algorithms.md` is the
+  substantive v0.5 contribution here; v0.5.1's wave-2 lands the
+  `internal/crypto1/` impl + replaces the stub Handlers.
+
+### Added — tooling & research
+
+- **`cmd/coverage-diff`** — scrapes awesome-flipperzero lists
+  (djsime1, RogueMaster, xMasterX, jamisonderek, UberGuidoZ), parses
+  tool/verb names, diffs against `internal/tools/` Spec names, outputs
+  a markdown report of what's available upstream that PromptZero
+  doesn't yet expose. New GitHub workflow runs it weekly with
+  `continue-on-error: true`.
+
+- **Research corpus** at `docs/refactor/`:
+  - `firmware-matrix.md` (48 KB) — per-fork `device_info` field
+    reference, CLI verb diff, version-band regexes, capability
+    bitmap; flags 5 errors in the architect's initial runbook.
+  - `mifare-algorithms.md` (34 KB) — Crypto1 LFSR tap resolution
+    (conflict between mfoc and proxmark3 was notation-only, not
+    algorithmic), filter truth tables, 5 test vectors.
+  - `iclass-loclass-algorithm.md` (24 KB) — loclass sub-primitive
+    vectors and synthetic fixture path (avoids GPL provenance on
+    iceman's `iclass_dump.bin`).
+  - `mcp-feature-extraction.md` (50 KB) — capability inventory for
+    4 reference MCPs (mcp-security-hub, pentest-mcp, Hashcat-MCP,
+    pm3-mcp), Tier 1/2/3 triage for future ports.
+  - `v0.5-runbook.md` (34 KB) — per-engineer assignments, capability
+    bitmap design, Crypto1 cipher contract, license posture
+    classification.
+
+### Changed
+
+- **Capability bitmap** in `internal/flipper/capabilities.go` expanded
+  from the v0.4 baseline. Three `Stock` defaults corrected (research
+  caught 3 wrong values in the v0.4 code):
+  - `PowerInfoCmd` stock default flipped to `info power` (no modern
+    fork uses `power_info` as a top-level verb).
+  - `SubGHzRxRawHasFilePath` stock default flipped to `false` (every
+    modern fork streams `subghz rx_raw <freq>` to stdout).
+  - `NFCFlaggedArgs` gated on `FirmwareAPIMajor` (modern OFW
+    dev/1.x ships flagged NFC CLI).
+
+- **MCP server** (`internal/mcp/server.go`) gains `promptzero://` URI
+  resource scheme for embedded wordlists, plus a documentation
+  block clarifying the `_confirmed` ↔ Risk-tier equivalence that
+  operators migrating from pm3-mcp expect.
+
+### Deferred to v0.5.1
+
+- **Crypto1 cipher full implementation** — the v0.5 wave's most
+  algorithmically tight scope; two engineer attempts did not converge
+  against the 5 test vectors within the engineering window. The
+  skeleton + vectors + algorithm doc ship in v0.5; the impl moves to
+  v0.5.1 via interactive vector-driven debugging.
+- **Mifare offline crackers** (mfoc/mfcuk/mfkey32 full Handlers)
+  unblock once Crypto1 lands.
+- **loclass synthetic capture generator CSN selection** — end-to-end
+  round-trip test is skipped in v0.5 (`TestLoclassEndToEnd`). The
+  actual attack works on real 8-capture input; only the fixture
+  generator's Swende-optimal CSN search needs the v0.5.1 followup.
+- **`mifare_hardnested_recover`** — seed direction at Meijer-Verdult
+  2015 WOOT paper (table-free statistical variant, ~10× slower but
+  pure-Go friendly with no 250 GB precomputed tables).
+
+### Tool registry
+
+Registry size: 184 → **188** Specs. Net: +1 firmware_introspect, +4
+Tier-1 security, +3 Mifare stubs, +1 iclass_loclass_recover.
+
+### Verified
+
+- `task test:full` — every package passes with `-race`
+- `task lint` — 0 issues
+- All 4 hardware harnesses green (`hwtest` 23/23, `mifaretest` 12/12,
+  `webtest` 9/9, `clitest` 5/5) against real Flipper Zero Momentum
+  mntm-dev.
+- Default persona unrestricted — every new Spec accessible.
+- `TestRiskCoverage` enforces 100% risk-classification coverage of
+  the 188 Specs.
+
 ## [0.4.1] - 2026-04-24
 
 Patch release: fixes a session-killing bug in conversation-history
