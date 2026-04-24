@@ -342,23 +342,71 @@ func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) 
 //
 // Invariant: the Anthropic API requires every assistant tool_use block to
 // be paired with a following user tool_result block. compactHistoryLocked
-// ensures the split boundary never separates such a pair: if the first
-// tail entry is a user message whose content is all tool_result blocks,
-// the window is shifted one entry earlier to keep the preceding assistant
-// message with it. If no safe boundary exists within a 4-entry search
-// window, compaction is skipped for this call.
+// ensures the kept history never violates this in two places:
+//  1. The anchor itself (default a.history[:2]) — extended forward when
+//     the last anchor message has a tool_use, so the matching tool_result
+//     is kept with it. Without this extension, sessions whose first
+//     assistant turn invokes a tool (the common case) generate a corrupt
+//     payload after first compaction: messages.1 has a tool_use whose
+//     tool_result is in the discarded window, and the API rejects every
+//     subsequent turn with a 400.
+//  2. The tail boundary — shifted earlier (up to 4 positions) when the
+//     first tail entry is a user-of-tool-results paired with the
+//     immediately-preceding assistant tool_use.
+//
+// If neither protection can be satisfied, compaction is skipped this call.
 func (a *Agent) compactHistoryLocked() {
 	if len(a.history) <= maxHistory {
 		return
 	}
-	// Candidate split: keep first 2 + last (maxHistory-2).
-	splitIdx := len(a.history) - (maxHistory - 2)
+
+	// Resolve the anchor end. Default is 2; extend forward whenever the
+	// last anchor message is an assistant with a tool_use, swallowing the
+	// matching user tool_result. Cap at maxAnchorExtension so a malformed
+	// burst of tool_use/result pairs at the start can't grow the anchor
+	// unboundedly.
+	const maxAnchorExtension = 8
+	anchorEnd := 2
+	if len(a.history) < anchorEnd {
+		// Fewer than 2 entries — nothing to compact.
+		return
+	}
+	for ext := 0; ext < maxAnchorExtension; ext++ {
+		last := a.history[anchorEnd-1]
+		if last.Role != anthropic.MessageParamRoleAssistant || !hasToolUse(last) {
+			break // anchor ends cleanly
+		}
+		// Anchor's last entry has a tool_use; extend by 1 to include
+		// the matching tool_result.
+		if anchorEnd >= len(a.history) {
+			// No room to extend (history shorter than needed). Drop the
+			// anchor entirely — better to lose initial context than ship
+			// a corrupt payload.
+			anchorEnd = 0
+			break
+		}
+		next := a.history[anchorEnd]
+		if next.Role != anthropic.MessageParamRoleUser || !allToolResults(next) {
+			// The next entry isn't the matching tool_result. Drop anchor.
+			anchorEnd = 0
+			break
+		}
+		anchorEnd++
+	}
+
+	// Candidate split: keep anchor + last (maxHistory - anchorEnd).
+	splitIdx := len(a.history) - (maxHistory - anchorEnd)
+	if splitIdx <= anchorEnd {
+		// History has grown only marginally past maxHistory; the anchor
+		// extension already covers the slack. Skip this call.
+		return
+	}
 	// Safety search: shift splitIdx earlier if it lands in the middle of a
 	// tool_use/tool_result pair (up to 4 positions back).
 	for shift := 0; shift <= 4; shift++ {
 		idx := splitIdx - shift
-		if idx <= 2 {
-			// No room to compact without losing the anchor entries.
+		if idx <= anchorEnd {
+			// No room to compact without overlapping the anchor.
 			return
 		}
 		msg := a.history[idx]
@@ -378,8 +426,8 @@ func (a *Agent) compactHistoryLocked() {
 		break
 	}
 	tail := a.history[splitIdx:]
-	compacted := make([]anthropic.MessageParam, 2, maxHistory)
-	copy(compacted, a.history[:2])
+	compacted := make([]anthropic.MessageParam, anchorEnd, maxHistory)
+	copy(compacted, a.history[:anchorEnd])
 	a.history = append(compacted, tail...)
 }
 
