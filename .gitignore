@@ -33,3 +33,6 @@ Thumbs.db
 # with a leading slash so it does NOT match cmd/promptzero/ (which would
 # make git silently ignore new files under that directory).
 /promptzero
+
+# Claude Code teammate state
+.claude/

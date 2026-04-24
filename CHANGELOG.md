@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-04-24
+
+Patch release: fixes a session-killing bug in conversation-history
+compaction that affected any operator running long sessions where the
+first prompt invoked a tool (the common case).
+
+### Fixed
+
+- **`compactHistoryLocked` orphaned tool_use at messages.1** when
+  `a.history[1]` was an assistant message containing a `tool_use` block
+  and `a.history[2]` was the matching user `tool_result`. The hardcoded
+  anchor `a.history[:2]` discarded the `tool_result` on first compaction
+  (history > 100 entries), leaving the orphan in place. The Anthropic
+  API then rejected every subsequent turn with HTTP 400:
+
+      messages.1: `tool_use` ids were found without `tool_result`
+      blocks immediately after: toolu_XXXX. Each `tool_use` block
+      must have a corresponding `tool_result` block in the next
+      message.
+
+  The bug was reproduced by a 35-prompt CLI smoke test (`cmd/cliyolo`)
+  that hit it at prompt 24/35 once the live session crossed
+  maxHistory. Fix: extend the anchor end forward (up to 8 entries) when
+  the last anchor message has a `tool_use`, swallowing the matching
+  `tool_result`. Fall back to dropping the anchor entirely if the
+  pairing is malformed (defensive).
+
+### Added
+
+- **`cmd/cliyolo`** — PTY-driven CLI runner with a 35-prompt
+  non-destructive test set covering every Flipper subsystem (system,
+  storage, hardware, NFC, SubGHz, IR, RFID, iButton, audit, BadUSB
+  validate, workflow, storage round-trip). Exits non-zero on
+  regression so it's CI-ready. Used to prove the fix end-to-end.
+- **`cmd/cliprobe`** — minimal one-shot PTY probe used during
+  diagnosis. Useful for triaging future REPL issues without burning
+  through the full harness.
+- Two regression tests in `internal/agent/history_test.go`:
+  - `TestCompactHistoryLocked_AnchorWithToolUseExtended` — pins the
+    cliyolo failure shape (first turn invokes a tool, history saturates,
+    no orphan in compacted result).
+  - `TestCompactHistoryLocked_AnchorMalformedDropsAnchor` — confirms
+    the drop-anchor fallback when the pairing is broken.
+
+### Verified
+
+- All 4 hardware harnesses pass (`hwtest`, `mifaretest`, `webtest`,
+  `clitest`) on a real Flipper Zero (Momentum mntm-dev).
+- `cliyolo` 35/35 PASS in 19 minutes against the live device.
+- `task test:full` — every package passes with `-race`.
+- `task lint` — 0 issues.
+
 ## [0.4.0] - 2026-04-24
 
 Tool-registry refactor. Every tool used to live in three places —
