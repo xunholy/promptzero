@@ -1070,12 +1070,6 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "ibutton_write":
 		return a.flipper.IButtonWrite(str(p, "hex_data"))
 
-	// --- Flipper: GPIO ---
-	case "gpio_set":
-		return a.flipper.GPIOSet(str(p, "pin"), intOr(p, "value", 0))
-	case "gpio_read":
-		return a.flipper.GPIORead(str(p, "pin"))
-
 	// --- Flipper: BadUSB ---
 	case "badusb_run":
 		path := str(p, "file")
@@ -1096,55 +1090,6 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		}
 		out, _ := json.Marshal(rep)
 		return string(out), nil
-
-	// --- Flipper: Loader ---
-	case "list_apps":
-		apps, err := a.flipper.LoaderListParsed()
-		if err != nil {
-			return "", err
-		}
-		b, _ := json.Marshal(apps)
-		return string(b), nil
-	case "loader_open":
-		return a.flipper.LoaderOpen(str(p, "app_name"), str(p, "args"))
-	case "loader_close":
-		return a.flipper.LoaderClose()
-
-	// --- Flipper: Input ---
-	case "input_send":
-		return a.flipper.InputSend(str(p, "button"), str(p, "event_type"))
-
-	// --- Flipper: Storage ---
-	case "storage_list":
-		return a.flipper.StorageList(str(p, "path"))
-	case "storage_read":
-		return a.flipper.StorageRead(str(p, "path"))
-	case "storage_delete":
-		return a.flipper.StorageRemove(str(p, "path"))
-	case "storage_mkdir":
-		return a.flipper.StorageMkdir(str(p, "path"))
-	case "storage_info":
-		raw, err := a.flipper.StorageStat(str(p, "path"))
-		if err != nil {
-			return raw, err
-		}
-		parsed := flipper.ParseStorageStat(raw)
-		b, _ := json.Marshal(parsed)
-		return string(b), nil
-
-	// --- Flipper: System ---
-	case "power_info":
-		return a.flipper.PowerInfo()
-	case "device_reboot":
-		return a.flipper.Reboot()
-	case "flipper_raw_cli":
-		return a.flipper.RawCLI(str(p, "command"))
-	case "led_set":
-		return a.flipper.LED(str(p, "channel"), intOr(p, "value", 0))
-	case "vibro":
-		return a.flipper.Vibro(boolOr(p, "on", false))
-	case "list_devices":
-		return a.listDevices()
 
 	// --- Flipper: Sub-GHz (extended) ---
 	case "subghz_tx_key":
@@ -1192,36 +1137,9 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	case "loader_t5577_multiwriter":
 		return a.flipper.LoaderT5577MultiWriter()
 
-	// --- Flipper: OneWire / iButton ---
-	case "onewire_search":
-		return a.flipper.OneWireSearch(time.Duration(intOr(p, "duration_seconds", 10)) * time.Second)
-
-	// --- Flipper: GPIO / hardware recon ---
-	case "i2c_scan":
-		return a.flipper.I2CScan()
-
 	// --- Flipper: Scripting ---
 	case "js_run":
 		return a.flipper.JSRun(str(p, "path"), time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
-
-	// --- Flipper: Storage (extended) ---
-	case "storage_copy":
-		// Snapshot the destination (if it already exists) before the
-		// copy so /rewind can restore it — the source stays intact by
-		// definition and doesn't need a snapshot.
-		a.snapshotBeforeWrite(ctx, str(p, "dst"))
-		return a.flipper.StorageCopy(str(p, "src"), str(p, "dst"))
-	case "storage_rename":
-		// Snapshot both ends: the destination might pre-exist (will
-		// be clobbered) and so might the source (rename removes it
-		// from its original path, so the user may want it back).
-		a.snapshotBeforeWrite(ctx, str(p, "src"))
-		a.snapshotBeforeWrite(ctx, str(p, "dst"))
-		return a.flipper.StorageRename(str(p, "src"), str(p, "dst"))
-	case "storage_md5":
-		return a.flipper.StorageMD5(str(p, "path"))
-	case "storage_tree":
-		return a.flipper.StorageTree(str(p, "path"))
 
 	// --- Flipper: Loader FAP shortcuts (Sub-GHz / misc) ---
 	case "loader_subghz_bruteforcer":
@@ -1242,22 +1160,6 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return a.flipper.LoaderSPIMemManager()
 	case "loader_unitemp":
 		return a.flipper.LoaderUnitemp()
-
-	// --- Flipper: System (extended) ---
-	case "loader_info":
-		return a.flipper.LoaderInfo()
-	case "loader_signal":
-		return a.flipper.LoaderSignal(intOr(p, "signal", 0), str(p, "arg_hex"))
-	case "log_stream":
-		return a.flipper.LogStream(time.Duration(intOr(p, "duration_seconds", 15))*time.Second, str(p, "level"))
-	case "power_reboot_dfu":
-		return a.flipper.PowerRebootDFU()
-	case "update_install":
-		return a.flipper.UpdateInstall(str(p, "manifest"))
-	case "crypto_store_key":
-		return a.flipper.CryptoStoreKey(intOr(p, "slot", 0), str(p, "key_type"), intOr(p, "key_size", 128), str(p, "hex"))
-	case "bt_hci_info":
-		return a.flipper.BTHCIInfo()
 
 	// --- Generation Pipeline ---
 	case "generate_evil_portal":
@@ -2381,22 +2283,6 @@ func (a *Agent) targetForget(p map[string]interface{}) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("forgot %s (%s)", id, kind), nil
-}
-
-// --- Device Registry ---
-
-func (a *Agent) listDevices() (string, error) {
-	if len(a.cfg.Devices) == 0 {
-		return "No devices configured. Add devices to config.yaml.", nil
-	}
-	var out string
-	for name, dev := range a.cfg.Devices {
-		out += fmt.Sprintf("- %s (type: %s, file: %s)\n", name, dev.Type, dev.File)
-		for cmd, signal := range dev.Commands {
-			out += fmt.Sprintf("    command: %s -> %s\n", cmd, signal)
-		}
-	}
-	return out, nil
 }
 
 // --- File-format Handlers ---

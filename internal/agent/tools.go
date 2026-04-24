@@ -178,23 +178,6 @@ func buildTools() []anthropic.ToolUnionParam {
 			"hex_data",
 		),
 
-		// --- GPIO ---
-		tool("gpio_set",
-			"Set a GPIO pin high (1) or low (0). Control external hardware, relays, LEDs, motors.",
-			props(
-				reqProp("pin", "string", "GPIO pin name: PA7, PA6, PA4, PB3, PB2, PC3, PC1, PC0"),
-				reqProp("value", "integer", "0 for low, 1 for high"),
-			),
-			"pin", "value",
-		),
-		tool("gpio_read",
-			"Read the current state of a GPIO pin. Returns high/low and voltage level.",
-			props(
-				reqProp("pin", "string", "GPIO pin name: PA7, PA6, PA4, PB3, PB2, PC3, PC1, PC0"),
-			),
-			"pin",
-		),
-
 		// --- BadUSB ---
 		toolEx("badusb_run",
 			"Execute a BadUSB/Rubber Ducky script. The Flipper acts as a USB keyboard and types commands on the connected computer. No restrictions on payloads.",
@@ -212,108 +195,6 @@ func buildTools() []anthropic.ToolUnionParam {
 				reqProp("file", "string", "Path to .txt BadUSB script on SD card"),
 			),
 			"file",
-		),
-
-		// --- Loader ---
-		tool("list_apps",
-			"List every installed Flipper application plus the settings-menu entries. Call this BEFORE loader_open when the target app's availability is uncertain — avoids the silent-failure path where loader_open launches a missing FAP. Returns structured JSON: {apps: [...], settings: [...]}.",
-			props(),
-		),
-		tool("loader_open",
-			"Open a Flipper application by name with optional arguments. Use to launch any built-in or FAP app. If you're unsure whether the app is installed, call list_apps first.",
-			props(
-				reqProp("app_name", "string", "Application name, e.g. NFC, SubGHz, iButton, Bad USB, GPIO"),
-				optProp("args", "string", "Optional arguments to pass to the app"),
-			),
-			"app_name",
-		),
-		tool("loader_close",
-			"Close the currently running Flipper application.",
-			props(),
-		),
-
-		// --- Input ---
-		tool("input_send",
-			"Send a synthetic button input event to the Flipper UI.",
-			props(
-				reqProp("button", "string", "Button: up, down, left, right, ok, back"),
-				reqProp("event_type", "string", "Event type: press, release, short, long, repeat"),
-			),
-			"button", "event_type",
-		),
-
-		// --- Storage / File Management ---
-		tool("storage_list",
-			"List files and directories on the Flipper SD card.",
-			props(
-				reqProp("path", "string", "Directory path, e.g. /ext/subghz or /ext/nfc"),
-			),
-			"path",
-		),
-		tool("storage_read",
-			"Read the contents of a file on the Flipper SD card.",
-			props(
-				reqProp("path", "string", "File path to read"),
-			),
-			"path",
-		),
-		tool("storage_delete",
-			"Delete a file or directory from the Flipper SD card.",
-			props(
-				reqProp("path", "string", "Path to delete"),
-			),
-			"path",
-		),
-		tool("storage_mkdir",
-			"Create a directory on the Flipper SD card.",
-			props(
-				reqProp("path", "string", "Directory path to create"),
-			),
-			"path",
-		),
-		tool("storage_info",
-			"Get file/directory info (size, type) from the Flipper SD card.",
-			props(
-				reqProp("path", "string", "Path to inspect"),
-			),
-			"path",
-		),
-
-		// --- System ---
-		tool("power_info",
-			"Get battery and power information: charge level, voltage, charging status.",
-			props(),
-		),
-		tool("device_reboot",
-			"Reboot the Flipper Zero.",
-			props(),
-		),
-		tool("flipper_raw_cli",
-			"Escape hatch: send an arbitrary command directly to the Flipper CLI. Use only when no dedicated tool exists for what you need (e.g., firmware features we haven't wrapped, or commands unique to a specific fork like Xtreme/RogueMaster). High risk — the user will be prompted to approve. Output is returned verbatim.",
-			props(
-				reqProp("command", "string", "Exact CLI string as typed at >: (e.g., `info power`, `gpio read PA0`, `subghz chat 433920000 0`). Do NOT include a trailing newline."),
-			),
-		),
-		tool("led_set",
-			"Set a single Flipper LED channel to a brightness value. Channels: r (red), g (green), b (blue), bl (backlight).",
-			props(
-				reqProp("channel", "string", "LED channel: r, g, b, bl"),
-				reqProp("value", "integer", "Brightness 0-255"),
-			),
-			"channel", "value",
-		),
-		tool("vibro",
-			"Trigger the Flipper vibration motor.",
-			props(
-				reqProp("on", "boolean", "true to vibrate, false to stop"),
-			),
-			"on",
-		),
-
-		// --- Device Registry ---
-		tool("list_devices",
-			"List all named devices from the user's configuration. These are friendly names mapped to signal files (e.g. 'garage' -> /ext/subghz/garage.sub). Use this to discover what the user has set up before trying to control devices by name.",
-			props(),
 		),
 
 		// --- Sub-GHz (extended primitives) ---
@@ -453,58 +334,12 @@ func buildTools() []anthropic.ToolUnionParam {
 			props(),
 		),
 
-		// --- OneWire / iButton ---
-		tool("onewire_search",
-			"Enumerate devices on the 1-Wire bus and return their ROM codes. Use to discover keys/sensors before iButton read/emulate. Hardware: touch the iButton contact pad on the top-left corner of the Flipper.",
-			props(
-				optProp("duration_seconds", "integer", "How long to scan (default 10)"),
-			),
-		),
-
-		// --- GPIO / hardware recon ---
-		tool("i2c_scan",
-			"Scan the I²C bus for connected devices and return their addresses. Use for hardware recon when probing a GPIO-attached sensor/chip. Tries the built-in CLI first; falls back to launching the I2C Scanner FAP if the firmware lacks the command. Hardware: wire SCL/SDA to the Flipper's GPIO header pins (PC0=SCL, PC1=SDA) with pull-ups.",
-			props(),
-		),
-
 		// --- Scripting ---
 		tool("js_run",
 			"Execute a saved JavaScript file via the Flipper's JS runtime. Arbitrary code execution on the device — risk is that the script can drive any subsystem (RF, storage, GPIO). Fork-gated: only Xtreme, Momentum, and RogueMaster ship a JS runtime; returns a friendly-fork error on stock.",
 			props(
 				reqProp("path", "string", "Absolute .js file path, e.g. /ext/apps/Scripts/foo.js"),
 				optProp("duration_seconds", "integer", "Max runtime in seconds (default 60)"),
-			),
-			"path",
-		),
-
-		// --- Storage (extended primitives) ---
-		tool("storage_copy",
-			"Copy a file or directory on the Flipper SD card. Non-destructive to the source; overwrites the destination if it already exists.",
-			props(
-				reqProp("src", "string", "Source path, e.g. /ext/subghz/garage.sub"),
-				reqProp("dst", "string", "Destination path"),
-			),
-			"src", "dst",
-		),
-		tool("storage_rename",
-			"Rename or move a file/directory on the SD card.",
-			props(
-				reqProp("src", "string", "Current path"),
-				reqProp("dst", "string", "New path"),
-			),
-			"src", "dst",
-		),
-		tool("storage_md5",
-			"Return the MD5 hash of a file on the SD card. Use to verify a deployment matches the expected bytes, or to compare two files quickly.",
-			props(
-				reqProp("path", "string", "File path to hash"),
-			),
-			"path",
-		),
-		tool("storage_tree",
-			"Recursively list a directory and its contents. Read-only; useful when the user asks 'what's in /ext/subghz?' and you want the full picture, not just the top level.",
-			props(
-				reqProp("path", "string", "Directory path to walk"),
 			),
 			"path",
 		),
@@ -544,50 +379,6 @@ func buildTools() []anthropic.ToolUnionParam {
 		),
 		tool("loader_unitemp",
 			"Launch the Unitemp FAP — reads external temperature/humidity sensors (DHT, DS18B20, BMP280, ...) over the GPIO header. Read-only.",
-			props(),
-		),
-
-		// --- System (extended primitives) ---
-		tool("loader_info",
-			"Return metadata about the currently running app (name, flags). Read-only; useful to verify a loader_open actually launched something before sending input_send events.",
-			props(),
-		),
-		tool("loader_signal",
-			"Send a numeric signal to the currently running app. Signal meanings are app-specific; many apps document a small set of custom opcodes (pause, toggle, reset).",
-			props(
-				reqProp("signal", "integer", "Signal number to deliver"),
-			),
-			"signal",
-		),
-		tool("log_stream",
-			"Capture the live Flipper debug log for the supplied duration. Read-only; useful when the user reports 'app X is misbehaving' and you need the firmware's own log output.",
-			props(
-				optProp("duration_seconds", "integer", "How long to stream (default 15)"),
-			),
-		),
-		tool("power_reboot_dfu",
-			"Reboot the Flipper into STM32 DFU mode. CRITICAL: after this the Flipper has no running firmware — recovery requires a host reflash or a physical power-cycle. Only call when the user explicitly wants to reflash.",
-			props(),
-		),
-		tool("update_install",
-			"Install a firmware update from a manifest already staged on the SD card. CRITICAL: reflashes the device; a bad manifest can brick it. The manifest (update.fuf) is normally placed by the qFlipper desktop tool.",
-			props(
-				reqProp("manifest", "string", "Path to the update.fuf manifest, e.g. /ext/update/MNT-dev-f7/update.fuf"),
-			),
-			"manifest",
-		),
-		tool("crypto_store_key",
-			"Store a key in one of the Flipper's secure-storage slots (e.g. for BadUSB string encryption). Overwrites whatever is in the slot — verify with the user before calling.",
-			props(
-				reqProp("slot", "integer", "Slot number"),
-				reqProp("key_type", "string", "Key type: master, simple, or encrypted"),
-				reqProp("key_size", "integer", "Key size in bits: 128 or 256"),
-				reqProp("hex", "string", "Key bytes as hex (key_size/8 bytes; e.g. 32 hex chars for 128-bit)"),
-			),
-			"slot", "key_type", "key_size", "hex",
-		),
-		tool("bt_hci_info",
-			"Return local Bluetooth controller info: chip, firmware version, MAC. Read-only and does not bring up a BLE stack — native Flipper BLE attacks still require an external devboard; this is purely device metadata.",
 			props(),
 		),
 	}

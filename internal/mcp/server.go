@@ -437,69 +437,12 @@ func (s *Server) registerFlipperTools() {
 			return f.IButtonWrite(sa(a, "hex_data"))
 		})
 
-	// --- GPIO ---
-	s.add("gpio_set", "Set a GPIO pin high (1) or low (0).",
-		[]mcp.ToolOption{
-			mcp.WithString("pin", mcp.Required(), mcp.Description("Pin name (PA7, PA6, PA4, PB3, PB2, PC3, PC1, PC0)")),
-			mcp.WithNumber("value", mcp.Required(), mcp.Description("0 or 1")),
-		},
-		[]string{"pin", "value"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.GPIOSet(sa(a, "pin"), int(na(a, "value")))
-		})
-
-	s.add("gpio_read", "Read a GPIO pin state.",
-		[]mcp.ToolOption{mcp.WithString("pin", mcp.Required(), mcp.Description("Pin name"))},
-		[]string{"pin"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.GPIORead(sa(a, "pin"))
-		})
-
 	// --- BadUSB ---
 	s.add("badusb_run", "Execute a BadUSB/Rubber Ducky script on the target host.",
 		[]mcp.ToolOption{mcp.WithString("file", mcp.Required(), mcp.Description("Path to .txt BadUSB script"))},
 		[]string{"file"},
 		func(_ context.Context, a map[string]interface{}) (string, error) {
 			return f.BadUSBRun(sa(a, "file"))
-		})
-
-	// --- Loader ---
-	s.add("list_apps", "List installed Flipper apps + settings entries. Read-only.",
-		nil, nil,
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LoaderList()
-		})
-
-	s.add("loader_open", "Open a Flipper app by name.",
-		[]mcp.ToolOption{
-			mcp.WithString("app_name", mcp.Required(), mcp.Description("App name, e.g. NFC, SubGHz")),
-			mcp.WithString("args", mcp.Description("Optional args")),
-		},
-		[]string{"app_name"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LoaderOpen(sa(a, "app_name"), sa(a, "args"))
-		})
-
-	s.add("loader_close", "Close the currently running app.",
-		nil, nil,
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LoaderClose()
-		})
-
-	s.add("loader_info", "Return metadata about the running app. Read-only.",
-		nil, nil,
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LoaderInfo()
-		})
-
-	s.add("loader_signal", "Deliver a numeric signal to the running app.",
-		[]mcp.ToolOption{
-			mcp.WithNumber("signal", mcp.Required(), mcp.Description("Signal number")),
-			mcp.WithString("arg_hex", mcp.Description("Optional hex argument passed alongside the signal")),
-		},
-		[]string{"signal"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LoaderSignal(int(na(a, "signal")), sa(a, "arg_hex"))
 		})
 
 	// Loader FAP shortcuts — no-arg wrappers.
@@ -534,92 +477,6 @@ func (s *Server) registerFlipperTools() {
 	s.add("loader_unitemp", "Launch Unitemp FAP. Reads external temperature/humidity sensors.", nil, nil,
 		func(_ context.Context, _ map[string]interface{}) (string, error) { return f.LoaderUnitemp() })
 
-	// --- Input ---
-	s.add("input_send", "Send a synthetic button input event.",
-		[]mcp.ToolOption{
-			mcp.WithString("button", mcp.Required(), mcp.Description("Button: up, down, left, right, ok, back")),
-			mcp.WithString("event_type", mcp.Required(), mcp.Description("Event type: press, release, short, long, repeat")),
-		},
-		[]string{"button", "event_type"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.InputSend(sa(a, "button"), sa(a, "event_type"))
-		})
-
-	// --- Storage ---
-	s.add("storage_list", "List files on the Flipper SD card.",
-		[]mcp.ToolOption{mcp.WithString("path", mcp.Required(), mcp.Description("Directory path"))},
-		[]string{"path"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageList(sa(a, "path"))
-		})
-	s.add("storage_read", "Read a file on the SD card.",
-		[]mcp.ToolOption{mcp.WithString("path", mcp.Required(), mcp.Description("File path"))},
-		[]string{"path"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageRead(sa(a, "path"))
-		})
-	s.add("storage_delete", "Delete a file or directory.",
-		[]mcp.ToolOption{mcp.WithString("path", mcp.Required(), mcp.Description("Path to delete"))},
-		[]string{"path"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageRemove(sa(a, "path"))
-		})
-	s.add("storage_mkdir", "Create a directory on the SD card.",
-		[]mcp.ToolOption{mcp.WithString("path", mcp.Required(), mcp.Description("Directory path"))},
-		[]string{"path"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageMkdir(sa(a, "path"))
-		})
-	s.add("storage_info", "Inspect a file/directory (size, type).",
-		[]mcp.ToolOption{mcp.WithString("path", mcp.Required(), mcp.Description("Path to inspect"))},
-		[]string{"path"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageStat(sa(a, "path"))
-		})
-	s.add("storage_copy", "Copy a file or directory.",
-		[]mcp.ToolOption{
-			mcp.WithString("src", mcp.Required(), mcp.Description("Source path")),
-			mcp.WithString("dst", mcp.Required(), mcp.Description("Destination path")),
-		},
-		[]string{"src", "dst"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageCopy(sa(a, "src"), sa(a, "dst"))
-		})
-	s.add("storage_rename", "Rename or move a file/directory.",
-		[]mcp.ToolOption{
-			mcp.WithString("src", mcp.Required(), mcp.Description("Current path")),
-			mcp.WithString("dst", mcp.Required(), mcp.Description("New path")),
-		},
-		[]string{"src", "dst"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageRename(sa(a, "src"), sa(a, "dst"))
-		})
-	s.add("storage_md5", "Return the MD5 hash of a file.",
-		[]mcp.ToolOption{mcp.WithString("path", mcp.Required(), mcp.Description("File path"))},
-		[]string{"path"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageMD5(sa(a, "path"))
-		})
-	s.add("storage_tree", "Recursively list a directory and its contents.",
-		[]mcp.ToolOption{mcp.WithString("path", mcp.Required(), mcp.Description("Directory path"))},
-		[]string{"path"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.StorageTree(sa(a, "path"))
-		})
-
-	// --- OneWire / I2C ---
-	s.add("onewire_search", "Enumerate 1-Wire devices on the GPIO header.",
-		[]mcp.ToolOption{mcp.WithNumber("duration_seconds", mcp.Description("Scan duration (default 10)"))},
-		nil,
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.OneWireSearch(durationParam(a, "duration_seconds", 10*time.Second))
-		})
-	s.add("i2c_scan", "Scan the I²C bus for attached devices.",
-		nil, nil,
-		func(_ context.Context, _ map[string]interface{}) (string, error) {
-			return f.I2CScan()
-		})
-
 	// --- JS runtime (fork-gated) ---
 	s.add("js_run", "Execute a saved JavaScript file on the Flipper. Critical — arbitrary device code.",
 		[]mcp.ToolOption{
@@ -631,69 +488,6 @@ func (s *Server) registerFlipperTools() {
 			return f.JSRun(sa(a, "path"), durationParam(a, "duration_seconds", 60*time.Second))
 		})
 
-	// --- System ---
-	s.add("power_info", "Get battery/power information. Read-only.",
-		nil, nil,
-		func(_ context.Context, _ map[string]interface{}) (string, error) {
-			return f.PowerInfo()
-		})
-	s.add("device_reboot", "Reboot the Flipper. Critical.",
-		nil, nil,
-		func(_ context.Context, _ map[string]interface{}) (string, error) {
-			return f.Reboot()
-		})
-	s.add("power_reboot_dfu", "Reboot the Flipper into DFU mode. Critical.",
-		nil, nil,
-		func(_ context.Context, _ map[string]interface{}) (string, error) {
-			return f.PowerRebootDFU()
-		})
-	s.add("update_install", "Install a firmware update from a staged manifest. Critical.",
-		[]mcp.ToolOption{mcp.WithString("manifest", mcp.Required(), mcp.Description("Path to update.fuf manifest"))},
-		[]string{"manifest"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.UpdateInstall(sa(a, "manifest"))
-		})
-	s.add("crypto_store_key", "Store a key in a Flipper secure-storage slot.",
-		[]mcp.ToolOption{
-			mcp.WithNumber("slot", mcp.Required(), mcp.Description("Slot number")),
-			mcp.WithString("key_type", mcp.Required(), mcp.Description("Key type: master, simple, or encrypted")),
-			mcp.WithNumber("key_size", mcp.Required(), mcp.Description("Key size in bits: 128 or 256")),
-			mcp.WithString("hex", mcp.Required(), mcp.Description("Key bytes as hex (key_size/8 bytes)")),
-		},
-		[]string{"slot", "key_type", "key_size", "hex"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.CryptoStoreKey(int(na(a, "slot")), sa(a, "key_type"), int(na(a, "key_size")), sa(a, "hex"))
-		})
-	s.add("flipper_raw_cli", "Send an arbitrary command to the Flipper CLI. Critical — unrestricted passthrough.",
-		[]mcp.ToolOption{mcp.WithString("command", mcp.Required(), mcp.Description("CLI command string"))},
-		[]string{"command"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.RawCLI(sa(a, "command"))
-		})
-	s.add("led_set", "Set a single LED channel to a brightness value.",
-		[]mcp.ToolOption{
-			mcp.WithString("channel", mcp.Required(), mcp.Description("LED channel: r, g, b, bl")),
-			mcp.WithNumber("value", mcp.Required(), mcp.Description("Brightness 0-255")),
-		},
-		[]string{"channel", "value"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LED(sa(a, "channel"), int(na(a, "value")))
-		})
-	s.add("vibro", "Trigger the vibration motor.",
-		[]mcp.ToolOption{mcp.WithBoolean("on", mcp.Required(), mcp.Description("true to vibrate, false to stop"))},
-		[]string{"on"},
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.Vibro(ba(a, "on"))
-		})
-	s.add("log_stream", "Capture live Flipper debug log. Read-only.",
-		[]mcp.ToolOption{
-			mcp.WithNumber("duration_seconds", mcp.Description("Stream duration (default 15)")),
-			mcp.WithString("level", mcp.Description("Minimum severity: default|error|warn|info|debug|trace")),
-		},
-		nil,
-		func(_ context.Context, a map[string]interface{}) (string, error) {
-			return f.LogStream(durationParam(a, "duration_seconds", 15*time.Second), sa(a, "level"))
-		})
 }
 
 // --- Registration: file-format primitives ---
