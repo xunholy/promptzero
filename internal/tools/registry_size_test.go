@@ -55,7 +55,13 @@ func TestRegistrySize(t *testing.T) {
 	// v0.5 task #6 (firmware_introspect): +1 new spec (no aliases).
 	// v0.5 task #10 (MCP/security): +4 new specs (no aliases):
 	//   hash_identify, hash_crack_dictionary, port_scan_tcp, http_enum_common
-	const expected = 184
+	// v0.5 task #7 (Mifare crackers, stub-deferred to v0.5.1): +3 specs:
+	//   mfoc_attack, mfcuk_attack, mfkey32_recover (Handler returns
+	//   "scheduled for v0.5.1" message; algorithm reference in
+	//   docs/refactor/mifare-algorithms.md is the v0.5 deliverable)
+	// v0.5 task #8 (loclass): +1 spec (iclass_loclass_recover) — sub-primitives
+	//   functional, end-to-end deferred to v0.5.1 (CSN-selection bug)
+	const expected = 188
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

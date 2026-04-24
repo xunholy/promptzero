@@ -146,6 +146,10 @@ var toolLevels = func() map[string]Level {
 		"rfid_raw_emulate",
 		"loader_t5577_multiwriter",
 		"loader_subghz_playlist",
+		// v0.5 offline crackers — recover keys without RF emission. High because
+		// recovered keys enable cloning of access credentials.
+		"mfoc_attack", "mfcuk_attack", "mfkey32_recover",
+		"iclass_loclass_recover",
 		"loader_signal",
 		"crypto_store_key",
 		"workflow_nfc_badge_pipeline",
@@ -154,9 +158,7 @@ var toolLevels = func() map[string]Level {
 		// v0.5 security: host-side active recon (same tier as wifi_port_scan)
 		"port_scan_tcp",
 		"http_enum_common",
-		// TODO(v0.5 risk-review): mfoc_attack, mfcuk_attack, mfkey32_recover,
-		// iclass_loclass_recover are classified High by tasks #7/#8 — to be
-		// added here when those tasks land.
+		// TODO(v0.5.1 risk-review): mfoc_attack, mfcuk_attack, mfkey32_recover — tasks #7
 	)
 
 	// Destructive, attack, brute force. flipper_raw_cli is here because it's
