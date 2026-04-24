@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1083,12 +1082,6 @@ func (a *Agent) SetTargetMemory(s *targetmem.Store) {
 	defer a.mu.Unlock()
 	a.targetMem = s
 }
-
-// dumpSavedPathRE captures the file path from Momentum's dump output banner:
-// "Dump saved to '/ext/nfc/dump-YYYYMMDD-HHMMSS.nfc'". Used by
-// nfc_read_save (via internal/tools/generate.go) and pinned here for the
-// agent-package regex regression test (nfc_read_save_test.go).
-var dumpSavedPathRE = regexp.MustCompile(`Dump saved to '([^']+)'`)
 
 // mapNFCTypeToDeviceType translates the scanner's Type string into a
 // DeviceType value BuildNFC + validateUIDLength will accept. Unknown
