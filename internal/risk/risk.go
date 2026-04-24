@@ -62,6 +62,10 @@ var toolLevels = func() map[string]Level {
 		"badusb_validate",
 		"system_info",
 		"workflow_hw_recon_blackbox_device",
+		// Marauder GPS, counters, storage, and LED (all read-only or trivial writes)
+		"marauder_gps_data", "marauder_gps_field", "marauder_nmea",
+		"marauder_packet_count", "marauder_storage_ls",
+		"marauder_led_set", "marauder_led_rainbow",
 	)
 
 	// Captures, scans, file writes
@@ -83,7 +87,7 @@ var toolLevels = func() map[string]Level {
 		"nfc_detect", "nfc_subcommand", "nfc_read_save",
 		"generate_evil_portal", "generate_badusb", "generate_subghz", "generate_ir", "generate_nfc",
 		"input_send",
-		"storage_mkdir", "storage_delete",
+		"storage_mkdir", "storage_delete", "storage_write",
 		"subghz_rx_raw",
 		"nfc_mfu_rdbl", "nfc_dump_protocol",
 		"rfid_raw_read",
@@ -128,7 +132,7 @@ var toolLevels = func() map[string]Level {
 		"wifi_evil_portal_start", "wifi_evil_portal_stop",
 		"wifi_ble_spam",
 		"wifi_join",
-		"wifi_ping_scan", "wifi_arp_scan", "wifi_port_scan",
+		"wifi_ping_scan", "wifi_arp_scan", "wifi_port_scan", "wifi_portscan_service",
 		"run_payload",
 		"generate_deploy_run",
 		"loader_open",

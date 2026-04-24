@@ -84,6 +84,7 @@ func Open(path string) (*Store, error) {
 		);
 		CREATE INDEX IF NOT EXISTS idx_targets_kind ON targets(kind);
 		CREATE INDEX IF NOT EXISTS idx_targets_last_seen ON targets(last_seen);
+		VACUUM;
 	`); err != nil {
 		return nil, fmt.Errorf("targetmem: schema: %w", err)
 	}

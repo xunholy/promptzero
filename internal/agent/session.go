@@ -3,12 +3,12 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/session"
 )
 
@@ -139,7 +139,7 @@ func (a *Agent) DeleteSession(id string) error {
 	}
 	if mgr != nil {
 		if err := mgr.Purge(id); err != nil {
-			log.Printf("agent: snapshot purge for session %s failed: %v", id, err)
+			obs.Default().Warn("session_snapshot_purge_failed", "session_id", id, "err", err)
 		}
 	}
 	return nil
@@ -164,7 +164,7 @@ func (a *Agent) autoSaveLocked() {
 	}
 	msgs, err := toSessionMessages(a.history)
 	if err != nil {
-		log.Printf("agent: autoSave marshal failed for session %s: %v", a.sessionID, err)
+		obs.Default().Warn("session_autosave_marshal_failed", "session_id", a.sessionID, "err", err)
 		return
 	}
 	// Structured handoff artifact: heuristic summary of tool usage,
@@ -196,7 +196,7 @@ func (a *Agent) autoSaveLocked() {
 		state.CreatedAt = existing.CreatedAt
 	}
 	if err := a.sessionStore.Save(state); err != nil {
-		log.Printf("agent: autoSave for session %s failed: %v", a.sessionID, err)
+		obs.Default().Warn("session_autosave_failed", "session_id", a.sessionID, "err", err)
 	}
 }
 

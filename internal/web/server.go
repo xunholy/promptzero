@@ -39,7 +39,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -111,6 +110,12 @@ type Server struct {
 	conns       map[*sessionConn]struct{}
 	currentTurn *turnState
 	confirms    map[string]chan agent.ConfirmResponse
+
+	// requestQueue bounds the number of concurrent agent-driving goroutines
+	// across all connections. Since driverMu already serialises Run, this
+	// primarily prevents a single malicious client from flooding the
+	// handleText/handleAudio paths with a massive number of pending goroutines.
+	requestQueue chan struct{}
 
 	// Optional data sources for the REPL-parity panels. Nil when the host
 	// process has not wired a given subsystem — handlers return 503 with a
@@ -209,6 +214,7 @@ func NewServer(addr string, ag agentDriver, v *voice.Engine) *Server {
 		heartbeatInterval: 30 * time.Second,
 		heartbeatTimeout:  60 * time.Second,
 		writeTimeout:      30 * time.Second,
+		requestQueue:      make(chan struct{}, 64),
 		startedAt:         time.Now(),
 	}
 	s.attachAgentCallbacks()
@@ -379,7 +385,7 @@ func (s *Server) Start(ctx context.Context) error {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("PromptZero web UI: http://%s", s.addr)
+	obs.Default().Info("web_ui_ready", "url", "http://"+s.addr)
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		return err
 	}
@@ -551,7 +557,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	ws, err := websocket.Accept(w, r, opts)
 	if err != nil {
-		log.Printf("websocket accept: %v", err)
+		obs.Default().Warn("websocket_accept_failed", "err", err, "remote", r.RemoteAddr)
 		return
 	}
 	defer ws.CloseNow()
@@ -697,6 +703,13 @@ func (s *Server) cancelTurn(c *sessionConn, turnID string) {
 }
 
 func (s *Server) handleText(ctx context.Context, c *sessionConn, text string) {
+	select {
+	case s.requestQueue <- struct{}{}:
+		defer func() { <-s.requestQueue }()
+	case <-ctx.Done():
+		return
+	}
+
 	s.driverMu.Lock()
 	defer s.driverMu.Unlock()
 
@@ -736,6 +749,13 @@ func (s *Server) handleText(ctx context.Context, c *sessionConn, text string) {
 }
 
 func (s *Server) handleAudio(ctx context.Context, c *sessionConn, audioBase64 string) {
+	select {
+	case s.requestQueue <- struct{}{}:
+		defer func() { <-s.requestQueue }()
+	case <-ctx.Done():
+		return
+	}
+
 	if s.voice == nil {
 		s.sendTo(c, map[string]any{"type": "error", "content": "voice not configured — set OPENAI_API_KEY"})
 		return

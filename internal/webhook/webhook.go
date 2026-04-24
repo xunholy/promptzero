@@ -19,10 +19,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // Event is one of the seven lifecycle hooks a subscription can filter on.
@@ -129,7 +130,7 @@ func (d *dispatcher) Fire(ev Event, payload any) {
 	select {
 	case d.queue <- job{ev: ev, payload: payload, ts: time.Now().UTC()}:
 	default:
-		log.Printf("webhook: queue overflow (%d), dropping event %s", queueCapacity, ev)
+		obs.Default().Warn("webhook_queue_overflow", "capacity", queueCapacity, "event", ev)
 	}
 }
 
@@ -213,7 +214,7 @@ func (d *dispatcher) worker() {
 			err := d.postWithRetry(ctx, s, body)
 			cancel()
 			if err != nil {
-				log.Printf("webhook: %s %s: %v", s.Name, j.ev, err)
+				obs.Default().Warn("webhook_delivery_failed", "subscription", s.Name, "event", j.ev, "err", err)
 			}
 		}
 	}

@@ -296,12 +296,12 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("reading config: %w", err)
+		return nil, fmt.Errorf("reading config from %q: %w", path, err)
 	}
 
 	if err == nil && len(data) > 0 {
 		if err := yaml.Unmarshal(data, cfg); err != nil {
-			return nil, fmt.Errorf("parsing config: %w", err)
+			return nil, fmt.Errorf("parsing config from %q: %w", path, err)
 		}
 	}
 
@@ -316,9 +316,16 @@ func Load(path string) (*Config, error) {
 		cfg.Web.Token = tok
 	}
 
-	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("API key required: set api_key in config or ANTHROPIC_API_KEY env var")
-	}
-
 	return cfg, nil
+}
+
+// RequireAPIKey reports an error when the Anthropic API key is missing.
+// Modes that drive Claude (REPL, --web, --voice) call this after Load.
+// --mcp does not — the host MCP client supplies the LLM, so requiring a
+// key here would block the documented "plug into Claude Desktop" flow.
+func (c *Config) RequireAPIKey() error {
+	if c.APIKey == "" {
+		return fmt.Errorf("API key required: set api_key in config or ANTHROPIC_API_KEY env var")
+	}
+	return nil
 }

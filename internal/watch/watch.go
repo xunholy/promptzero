@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // Rule is a single pattern -> prompt mapping with an optional persona
@@ -165,7 +165,7 @@ func (w *Watcher) Run(ctx context.Context, handler Handler) error {
 			if !ok {
 				return nil
 			}
-			log.Printf("watch: fsnotify error: %v", err)
+			obs.Default().Warn("watch_fsnotify_error", "err", err)
 		}
 	}
 }
@@ -216,7 +216,7 @@ func (w *Watcher) dispatch(path string, handler Handler) {
 	err = handler(Rule{Pattern: rule.Pattern, Prompt: prompt, Persona: rule.Persona}, path)
 	w.recordEvent(Event{At: time.Now(), Path: path, Rule: rule, Error: err})
 	if err != nil {
-		log.Printf("watch: handler for %s: %v", path, err)
+		obs.Default().Warn("watch_handler_failed", "path", path, "err", err)
 	}
 }
 
