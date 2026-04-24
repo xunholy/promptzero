@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-24
+
+Tool-registry refactor. Every tool used to live in three places —
+`internal/mcp/server.go` (MCP `s.add()`), `internal/agent/tools.go`
+(Anthropic schema declaration), `internal/agent/agent.go` (dispatch
+switch case) — and drift between those layers caused real
+user-facing bugs (device_info vs system_info naming drift,
+storage_write registered in MCP but undispatched in the agent,
+nfc_dump_protocol sending the wrong protocol token to Momentum).
+
+This release collapses those three paths into a single
+`internal/tools` registry. Every tool now lives in exactly one
+`Spec{}` definition; both MCP and the agent dispatcher consume the
+same registry. Adding a new tool is one edit instead of three;
+naming drift, risk drift, and "MCP missing what agent has" become
+structurally impossible.
+
+### Changed
+
+- **`internal/tools` is now the single source of truth for every
+  tool.** 179 Specs split across 33 files by category
+  (`system.go`, `storage.go`, `subghz.go`, `ir.go`, `nfc.go`,
+  `rfid.go`, `ibutton.go`, `badusb.go`, `js.go`, `fileformat.go`,
+  `wifi.go`, `marauder.go`, `nrf24.go`, `loader.go`, `hw.go`,
+  `audit.go`, `target.go`, `vision.go`, `rag.go`, `generate.go`,
+  `build.go`, `workflows.go`). Each Spec carries Name, optional
+  Aliases, Description, Schema, Required, Risk, Group, AgentOnly,
+  and Handler. The agent's `dispatch()` and the MCP server's
+  registration both iterate `tools.All()`.
+- **`Spec.Aliases` handles synonym tools.** `device_info` is the
+  canonical name; `system_info` is registered as an alias. Both
+  resolve to the same Handler via `tools.Get`. The MCP adapter
+  advertises both names; the agent's Anthropic schema declares
+  both.
+- **`Deps` is the dependency bag both modes inject.** `Flipper`,
+  `Marauder`, `Audit`, `Config` are always wired; the LLM-only
+  facilities (`Generator`, `GenLLM`, `Vision`, `Snapshot`,
+  `SessionID`, `RAG`, `TargetMem`, `WorkflowConfirm`) are nil for
+  MCP mode. `AgentOnly: true` Specs are excluded from the MCP
+  surface; they're the only handlers permitted to dereference the
+  LLM-only fields.
+- **`Deps.SnapshotBeforeWrite` lifted as a helper** so handlers
+  that clobber SD content (`storage_write`, `storage_copy`,
+  `storage_rename`, `fileformat_edit`, all `*_build`,
+  `generate_*`, `nfc_read_save`, `run_payload`,
+  `generate_deploy_run`) call one method instead of duplicating
+  the snapshot-then-write dance per handler.
+- **`Deps.RequireMarauder` lifted as a helper** for WiFi tool
+  nil-tolerance.
+
+### Added
+
+- **`storage_write` is now exposed to the LLM via the agent.**
+  Previously only MCP clients could call it; the agent could only
+  write structured payloads via `generate_*` / `*_build`. The
+  bare-bytes write path closes that gap. Risk: Medium.
+- **Hardware integration harnesses under `cmd/`** (`hwtest`,
+  `mifaretest`, `webtest`, `clitest`) used by the orchestrator
+  between every wave of the migration. The harnesses ship with the
+  repo and remain reusable for future changes.
+- **48 KB migration runbook** at `docs/refactor/registry-migration.md`
+  with the full pre-refactor inventory, per-wave tool assignments,
+  worked migration template, edge-case coverage, and acceptance
+  criteria.
+
+### Fixed
+
+- **`device_info` ↔ `system_info` naming drift.** The MCP
+  catalogue used `device_info`; the agent dispatch only matched
+  `system_info`. The registry's alias mechanism fixes this — both
+  names now resolve.
+
+### Removed
+
+- **All `s.add()` calls in `internal/mcp/server.go`.** Server
+  shrunk from 1,204 to 276 lines.
+- **All `case "<name>":` branches in `internal/agent/agent.go`'s
+  `dispatch()`.** Function shrunk from a 700-line switch to a
+  4-line registry lookup. Whole file shrunk from 2,927 to 1,233
+  lines.
+- **All hand-written `tool()` declarations in
+  `internal/agent/tools.go`.** File shrunk from 825 to 145 lines;
+  Anthropic schema is now derived from the registry.
+
 ## [0.3.3] - 2026-04-23
 
 Scanner-loop fix for Momentum firmware. The v0.3.2 work got the loop
