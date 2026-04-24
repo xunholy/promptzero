@@ -24,7 +24,6 @@ import (
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/risk"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
-	"github.com/xunholy/promptzero/internal/workflows"
 )
 
 // Server is the stdio MCP server wrapping a connected Flipper and
@@ -52,7 +51,6 @@ func NewServer(f *flipper.Flipper, m *marauder.Marauder) *Server {
 		mcpserver.WithPromptCapabilities(false),
 	)
 
-	s.registerWorkflowTools()
 	s.registerFromRegistry()
 	s.registerPersonaPrompts()
 
@@ -163,46 +161,6 @@ func missingRequired(args map[string]interface{}, required []string) []string {
 		}
 	}
 	return missing
-}
-
-// --- Registration: workflows (Flipper-only composites) ---
-
-func (s *Server) registerWorkflowTools() {
-	deps := workflows.Deps{
-		Flipper:  s.flipper,
-		Marauder: s.marauder,
-	}
-
-	s.add("workflow_hw_recon_blackbox_device",
-		"Recon an unknown PCB on the GPIO header: i2c_scan, onewire_search, GPIO sweep, bt_hci_info, device_info. Read-only.",
-		[]mcp.ToolOption{mcp.WithArray("gpios", mcp.Description("Optional pin list override"))},
-		nil,
-		func(ctx context.Context, a map[string]interface{}) (string, error) {
-			return workflows.HWReconBlackbox(ctx, deps, a)
-		})
-
-	s.add("workflow_garage_door_triage",
-		"Scan common garage/gate/car-remote Sub-GHz frequencies and decode captures. Receive-only.",
-		[]mcp.ToolOption{
-			mcp.WithArray("frequencies", mcp.Description("Frequency list in Hz (default: 7 common bands)")),
-			mcp.WithNumber("per_freq_seconds", mcp.Description("Seconds per frequency (default 5)")),
-		},
-		nil,
-		func(ctx context.Context, a map[string]interface{}) (string, error) {
-			return workflows.GarageDoorTriage(ctx, deps, a)
-		})
-
-	s.add("workflow_phys_pentest_badge_walk",
-		"Continuous RFID + NFC + iButton census, dedup unique UIDs, write CSV to SD card.",
-		[]mcp.ToolOption{
-			mcp.WithNumber("duration_seconds", mcp.Description("Total walk duration (default 300)")),
-			mcp.WithNumber("dedupe_window_seconds", mcp.Description("Dedupe window (default 0 = forever)")),
-			mcp.WithString("csv_path", mcp.Description("Destination CSV path")),
-		},
-		nil,
-		func(ctx context.Context, a map[string]interface{}) (string, error) {
-			return workflows.PhysPentestBadgeWalk(ctx, deps, a)
-		})
 }
 
 // --- Registration: persona prompts ---

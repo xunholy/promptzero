@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,8 +16,6 @@ import (
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/confidence"
 	"github.com/xunholy/promptzero/internal/config"
-	"github.com/xunholy/promptzero/internal/discover"
-	"github.com/xunholy/promptzero/internal/fileformat"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
@@ -32,9 +29,7 @@ import (
 	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/targetmem"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
-	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/vision"
-	"github.com/xunholy/promptzero/internal/workflows"
 )
 
 // maxHistory is the maximum number of messages retained in the conversation
@@ -499,9 +494,9 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 	a.compactHistoryLocked()
 
+	// All tools are now in the registry; buildTools() includes them all via the
+	// prepass. buildGenTools/buildWorkflowTools would duplicate them — skip.
 	tools := buildTools()
-	tools = append(tools, buildGenTools()...)
-	tools = append(tools, buildWorkflowTools()...)
 
 	if a.persona != nil && len(a.persona.Tools) > 0 {
 		tools = persona.FilterTools(tools, a.persona.Tools)
@@ -871,17 +866,19 @@ func (a *Agent) Reset() {
 // current.
 func (a *Agent) deps() *toolsreg.Deps {
 	return &toolsreg.Deps{
-		Flipper:   a.flipper,
-		Marauder:  a.marauder,
-		Audit:     a.auditLog,
-		Config:    a.cfg,
-		Generator: a.generator,
-		GenLLM:    a.genLLM,
-		Vision:    a.vision,
-		Snapshot:  a.snapshotMgr,
-		SessionID: a.sessionID,
-		RAG:       a.ragIndex,
-		TargetMem: a.targetMem,
+		Flipper:         a.flipper,
+		Marauder:        a.marauder,
+		Audit:           a.auditLog,
+		Config:          a.cfg,
+		Generator:       a.generator,
+		GenLLM:          a.genLLM,
+		Vision:          a.vision,
+		Snapshot:        a.snapshotMgr,
+		SessionID:       a.sessionID,
+		RAG:             a.ragIndex,
+		TargetMem:       a.targetMem,
+		WorkflowConfirm: a.workflowConfirmHook,
+		BuildVerify:     a.runBuildVerification,
 	}
 }
 
@@ -999,123 +996,13 @@ func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMess
 }
 
 func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interface{}) (string, error) {
-	// Registry short-circuit: if the tool is registered in the central
-	// registry, invoke its handler directly. Falls through to the legacy
-	// switch for tools not yet migrated. The risk gate runs in executeTool
-	// (before dispatch is called), so this path inherits the gate for free.
+	// All tools are now in the central registry. The risk gate runs in
+	// executeTool (before dispatch is called), so this path inherits the
+	// gate for free.
 	if spec, ok := toolsreg.Get(name); ok {
 		return spec.Handler(ctx, a.deps(), p)
 	}
-	switch name {
-	// --- Flipper: NFC (agent-only) ---
-	case "nfc_read_save":
-		return a.nfcReadSave(ctx, p)
-
-	// --- Generation Pipeline ---
-	case "generate_evil_portal":
-		return a.generatePayloadWithBypass(ctx, "evil_portal", str(p, "description"), str(p, "path"), str(p, "target_os"), boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
-	case "generate_badusb":
-		return a.generatePayloadWithBypass(ctx, "badusb", str(p, "description"), str(p, "path"), str(p, "target_os"), boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
-	case "generate_subghz":
-		return a.generatePayloadWithBypass(ctx, "subghz", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
-	case "generate_ir":
-		return a.generatePayloadWithBypass(ctx, "ir", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
-	case "generate_nfc":
-		return a.generatePayloadWithBypass(ctx, "nfc", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
-	case "run_payload":
-		return a.runPayload(str(p, "path"), str(p, "command"))
-	case "generate_deploy_run":
-		return a.generateDeployRun(ctx, str(p, "type"), str(p, "description"), str(p, "path"), str(p, "target_os"))
-
-	// --- Vision ---
-	case "analyze_image":
-		return a.analyzeImage(ctx, str(p, "image"), str(p, "question"))
-
-	// --- Discovery ---
-	case "discover_apps":
-		return a.discoverApps()
-
-	// --- Audit ---
-	case "audit_query":
-		return a.auditQuery(intOr(p, "limit", 20))
-	case "audit_export":
-		return a.auditExport()
-	case "audit_stats":
-		return a.auditStats()
-
-	// --- RAG / docs retrieval (Batch D) ---
-	case "docs_search":
-		return a.docsSearch(str(p, "query"), intOr(p, "k", 5))
-
-	// --- NRF24 / Mousejack ---
-	case "nrf24_mousejack_start":
-		return a.flipper.LoaderNRF24Mousejacker()
-	case "nrf24_payload_build":
-		return a.nrf24PayloadBuild(ctx, p)
-
-	// --- Target memory (Batch B) ---
-	case "target_remember":
-		return a.targetRemember(p)
-	case "target_recall":
-		return a.targetRecall(p)
-	case "target_forget":
-		return a.targetForget(p)
-
-	// --- Parametric file builders (P1-13) ---
-	case "subghz_bruteforce_generate":
-		return a.subghzBruteforceGenerate(ctx, p)
-	case "subghz_freq_sweep":
-		return a.subghzFreqSweep(ctx, p)
-	case "subghz_build":
-		return a.subghzBuild(ctx, p)
-	case "rfid_build":
-		return a.rfidBuild(ctx, p)
-	case "ir_build":
-		return a.irBuild(ctx, p)
-	case "nfc_build":
-		return a.nfcBuild(ctx, p)
-
-	// --- Composite Workflows ---
-	case "workflow_nfc_badge_pipeline":
-		return workflows.NFCBadgePipeline(ctx, a.workflowDeps(), p)
-	case "workflow_wifi_target_to_hashcat":
-		return workflows.WiFiTargetToHashcat(ctx, a.workflowDeps(), p)
-	case "workflow_garage_door_triage":
-		return workflows.GarageDoorTriage(ctx, a.workflowDeps(), p)
-	case "workflow_rolljam_lab_demo":
-		return workflows.RolljamLabDemo(ctx, a.workflowDeps(), p)
-	case "workflow_phys_pentest_badge_walk":
-		return workflows.PhysPentestBadgeWalk(ctx, a.workflowDeps(), p)
-	case "workflow_hw_recon_blackbox_device":
-		return workflows.HWReconBlackbox(ctx, a.workflowDeps(), p)
-	case "workflow_badusb_target_profile":
-		return workflows.BadUSBTargetProfile(ctx, a.workflowDeps(), p)
-	case "workflow_mousejack":
-		return workflows.Mousejack(ctx, a.workflowDeps(), p)
-
-	default:
-		return "", fmt.Errorf("unknown tool: %s", name)
-	}
-}
-
-// workflowDeps snapshots the agent's current component wiring into the
-// dependency surface composite workflows operate over. Built per-call so
-// late SetMarauder / SetGenerator / SetAuditLog updates are picked up.
-func (a *Agent) workflowDeps() workflows.Deps {
-	var caps flipper.Capabilities
-	if a.flipper != nil {
-		caps = a.flipper.Capabilities()
-	}
-	return workflows.Deps{
-		Flipper:        a.flipper,
-		Marauder:       a.marauder,
-		Vision:         a.vision,
-		Audit:          a.auditLog,
-		Generator:      a.generator,
-		GenLLM:         a.genLLM,
-		Capabilities:   caps,
-		ConfirmSubtool: a.workflowConfirmHook,
-	}
+	return "", fmt.Errorf("unknown tool: %s", name)
 }
 
 // workflowConfirmHook routes a workflow's internal sub-tool
@@ -1158,124 +1045,6 @@ func (a *Agent) workflowConfirmHook(ctx context.Context, tool string, input inte
 	return resp.Decision == DecisionApprove || resp.Decision == DecisionApproveAll
 }
 
-// --- Generation Pipeline Handlers ---
-
-func (a *Agent) generatePayload(ctx context.Context, payloadType, description, path, targetOS string, deploy bool) (string, error) {
-	return a.generatePayloadWithBypass(ctx, payloadType, description, path, targetOS, deploy, false)
-}
-
-// generatePayloadWithBypass is the internal entry point that honours
-// the chain-of-verification (P1-16): after a generate_* call succeeds,
-// a classification-tier verifier analyses the content for known
-// failure modes. Severity high / critical blocks the deploy step
-// unless bypass is true — the operator can override via the tool's
-// verify_bypass param when they intentionally want to ship a risky
-// payload.
-func (a *Agent) generatePayloadWithBypass(ctx context.Context, payloadType, description, path, targetOS string, deploy, bypass bool) (string, error) {
-	if a.generator == nil {
-		return "", fmt.Errorf("generator not configured — set a generation LLM provider")
-	}
-
-	var result *generate.Result
-	var err error
-
-	switch payloadType {
-	case "evil_portal":
-		result, err = a.generator.EvilPortal(ctx, description)
-	case "badusb":
-		result, err = a.generator.BadUSB(ctx, description, targetOS)
-	case "subghz":
-		result, err = a.generator.SubGHz(ctx, description)
-	case "ir":
-		result, err = a.generator.IR(ctx, description)
-	case "nfc":
-		result, err = a.generator.NFC(ctx, description)
-	default:
-		return "", fmt.Errorf("unknown payload type: %s", payloadType)
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	// Static validator gate — runs before the Haiku classifier and is
-	// deterministic / offline. For payload types that have one
-	// (BadUSB, Evil Portal), a Critical finding blocks deploy unless
-	// the operator explicitly bypasses. For types without a static
-	// validator, this step is a no-op and the Haiku layer remains
-	// the primary guard.
-	if staticRep, haveStatic := runStaticValidator(payloadType, result.Path, result.Content); haveStatic {
-		if deploy && staticRep.Has(validator.SeverityCritical) && !bypass {
-			return fmt.Sprintf("Generated %s but static validator blocked deploy.\n\n%s\n\nPreview:\n%s\n\nPass verify_bypass=true to override.",
-				payloadType, renderValidatorReport(staticRep), result.Preview), nil
-		}
-	}
-
-	// Chain-of-verification: Haiku pass against the generated content
-	// before deploy. Errors degrade to an uncertified verdict — they
-	// never block generation.
-	fn := a.verifierFn
-	if fn == nil {
-		fn = a.verifyPayload
-	}
-	verdict, _ := fn(ctx, payloadType, result.Content)
-	summary := verdictSummary(verdict)
-
-	if deploy && shouldBlockDeploy(verdict, bypass) {
-		return fmt.Sprintf("Generated %s but deploy blocked by verifier.\n\n%s\n\nPreview:\n%s\n\nPass verify_bypass=true to override if you accept the risk.",
-			payloadType, summary, result.Preview), nil
-	}
-
-	if deploy {
-		// Snapshot the destination path before deploying so /rewind
-		// can roll back a bad evil-portal / BadUSB / subghz overwrite.
-		// The resolved path is the caller-supplied value or the
-		// generator's default; the snapshot hook handles the not-yet-
-		// exists case silently.
-		deployPath := path
-		if deployPath == "" {
-			deployPath = defaultGeneratePath(payloadType)
-		}
-		a.snapshotBeforeWrite(ctx, deployPath)
-
-		deployCtx, deployCancel := context.WithTimeout(ctx, 30*time.Second)
-		deployErr := a.generator.Deploy(deployCtx, result, path)
-		deployCancel()
-		if deployErr != nil {
-			return "", fmt.Errorf("generated %s but deploy failed: %w\n\n%s\n\nContent preview:\n%s", payloadType, deployErr, summary, result.Preview)
-		}
-		return fmt.Sprintf("Generated and deployed %s to %s\n\n%s\n\nPreview:\n%s", payloadType, result.Path, summary, result.Preview), nil
-	}
-
-	return fmt.Sprintf("Generated %s (not deployed)\n\n%s\n\nPreview:\n%s", payloadType, summary, result.Preview), nil
-}
-
-func (a *Agent) runPayload(path, command string) (string, error) {
-	switch {
-	case strings.Contains(path, "evil_portal"):
-		if a.marauder != nil {
-			return a.marauder.EvilPortalStart("")
-		}
-		return "", fmt.Errorf("evil portal requires WiFi devboard (--wifi)")
-	case strings.HasSuffix(path, ".txt") && strings.Contains(path, "badusb"):
-		return a.flipper.BadUSBRun(path)
-	case strings.HasSuffix(path, ".sub"):
-		return a.flipper.SubGHzTx(path)
-	case strings.HasSuffix(path, ".ir"):
-		if command == "" {
-			command = "Power" // default
-		}
-		// IR files are transmitted via the universal remote; use IRUniversal with path as remote name.
-		return a.flipper.IRUniversal(path, command)
-	case strings.HasSuffix(path, ".nfc"):
-		return a.flipper.NFCEmulate(path)
-	case strings.HasSuffix(path, ".rfid"):
-		return a.flipper.LoaderOpen("RFID", path)
-	default:
-		return "", fmt.Errorf("unknown payload type for path: %s", path)
-	}
-}
-
 // resolveRunPayloadRisk inspects the path argument of a run_payload call and
 // returns the name of the underlying operation it will dispatch to along with
 // the effective risk level. This mirrors the dispatch logic in runPayload so
@@ -1299,248 +1068,28 @@ func resolveRunPayloadRisk(path string) (underlyingTool string, level risk.Level
 	}
 }
 
-func (a *Agent) generateDeployRun(ctx context.Context, payloadType, description, path, targetOS string) (string, error) {
-	// Generate + deploy
-	genResult, err := a.generatePayload(ctx, payloadType, description, path, targetOS, true)
-	if err != nil {
-		return "", err
-	}
-
-	// Determine the deployed path
-	deployedPath := path
-	if deployedPath == "" {
-		switch payloadType {
-		case "evil_portal":
-			deployedPath = "/ext/apps_data/evil_portal/index.html"
-		case "badusb":
-			deployedPath = "/ext/badusb/generated_payload.txt"
-		case "subghz":
-			deployedPath = "/ext/subghz/generated_signal.sub"
-		case "ir":
-			deployedPath = "/ext/infrared/generated_remote.ir"
-		case "nfc":
-			deployedPath = "/ext/nfc/generated_tag.nfc"
-		}
-	}
-
-	// Run
-	runResult, err := a.runPayload(deployedPath, "")
-	if err != nil {
-		return genResult + fmt.Sprintf("\n\nGenerated and deployed, but run failed: %v", err), nil
-	}
-
-	return genResult + "\n\nExecuted: " + runResult, nil
+// SetRAGIndex installs a custom RAG index. Nil restores the default
+// embedded corpus on the next docs_search call.
+func (a *Agent) SetRAGIndex(idx *rag.Index) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ragIndex = idx
 }
 
-// --- Vision Handler ---
-
-func (a *Agent) analyzeImage(ctx context.Context, image, question string) (string, error) {
-	if a.vision == nil {
-		return "", fmt.Errorf("vision not available")
-	}
-
-	// Route to base64 handler if the data URI prefix is present, or if the
-	// string has no path separator and no file extension dot (i.e. it looks
-	// like raw base64 rather than a filesystem path).
-	if strings.HasPrefix(image, "data:") || (!strings.HasPrefix(image, "/") && !strings.Contains(image, ".")) {
-		return a.vision.AnalyzeBase64(ctx, image, question)
-	}
-	return a.vision.AnalyzeFile(ctx, image, question)
+// SetTargetMemory installs the persistent target store. Nil leaves the
+// target_* tools inert (dispatch returns a friendly error) — callers
+// who failed to open the DB at startup still get a working agent.
+func (a *Agent) SetTargetMemory(s *targetmem.Store) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.targetMem = s
 }
 
-// --- Discovery Handler ---
-
-func (a *Agent) discoverApps() (string, error) {
-	apps, err := discover.ScanApps(a.flipper)
-	if err != nil {
-		return "", err
-	}
-	return discover.FormatApps(apps), nil
-}
-
-// --- Audit Handlers ---
-
-func (a *Agent) auditQuery(limit int) (string, error) {
-	if a.auditLog == nil {
-		return "Audit logging not enabled", nil
-	}
-	entries, err := a.auditLog.Query(limit)
-	if err != nil {
-		return "", err
-	}
-	data, _ := json.MarshalIndent(entries, "", "  ")
-	return string(data), nil
-}
-
-func (a *Agent) auditExport() (string, error) {
-	if a.auditLog == nil {
-		return "Audit logging not enabled", nil
-	}
-	return a.auditLog.Export()
-}
-
-func (a *Agent) auditStats() (string, error) {
-	if a.auditLog == nil {
-		return "Audit logging not enabled", nil
-	}
-	return a.auditLog.Stats()
-}
-
-// --- NFC Read+Save Handler ---
-
-// nfcReadSave is the high-level "scan a fob and save it" tool. The
-// agent repeatedly hit a thrashing failure mode here: operators would
-// say "scan my mifare fob", the model would start with nfc_detect
-// (which only identifies), then reach for nfc_dump_protocol (needs
-// keys), fail, and escalate to flipper_raw_cli + loader_open + input_send
-// trying to drive the on-device NFC app UI. This handler short-circuits
-// all of that: detect, map the firmware's Type string to a BuildNFC-
-// compatible DeviceType, construct the UID-only .nfc file (still
-// valuable for low-security-system proximity cloning even when sector
-// keys are unknown), verify, and write.
-//
-// Full-dump flows that need sector keys remain the mfkey / nested FAP
-// path — nfc_read_save returns a friendly next-step hint when it
-// detects Classic-family tags so the model knows to propose the key-
-// recovery workflow rather than treating the UID-only save as the end
-// of the story.
-func (a *Agent) nfcReadSave(ctx context.Context, p map[string]interface{}) (string, error) {
-	timeout := time.Duration(intOr(p, "timeout_seconds", 15)) * time.Second
-	raw, err := a.flipper.NFCDetect(timeout)
-	if err != nil {
-		return "", fmt.Errorf("nfc_read_save: %w", err)
-	}
-	parsed := flipper.ParseNFCDetect(raw)
-	if !parsed.Detected {
-		// Return as an error (not a string with err=nil) so the
-		// dispatch layer marks the tool call success=false. The
-		// previous shape logged success=true despite the card
-		// never being saved, which caused the agent to retry in a
-		// tight loop hoping for a different outcome. Failing loud
-		// gets the operator a prompt to reposition the card
-		// instead of silent retries.
-		return "", fmt.Errorf("nfc_read_save: no tag detected after %s — hold the tag flat against the NFC (front) side of the Flipper and retry. For 125 kHz LF prox fobs use rfid_read instead", timeout)
-	}
-	// Momentum's `nfc scanner` identifies the protocol family
-	// ("Protocols detected: Mifare Classic") but does NOT emit
-	// UID/ATQA/SAK — those require the dump command which runs its own
-	// anticol sequence. Fall back to dump (auto-detect, no -p) which
-	// scans, identifies, AND writes a complete .nfc file with the real
-	// UID + sector data. We rename the dump's auto-named file to the
-	// caller's requested path so the API contract is preserved.
-	if parsed.UID == "" {
-		return a.nfcReadSaveViaDump(ctx, parsed, p, timeout)
-	}
-
-	deviceType := mapNFCTypeToDeviceType(parsed.Type)
-	nfcBytes, err := fileformat.BuildNFC(fileformat.NFCBuildParams{
-		DeviceType: deviceType,
-		UID:        parsed.UID,
-		ATQA:       parsed.ATQA,
-		SAK:        parsed.SAK,
-	})
-	if err != nil {
-		// UID-length mismatch on an odd device. Fall back to a
-		// type-less save so the operator still gets the UID captured —
-		// a later edit can adjust the device type.
-		fallback, ferr := fileformat.BuildNFC(fileformat.NFCBuildParams{
-			DeviceType: "NFC",
-			UID:        parsed.UID,
-			ATQA:       parsed.ATQA,
-			SAK:        parsed.SAK,
-		})
-		if ferr != nil {
-			return "", fmt.Errorf("nfc_read_save: build failed (primary: %v; fallback: %v)", err, ferr)
-		}
-		nfcBytes = fallback
-		deviceType = "NFC"
-	}
-
-	summary, blockMsg := a.runBuildVerification(ctx, "nfc", nfcBytes, boolOr(p, "verify_bypass", false))
-	if blockMsg != "" {
-		return blockMsg, nil
-	}
-
-	outPath := str(p, "path")
-	if outPath == "" {
-		name := str(p, "name")
-		if name == "" {
-			name = "scanned_" + sanitizeFilename(parsed.UID)
-		}
-		outPath = "/ext/nfc/" + name + ".nfc"
-	}
-	a.snapshotBeforeWrite(ctx, outPath)
-	if err := a.flipper.WriteFileCtx(ctx, outPath, nfcBytes); err != nil {
-		return "", fmt.Errorf("write %s: %w", outPath, err)
-	}
-
-	// Tail-hint: for Classic-family tags, the UID-only save alone is
-	// usually not enough for reader-compatibility cloning; point the
-	// model at the key-recovery path so it proposes the right next
-	// step rather than returning "done!" and stopping.
-	nextHint := ""
-	if strings.Contains(strings.ToLower(deviceType), "classic") {
-		nextHint = "\n\nNote: this is a UID-only save — full block data requires sector keys. For cloning against real readers, chain loader_mfkey (with captured reader nonces) → loader_mifare_nested → re-run nfc_dump_protocol once keys are known."
-	}
-	return fmt.Sprintf("saved %s (%s, UID %s) → %s\n%s%s", parsed.Type, deviceType, parsed.UID, outPath, summary, nextHint), nil
-}
-
-// dumpSavedPathRE captures the file path from Momentum's `dump` output
-// banner: `Dump saved to '/ext/nfc/dump-YYYYMMDD-HHMMSS.nfc'`.
+// dumpSavedPathRE captures the file path from Momentum's dump output banner:
+// "Dump saved to '/ext/nfc/dump-YYYYMMDD-HHMMSS.nfc'". Used by
+// nfc_read_save (via internal/tools/generate.go) and pinned here for the
+// agent-package regex regression test (nfc_read_save_test.go).
 var dumpSavedPathRE = regexp.MustCompile(`Dump saved to '([^']+)'`)
-
-// nfcReadSaveViaDump is the Momentum-specific fallback for nfcReadSave
-// when `nfc scanner` identified a tag but didn't emit UID. It calls the
-// auto-detect dump (no -p), captures the firmware's saved-file path,
-// and renames to the caller's requested path.
-//
-// Why this exists: Momentum's CLI splits "what protocol is this card?"
-// from "give me its UID and contents" across two subcommands. scanner
-// answers the first; dump answers the second AND writes a complete
-// .nfc file as a side effect. nfcReadSave's API contract is one call →
-// one saved file → return path, so we have to drive both.
-func (a *Agent) nfcReadSaveViaDump(ctx context.Context, scan flipper.NFCDetectResult, p map[string]interface{}, timeout time.Duration) (string, error) {
-	dumpOut, err := a.flipper.NFCDumpProtocol("", timeout)
-	if err != nil {
-		return "", fmt.Errorf("nfc_read_save: dump fallback failed: %w", err)
-	}
-	m := dumpSavedPathRE.FindStringSubmatch(dumpOut)
-	if len(m) != 2 {
-		return "", fmt.Errorf("nfc_read_save: dump returned no saved-file path (output: %q)", strings.TrimSpace(dumpOut))
-	}
-	dumpedPath := m[1]
-
-	// Resolve the caller's desired output path. Same naming logic as the
-	// happy path so the API contract is identical regardless of which
-	// branch we took.
-	outPath := str(p, "path")
-	if outPath == "" {
-		name := str(p, "name")
-		if name == "" {
-			// We don't have UID at this point (that's why we took this
-			// branch), so use a timestamp-derived suffix.
-			name = "scanned_" + time.Now().UTC().Format("20060102_150405")
-		}
-		outPath = "/ext/nfc/" + name + ".nfc"
-	}
-
-	// Move the dump's auto-named file to the caller's requested path.
-	// If they happen to match, skip the rename — saves a CLI round-trip
-	// and avoids "destination exists" on firmwares that reject self-renames.
-	if outPath != dumpedPath {
-		a.snapshotBeforeWrite(ctx, outPath)
-		if _, err := a.flipper.StorageRename(dumpedPath, outPath); err != nil {
-			return "", fmt.Errorf("nfc_read_save: rename %s → %s failed: %w (original dump preserved)", dumpedPath, outPath, err)
-		}
-	}
-
-	deviceType := mapNFCTypeToDeviceType(scan.Type)
-	nextHint := ""
-	if strings.Contains(strings.ToLower(deviceType), "classic") {
-		nextHint = "\n\nNote: full sector data requires keys. If the dump shows blocks past sector 0, you already have them — otherwise chain loader_mfkey (with captured reader nonces) → loader_mifare_nested to recover keys."
-	}
-	return fmt.Sprintf("saved %s (%s, via auto-detect dump) → %s%s", scan.Type, deviceType, outPath, nextHint), nil
-}
 
 // mapNFCTypeToDeviceType translates the scanner's Type string into a
 // DeviceType value BuildNFC + validateUIDLength will accept. Unknown
@@ -1595,262 +1144,6 @@ func sanitizeFilename(s string) string {
 	return out
 }
 
-// --- NRF24 / Mousejack Handlers ---
-
-// nrf24PayloadBuild synthesises a DuckyScript payload for the NRF24
-// Mouse Jacker FAP and writes it to /ext/mousejacker/<name>.txt. Runs
-// the same static validator the BadUSB path uses — DuckyScript is the
-// same lexical surface so destructive patterns are caught identically.
-// High/critical findings block the SD write unless verify_bypass=true.
-func (a *Agent) nrf24PayloadBuild(ctx context.Context, p map[string]interface{}) (string, error) {
-	name := str(p, "name")
-	script := str(p, "script")
-	if name == "" {
-		return "", fmt.Errorf("name required")
-	}
-	if script == "" {
-		return "", fmt.Errorf("script required")
-	}
-	raw, err := fileformat.BuildMousejackPayload(fileformat.MousejackPayloadParams{
-		Script:     script,
-		TargetOS:   str(p, "target_os"),
-		MaxDelayMS: intOr(p, "max_delay_ms", 0),
-	})
-	if err != nil {
-		return "", err
-	}
-	// Reuse the BadUSB static validator — DuckyScript is the same
-	// lexical surface, so rm_rf / reverse shell / persistence rules
-	// are a free lift.
-	rep := validator.Validate(name, string(raw))
-	if rep.Has(validator.SeverityCritical) && !boolOr(p, "verify_bypass", false) {
-		return fmt.Sprintf("mousejack payload blocked by static validator.\n\n%s\n\nPass verify_bypass=true to override.", renderValidatorReport(rep)), nil
-	}
-	path := "/ext/mousejacker/" + name + ".txt"
-	a.snapshotBeforeWrite(ctx, path)
-	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
-		return "", fmt.Errorf("write %s: %w", path, err)
-	}
-	return fmt.Sprintf("built %d-byte mousejack payload → %s\n%s", len(raw), path, renderValidatorReport(rep)), nil
-}
-
-// --- RAG / Docs Retrieval (Batch D) ---
-
-// docsSearch runs a BM25 query over the bundled documentation corpus
-// and returns the top-K ranked snippets. The index lazily initialises
-// on first call using the default embedded corpus; SetRAGIndex lets
-// callers inject a custom index (tests, plugins with extra docs).
-func (a *Agent) docsSearch(query string, k int) (string, error) {
-	if query == "" {
-		return "", fmt.Errorf("query required")
-	}
-	if k <= 0 {
-		k = 5
-	}
-	if k > 20 {
-		k = 20
-	}
-	// Double-check locking so the lock is only held for the pointer
-	// swap, never for the ~100-500ms DefaultIndex() corpus build.
-	a.mu.Lock()
-	idx := a.ragIndex
-	a.mu.Unlock()
-	if idx == nil {
-		built := rag.DefaultIndex()
-		a.mu.Lock()
-		if a.ragIndex == nil {
-			a.ragIndex = built
-		}
-		idx = a.ragIndex
-		a.mu.Unlock()
-	}
-	hits := idx.Search(query, k)
-	if len(hits) == 0 {
-		return fmt.Sprintf("no results for %q", query), nil
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%d results for %q:\n", len(hits), query)
-	for _, h := range hits {
-		fmt.Fprintf(&b, "\n## %s (%s) — score %.2f\n%s\n", h.Doc.Title, h.Doc.Source, h.Score, rag.Snippet(h.Doc.Body, query, 400))
-	}
-	return b.String(), nil
-}
-
-// runStaticValidator dispatches to the per-payload-type static validator
-// and returns the report plus a flag indicating whether a validator
-// was available. Payload types without a static validator get
-// (zero, false) — the Haiku chain-of-verification still runs.
-func runStaticValidator(payloadType, path, content string) (validator.Report, bool) {
-	switch payloadType {
-	case "badusb":
-		return validator.Validate(path, content), true
-	case "evil_portal":
-		return validator.ValidateEvilPortal(path, content), true
-	default:
-		return validator.Report{}, false
-	}
-}
-
-// renderValidatorReport flattens a Report into a short multi-line
-// string for inclusion in a tool-result payload. Keeps the highest-
-// severity finding visible without dumping every info/warn hit.
-func renderValidatorReport(r validator.Report) string {
-	if len(r.Findings) == 0 {
-		return fmt.Sprintf("static validator: %s (no findings)", r.Severity)
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "static validator: %s — %d finding(s)\n", r.Severity, len(r.Findings))
-	for _, f := range r.Findings {
-		if f.Line > 0 {
-			fmt.Fprintf(&b, "  [%s] L%d %s: %s\n", f.Severity, f.Line, f.Rule, f.Message)
-		} else {
-			fmt.Fprintf(&b, "  [%s] %s: %s\n", f.Severity, f.Rule, f.Message)
-		}
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-// SetRAGIndex installs a custom RAG index. Nil restores the default
-// embedded corpus on the next docs_search call.
-func (a *Agent) SetRAGIndex(idx *rag.Index) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.ragIndex = idx
-}
-
-// SetTargetMemory installs the persistent target store. Nil leaves the
-// target_* tools inert (dispatch returns a friendly error) — callers
-// who failed to open the DB at startup still get a working agent.
-func (a *Agent) SetTargetMemory(s *targetmem.Store) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.targetMem = s
-}
-
-// --- Target Memory Handlers (Batch B) ---
-
-func (a *Agent) targetRemember(p map[string]interface{}) (string, error) {
-	a.mu.Lock()
-	s := a.targetMem
-	a.mu.Unlock()
-	if s == nil {
-		return "", fmt.Errorf("target memory not initialised")
-	}
-	id := str(p, "identifier")
-	if id == "" {
-		return "", fmt.Errorf("identifier required")
-	}
-	kind := str(p, "kind")
-	t := targetmem.Target{Identifier: id, Kind: kind}
-	if facts, ok := p["facts"]; ok {
-		t.Facts = facts
-	}
-	if err := s.Remember(t); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("remembered %s (%s)", id, t.Kind), nil
-}
-
-func (a *Agent) targetRecall(p map[string]interface{}) (string, error) {
-	a.mu.Lock()
-	s := a.targetMem
-	a.mu.Unlock()
-	if s == nil {
-		return "", fmt.Errorf("target memory not initialised")
-	}
-	id := str(p, "identifier")
-	if id == "" {
-		// No ID → list recent.
-		n := intOr(p, "limit", 10)
-		recent, err := s.Recent(n)
-		if err != nil {
-			return "", err
-		}
-		if len(recent) == 0 {
-			return "no remembered targets", nil
-		}
-		b, _ := json.Marshal(recent)
-		return string(b), nil
-	}
-	kind := str(p, "kind")
-	if kind == "" {
-		kind = targetmem.KindBSSID
-	}
-	t, ok, err := s.Lookup(id, kind)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return fmt.Sprintf("no facts for %s (%s)", id, kind), nil
-	}
-	b, _ := json.Marshal(t)
-	return string(b), nil
-}
-
-func (a *Agent) targetForget(p map[string]interface{}) (string, error) {
-	a.mu.Lock()
-	s := a.targetMem
-	a.mu.Unlock()
-	if s == nil {
-		return "", fmt.Errorf("target memory not initialised")
-	}
-	id := str(p, "identifier")
-	if id == "" {
-		return "", fmt.Errorf("identifier required")
-	}
-	kind := str(p, "kind")
-	if kind == "" {
-		kind = targetmem.KindBSSID
-	}
-	if err := s.Forget(id, kind); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("forgot %s (%s)", id, kind), nil
-}
-
-// defaultGeneratePath mirrors the generator package's default-path
-// selection so the agent can snapshot the eventual deploy target
-// before handing off to Deploy. Keeping a parallel implementation
-// here avoids a circular dep on internal/generate and is one
-// switch — easy to maintain in lockstep with generator.defaultPath.
-func defaultGeneratePath(payloadType string) string {
-	switch payloadType {
-	case "evil_portal":
-		return "/ext/apps_data/evil_portal/index.html"
-	case "badusb":
-		return "/ext/badusb/generated_payload.txt"
-	case "subghz":
-		return "/ext/subghz/generated_signal.sub"
-	case "ir":
-		return "/ext/infrared/generated_remote.ir"
-	case "nfc":
-		return "/ext/nfc/generated_tag.nfc"
-	}
-	return ""
-}
-
-// snapshotBeforeWrite reads the current content of path off the
-// Flipper and records it under the active session's snapshot tree.
-// Best-effort: storage_read failures (file doesn't exist yet,
-// transport hiccup) are swallowed — /rewind is a convenience, not
-// load-bearing, and a failed snapshot must never block the write.
-// No-op when the snapshot manager or session id is unset.
-//
-// Accepts the caller's ctx so the warn log carries the turn's trace
-// ID — snapshot I/O should be visible in the same Jaeger/Tempo trace
-// as the tool call that triggered it.
-func (a *Agent) snapshotBeforeWrite(ctx context.Context, path string) {
-	if !a.snapshotEligible(path) {
-		return
-	}
-	raw, err := a.flipper.StorageRead(path)
-	if err != nil {
-		// Target doesn't exist yet (fresh write) — nothing to snapshot.
-		return
-	}
-	a.storeSnapshot(ctx, path, []byte(raw))
-}
-
 // snapshotEligible returns true when the combination of session
 // state, snapshot manager, and path makes this call a candidate
 // for an actual Store. Extracted as a predicate so tests can drive
@@ -1879,284 +1172,13 @@ func (a *Agent) storeSnapshot(ctx context.Context, path string, content []byte) 
 	}
 }
 
-// subghzBruteforceGenerate synthesises a RAW .sub file that sweeps a
-// key range at Princeton-style OOK timing and writes it to the SD
-// card. Useful for replaying a small sweep against a target the
-// operator hasn't been able to capture. See
-// fileformat.BuildSubBruteforce for the encoding details.
-func (a *Agent) subghzBruteforceGenerate(ctx context.Context, p map[string]interface{}) (string, error) {
-	path := str(p, "path")
-	if path == "" {
-		return "", fmt.Errorf("path required")
-	}
-	// Cache the params as locals so the success-message key count
-	// uses the same values that went into the file (avoids a drift
-	// risk where a future intOr refactor returns different values on
-	// successive calls).
-	startKey := uint64(intOr(p, "start_key", 0))
-	endKey := uint64(intOr(p, "end_key", 0))
-	bitCount := intOr(p, "bit_count", 0)
-
-	raw, err := fileformat.BuildSubBruteforce(fileformat.SubBruteforceParams{
-		Frequency: uint32(intOr(p, "frequency", 0)),
-		BitCount:  bitCount,
-		StartKey:  startKey,
-		EndKey:    endKey,
-		TE:        intOr(p, "te", 0),
-		Preset:    str(p, "preset"),
-	})
-	if err != nil {
-		return "", err
-	}
-	a.snapshotBeforeWrite(ctx, path)
-	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
-		return "", fmt.Errorf("write %s: %w", path, err)
-	}
-	count := endKey - startKey + 1
-	return fmt.Sprintf("built %d-byte bruteforce .sub (%d keys × %d bits) → %s",
-		len(raw), count, bitCount, path), nil
-}
-
-// subghzFreqSweep builds one bruteforce .sub per frequency and writes
-// each to dir/sweep_<freq>.sub. Intended for multi-band reconnaissance
-// where the same Princeton-family key sweep should be replayable on
-// several ISM bands.
-func (a *Agent) subghzFreqSweep(ctx context.Context, p map[string]interface{}) (string, error) {
-	dir := str(p, "dir")
-	if dir == "" {
-		return "", fmt.Errorf("dir required")
-	}
-	freqs, ok := p["frequencies"].([]interface{})
-	if !ok || len(freqs) == 0 {
-		return "", fmt.Errorf("frequencies must be a non-empty array")
-	}
-	freqU32 := make([]uint32, 0, len(freqs))
-	for i, v := range freqs {
-		f, ok := v.(float64)
-		if !ok {
-			return "", fmt.Errorf("frequencies[%d] must be a number", i)
-		}
-		freqU32 = append(freqU32, uint32(f))
-	}
-	built, err := fileformat.BuildSubBruteforceSweep(fileformat.SubFreqSweepParams{
-		Frequencies: freqU32,
-		BitCount:    intOr(p, "bit_count", 0),
-		StartKey:    uint64(intOr(p, "start_key", 0)),
-		EndKey:      uint64(intOr(p, "end_key", 0)),
-		TE:          intOr(p, "te", 0),
-		Preset:      str(p, "preset"),
-	})
-	if err != nil {
-		return "", err
-	}
-	// Strip trailing slashes so path joins don't double them.
-	dir = strings.TrimRight(dir, "/")
-	var summary []string
-	for freq, raw := range built {
-		path := fmt.Sprintf("%s/sweep_%d.sub", dir, freq)
-		a.snapshotBeforeWrite(ctx, path)
-		if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
-			return "", fmt.Errorf("write %s: %w", path, err)
-		}
-		summary = append(summary, fmt.Sprintf("%s (%d B)", path, len(raw)))
-	}
-	return fmt.Sprintf("built %d bruteforce files:\n%s", len(built), strings.Join(summary, "\n")), nil
-}
-
-// subghzBuild synthesises a .sub file from operator parameters and
-// writes it to the SD card via WriteFileCtx. See fileformat.BuildSub
-// for the validation rules — invalid freq / key surfaces back to the
-// caller as a clean error, never a half-written file (the snapshot
-// hook still runs if the path pre-existed).
+// subghzBuild is a thin shim retained for the agent-package test wiring
+// (internal/agent/wiring_test.go:TestSubghzBuild_BlocksWriteOnHighSeverity).
+// The real implementation now lives in internal/tools/build.go; the agent
+// reaches it via dispatch → registry → Deps.BuildVerify → runBuildVerification,
+// which honours a.verifierFn exactly as the test expects.
 func (a *Agent) subghzBuild(ctx context.Context, p map[string]interface{}) (string, error) {
-	path := str(p, "path")
-	if path == "" {
-		return "", fmt.Errorf("path required")
-	}
-	raw, err := fileformat.BuildSub(fileformat.SubBuildParams{
-		Frequency: uint32(intOr(p, "frequency", 0)),
-		Protocol:  str(p, "protocol"),
-		Preset:    str(p, "preset"),
-		Key:       str(p, "key_hex"),
-		Bit:       intOr(p, "bit", 0),
-		TE:        intOr(p, "te", 0),
-	})
-	if err != nil {
-		return "", err
-	}
-	summary, blockMsg := a.runBuildVerification(ctx, "subghz", raw, boolOr(p, "verify_bypass", false))
-	if blockMsg != "" {
-		return blockMsg, nil
-	}
-	a.snapshotBeforeWrite(ctx, path)
-	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
-		return "", fmt.Errorf("write %s: %w", path, err)
-	}
-	return fmt.Sprintf("built %d-byte .sub → %s\n%s", len(raw), path, summary), nil
-}
-
-// rfidBuild synthesises a .rfid file for LF badge cloning.
-func (a *Agent) rfidBuild(ctx context.Context, p map[string]interface{}) (string, error) {
-	path := str(p, "path")
-	if path == "" {
-		return "", fmt.Errorf("path required")
-	}
-	raw, err := fileformat.BuildRFID(fileformat.RFIDBuildParams{
-		KeyType: str(p, "key_type"),
-		Data:    str(p, "data"),
-	})
-	if err != nil {
-		return "", err
-	}
-	summary, blockMsg := a.runBuildVerification(ctx, "rfid", raw, boolOr(p, "verify_bypass", false))
-	if blockMsg != "" {
-		return blockMsg, nil
-	}
-	a.snapshotBeforeWrite(ctx, path)
-	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
-		return "", fmt.Errorf("write %s: %w", path, err)
-	}
-	return fmt.Sprintf("built %d-byte .rfid → %s\n%s", len(raw), path, summary), nil
-}
-
-// irBuild synthesises a .ir universal-remote file from an array of
-// signals. Accepts the LLM's loose JSON shape (nested interface{}
-// values from the top-level map) and coerces into typed IRSignals.
-func (a *Agent) irBuild(ctx context.Context, p map[string]interface{}) (string, error) {
-	path := str(p, "path")
-	if path == "" {
-		return "", fmt.Errorf("path required")
-	}
-	rawSignals, ok := p["signals"].([]interface{})
-	if !ok || len(rawSignals) == 0 {
-		return "", fmt.Errorf("signals must be a non-empty array")
-	}
-	signals := make([]fileformat.IRSignal, 0, len(rawSignals))
-	for i, rs := range rawSignals {
-		m, ok := rs.(map[string]interface{})
-		if !ok {
-			return "", fmt.Errorf("signals[%d] must be an object", i)
-		}
-		sig := fileformat.IRSignal{
-			Name:      str(m, "name"),
-			Type:      str(m, "type"),
-			Protocol:  str(m, "protocol"),
-			Address:   str(m, "address"),
-			Command:   str(m, "command"),
-			Frequency: intOr(m, "frequency", 0),
-			DutyCycle: floatOr(m, "duty_cycle", 0),
-		}
-		if arr, ok := m["data"].([]interface{}); ok {
-			sig.Data = make([]int, 0, len(arr))
-			for _, v := range arr {
-				if f, ok := v.(float64); ok {
-					sig.Data = append(sig.Data, int(f))
-				}
-			}
-		}
-		signals = append(signals, sig)
-	}
-	raw, err := fileformat.BuildIR(fileformat.IRBuildParams{
-		Name:    str(p, "name"),
-		Signals: signals,
-	})
-	if err != nil {
-		return "", err
-	}
-	summary, blockMsg := a.runBuildVerification(ctx, "ir", raw, boolOr(p, "verify_bypass", false))
-	if blockMsg != "" {
-		return blockMsg, nil
-	}
-	a.snapshotBeforeWrite(ctx, path)
-	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
-		return "", fmt.Errorf("write %s: %w", path, err)
-	}
-	return fmt.Sprintf("built %d-byte .ir (%d signals) → %s\n%s", len(raw), len(signals), path, summary), nil
-}
-
-// nfcBuild synthesises a .nfc file. Blocks is a map<string,string>
-// in the LLM JSON shape (integer keys become string keys); we parse
-// them back into ints.
-func (a *Agent) nfcBuild(ctx context.Context, p map[string]interface{}) (string, error) {
-	path := str(p, "path")
-	if path == "" {
-		return "", fmt.Errorf("path required")
-	}
-	params := fileformat.NFCBuildParams{
-		DeviceType: str(p, "device_type"),
-		UID:        str(p, "uid"),
-		ATQA:       str(p, "atqa"),
-		SAK:        str(p, "sak"),
-		MifareType: str(p, "mifare_type"),
-		Blocks:     map[int]string{},
-	}
-	if blocks, ok := p["blocks"].(map[string]interface{}); ok {
-		for k, v := range blocks {
-			idx, err := strconv.Atoi(k)
-			if err != nil {
-				return "", fmt.Errorf("blocks key %q must be an integer", k)
-			}
-			if hex, ok := v.(string); ok {
-				params.Blocks[idx] = hex
-			}
-		}
-	}
-	raw, err := fileformat.BuildNFC(params)
-	if err != nil {
-		return "", err
-	}
-	summary, blockMsg := a.runBuildVerification(ctx, "nfc", raw, boolOr(p, "verify_bypass", false))
-	if blockMsg != "" {
-		return blockMsg, nil
-	}
-	a.snapshotBeforeWrite(ctx, path)
-	if err := a.flipper.WriteFileCtx(ctx, path, raw); err != nil {
-		return "", fmt.Errorf("write %s: %w", path, err)
-	}
-	return fmt.Sprintf("built %d-byte .nfc → %s\n%s", len(raw), path, summary), nil
-}
-
-// --- Helpers ---
-
-func str(p map[string]interface{}, key string) string {
-	if v, ok := p[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
-
-func intOr(p map[string]interface{}, key string, fallback int) int {
-	if v, ok := p[key]; ok {
-		switch n := v.(type) {
-		case float64:
-			return int(n)
-		case string:
-			if i, err := strconv.Atoi(n); err == nil {
-				return i
-			}
-		}
-	}
-	return fallback
-}
-
-func floatOr(p map[string]interface{}, key string, fallback float64) float64 {
-	if v, ok := p[key]; ok {
-		if f, ok := v.(float64); ok {
-			return f
-		}
-	}
-	return fallback
-}
-
-func boolOr(p map[string]interface{}, key string, fallback bool) bool {
-	if v, ok := p[key]; ok {
-		if b, ok := v.(bool); ok {
-			return b
-		}
-	}
-	return fallback
+	return a.dispatch(ctx, "subghz_build", p)
 }
 
 // hasWiFiTool reports whether the filtered tool set still exposes any

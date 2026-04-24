@@ -22,18 +22,8 @@ func buildTools() []anthropic.ToolUnionParam {
 		}
 	}
 
-	legacy := []anthropic.ToolUnionParam{
-		tool("nfc_read_save",
-			"Scan an NFC tag and save it to the SD card as /ext/nfc/<name>.nfc. This is the default tool for operator requests like 'scan this fob', 'read the badge', or 'save this card'. Does a full NFCDetect, constructs a valid .nfc file (UID + ATQA + SAK, device-type-aware), runs the static verifier, and writes via the same snapshot/rewind pipeline as the parametric builders. Works for Classic 1K/4K, NTAG213/215/216, Ultralight. For high-security badges where sector keys are required for full block reads, the UID-only save is still useful as a first pass — chain with loader_mfkey / loader_mifare_nested for key recovery.",
-			props(
-				optProp("name", "string", "Output filename stem (default: scanned_<uid>). Result lands at /ext/nfc/<name>.nfc"),
-				optProp("path", "string", "Full SD path override — when set, takes precedence over name"),
-				optProp("timeout_seconds", "integer", "How long to wait for a tag (default 15 — shorter than nfc_detect to keep the interactive flow snappy)"),
-				optProp("verify_bypass", "boolean", "Skip the static verifier block on high/critical findings"),
-			),
-		),
-	}
-	return append(regTools, legacy...)
+	// All tools are now in the registry — no legacy list needed.
+	return regTools
 }
 
 // buildWorkflowTools returns every composite pentest workflow tool. Each
@@ -226,9 +216,9 @@ type ToolCatalogEntry struct {
 // the registry-backed prepass in buildTools() regardless of hasMarauder.
 func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
 	_ = hasMarauder // retained for API compatibility; Wave 3 unified WiFi tools into registry
+	// All tools are now in the registry; buildTools() includes them all via the
+	// prepass. buildGenTools/buildWorkflowTools would duplicate them — skip.
 	tools := buildTools()
-	tools = append(tools, buildGenTools()...)
-	tools = append(tools, buildWorkflowTools()...)
 	out := make([]ToolCatalogEntry, 0, len(tools))
 	for _, t := range tools {
 		if t.OfTool == nil {

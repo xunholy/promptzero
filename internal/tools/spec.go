@@ -210,6 +210,18 @@ type Deps struct {
 	// sub-tools. Nil means "auto-approve every sub-step" (the MCP and
 	// test defaults). The returned bool indicates approval.
 	WorkflowConfirm func(ctx context.Context, tool string, input any, riskLevel string) bool
+
+	// BuildVerify runs the chain-of-verification LLM pass on freshly-built
+	// file bytes and returns (summary, blockMsg). A non-empty blockMsg means
+	// the caller MUST NOT persist the file — surface it as the tool result.
+	// An empty blockMsg and non-empty summary means the write can proceed;
+	// append the summary to the success message.
+	//
+	// Nil means skip verification (MCP mode, test setups without a live LLM
+	// client). Handlers for *_build and generate_* tools call
+	// [Deps.RunBuildVerification] which handles the nil guard, so direct
+	// nil checks are not needed in individual handlers.
+	BuildVerify func(ctx context.Context, payloadType string, content []byte, bypass bool) (summary, blockMsg string)
 }
 
 // SnapshotBeforeWrite captures a pre-write copy of path's existing
@@ -358,4 +370,15 @@ func (d *Deps) RequireMarauder() error {
 		return fmt.Errorf("WiFi devboard not connected — use --wifi flag")
 	}
 	return nil
+}
+
+// RunBuildVerification calls BuildVerify if wired, or returns empty
+// strings when the verifier is not available (MCP mode, tests). A
+// convenience wrapper so individual *_build handlers do not need to
+// nil-check BuildVerify themselves.
+func (d *Deps) RunBuildVerification(ctx context.Context, payloadType string, content []byte, bypass bool) (summary, blockMsg string) {
+	if d == nil || d.BuildVerify == nil {
+		return "", ""
+	}
+	return d.BuildVerify(ctx, payloadType, content, bypass)
 }

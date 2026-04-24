@@ -26,16 +26,24 @@ func TestMain(m *testing.M) {
 
 func TestRegistrySize(t *testing.T) {
 	// Wave 3: 84 (Wave 2 cumulative) + 62 new specs (no aliases) = 146.
-	// The 62 new specs are:
-	//   53 wifi_*  — 35 in both MCP+agent + 17 agent-only extras + 1 MCP-only
-	//                (wifi_portscan_service)
-	//    7 marauder_* — gps_data, gps_field, nmea, packet_count, storage_ls,
-	//                   led_set, led_rainbow (all MCP-only before Wave 3)
-	//    2 nrf24_*  — nrf24_sniff_start, nrf24_list_targets (AgentOnly)
-	// None of the 62 new specs carry aliases.
-	// AgentOnly specs: list_devices (Wave 1), subghz_bruteforce, ir_bruteforce
-	// (Wave 2), nrf24_sniff_start, nrf24_list_targets (Wave 3) = 5 total.
-	const expected = 146
+	// Wave 4: 146 + 33 new AgentOnly specs (no aliases) = 179.
+	// The 33 new specs are:
+	//   1 nfc_read_save
+	//   8 generate_* + run_payload + generate_deploy_run (= 10 total in gen family)
+	//   1 analyze_image
+	//   1 discover_apps
+	//   1 docs_search
+	//   3 audit_* (audit_query, audit_export, audit_stats)
+	//   3 target_* (target_remember, target_recall, target_forget)
+	//   2 nrf24_mousejack_start + nrf24_payload_build (added to nrf24.go)
+	//   4 *_build (subghz_build, rfid_build, ir_build, nfc_build)
+	//   2 subghz_bruteforce_generate + subghz_freq_sweep
+	//   8 workflow_* (3 AgentOnly:false + 5 AgentOnly:true)
+	// None of the 33 new specs carry aliases.
+	// AgentOnly specs cumulative: list_devices (W1), subghz_bruteforce,
+	// ir_bruteforce (W2), nrf24_sniff_start, nrf24_list_targets (W3),
+	// plus all 33 Wave 4 specs except the 3 MCP-accessible workflows = 38 total.
+	const expected = 179
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
