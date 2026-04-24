@@ -21,6 +21,7 @@ import (
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/mcp"
+	"github.com/xunholy/promptzero/internal/mcpfed"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
@@ -631,6 +632,60 @@ func setupDetectors(client *anthropic.Client, ai *agent.Agent, cfg *config.Confi
 	ai.SetDetectorEngine(engine)
 	statusOK(fmt.Sprintf("Detectors %s(wifi_deauth / pmkid / nfc-clone)%s", dim, reset))
 	_ = cfg // reserved for future config-gated detectors
+}
+
+// setupMCPFederation parses cfg.MCPClients into typed mcpfed.ClientConfig
+// entries, brings up a Federation, registers each remote tool as a Spec,
+// and returns a cleanup closure for the deferred shutdown.
+//
+// A misconfigured client entry logs a warning but does not abort startup —
+// federation is best-effort because the operator may have a half-tuned
+// stack of external servers. A clean (no-op) close is returned when no
+// mcp_clients section is present in the config.
+func setupMCPFederation(ctx context.Context, cfg *config.Config) func() {
+	noop := func() {}
+	if len(cfg.MCPClients) == 0 {
+		return noop
+	}
+
+	clients, err := mcpfed.ParseClientConfigs(cfg.MCPClients)
+	if err != nil {
+		statusWarn(fmt.Sprintf("MCP federation config: %v", err))
+		// Continue with the entries that did parse cleanly — partial
+		// success is more useful than aborting startup over one bad
+		// entry.
+	}
+	if len(clients) == 0 {
+		return noop
+	}
+
+	fed := mcpfed.New(mcpfed.Options{
+		Logger: func(format string, args ...any) {
+			statusOK(fmt.Sprintf("mcpfed: "+format, args...))
+		},
+	})
+	if err := fed.Start(ctx, mcpfed.FederationConfig{Clients: clients}); err != nil {
+		statusWarn(fmt.Sprintf("MCP federation start: %v", err))
+		// Even on partial-failure, fed.Start may have brought some
+		// clients up — don't tear them down.
+	}
+
+	prefixes := fed.Prefixes()
+	statusOK(fmt.Sprintf("MCP federation %s(%d server%s: %s)%s",
+		dim, len(prefixes), pluralS(len(prefixes)), strings.Join(prefixes, ", "), reset))
+
+	return func() {
+		if err := fed.Close(); err != nil {
+			statusWarn(fmt.Sprintf("MCP federation close: %v", err))
+		}
+	}
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // setupGenerator picks the generation provider per --gen-provider,

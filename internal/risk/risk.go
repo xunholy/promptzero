@@ -78,6 +78,10 @@ var toolLevels = func() map[string]Level {
 		// keeloq_decrypt with a known key (no transmission).
 		"defense_classify_advertisement",
 		"keeloq_decrypt",
+		// v0.6 OSS-expansion: read-only corpus searches over operator-
+		// curated asset directories. No network, no transmission, no
+		// device I/O — a directory walk + grep.
+		"ir_irdb_lookup", "evil_portal_template_pick", "badusb_payload_search",
 	)
 
 	// Captures, scans, file writes

@@ -61,11 +61,13 @@ func TestRegistrySize(t *testing.T) {
 	//   docs/refactor/mifare-algorithms.md is the v0.5 deliverable)
 	// v0.5 task #8 (loclass): +1 spec (iclass_loclass_recover) — sub-primitives
 	//   functional, end-to-end deferred to v0.5.1 (CSN-selection bug)
-	// v0.6 OSS-expansion: +7 specs (no aliases):
+	// v0.6 OSS-expansion: +10 specs (no aliases):
 	//   urh_decode_sub, firmware_extract, fap_build (container bridges)
 	//   keeloq_decrypt, keeloq_dictionary, keeloq_bruteforce (sub-GHz crackers)
 	//   defense_classify_advertisement (Wall-of-Flippers stateless classifier)
-	const expected = 195
+	//   ir_irdb_lookup, evil_portal_template_pick, badusb_payload_search
+	//      (operator-curated asset-corpus search)
+	const expected = 198
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -57,6 +57,12 @@ type Config struct {
 	Validator     ValidatorConfig     `yaml:"validator,omitempty"`
 	Rules         []RuleConfig        `yaml:"rules,omitempty"`
 	Cost          CostConfig          `yaml:"cost,omitempty"`
+
+	// MCPClients is the raw YAML for outbound MCP federation entries
+	// (internal/mcpfed). Stored as []yaml.Node so config.go has no
+	// dependency on the mcpfed package — mcpfed.ParseClientConfigs
+	// decodes each node into its own ClientConfig type.
+	MCPClients []yaml.Node `yaml:"mcp_clients,omitempty"`
 }
 
 // FlipperConfig holds per-operation timeout overrides for the Flipper

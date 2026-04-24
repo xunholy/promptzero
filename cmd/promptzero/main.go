@@ -172,6 +172,14 @@ func run() error {
 	setupAttack(ai, auditLog)
 	setupDetectors(&client, ai, cfg)
 
+	// Federation must come AFTER setupDetectors so any auto-detector
+	// rules referencing federated tools by name can find them, and
+	// BEFORE the REPL hands a turn to the model — federated Specs are
+	// registered into tools.Register at this point and become visible
+	// in the agent's tool advertisement on the next turn.
+	mcpfedClose := setupMCPFederation(ctx, cfg)
+	defer mcpfedClose()
+
 	genLLM := setupGenerator(cfg, ai, flip, &client, f.genProvider, f.ollamaURL, f.ollamaModel)
 
 	hasMarauder, marauderClose := setupMarauder(cfg, ai, rec, f.wifiEnabled)
