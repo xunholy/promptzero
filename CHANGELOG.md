@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — v0.6 OSS-expansion: outbound federation + cracker primitives
+
+Driven by a multi-agent dev team: 1 lead + 3 parallel engineers (Crypto1,
+KeeLoq, pcap) + cross-cutting wiring on the lead thread. ~7000 LOC
+across 9 new packages.
+
+- **`internal/mcpfed/`** (new) — outbound MCP client federating external
+  servers as native Specs. Stdio/HTTP/SSE transports, sandbox profiles
+  (none/docker/bwrap/firejail) wired via `transport.WithCommandFunc`,
+  prefix `__` namespacing within Anthropic's 64-char tool-name limit,
+  schema pass-through via `mcp.Tool.RawInputSchema`, MCP annotation →
+  `risk.Level` mapping (DestructiveHint→Critical, ReadOnlyHint→Low,
+  OpenWorldHint→+1 tier), one-shot retry on `ErrTransportClosed` plus
+  background health pings. Boot integration in
+  `cmd/promptzero/setup.go:setupMCPFederation`; config block in
+  `config.example.yaml` under `mcp_clients:[]` with six high-leverage
+  examples (FuzzingLabs hub, pm3-mcp, Hashcat-MCP, BloodHound-MCP-AI,
+  Burp, GhidraMCP). Operator guide:
+  `docs/integrations/mcp-federation.md`.
+
+- **`internal/keeloq/`** (new) — pure-Go KeeLoq cipher
+  (32-bit block, 64-bit key, 528 rounds, NLFSR with S-box 0x3A5C742E),
+  CPU brute-force sharded across `runtime.NumCPU()` (~12M keys/sec on a
+  16-core host), and a manufacturer-key dictionary covering HCS-200/300/360/410.
+  Specs: `keeloq_decrypt` (Low), `keeloq_dictionary` (Medium),
+  `keeloq_bruteforce` (Critical). Closed-loop verified plus published
+  test vector cross-checked against an independent Python reference.
+
+- **`internal/pcap/`** (new) — pure-Go libpcap classic writer +
+  radiotap-header builder (link-types 1/105/127). Closes the WiFi
+  capture → hashcat chain in `workflow_wifi_target_to_hashcat`.
+
+- **`internal/defense/`** (new) — Wall-of-Flippers heuristic classifier
+  for BLE advertisements. Detects Apple Continuity spam (action types
+  outside the published set), Microsoft Swift Pair malformed payloads,
+  Samsung sentinel model-id, Google Fast Pair repeated-byte signatures,
+  and Flipper service UUID 0xFE60. Stateful `Tracker` adds high-frequency
+  MAC-rotation detection. Spec: `defense_classify_advertisement` (Low).
+
+- **`internal/containerbridge/`** (new) — shared sandboxed `docker run`
+  runner powering three new Specs:
+  - `urh_decode_sub` (Low, GroupFlipperSubGHz) — PentHertz/urh-ng SubGHz
+    classifier across 327 known protocols.
+  - `firmware_extract` (Medium, GroupFlipperHW) — onekey-sec/unblob
+    recursive firmware extractor.
+  - `fap_build` (Medium, GroupGen) — flipperdevices/ufbt SDK build with
+    optional Flipper-side deploy.
+
+- **`internal/tools/corpora.go`** (new) — three read-only Specs that
+  search operator-curated asset directories (no third-party content
+  bundled — license clarity + staleness avoidance):
+  - `ir_irdb_lookup` — Lucaslhm/Flipper-IRDB layout.
+  - `evil_portal_template_pick` — HTML/JS templates by brand+language.
+  - `badusb_payload_search` — Ducky-script grep by goal keyword.
+  Default paths from `PZ_IRDB_DIR`, `PZ_EVIL_PORTAL_DIR`, `PZ_BADUSB_DIR`.
+
+### Changed
+
+- **`internal/risk/`** — added `Register/Unregister` runtime overlay so
+  federated MCP tools (and any post-init Spec) publish risk levels
+  without touching the static `toolLevels` map. `Classify` consults the
+  overlay first; static fallback unchanged.
+- **`internal/config/`** — added `MCPClients []yaml.Node` field for raw
+  federation config. Decoded by `mcpfed.ParseClientConfigs` so config
+  remains independent of the federation runtime.
+
+### Registry
+
+- 188 → 198 Specs (+10 native + N federated at runtime).
+
+### Deferred to v0.6.1+
+
+- Wave 1a (`mfkey32_recover` pure-Go): `internal/crypto1/` is being
+  filled in — Cipher Init/Crypt/EncCrypt + LFSR rollback are
+  implementable; Recover works closed-loop but the 2^48 worst-case
+  search needs the partial-state-enumeration optimization before it's
+  agent-fast.
+- Wave 1b (`mfoc_attack`/`mfcuk_attack` pure-Go): blocked on Wave 1a's
+  Crypto1 cipher landing.
+- Wave 1c (`mifare_hardnested_host`): genuine 2kloc+ algorithm port,
+  multi-day. Federated Proxmark3 covers the use case in the meantime.
+- Wave 0b (HTTP transport via FlipperHTTP), 3c–3e (Faultier glitcher,
+  CANbus, Bus Pirate 5), 4a (Bruce ESP32), 4b (ESP32-C5 5 GHz):
+  hardware-in-loop validation gap; ship-ready code requires bench
+  testing against the actual devices.
+
 ## [0.5.0] - 2026-04-25
 
 v0.5 opens the offensive-capability expansion track. This release
