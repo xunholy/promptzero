@@ -92,6 +92,9 @@ var toolLevels = func() map[string]Level {
 		// v0.6 OSS-expansion: Bus Pirate 5 read-only — voltage probe,
 		// per-pin read, mode switch (HiZ is the safe idle).
 		"buspirate_voltages", "buspirate_pin_read", "buspirate_mode",
+		// v0.7 OSS-expansion: pure-Go Sub-GHz protocol classifier.
+		// Pure analysis on a captured .sub file — no I/O, no transmission.
+		"subghz_classify",
 	)
 
 	// Captures, scans, file writes

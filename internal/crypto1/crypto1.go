@@ -163,14 +163,16 @@ func Prng(from uint32, n int) uint32 {
 	return byteSwap32(x)
 }
 
-// byteSwap32 reverses the byte order of a uint32. Used at the Prng
-// boundaries to convert between the wire MIFARE form and the internal
-// LSB-first LFSR layout.
+// byteSwap32 swaps bytes within each 16-bit half of v. This is the
+// mfoc/mfcuk SWAPENDIAN macro:
+//
+//	#define SWAPENDIAN(x) (x = (x >> 8 & 0xff00ff) | (x << 8 & 0xff00ff00))
+//
+// NOT a full 32-bit byte reversal. Used at the Prng boundaries to
+// convert between the wire MIFARE form and the internal LFSR layout.
+// Verified against the mfoc KAT: Prng(0x01020304, 64) == 0xE93E12E4.
 func byteSwap32(v uint32) uint32 {
-	return (v>>24)&0xFF |
-		((v>>8)&0xFF00) |
-		((v<<8)&0xFF0000) |
-		(v<<24)&0xFF000000
+	return ((v >> 8) & 0xff00ff) | ((v << 8) & 0xff00ff00)
 }
 
 // clockLFSR advances the LFSR a single step. extBit is XOR'd into the

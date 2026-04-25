@@ -1,18 +1,12 @@
-// mifare_test.go — covers the v0.6 mifare Specs.
+// mifare_test.go — covers the mifare Specs.
 //
-// As of v0.6:
+//   • mfoc_attack and mfcuk_attack are now REAL offline implementations
+//     backed by internal/crypto1.RecoverNestedWithRange and
+//     internal/crypto1.RecoverDarksideWithRange respectively.  Tests use
+//     closed-loop synthetic captures: synthesise the captured data from a
+//     known key, call the handler, verify the recovered key matches.
 //
-//   • mfoc_attack and mfcuk_attack return status="live_nfc_required" with
-//     an error pointing operators at the federated pm3-mcp path. They are
-//     stubs because the live-NFC nested/darkside attacks need a real
-//     reader.
-//   • mfkey32_recover is REAL — it runs the Crypto1 LFSR rollback against
-//     the captured (uid, nt, nr, ar) tuples, and returns status="found"
-//     with the recovered 6-byte key.
-//
-// These tests use closed-loop synthetic captures: encrypt with a known
-// key via the same crypto1 primitive, then verify Recover gets the key
-// back.
+//   • mfkey32_recover is REAL — unchanged from the prior implementation.
 
 package tools
 
@@ -44,33 +38,205 @@ func TestMifare_RegistrationContract(t *testing.T) {
 	}
 }
 
-func TestMifare_FederatedFallback(t *testing.T) {
-	cases := map[string]map[string]any{
-		"mfoc_attack":  {"uid_hex": "CAFEBABE", "known_key_hex": "FFFFFFFFFFFF", "known_sector": float64(0), "key_type": "A"},
-		"mfcuk_attack": {"uid_hex": "CAFEBABE"},
+// synthesizeNestedAttemptForTools builds the encrypted NTEnc and AR for one
+// nested attempt using the given keys and nonces.  Returns (ntEnc, ar).
+func synthesizeNestedAttemptForTools(knownKey uint64, targetKey uint64, uid, knownNT, knownNR, plainNT, nr uint32) (ntEnc, ar uint32) {
+	c := crypto1.New()
+	c.Init(knownKey)
+	c.CryptFeedback(uid ^ knownNT)
+	c.EncCrypt(knownNR, 0)
+	c.Crypt(0) // consume aR-phase keystream
+	ks := c.Crypt(0)
+	ntEnc = plainNT ^ ks
+	_, ar = crypto1.AuthEncrypt(targetKey, uid, crypto1.AuthCapture{NT: plainNT, NR: nr})
+	return
+}
+
+// TestMfoc_ClosedLoop synthesises a NestedCapture for a known 16-bit key and
+// verifies the mfoc_attack handler returns status="found" with the correct key.
+func TestMfoc_ClosedLoop(t *testing.T) {
+	if testing.Short() {
+		t.Skip("mfoc closed-loop search (~70 ms): skipped in -short mode")
 	}
 
-	for name, args := range cases {
-		t.Run(name, func(t *testing.T) {
-			s, ok := Get(name)
-			if !ok {
-				t.Fatalf("not registered")
-			}
-			body, err := s.Handler(context.Background(), &Deps{}, args)
-			if err == nil {
-				t.Fatalf("%s: expected error (federated fallback)", name)
-			}
-			if !strings.Contains(err.Error(), "pm3-mcp") {
-				t.Errorf("%s: error %v missing pm3-mcp redirect", name, err)
-			}
-			var m map[string]any
-			if jerr := json.Unmarshal([]byte(body), &m); jerr != nil {
-				t.Fatalf("%s: result is not JSON: %v\nbody=%s", name, jerr, body)
-			}
-			if status, _ := m["status"].(string); status != "live_nfc_required" {
-				t.Errorf("%s: status = %q, want live_nfc_required", name, status)
-			}
-		})
+	const (
+		targetKey = uint64(0x1234)
+		knownKey  = uint64(0xA0A1A2A3A4A5)
+		uid       = uint32(0xCAFEBABE)
+	)
+
+	// Attempt 0 and 1 plain target NTs and their known-sector nonces.
+	knownNT0, knownNR0 := uint32(0x01020304), uint32(0xDEADBEEF)
+	knownNT1, knownNR1 := uint32(0xE93E12E4), uint32(0x55667788)
+	plainNT0, nr0 := uint32(0xABCDABCD), uint32(0x11223344)
+	plainNT1, nr1 := uint32(0xDEAD1234), uint32(0x99AABBCC)
+
+	ntEnc0, ar0 := synthesizeNestedAttemptForTools(knownKey, targetKey, uid, knownNT0, knownNR0, plainNT0, nr0)
+	ntEnc1, ar1 := synthesizeNestedAttemptForTools(knownKey, targetKey, uid, knownNT1, knownNR1, plainNT1, nr1)
+
+	spec, ok := Get("mfoc_attack")
+	if !ok {
+		t.Fatal("mfoc_attack not registered")
+	}
+
+	args := map[string]any{
+		"uid_hex":       upperHex(uid),
+		"known_key_hex": upperHex48(knownKey),
+		"attempts": []any{
+			map[string]any{
+				"known_nt_hex": upperHex(knownNT0),
+				"known_nr_hex": upperHex(knownNR0),
+				"nt_enc_hex":   upperHex(ntEnc0),
+				"nr_hex":       upperHex(nr0),
+				"ar_hex":       upperHex(ar0),
+			},
+			map[string]any{
+				"known_nt_hex": upperHex(knownNT1),
+				"known_nr_hex": upperHex(knownNR1),
+				"nt_enc_hex":   upperHex(ntEnc1),
+				"nr_hex":       upperHex(nr1),
+				"ar_hex":       upperHex(ar1),
+			},
+		},
+		"search_range_bits": float64(16),
+		"timeout_seconds":   float64(60),
+	}
+
+	body, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err != nil {
+		t.Fatalf("mfoc_attack handler error: %v\nbody=%s", err, body)
+	}
+
+	var m map[string]any
+	if jerr := json.Unmarshal([]byte(body), &m); jerr != nil {
+		t.Fatalf("body not JSON: %v\n%s", jerr, body)
+	}
+	if status, _ := m["status"].(string); status != "found" {
+		t.Errorf("status = %q, want found; body=%s", status, body)
+	}
+	wantKey := upperHex48(targetKey)
+	if got, _ := m["key"].(string); got != wantKey {
+		t.Errorf("key = %q, want %q; body=%s", got, wantKey, body)
+	}
+}
+
+// TestMfoc_TooFewAttempts verifies the handler rejects < 2 attempts.
+func TestMfoc_TooFewAttempts(t *testing.T) {
+	spec, _ := Get("mfoc_attack")
+	args := map[string]any{
+		"uid_hex":       "CAFEBABE",
+		"known_key_hex": "A0A1A2A3A4A5",
+		"attempts": []any{
+			map[string]any{
+				"known_nt_hex": "01020304",
+				"known_nr_hex": "DEADBEEF",
+				"nt_enc_hex":   "12345678",
+				"nr_hex":       "11223344",
+				"ar_hex":       "AABBCCDD",
+			},
+		},
+	}
+	_, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err == nil {
+		t.Fatal("expected error for < 2 attempts")
+	}
+	if !strings.Contains(err.Error(), "2") {
+		t.Errorf("error should mention '2': %v", err)
+	}
+}
+
+// TestMfoc_BadHex verifies the handler returns an error for malformed hex.
+func TestMfoc_BadHex(t *testing.T) {
+	spec, _ := Get("mfoc_attack")
+	args := map[string]any{
+		"uid_hex":       "not-hex",
+		"known_key_hex": "A0A1A2A3A4A5",
+		"attempts":      []any{},
+	}
+	_, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err == nil {
+		t.Fatal("expected error for malformed hex")
+	}
+}
+
+// TestMfcuk_ClosedLoop synthesises DarksidePairs for a known 16-bit key and
+// verifies the mfcuk_attack handler returns status="found" with the correct key.
+func TestMfcuk_ClosedLoop(t *testing.T) {
+	const (
+		key = uint64(0x1234)
+		uid = uint32(0xCAFEBABE)
+		nt  = uint32(0x01020304)
+	)
+
+	// Build 256 pairs with distinct NR low bytes (low byte = i for index i).
+	const seed = uint32(uid ^ nt)
+	pairs := make([]any, 256)
+	for i := 0; i < 256; i++ {
+		hi := (seed + uint32(i)*0x00010100) & 0xFFFFFF00
+		nr := hi | uint32(i)
+		parity := crypto1.SynthesizeDarksideParity(key, uid, nt, nr)
+		pairs[i] = map[string]any{
+			"nr_hex": upperHex(nr),
+			"parity": float64(parity),
+		}
+	}
+
+	spec, ok := Get("mfcuk_attack")
+	if !ok {
+		t.Fatal("mfcuk_attack not registered")
+	}
+
+	args := map[string]any{
+		"uid_hex":           upperHex(uid),
+		"nt_hex":            upperHex(nt),
+		"pairs":             pairs,
+		"search_range_bits": float64(16),
+		"timeout_seconds":   float64(60),
+	}
+
+	body, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err != nil {
+		t.Fatalf("mfcuk_attack handler error: %v\nbody=%s", err, body)
+	}
+
+	var m map[string]any
+	if jerr := json.Unmarshal([]byte(body), &m); jerr != nil {
+		t.Fatalf("body not JSON: %v\n%s", jerr, body)
+	}
+	if status, _ := m["status"].(string); status != "found" {
+		t.Errorf("status = %q, want found; body=%s", status, body)
+	}
+	wantKey := upperHex48(key)
+	if got, _ := m["key"].(string); got != wantKey {
+		t.Errorf("key = %q, want %q; body=%s", got, wantKey, body)
+	}
+}
+
+// TestMfcuk_EmptyPairs verifies the handler rejects an empty pairs array.
+func TestMfcuk_EmptyPairs(t *testing.T) {
+	spec, _ := Get("mfcuk_attack")
+	args := map[string]any{
+		"uid_hex": "CAFEBABE",
+		"nt_hex":  "01020304",
+		"pairs":   []any{},
+	}
+	_, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err == nil {
+		t.Fatal("expected error for empty pairs")
+	}
+}
+
+// TestMfcuk_BadHex verifies the handler returns an error for malformed hex.
+func TestMfcuk_BadHex(t *testing.T) {
+	spec, _ := Get("mfcuk_attack")
+	args := map[string]any{
+		"uid_hex": "not-hex",
+		"nt_hex":  "01020304",
+		"pairs":   []any{},
+	}
+	_, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err == nil {
+		t.Fatal("expected error for malformed uid_hex")
 	}
 }
 

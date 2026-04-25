@@ -75,7 +75,9 @@ func TestRegistrySize(t *testing.T) {
 	//   buspirate_mode/i2c_scan/spi_dump/uart_bridge/voltages/pin_set/pin_read
 	//      (7, Bus Pirate 5 universal-bus probe)
 	//   mifare_hardnested_host (1, container bridge to nfc-tools/mfoc-hardnested)
-	const expected = 230
+	// v0.7 OSS-expansion (native ports — full functionality parity):
+	//   subghz_classify (1, internal/subghz top-20 protocol classifier)
+	const expected = 231
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
