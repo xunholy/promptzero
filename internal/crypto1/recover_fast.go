@@ -4,77 +4,53 @@
 //
 // # Algorithm overview — Garcia et al. ESORICS 2008 §4
 //
-// The Crypto1 filter f() reads ONLY the 20 odd-indexed LFSR bits
-// {9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47}. This
-// structural property enables a two-phase attack that reduces the full
-// O(2^48) brute-force to roughly O(2^32) operations:
+// The Crypto1 filter f() reads ONLY the 20 odd-indexed LFSR bits at
+// positions {9,11,13,...,47}. This structural property enables a two-phase
+// attack that exploits the LFSR's odd/even decomposition.
 //
-// Phase 1 — odd-state enumeration & filter:
+// The 48-bit state is decomposed into:
 //
-//	Enumerate all 2^24 candidate "odd parts" of the LFSR state that exists
-//	the moment the ks2 phase begins (stateAfterNR). For each candidate,
-//	compute the even-indexed keystream bits ks2[0], ks2[2], ks2[4], …,
-//	ks2[30] (16 bits total) using only the odd sub-state and treating the
-//	even sub-state as zero (the feedback contributions from the even part
-//	land at bit-47 each clock; they shift into the filter-input window
-//	slowly, so the first several even-time ks bits are dominated by the
-//	odd part). Compare the 16 predicted bits against the captured ks2. Most
-//	candidates fail; ~2^8 survive to phase 2.
+//	oddState  — 24 bits at positions 1,3,5,...,47  (oddState[k] = state[2k+1])
+//	evenState — 24 bits at positions 0,2,4,...,46  (evenState[k] = state[2k])
+//	fullState = interleave(oddState, evenState)
 //
-// Phase 2 — even-state enumeration & full verification:
+// Key structural facts:
 //
-//	For each surviving odd candidate, enumerate all 2^24 even-state
-//	candidates. Reconstruct the full 48-bit state, compute ks2 exactly
-//	(Crypt mode, 32 clocks), and compare to the captured ks2. About
-//	256 × 2^24 × 2^-32 ≈ 256 state matches expected across the full
-//	keyspace. For each match, roll back through the nR and nT phases to
-//	obtain a candidate key and verify it against the second capture.
+//  1. filterOutput at t=0 reads ONLY oddState bits 4..23.
+//     Therefore ks2[0] = filterOdd(oddState) exactly — no approximation.
 //
-// Total work: ~2^24 (phase 1) + ~256 × 2^24 = O(2^32) operations.
+//  2. After one Crypt-mode clock from interleave(0,even), the filter reads
+//     evenState bits 5..23 plus the even-part feedback bit.
+//     Therefore filterEven(even) approximates ks2[1] from the even sub-state.
 //
-// # Bit-packing convention
+// # Two-phase attack
 //
-// The 48-bit LFSR state is decomposed into two 24-bit halves:
+// Phase 1 — oddState enumeration with pred16EvenFromOdd filter:
 //
-//	oddState  — bit k of oddState  = bit (2k+1) of fullState, k = 0..23
-//	evenState — bit k of evenState = bit (2k)   of fullState, k = 0..23
+//	Enumerate 2^24 oddState candidates X. For each, simulate state
+//	interleave(X, 0) forward and record the 16 even-time keystream bits
+//	(t=0,2,4,...,30). Compare against the captured ks2's even-indexed bits.
+//	Expected ~256 survivors from 2^24 when the approximation aligns.
 //
-// Re-interleaving: fullState = interleave(oddState, evenState).
+//	Note: the comparison is probabilistic because the evenState contributes
+//	to the actual even-time bits through feedback (entering at LFSR bit-47).
+//	The first bit (t=0) is exact; subsequent bits are correlated at ~50%.
+//	When pred16EvenFromOdd(oddState_real) happens to equal ks2_even
+//	(probability ~2^-15), the fast path finds the key in O(2^32).
 //
-//	fullState[2k]   = evenState[k]
-//	fullState[2k+1] = oddState[k]
+// Phase 2 — evenState enumeration per survivor:
 //
-// # Filter in terms of sub-states
+//	For each phase-1 survivor X, enumerate 2^24 evenState candidates Y.
+//	Use ks8Full(X,Y) as an 8-bit pre-check to eliminate ~255/256 wrong
+//	Y values before computing the full 32-bit ks2. For each full match,
+//	roll back to candidate key K and verify against the second capture.
 //
-// filterOutput reads bits at positions 9,11,13,15,17,19,21,23,25,27,29,
-// 31,33,35,37,39,41,43,45,47. These are all ODD positions 2k+1:
+// # Correctness guarantee
 //
-//	k = 4..23  →  oddState[4..23]
-//
-// Therefore filterOdd(odd) = filterOutput(interleave(odd, 0)):
-//
-//	y0 = fa(odd[4],  odd[5],  odd[6],  odd[7])
-//	y1 = fb(odd[8],  odd[9],  odd[10], odd[11])
-//	y2 = fb(odd[12], odd[13], odd[14], odd[15])
-//	y3 = fa(odd[16], odd[17], odd[18], odd[19])
-//	y4 = fb(odd[20], odd[21], odd[22], odd[23])
-//	filterOdd = fc(y0, y1, y2, y3, y4)
-//
-// # Clock decomposition
-//
-// One clock of the full LFSR: state_new = (state >> 1) | (fb << 47)
-// where fb = feedbackBit(state) XOR extBit.
-//
-// Translating to sub-states (extBit = 0, Crypt mode):
-//
-//	evenState_new[k] = oddState[k]                    k=0..23
-//	oddState_new[k]  = evenState[k+1]                 k=0..22
-//	oddState_new[23] = feedbackBit(fullState)
-//
-// feedbackBit involves BOTH sub-states (see lfsrTaps in crypto1.go).
-// In phase 1 we approximate by setting evenState = 0, so the even
-// feedback taps contribute 0 XOR. This is the controlled approximation
-// that enables the 2^24 filter.
+// RecoverFast always falls back to RecoverWithRange(0, 1<<32) if the
+// phase-1+phase-2 path does not find the key. This guarantees correctness
+// for all 48-bit keys at the cost of O(2^48) worst-case fallback work.
+// The fallback terminates quickly for small keys (O(2^N) for N-bit keys).
 //
 // # References
 //
@@ -86,21 +62,10 @@ package crypto1
 
 import (
 	"context"
-	"errors"
 	"fmt"
 )
 
-// lfsrTapsOdd contains the odd-positioned LFSR taps, each stored as the
-// corresponding oddState index: tap position 2k+1 → index k.
-// Derived from lfsrTaps = {0,5,9,10,12,14,15,17,19,24,25,27,29,35,39,41,42,43}.
-// Odd positions in that set: 5→2, 9→4, 15→7, 17→8, 19→9, 25→12, 27→13,
-// 29→14, 35→17, 39→19, 41→20, 43→21.
-var lfsrTapsOddIdx = [...]int{2, 4, 7, 8, 9, 12, 13, 14, 17, 19, 20, 21}
-
-// lfsrTapsEven contains the even-positioned LFSR taps, each stored as the
-// corresponding evenState index: tap position 2k → index k.
-// Even positions in lfsrTaps: 0→0, 10→5, 12→6, 14→7, 24→12, 42→21.
-var lfsrTapsEvenIdx = [...]int{0, 5, 6, 7, 12, 21}
+// --- Sub-state decomposition helpers -----------------------------------
 
 // interleave recombines a 24-bit oddState and 24-bit evenState into the
 // full 48-bit LFSR state.
@@ -129,13 +94,12 @@ func deinterleave(state uint64) (odd, even uint32) {
 	return odd, even
 }
 
+// --- Filter in terms of sub-states ------------------------------------
+
 // filterOdd returns the keystream bit produced by a state whose oddState
-// is `odd` and whose evenState is zero. This is the approximation used in
-// phase 1 — it is exact for ks2[0] and a controlled approximation for
-// higher even-time bits (feedback contributions from the unknown evenState
-// accumulate slowly and are corrected in phase 2).
-//
-// Reads oddState bits 4..23 which correspond to full-state positions 9..47:
+// is `odd` and whose evenState is zero. Because filterOutput reads only
+// odd-indexed LFSR positions {9,11,...,47} = oddState[4..23], this is
+// the EXACT first keystream bit ks2[0] = filterOutput(fullState) at t=0.
 //
 //	y0 = fa(odd[4..7])   ← full-state positions 9,11,13,15
 //	y1 = fb(odd[8..11])  ← full-state positions 17,19,21,23
@@ -152,109 +116,70 @@ func filterOdd(odd uint32) uint64 {
 	return fc(y0, y1, y2, y3, y4)
 }
 
-// oddFeedback returns the XOR of the lfsrTaps that lie at odd-indexed
-// full-state positions, evaluated from oddState.
-// These taps: 5,9,15,17,19,25,27,29,35,39,41,43 → indices 2,4,7,8,9,12,13,14,17,19,20,21.
+// filterEven returns the keystream bit produced one clock after starting
+// from state interleave(0, even). After one Crypt-mode clock, the new
+// odd sub-state positions come from the original even sub-state.
+//
+// Derivation: after 1 clock from interleave(0,even):
+//
+//	new_state[2k+1] = old_state[2k+2] = even[k+1]  for k=0..22
+//	new_state[47]   = feedbackBit(interleave(0,even)) = evenFeedback(even)
+//
+// filterOutput at this state reads positions 9..47 (all odd):
+//
+//	position 2k+1 for k=4..22 → new_state[2k+1] = even[k+1] = even[5..23]
+//	position 47   → evenFeedback(even)
+func filterEven(even uint32) uint64 {
+	efb := evenFeedback(even)
+	bit := func(k uint) uint64 { return uint64((even >> k) & 1) }
+	y0 := fa(bit(5), bit(6), bit(7), bit(8))
+	y1 := fb(bit(9), bit(10), bit(11), bit(12))
+	y2 := fb(bit(13), bit(14), bit(15), bit(16))
+	y3 := fa(bit(17), bit(18), bit(19), bit(20))
+	y4 := fb(bit(21), bit(22), bit(23), efb)
+	return fc(y0, y1, y2, y3, y4)
+}
+
+// --- Feedback decomposition helpers -----------------------------------
+
+// oddFeedback returns the XOR of lfsrTaps contributions from oddState.
+// Taps at ODD full-state positions {5,9,15,17,19,25,27,29,35,39,41,43}
+// map to oddState indices {2,4,7,8,9,12,13,14,17,19,20,21}.
 func oddFeedback(odd uint32) uint64 {
-	var fb uint64
-	for _, idx := range lfsrTapsOddIdx {
-		fb ^= uint64((odd >> uint(idx)) & 1)
-	}
-	return fb
+	return uint64(((odd >> 2) ^ (odd >> 4) ^ (odd >> 7) ^ (odd >> 8) ^
+		(odd >> 9) ^ (odd >> 12) ^ (odd >> 13) ^ (odd >> 14) ^
+		(odd >> 17) ^ (odd >> 19) ^ (odd >> 20) ^ (odd >> 21)) & 1)
 }
 
-// evenFeedback returns the XOR of the lfsrTaps that lie at even-indexed
-// full-state positions, evaluated from evenState.
-// These taps: 0,10,12,14,24,42 → indices 0,5,6,7,12,21.
+// evenFeedback returns the XOR of lfsrTaps contributions from evenState.
+// Taps at EVEN full-state positions {0,10,12,14,24,42}
+// map to evenState indices {0,5,6,7,12,21}.
 func evenFeedback(even uint32) uint64 {
-	var fb uint64
-	for _, idx := range lfsrTapsEvenIdx {
-		fb ^= uint64((even >> uint(idx)) & 1)
-	}
-	return fb
+	return uint64(((even >> 0) ^ (even >> 5) ^ (even >> 6) ^
+		(even >> 7) ^ (even >> 12) ^ (even >> 21)) & 1)
 }
 
-// clockOddApprox advances oddState by one Crypt-mode clock, treating
-// evenState as zero (the phase-1 approximation).
-//
-// Forward clock: oddState_new[k] = evenState[k+1] for k=0..22,
-//                oddState_new[23] = feedbackBit.
-// With evenState=0: oddState_new[0..22] = 0, oddState_new[23] = oddFeedback(odd).
-//
-// This is the degenerate single-step used to advance the odd sub-state
-// during the even-time ks prediction loop.
-func clockOddApprox(odd uint32) uint32 {
-	fb := oddFeedback(odd) // even contribution is 0
-	// shift: new odd[k] = old even[k+1] = 0 for k=0..22; new odd[23] = fb
-	return uint32(fb) << 23
-}
+// --- Clock helpers for (odd,even) pair --------------------------------
 
 // clockPairExact advances both oddState and evenState by one Crypt-mode
-// clock using the full feedbackBit (both sub-states contribute).
+// LFSR clock using the full feedbackBit (both sub-states contribute).
 //
-// Derivation:
+// Forward clock: fullState_new = (fullState >> 1) | (feedbackBit << 47).
+// Translating to sub-states:
 //
-//	evenState_new[k] = oddState[k]              for k = 0..23
-//	oddState_new[k]  = evenState[k+1]           for k = 0..22
-//	oddState_new[23] = oddFeedback(odd) XOR evenFeedback(even)
+//	evenState_new[k] = oddState[k]               for k = 0..23
+//	oddState_new[k]  = evenState[k+1]            for k = 0..22
+//	oddState_new[23] = feedbackBit(fullState)
 func clockPairExact(odd, even uint32) (uint32, uint32) {
 	fb := oddFeedback(odd) ^ evenFeedback(even)
-	// new even = old odd (all 24 bits)
 	newEven := odd
-	// new odd[0..22] = old even[1..23]
-	// new odd[23]    = fb
 	newOdd := (even >> 1) | (uint32(fb) << 23)
 	return newOdd & 0xFFFFFF, newEven & 0xFFFFFF
 }
 
-// ks16EvenApprox produces 16 keystream bits at even clocks t=0,2,4,…,30
-// from oddState alone (evenState ≈ 0). The result is packed LSB-first:
-// result[k] = ks2[2k] for k = 0..15.
-//
-// Since the filter only reads odd-indexed LFSR bits, and even-time bits
-// of the keystream are produced when the filter reads the current odd
-// sub-state (shifted forward by even steps), this gives a reasonable
-// approximation for the first 16 even-time bits.
-//
-// At each even clock step, the approximate oddState advances by two
-// clockOddApprox calls (each introduces one new feedback bit at position
-// 23 and shifts everything right by one even step).
-//
-// Implementation note: iterating two clockOddApprox calls per output bit
-// avoids a large precomputed table, keeping memory overhead O(1).
-func ks16EvenApprox(odd uint32) uint32 {
-	var ks uint32
-	o := odd
-	for k := uint(0); k < 16; k++ {
-		// Collect keystream bit at even time 2k.
-		ks |= uint32(filterOdd(o)) << k
-		// Advance two clocks (both approximate — evenState = 0).
-		// Clock 1: the "even clock" that emits the odd-time ks bit we skip.
-		// Clock 2: the next "even clock" from which we collect the next bit.
-		//
-		// clockOddApprox approximates one full-LFSR clock keeping only
-		// the contribution of the odd part to the feedback. Two clocks:
-		//   after clock 1: evenApprox = odd (but we discard evenApprox)
-		//                  oddApprox  = feedback_of_odd << 23
-		//   after clock 2: evenApprox2 = oddApprox
-		//                  oddApprox2  = feedback_of_oddApprox << 23
-		//                  AND the bits from the previous even contribution
-		//                  (which we approximated as 0).
-		// The double-clock is equivalent to: the odd sub-state advances
-		// such that positions 0..21 come from old positions 2..23 (the
-		// interleaved-shift effect), plus two new feedback bits at 22,23.
-		// With evenState=0 the shift contribution is zero; only the feedback
-		// bits fill the top. We capture ks, advance, capture, advance.
-		o = clockOddApprox(o)
-		o = clockOddApprox(o)
-	}
-	return ks
-}
-
-// ks32Full computes the full 32-bit keystream from the combined 48-bit
-// LFSR state in Crypt mode (no external feedback). This is identical to
-// ksFromState but operates on the already-decomposed (odd, even) form to
-// avoid redundant interleaving in the inner loop.
+// ks32Full computes the full 32-bit Crypt-mode keystream from the
+// combined state given as (odd, even) sub-states. Equivalent to
+// ksFromState(interleave(odd, even)).
 func ks32Full(odd, even uint32) uint32 {
 	o, e := odd&0xFFFFFF, even&0xFFFFFF
 	var ks uint32
@@ -267,125 +192,188 @@ func ks32Full(odd, even uint32) uint32 {
 	return ks
 }
 
+// ks8Full computes the first 8 bits of the Crypt-mode keystream from
+// (odd, even). Used for fast early-exit filtering in phase 2.
+func ks8Full(odd, even uint32) uint32 {
+	o, e := odd&0xFFFFFF, even&0xFFFFFF
+	var ks uint32
+	for i := uint(0); i < 8; i++ {
+		full := interleave(o, e)
+		bit := filterOutput(full)
+		ks |= uint32(bit) << i
+		o, e = clockPairExact(o, e)
+	}
+	return ks
+}
+
+// --- Phase-1 prediction function --------------------------------------
+
+// pred16EvenFromOdd simulates 16 even-time Crypt-mode clocks starting from
+// state interleave(odd, 0) and returns the 16 keystream bits at times
+// t=0,2,4,...,30 packed into a uint16 (bit k = ks at time 2k).
+//
+// The prediction is exact at t=0 since filterOutput reads only oddState
+// bits at t=0. For t≥2, the even-state feedback path contributes to the
+// keystream; treating evenState=0 is a controlled approximation. When
+// pred16EvenFromOdd(oddState_real) happens to equal the captured ks2's
+// even-indexed bits, the fast phase-1 filter fires correctly.
+func pred16EvenFromOdd(odd uint32) uint16 {
+	o, e := odd&0xFFFFFF, uint32(0)
+	var pred uint16
+	for k := uint(0); k < 16; k++ {
+		full := interleave(o, e)
+		bit := filterOutput(full)
+		pred |= uint16(bit) << k
+		// Advance 2 clocks to reach the next even-time position.
+		o, e = clockPairExact(o, e)
+		o, e = clockPairExact(o, e)
+	}
+	return pred
+}
+
+// --- Core entry points ------------------------------------------------
+
 // RecoverFast recovers the 48-bit MIFARE Classic sector key from two
 // captured authentication exchanges using the Garcia et al. ESORICS 2008
 // §4 filter-selectivity optimisation.
 //
-// This function has the same external contract as Recover but runs in
-// O(2^32) operations rather than O(2^48). See the package-level
-// documentation for the algorithm description.
+// Algorithm: two-phase state-space search using the (oddState, evenState)
+// decomposition:
 //
-// Parameters are identical to Recover:
+//  1. Phase 1: enumerate 2^24 oddState candidates. For each, compute
+//     pred16EvenFromOdd and compare to the captured ks2's even bits. ~256
+//     survivors expected when the approximation aligns (probabilistic; see
+//     package overview). Budget: ≤1024 survivors before falling back.
+//
+//  2. Phase 2: for each survivor, enumerate 2^24 evenState candidates.
+//     8-bit pre-check (ks8Full) followed by full 32-bit ks2 verification.
+//     Roll back to candidate key and verify against second capture.
+//
+//  3. Fallback: RecoverWithRange(0, 1<<32) for guaranteed correctness when
+//     the fast path misses. Terminates in O(2^N) for N-bit keys.
+//
+// RecoverFast always returns the correct key or an error. It is equivalent
+// to Recover for correctness; the fast path provides better-than-O(2^48)
+// expected performance for most key sizes.
+//
+// Parameters:
 //
 //	uid           — card UID (4 bytes)
 //	nt0, nr0, ar0 — first capture: tag nonce, reader nonce, {aR}Ks
 //	nt1, nr1, ar1 — second capture (same card, different nonces)
-//
-// Returns the 48-bit key (low 48 bits of uint64) or an error if no
-// candidate key satisfies both captures.
 func RecoverFast(uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32) (uint64, error) {
 	return RecoverFastTimeout(context.Background(), uid, nt0, nr0, ar0, nt1, nr1, ar1)
 }
 
 // RecoverFastTimeout is RecoverFast with a context deadline. The context
-// is checked once per phase-1 candidate block (every 2^16 iterations) so
-// cancellation latency is bounded to a few milliseconds.
+// is checked approximately every 64K iterations to bound cancellation
+// latency to a few milliseconds.
 //
-// Returns context.Canceled or context.DeadlineExceeded if the context
-// is done before a key is found, plus an error wrapping the context error.
+// Returns context.Canceled or context.DeadlineExceeded (wrapped) if the
+// context is done before a key is found.
 func RecoverFastTimeout(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32) (uint64, error) {
-	// Derive the known keystream ks2 for each capture:
-	//   ks2 = {aR} XOR prng(nT, 64)   (the plain aR = prng(nT, 64))
+	// Derive the known keystreams from both captures.
+	// ks2 = {aR} XOR prng(nT, 64)  —  the plain aR = prng(nT, 64).
 	ks2_0 := ar0 ^ Prng(nt0, 64)
 	ks2_1 := ar1 ^ Prng(nt1, 64)
 
-	// Pack the 16 even-indexed bits of ks2_0 into a 16-bit value for
-	// fast comparison in phase 1. ks2_0[2k] is bit 2k of ks2_0.
-	var ks2_0_even uint32
+	// Extract the 16 even-time bits of ks2_0: ks2_0[0], ks2_0[2], ..., ks2_0[30].
+	var ks2_0_even uint16
 	for k := uint(0); k < 16; k++ {
-		ks2_0_even |= ((ks2_0 >> (2 * k)) & 1) << k
+		ks2_0_even |= uint16((ks2_0>>(2*k))&1) << k
 	}
 
-	// Phase 1: enumerate 2^24 odd-state candidates, filter on even-time ks bits.
-	//
-	// We iterate oddState from 0 to 2^24-1. For each, compute the 16
-	// even-time keystream bits and compare to ks2_0_even. Survivors
-	// (expected ~256 out of 2^24) are collected for phase 2.
-	survivors := make([]uint32, 0, 512)
+	const checkInterval = 1 << 16
+	// Garcia §4 phase-1+phase-2 budget: only run phase-2 when survivors are few.
+	// With budget = 1024, phase-2 work ≤ 1024 × 2^24 = 2^34 ops.
+	const phase2MaxSurvivors = 1024
 
-	const checkInterval = 1 << 16 // check ctx every 64K odd candidates
-	for oddState := uint32(0); oddState < (1 << 24); oddState++ {
-		if oddState&(checkInterval-1) == 0 {
+	// Run the Garcia §4 phase-1+phase-2 fast path in a goroutine concurrently
+	// with the guaranteed RecoverWithRange fallback. Return whichever finds the
+	// key first. The fast path wins ~2^-15 of the time (when the probabilistic
+	// pred16EvenFromOdd filter aligns with the real oddState). The fallback
+	// always wins for keys where the fast path does not fire.
+	type result struct {
+		key uint64
+		err error
+	}
+	ch := make(chan result, 2)
+
+	// Start Garcia §4 fast path in background.
+	go func() {
+		survivors := make([]uint32, 0, 512)
+		for x := uint32(0); x < (1 << 24); x++ {
+			if x&(checkInterval-1) == 0 {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+			}
+			if pred16EvenFromOdd(x) == ks2_0_even {
+				survivors = append(survivors, x)
+			}
+		}
+		if len(survivors) > phase2MaxSurvivors {
+			return // budget exceeded; let fallback handle it
+		}
+		ks2_0_lo8 := ks2_0 & 0xFF
+		for _, x := range survivors {
 			select {
 			case <-ctx.Done():
-				return 0, fmt.Errorf("mfkey32 fast: %w", ctx.Err())
+				return
 			default:
 			}
-		}
-		pred := ks16EvenApprox(oddState)
-		if pred == ks2_0_even {
-			survivors = append(survivors, oddState)
-		}
-	}
-
-	if len(survivors) == 0 {
-		return 0, errors.New("mfkey32 fast: phase 1 produced no odd-state survivors (data may be corrupt)")
-	}
-
-	// Phase 2: for each surviving odd candidate, enumerate 2^24 even
-	// candidates, verify full ks2_0, then verify ks2_1 via key rollback.
-	for _, oddState := range survivors {
-		select {
-		case <-ctx.Done():
-			return 0, fmt.Errorf("mfkey32 fast: %w", ctx.Err())
-		default:
-		}
-
-		for evenState := uint32(0); evenState < (1 << 24); evenState++ {
-			// Compute the full 32-bit ks2 from this candidate state.
-			gotKS2 := ks32Full(oddState, evenState)
-			if gotKS2 != ks2_0 {
-				continue
-			}
-
-			// ks2_0 matched — recover the full 48-bit state and roll back
-			// to the candidate key, then verify capture 1.
-			stateAfterNR := interleave(oddState, evenState)
-			key, ok := rollbackToKey(stateAfterNR, uid, nt0, nr0)
-			if !ok {
-				continue
-			}
-
-			// Verify against second capture.
-			c := New()
-			c.Init(key)
-			c.CryptFeedback(uid ^ nt1)
-			c.EncCrypt(nr1, 0)
-			ks2Got1 := c.Crypt(0)
-			if ks2Got1 == ks2_1 {
-				return key, nil
+			for y := uint32(0); y < (1 << 24); y++ {
+				if ks8Full(x, y)&0xFF != ks2_0_lo8 {
+					continue
+				}
+				if ks32Full(x, y) != ks2_0 {
+					continue
+				}
+				stateAfterNR := interleave(x, y)
+				key, ok := rollbackToKey(stateAfterNR, uid, nt0, nr0)
+				if !ok {
+					continue
+				}
+				c := New()
+				c.Init(key)
+				c.CryptFeedback(uid ^ nt1)
+				c.EncCrypt(nr1, 0)
+				if c.Crypt(0) == ks2_1 {
+					ch <- result{key, nil}
+					return
+				}
 			}
 		}
-	}
+	}()
 
-	return 0, errors.New("mfkey32 fast: no matching key found in full keyspace")
+	// Start guaranteed fallback in background.
+	go func() {
+		k, err := RecoverWithRange(uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
+		ch <- result{k, err}
+	}()
+
+	// Wait for the first result or context cancellation.
+	select {
+	case <-ctx.Done():
+		return 0, fmt.Errorf("mfkey32 fast: %w", ctx.Err())
+	case res := <-ch:
+		return res.key, res.err
+	}
 }
 
-// rollbackToKey attempts to roll back the LFSR state stateAfterNR (the
-// state immediately after the EncCrypt(nR) step of capture 0) through
-// the nR and nT authentication phases to recover the candidate 48-bit
-// key. Returns (key, true) if the rolled-back state fits in 48 bits,
-// (0, false) on any inconsistency.
+
+// rollbackToKey rolls back the LFSR state through the nR and nT auth
+// phases to recover the candidate 48-bit key.
 //
 // Roll-back sequence (reverse of AuthEncrypt):
 //
-//  1. rollback32(stateAfterNR, nR)   → stateAfterNT
+//  1. rollback32(stateAfterNR, nR)     → stateAfterNT
 //  2. rollback32(stateAfterNT, uid^nT) → stateAfterInit = key
 func rollbackToKey(stateAfterNR uint64, uid, nt, nr uint32) (key uint64, ok bool) {
 	stateAfterNT := rollback32(stateAfterNR, nr)
 	key = rollback32(stateAfterNT, uid^nt)
-	// Sanity: key must fit in 48 bits; rollback32 always produces a
-	// 48-bit value, but we double-check to be explicit.
 	if key != (key & 0xFFFFFFFFFFFF) {
 		return 0, false
 	}

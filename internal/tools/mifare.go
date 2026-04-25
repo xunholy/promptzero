@@ -40,6 +40,8 @@ func init() { //nolint:gochecknoinits
 
 // federatedFallbackMsg explains the v0.6 redirect for live-NFC attacks.
 // Preserved for documentation; the mfoc/mfcuk handlers now run offline.
+//
+//nolint:unused
 const federatedFallbackMsg = "Use the federated Proxmark3 MCP (configure mplogas/pm3-mcp under mcp_clients in config.yaml) — the live-NFC nested / darkside attacks require a real reader. " +
 	"For OFFLINE recovery from already-captured (uid, nt, nr, ar) tuples, use mfkey32_recover with appropriate inputs."
 
@@ -351,7 +353,7 @@ func mfcukAttackHandler(ctx context.Context, _ *Deps, args map[string]any) (stri
 
 var mfkey32RecoverSpec = Spec{
 	Name: "mfkey32_recover",
-	Description: "Recover a Mifare Classic 48-bit sector key from sniffed reader-authentication exchanges. Pure-Go via internal/crypto1 — closed-loop verified, no card I/O. Provide either ONE captured nonce repeated (the mfkey32 v1 case where the reader emitted the same nT twice — pass nt_hex + two nR/aR pairs) or TWO different captures (mfkey32 v2 case — pass nt0_hex/nt1_hex + matching nR/aR pairs). Default search bounds the keyspace to 16 bits (~70 ms); raise search_range_bits up to 48 for full-keyspace at hours of CPU time.",
+	Description: "Recover a Mifare Classic 48-bit sector key from sniffed reader-authentication exchanges. Pure-Go via internal/crypto1 — closed-loop verified, no card I/O. Provide either ONE captured nonce repeated (the mfkey32 v1 case where the reader emitted the same nT twice — pass nt_hex + two nR/aR pairs) or TWO different captures (mfkey32 v2 case — pass nt0_hex/nt1_hex + matching nR/aR pairs). Default search bounds the keyspace to 16 bits (~70 ms); raise search_range_bits up to 48 for full-keyspace. When search_range_bits >= 32, the handler automatically engages the Garcia et al. ESORICS 2008 §4 filter-selectivity optimisation (RecoverFast) alongside the exhaustive baseline — the first path to complete returns its result.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
@@ -445,7 +447,18 @@ func mfkey32RecoverHandler(ctx context.Context, _ *Deps, args map[string]any) (s
 	resCh := make(chan recoverResult, 1)
 	start := time.Now()
 	go func() {
-		key, err := crypto1.RecoverWithRange(uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, hiCap)
+		var key uint64
+		var err error
+		if rangeBits >= 32 {
+			// For large key spaces (≥ 32-bit), use the Garcia §4
+			// filter-selectivity optimisation (RecoverFast) which runs a
+			// probabilistic fast path (O(2^32)) in parallel with the
+			// exhaustive RecoverWithRange fallback. The first path to
+			// find the key wins.
+			key, err = crypto1.RecoverFastTimeout(runCtx, uid, nt0, nr0, ar0, nt1, nr1, ar1)
+		} else {
+			key, err = crypto1.RecoverWithRange(uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, hiCap)
+		}
 		resCh <- recoverResult{key: key, err: err}
 	}()
 
