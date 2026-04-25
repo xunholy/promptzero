@@ -185,6 +185,13 @@ func run() error {
 	hasMarauder, marauderClose := setupMarauder(cfg, ai, rec, f.wifiEnabled)
 	defer marauderClose()
 
+	_, bruceClose := setupBruce(ctx, cfg, ai)
+	defer bruceClose()
+	_, faultierClose := setupFaultier(cfg, ai)
+	defer faultierClose()
+	_, busPirateClose := setupBusPirate(ctx, cfg, ai)
+	defer busPirateClose()
+
 	voiceEngine := setupVoice(cfg)
 
 	printCapabilitySummary(hasMarauder, voiceEngine != nil)

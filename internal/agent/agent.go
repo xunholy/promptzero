@@ -13,8 +13,11 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
+	"github.com/xunholy/promptzero/internal/bruce"
+	"github.com/xunholy/promptzero/internal/buspirate"
 	"github.com/xunholy/promptzero/internal/confidence"
 	"github.com/xunholy/promptzero/internal/config"
+	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
@@ -107,6 +110,9 @@ type Agent struct {
 	client             *anthropic.Client
 	flipper            *flipper.Flipper
 	marauder           *marauder.Marauder
+	bruce              *bruce.Client
+	faultier           *faultier.Client
+	buspirate          *buspirate.Client
 	cfg                *config.Config
 	model              string
 	history            []anthropic.MessageParam
@@ -229,6 +235,18 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 }
 
 func (a *Agent) SetMarauder(m *marauder.Marauder)        { a.marauder = m }
+
+// SetBruce attaches a Bruce ESP32 backend client. Nil disables Bruce
+// Specs (handlers short-circuit via [tools.Deps.RequireBruce]).
+func (a *Agent) SetBruce(c *bruce.Client) { a.bruce = c }
+
+// SetFaultier attaches a Faultier USB voltage-glitcher client. Nil
+// disables glitch_* Specs.
+func (a *Agent) SetFaultier(c *faultier.Client) { a.faultier = c }
+
+// SetBusPirate attaches a Bus Pirate 5 universal-bus probe client. Nil
+// disables buspirate_* Specs.
+func (a *Agent) SetBusPirate(c *buspirate.Client) { a.buspirate = c }
 func (a *Agent) SetAuditLog(l *audit.Log)                { a.auditLog = l }
 func (a *Agent) SetGenerator(g *generate.Generator)      { a.generator = g }
 func (a *Agent) SetGenLLM(p provider.Provider)           { a.genLLM = p }
@@ -914,6 +932,9 @@ func (a *Agent) deps() *toolsreg.Deps {
 	return &toolsreg.Deps{
 		Flipper:         a.flipper,
 		Marauder:        a.marauder,
+		Bruce:           a.bruce,
+		Faultier:        a.faultier,
+		BusPirate:       a.buspirate,
 		Audit:           a.auditLog,
 		Config:          a.cfg,
 		Generator:       a.generator,

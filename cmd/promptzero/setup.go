@@ -15,7 +15,10 @@ import (
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
+	"github.com/xunholy/promptzero/internal/bruce"
+	"github.com/xunholy/promptzero/internal/buspirate"
 	"github.com/xunholy/promptzero/internal/config"
+	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
@@ -733,6 +736,70 @@ func setupMarauder(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder, wifiE
 	}
 	statusOK("Marauder WiFi devboard connected")
 	return true, func() { m.Close() }
+}
+
+// setupBruce attempts to connect a Bruce ESP32 devboard when the
+// operator has configured one. Failure is non-fatal — the agent runs
+// without Bruce and bruce_* Specs return a "not connected" error.
+func setupBruce(ctx context.Context, cfg *config.Config, ai *agent.Agent) (bool, func()) {
+	if cfg.Bruce.Port == "" {
+		return false, func() {}
+	}
+	baud := cfg.Bruce.Baud
+	if baud == 0 {
+		baud = 115200
+	}
+	statusInfo(fmt.Sprintf("Connecting to Bruce on %s%s%s...", bold, cfg.Bruce.Port, reset))
+	c, err := bruce.Connect(ctx, cfg.Bruce.Port, baud)
+	if err != nil {
+		statusWarn(fmt.Sprintf("Bruce unavailable: %v", err))
+		return false, func() {}
+	}
+	ai.SetBruce(c)
+	statusOK(fmt.Sprintf("Bruce ESP32 backend %s(board: %s)%s", dim, cfg.Bruce.BoardType, reset))
+	return true, func() { _ = c.Close() }
+}
+
+// setupFaultier attempts to connect a hextreeio Faultier USB voltage-
+// glitcher. Failure is non-fatal.
+func setupFaultier(cfg *config.Config, ai *agent.Agent) (bool, func()) {
+	if cfg.Faultier.Port == "" {
+		return false, func() {}
+	}
+	baud := cfg.Faultier.Baud
+	if baud == 0 {
+		baud = 115200
+	}
+	statusInfo(fmt.Sprintf("Connecting to Faultier on %s%s%s...", bold, cfg.Faultier.Port, reset))
+	c, err := faultier.Connect(cfg.Faultier.Port, baud)
+	if err != nil {
+		statusWarn(fmt.Sprintf("Faultier unavailable: %v", err))
+		return false, func() {}
+	}
+	ai.SetFaultier(c)
+	statusOK("Faultier voltage-glitcher connected")
+	return true, func() { _ = c.Close() }
+}
+
+// setupBusPirate attempts to connect a Bus Pirate 5 universal-bus probe.
+// Failure is non-fatal.
+func setupBusPirate(ctx context.Context, cfg *config.Config, ai *agent.Agent) (bool, func()) {
+	if cfg.BusPirate.Port == "" {
+		return false, func() {}
+	}
+	baud := cfg.BusPirate.Baud
+	if baud == 0 {
+		baud = 115200
+	}
+	statusInfo(fmt.Sprintf("Connecting to Bus Pirate 5 on %s%s%s...", bold, cfg.BusPirate.Port, reset))
+	c, err := buspirate.Connect(ctx, cfg.BusPirate.Port, baud)
+	if err != nil {
+		statusWarn(fmt.Sprintf("Bus Pirate unavailable: %v", err))
+		return false, func() {}
+	}
+	ai.SetBusPirate(c)
+	statusOK("Bus Pirate 5 universal-bus probe connected")
+	return true, func() { _ = c.Close() }
 }
 
 // setupVoice constructs the Whisper-backed voice engine when the

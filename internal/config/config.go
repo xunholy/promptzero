@@ -45,6 +45,9 @@ type Config struct {
 	Model         string              `yaml:"model"`
 	Serial        SerialConfig        `yaml:"serial"`
 	Marauder      MarauderConfig      `yaml:"marauder"`
+	Bruce         BruceConfig         `yaml:"bruce,omitempty"`
+	Faultier      FaultierConfig      `yaml:"faultier,omitempty"`
+	BusPirate     BusPirateConfig     `yaml:"buspirate,omitempty"`
 	Flipper       FlipperConfig       `yaml:"flipper,omitempty"`
 	Agent         AgentConfig         `yaml:"agent,omitempty"`
 	Web           WebConfig           `yaml:"web"`
@@ -63,6 +66,29 @@ type Config struct {
 	// dependency on the mcpfed package — mcpfed.ParseClientConfigs
 	// decodes each node into its own ClientConfig type.
 	MCPClients []yaml.Node `yaml:"mcp_clients,omitempty"`
+}
+
+// BruceConfig configures the optional Bruce ESP32 backend
+// (BruceDevices/firmware — Cardputer/M5Stick/T-Display/CYD/ESP32-C5).
+// Empty Port disables the backend; the agent runs Flipper-only.
+type BruceConfig struct {
+	Port      string `yaml:"port,omitempty"`        // /dev/ttyACM1, COM4, etc.
+	Baud      int    `yaml:"baud,omitempty"`        // default 115200
+	BoardType string `yaml:"board_type,omitempty"`  // hint: cardputer | m5stick | tdisplay | cyd | c5
+}
+
+// FaultierConfig configures the optional hextreeio Faultier USB
+// voltage-glitcher.
+type FaultierConfig struct {
+	Port string `yaml:"port,omitempty"`
+	Baud int    `yaml:"baud,omitempty"`  // default 115200
+}
+
+// BusPirateConfig configures the optional Bus Pirate 5 universal-bus
+// probe (DangerousPrototypes/BusPirate5-firmware).
+type BusPirateConfig struct {
+	Port string `yaml:"port,omitempty"`
+	Baud int    `yaml:"baud,omitempty"`  // default 115200
 }
 
 // FlipperConfig holds per-operation timeout overrides for the Flipper

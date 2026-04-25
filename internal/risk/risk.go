@@ -82,6 +82,16 @@ var toolLevels = func() map[string]Level {
 		// curated asset directories. No network, no transmission, no
 		// device I/O — a directory walk + grep.
 		"ir_irdb_lookup", "evil_portal_template_pick", "badusb_payload_search",
+		// v0.6 OSS-expansion: passive automotive CAN reads (controller
+		// status + stop-sniffer); no bus writes.
+		"canbus_info", "canbus_sniff_stop",
+		// v0.6 OSS-expansion: Bruce capability read-out + Faultier
+		// status read-out; no RF or bus emission.
+		"bruce_capabilities",
+		"glitch_status",
+		// v0.6 OSS-expansion: Bus Pirate 5 read-only — voltage probe,
+		// per-pin read, mode switch (HiZ is the safe idle).
+		"buspirate_voltages", "buspirate_pin_read", "buspirate_mode",
 	)
 
 	// Captures, scans, file writes
@@ -140,6 +150,18 @@ var toolLevels = func() map[string]Level {
 		// because a hit recovers a key that enables transmission, but
 		// the lookup itself is a 1-byte-per-vendor table check.
 		"keeloq_dictionary",
+		// v0.6 OSS-expansion: CAN init + passive sniff. No bus writes
+		// (writes are gated separately as canbus_inject Critical).
+		"canbus_init", "canbus_sniff_start",
+		// v0.6 OSS-expansion: Bruce passive scans + receive-only
+		// captures. No active transmission until explicit higher-tier
+		// Specs are invoked.
+		"bruce_wifi_scan", "bruce_wifi_5g_scan", "bruce_zigbee_scan",
+		"bruce_lora_scan", "bruce_ir_receive", "bruce_nfc_read",
+		// v0.6 OSS-expansion: Bus Pirate 5 active bus operations.
+		// I2C scan + SPI dump + UART bridge are all bus reads/writes
+		// but limited to the connected target — no broader blast.
+		"buspirate_i2c_scan", "buspirate_spi_dump", "buspirate_uart_bridge",
 	)
 
 	// Active transmission, emulation, execution
@@ -173,6 +195,14 @@ var toolLevels = func() map[string]Level {
 		// recovered keys enable cloning of access credentials.
 		"mfoc_attack", "mfcuk_attack", "mfkey32_recover",
 		"iclass_loclass_recover",
+		// v0.6 OSS-expansion: Bruce active transmission Specs.
+		"bruce_ir_send",
+		// v0.6 OSS-expansion: Bus Pirate 5 pin drive — mis-set a high
+		// voltage and damage the target. Same tier as gpio_set.
+		"buspirate_pin_set",
+		// v0.6 OSS-expansion: hardnested container bridge — recovers
+		// a hardened MIFARE Classic key. Same tier as mfoc/mfcuk.
+		"mifare_hardnested_host",
 		"loader_signal",
 		"crypto_store_key",
 		"workflow_nfc_badge_pipeline",
@@ -213,6 +243,21 @@ var toolLevels = func() map[string]Level {
 		// enables open-air rolling-code replay. Same tier as
 		// subghz_bruteforce.
 		"keeloq_bruteforce",
+		// v0.6 OSS-expansion: CAN injection + replay can write to a
+		// live vehicle bus; same tier as wifi_deauth.
+		"canbus_inject", "canbus_replay",
+		// v0.6 OSS-expansion: Bruce destructive Specs — deauth, evil
+		// twin, BadUSB execution, raw CLI passthrough. Same tier as
+		// the equivalent Marauder / Flipper raw_cli Specs.
+		"bruce_wifi_deauth", "bruce_evil_twin", "bruce_badusb_run",
+		"bruce_raw_cli",
+		// v0.6 OSS-expansion: Faultier glitch Specs — arming, firing,
+		// disarming, or even just setting pulse parameters can lead
+		// to chip damage if mis-sequenced. The Faultier engineer
+		// marked all five as Critical for safety; we honour that
+		// classification here.
+		"glitch_arm", "glitch_fire", "glitch_sweep",
+		"glitch_disarm", "glitch_set_pulse",
 	)
 
 	return m

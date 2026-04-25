@@ -1,20 +1,20 @@
-// Package tools_test — unit tests for the Mifare stub Specs (v0.5, task #7).
+// mifare_test.go — covers the v0.6 mifare Specs.
 //
-// These three Specs (mfoc_attack, mfcuk_attack, mfkey32_recover) are
-// registered as STUBS in v0.5: the Handler bodies always return a
-// "deferred_v0.5.1" JSON envelope plus a descriptive error.  Full
-// algorithm implementation is scheduled for v0.5.1.
+// As of v0.6:
 //
-// Acceptance criteria verified here:
-//  1. All three stubs are registered in the pre-init registry snapshot.
-//  2. Every invocation — with or without args — returns a non-nil error.
-//  3. The returned string is valid JSON containing status="deferred_v0.5.1",
-//     the spec name, and a message that mentions v0.5.1 and the workaround.
-//  4. The error string includes the spec name and v0.5.1 so callers can
-//     diagnose the deferral without inspecting the JSON envelope.
-//  5. Each spec's Schema is valid JSON.
-//  6. Risk level is High for all three (critical-access-credential recovery).
-package tools_test
+//   • mfoc_attack and mfcuk_attack return status="live_nfc_required" with
+//     an error pointing operators at the federated pm3-mcp path. They are
+//     stubs because the live-NFC nested/darkside attacks need a real
+//     reader.
+//   • mfkey32_recover is REAL — it runs the Crypto1 LFSR rollback against
+//     the captured (uid, nt, nr, ar) tuples, and returns status="found"
+//     with the recovered 6-byte key.
+//
+// These tests use closed-loop synthetic captures: encrypt with a known
+// key via the same crypto1 primitive, then verify Recover gets the key
+// back.
+
+package tools
 
 import (
 	"context"
@@ -22,346 +22,168 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xunholy/promptzero/internal/risk"
-	"github.com/xunholy/promptzero/internal/tools"
+	"github.com/xunholy/promptzero/internal/crypto1"
 )
 
-// mifareStubSpec returns the named Mifare stub Spec from the pre-init
-// registry snapshot (immune to resetForTest() calls in spec_test.go).
-func mifareStubSpec(t *testing.T, name string) tools.Spec {
-	t.Helper()
-	for _, s := range initialSpecs {
-		if s.Name == name {
-			return s
+func TestMifare_RegistrationContract(t *testing.T) {
+	for _, name := range []string{"mfoc_attack", "mfcuk_attack", "mfkey32_recover"} {
+		s, ok := Get(name)
+		if !ok {
+			t.Errorf("%s: not registered", name)
+			continue
+		}
+		if s.Description == "" {
+			t.Errorf("%s: empty description", name)
+		}
+		if len(s.Schema) == 0 {
+			t.Errorf("%s: empty schema", name)
+		}
+		if s.Handler == nil {
+			t.Errorf("%s: nil handler", name)
 		}
 	}
-	t.Fatalf("spec %q not in pre-init registry snapshot — did mifare.go init() register it?", name)
-	return tools.Spec{}
 }
 
-// allMifareStubNames lists the three Mifare offline-cracker stub Specs.
-var allMifareStubNames = []string{"mfoc_attack", "mfcuk_attack", "mfkey32_recover"}
-
-// sampleMifareArgs provides one valid-looking args map per spec (the stubs
-// ignore all args, but providing them clarifies intent).
-var sampleMifareArgs = map[string]map[string]any{
-	"mfoc_attack": {
-		"uid_hex":       "aabbccdd",
-		"known_key_hex": "ffffffffffff",
-		"known_sector":  float64(0),
-		"key_type":      "A",
-	},
-	"mfcuk_attack": {
-		"uid_hex": "aabbccdd",
-	},
-	"mfkey32_recover": {
-		"uid_hex": "aabbccdd",
-		"nt_hex":  "11223344",
-		"nr0_hex": "55667788",
-		"ar0_hex": "99aabbcc",
-		"nr1_hex": "ddeeff00",
-		"ar1_hex": "12345678",
-	},
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_Registration — all three stubs exist in the registry.
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestMifare_Registration(t *testing.T) {
-	for _, name := range allMifareStubNames {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			if s.Handler == nil {
-				t.Errorf("spec %q has nil Handler", name)
-			}
-			if s.Description == "" {
-				t.Errorf("spec %q has empty Description", name)
-			}
-			if len(s.Schema) == 0 {
-				t.Errorf("spec %q has nil/empty Schema", name)
-			}
-		})
+func TestMifare_FederatedFallback(t *testing.T) {
+	cases := map[string]map[string]any{
+		"mfoc_attack":  {"uid_hex": "CAFEBABE", "known_key_hex": "FFFFFFFFFFFF", "known_sector": float64(0), "key_type": "A"},
+		"mfcuk_attack": {"uid_hex": "CAFEBABE"},
 	}
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_DeferralStatus — every call returns JSON with status="deferred_v0.5.1"
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestMifare_DeferralStatus(t *testing.T) {
-	for _, name := range allMifareStubNames {
-		name := name
+	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			out, err := s.Handler(context.Background(), nil, sampleMifareArgs[name])
-
-			// 1. Stub MUST return a non-nil error on every call.
-			if err == nil {
-				t.Fatalf("spec %q: expected non-nil error, got nil", name)
+			s, ok := Get(name)
+			if !ok {
+				t.Fatalf("not registered")
 			}
-
-			// 2. The string payload must be valid JSON.
+			body, err := s.Handler(context.Background(), &Deps{}, args)
+			if err == nil {
+				t.Fatalf("%s: expected error (federated fallback)", name)
+			}
+			if !strings.Contains(err.Error(), "pm3-mcp") {
+				t.Errorf("%s: error %v missing pm3-mcp redirect", name, err)
+			}
 			var m map[string]any
-			if jsonErr := json.Unmarshal([]byte(out), &m); jsonErr != nil {
-				t.Fatalf("spec %q output is not valid JSON: %v\n  raw: %s", name, jsonErr, out)
+			if jerr := json.Unmarshal([]byte(body), &m); jerr != nil {
+				t.Fatalf("%s: result is not JSON: %v\nbody=%s", name, jerr, body)
 			}
-
-			// 3. status field must be "deferred_v0.5.1".
-			status, _ := m["status"].(string)
-			if status != "deferred_v0.5.1" {
-				t.Errorf("spec %q: status = %q, want %q", name, status, "deferred_v0.5.1")
-			}
-
-			// 4. spec field must match the canonical spec name.
-			specField, _ := m["spec"].(string)
-			if specField != name {
-				t.Errorf("spec %q: JSON 'spec' = %q, want %q", name, specField, name)
-			}
-
-			// 5. message field must mention v0.5.1.
-			msg, _ := m["message"].(string)
-			if !strings.Contains(msg, "v0.5.1") {
-				t.Errorf("spec %q: message does not mention v0.5.1; got: %q", name, msg)
+			if status, _ := m["status"].(string); status != "live_nfc_required" {
+				t.Errorf("%s: status = %q, want live_nfc_required", name, status)
 			}
 		})
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_ErrorWrapping — error string includes spec name + deferral hint.
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestMifare_ErrorWrapping(t *testing.T) {
-	for _, name := range allMifareStubNames {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			_, err := s.Handler(context.Background(), nil, sampleMifareArgs[name])
-			if err == nil {
-				t.Fatalf("spec %q: expected error, got nil", name)
-			}
-
-			errMsg := err.Error()
-
-			// Error must contain the spec name so callers can route it.
-			if !strings.Contains(errMsg, name) {
-				t.Errorf("spec %q: error %q does not contain spec name", name, errMsg)
-			}
-
-			// Error must reference v0.5.1 so operators know this is a planned gap.
-			if !strings.Contains(errMsg, "v0.5.1") {
-				t.Errorf("spec %q: error %q does not contain 'v0.5.1'", name, errMsg)
-			}
-		})
+func TestMfkey32Recover_ClosedLoop(t *testing.T) {
+	if testing.Short() {
+		t.Skip("closed-loop search takes ~70 ms; skipped in -short mode")
 	}
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_DeferralMessageWorkaround — message is actionable (has workaround).
-// ─────────────────────────────────────────────────────────────────────────────
+	const (
+		key uint64 = 0x1234 // 16-bit key — Recover with default search_range_bits=16 finds it fast
+		uid uint32 = 0xCAFEBABE
+		nt0 uint32 = 0x01020304
+		nr0 uint32 = 0xDEADBEEF
+		nt1 uint32 = 0x55667788
+		nr1 uint32 = 0x12345678
+	)
 
-func TestMifare_DeferralMessageWorkaround(t *testing.T) {
-	// mfoc_attack is representative — the deferral message is shared by all three.
-	s := mifareStubSpec(t, "mfoc_attack")
-	out, _ := s.Handler(context.Background(), nil, sampleMifareArgs["mfoc_attack"])
+	// Synthesise the on-wire encrypted reader response for both captures
+	// using the same crypto1 primitive Recover is built on.
+	_, ar0 := crypto1.AuthEncrypt(key, uid, crypto1.AuthCapture{NT: nt0, NR: nr0})
+	_, ar1 := crypto1.AuthEncrypt(key, uid, crypto1.AuthCapture{NT: nt1, NR: nr1})
+
+	spec, ok := Get("mfkey32_recover")
+	if !ok {
+		t.Fatal("mfkey32_recover not registered")
+	}
+
+	args := map[string]any{
+		"uid_hex":           upperHex(uid),
+		"nt0_hex":           upperHex(nt0),
+		"nr0_hex":           upperHex(nr0),
+		"ar0_hex":           upperHex(ar0),
+		"nt1_hex":           upperHex(nt1),
+		"nr1_hex":           upperHex(nr1),
+		"ar1_hex":           upperHex(ar1),
+		"search_range_bits": float64(16),
+		"timeout_seconds":   float64(60),
+	}
+
+	body, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err != nil {
+		t.Fatalf("handler error: %v\nbody=%s", err, body)
+	}
 
 	var m map[string]any
-	if err := json.Unmarshal([]byte(out), &m); err != nil {
-		t.Fatalf("JSON parse failed: %v", err)
+	if jerr := json.Unmarshal([]byte(body), &m); jerr != nil {
+		t.Fatalf("body not JSON: %v\n%s", jerr, body)
 	}
-	msg, _ := m["message"].(string)
-
-	// The deferral message must point operators at the live-capture workaround.
-	if !strings.Contains(msg, "nfc_dump_protocol") {
-		t.Errorf("deferral message should mention 'nfc_dump_protocol'; got: %q", msg)
+	if status, _ := m["status"].(string); status != "found" {
+		t.Errorf("status = %q, want found; body=%s", status, body)
 	}
-	if !strings.Contains(msg, "loader_mfkey") {
-		t.Errorf("deferral message should mention 'loader_mfkey'; got: %q", msg)
+	if matched, _ := m["matched"].(bool); !matched {
+		t.Errorf("matched = false; body=%s", body)
 	}
-	// Message should describe the v0.5.1 intent so operators understand the roadmap.
-	if !strings.Contains(msg, "v0.5.1") {
-		t.Errorf("deferral message should reference 'v0.5.1'; got: %q", msg)
+	wantKey := upperHex48(key)
+	if got, _ := m["key"].(string); got != wantKey {
+		t.Errorf("key = %q, want %q (full body=%s)", got, wantKey, body)
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_NoArgs — stubs return deferral JSON even when required args are absent.
-// ─────────────────────────────────────────────────────────────────────────────
+func TestMfkey32Recover_MissingNonces(t *testing.T) {
+	spec, _ := Get("mfkey32_recover")
 
-// TestMifare_NoArgs ensures the deferred handler does not crash or return a
-// different error shape when called with an empty arg map (missing required
-// fields).  The real validation guard is in the LLM-agent layer, not the stub.
-func TestMifare_NoArgs(t *testing.T) {
-	for _, name := range allMifareStubNames {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			out, err := s.Handler(context.Background(), nil, map[string]any{})
-
-			if err == nil {
-				t.Fatalf("spec %q (no args): expected error, got nil", name)
-			}
-
-			var m map[string]any
-			if jsonErr := json.Unmarshal([]byte(out), &m); jsonErr != nil {
-				t.Fatalf("spec %q (no args): output not valid JSON: %v\n  raw: %s", name, jsonErr, out)
-			}
-
-			status, _ := m["status"].(string)
-			if status != "deferred_v0.5.1" {
-				t.Errorf("spec %q (no args): status = %q, want deferred_v0.5.1", name, status)
-			}
-		})
+	// Provide nr0/ar0/nr1/ar1 but no nt — expect a clear error.
+	args := map[string]any{
+		"uid_hex": "CAFEBABE",
+		"nr0_hex": "DEADBEEF",
+		"ar0_hex": "11223344",
+		"nr1_hex": "55667788",
+		"ar1_hex": "AABBCCDD",
+	}
+	_, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err == nil {
+		t.Fatalf("expected error for missing nt")
+	}
+	if !strings.Contains(err.Error(), "nt") {
+		t.Errorf("error missing 'nt': %v", err)
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_NilArgs — stubs tolerate a nil args map without panicking.
-// ─────────────────────────────────────────────────────────────────────────────
+func TestMfkey32Recover_BadHex(t *testing.T) {
+	spec, _ := Get("mfkey32_recover")
 
-func TestMifare_NilArgs(t *testing.T) {
-	for _, name := range allMifareStubNames {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			out, err := s.Handler(context.Background(), nil, nil)
-			if err == nil {
-				t.Fatalf("spec %q (nil args): expected error, got nil", name)
-			}
-			var m map[string]any
-			if jsonErr := json.Unmarshal([]byte(out), &m); jsonErr != nil {
-				t.Fatalf("spec %q (nil args): output not valid JSON: %v\n  raw: %s", name, jsonErr, out)
-			}
-			if status, _ := m["status"].(string); status != "deferred_v0.5.1" {
-				t.Errorf("spec %q (nil args): status = %q, want deferred_v0.5.1", name, status)
-			}
-		})
+	args := map[string]any{
+		"uid_hex": "not-hex",
+		"nt_hex":  "01020304",
+		"nr0_hex": "DEADBEEF",
+		"ar0_hex": "11223344",
+		"nr1_hex": "55667788",
+		"ar1_hex": "AABBCCDD",
+	}
+	_, err := spec.Handler(context.Background(), &Deps{}, args)
+	if err == nil {
+		t.Fatalf("expected error for malformed hex")
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_SchemaValid — each stub's Schema is valid JSON with "type":"object".
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestMifare_SchemaValid(t *testing.T) {
-	for _, name := range allMifareStubNames {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			var schema map[string]json.RawMessage
-			if err := json.Unmarshal(s.Schema, &schema); err != nil {
-				t.Fatalf("spec %q Schema is not valid JSON: %v", name, err)
-			}
-			typeRaw, ok := schema["type"]
-			if !ok {
-				t.Errorf("spec %q Schema missing 'type' field", name)
-			} else {
-				var typeVal string
-				if err := json.Unmarshal(typeRaw, &typeVal); err != nil || typeVal != "object" {
-					t.Errorf("spec %q Schema type = %q, want 'object'", name, typeVal)
-				}
-			}
-			if _, ok := schema["properties"]; !ok {
-				t.Errorf("spec %q Schema missing 'properties'", name)
-			}
-		})
+// upperHex formats a uint32 as 8-char uppercase hex (no 0x prefix).
+func upperHex(v uint32) string {
+	const hexDigits = "0123456789ABCDEF"
+	out := make([]byte, 8)
+	for i := 0; i < 8; i++ {
+		out[7-i] = hexDigits[(v>>uint(i*4))&0xF]
 	}
+	return string(out)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_RiskLevel — all three stubs carry risk.High.
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestMifare_RiskLevel(t *testing.T) {
-	for _, name := range allMifareStubNames {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			if s.Risk != risk.High {
-				t.Errorf("spec %q Risk = %v, want High", name, s.Risk)
-			}
-			// Also verify risk.Classify agrees.
-			if got := risk.Classify(name); got != risk.High {
-				t.Errorf("risk.Classify(%q) = %v, want High", name, got)
-			}
-		})
+// upperHex48 formats a uint64 as 12-char uppercase hex (low 48 bits).
+func upperHex48(v uint64) string {
+	const hexDigits = "0123456789ABCDEF"
+	out := make([]byte, 12)
+	for i := 0; i < 12; i++ {
+		out[11-i] = hexDigits[(v>>uint(i*4))&0xF]
 	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_OutputJSONFields — all required keys present in the deferral JSON.
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestMifare_OutputJSONFields(t *testing.T) {
-	requiredKeys := []string{"status", "spec", "message"}
-
-	for _, name := range allMifareStubNames {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			out, _ := s.Handler(context.Background(), nil, sampleMifareArgs[name])
-
-			var m map[string]any
-			if err := json.Unmarshal([]byte(out), &m); err != nil {
-				t.Fatalf("spec %q: JSON unmarshal failed: %v\n  raw: %s", name, err, out)
-			}
-			for _, key := range requiredKeys {
-				if _, ok := m[key]; !ok {
-					t.Errorf("spec %q: deferral JSON missing key %q", name, key)
-				}
-			}
-		})
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_RequiredFieldsDeclared — spec.Required slice matches Schema.
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestMifare_RequiredFieldsDeclared(t *testing.T) {
-	cases := []struct {
-		name     string
-		required []string
-	}{
-		{"mfoc_attack", []string{"uid_hex", "known_key_hex", "known_sector", "key_type"}},
-		{"mfcuk_attack", []string{"uid_hex"}},
-		{"mfkey32_recover", []string{"uid_hex", "nt_hex", "nr0_hex", "ar0_hex", "nr1_hex", "ar1_hex"}},
-	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			s := mifareStubSpec(t, tc.name)
-			if len(s.Required) != len(tc.required) {
-				t.Errorf("spec %q: Required len = %d, want %d; got %v",
-					tc.name, len(s.Required), len(tc.required), s.Required)
-			}
-			reqSet := make(map[string]bool, len(s.Required))
-			for _, r := range s.Required {
-				reqSet[r] = true
-			}
-			for _, want := range tc.required {
-				if !reqSet[want] {
-					t.Errorf("spec %q: Required missing %q; got %v", tc.name, want, s.Required)
-				}
-			}
-		})
-	}
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TestMifare_GroupFlipperNFC — all three stubs belong to the NFC group.
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestMifare_GroupFlipperNFC(t *testing.T) {
-	for _, name := range allMifareStubNames {
-		name := name
-		t.Run(name, func(t *testing.T) {
-			s := mifareStubSpec(t, name)
-			if s.Group != tools.GroupFlipperNFC {
-				t.Errorf("spec %q Group = %v, want GroupFlipperNFC", name, s.Group)
-			}
-		})
-	}
+	return string(out)
 }

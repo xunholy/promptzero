@@ -61,13 +61,21 @@ func TestRegistrySize(t *testing.T) {
 	//   docs/refactor/mifare-algorithms.md is the v0.5 deliverable)
 	// v0.5 task #8 (loclass): +1 spec (iclass_loclass_recover) — sub-primitives
 	//   functional, end-to-end deferred to v0.5.1 (CSN-selection bug)
-	// v0.6 OSS-expansion: +10 specs (no aliases):
+	// v0.6 OSS-expansion: +41 specs (no aliases):
 	//   urh_decode_sub, firmware_extract, fap_build (container bridges)
 	//   keeloq_decrypt, keeloq_dictionary, keeloq_bruteforce (sub-GHz crackers)
 	//   defense_classify_advertisement (Wall-of-Flippers stateless classifier)
 	//   ir_irdb_lookup, evil_portal_template_pick, badusb_payload_search
 	//      (operator-curated asset-corpus search)
-	const expected = 198
+	//   canbus_init/sniff_start/sniff_stop/inject/replay/info (6, MCP2515 .fap)
+	//   glitch_arm/fire/set_pulse/sweep/disarm/status (6, Faultier glitcher)
+	//   bruce_capabilities/wifi_scan/wifi_5g_scan/wifi_deauth/evil_twin/
+	//      zigbee_scan/lora_scan/ir_send/ir_receive/badusb_run/nfc_read/raw_cli
+	//      (12, Bruce ESP32 backend)
+	//   buspirate_mode/i2c_scan/spi_dump/uart_bridge/voltages/pin_set/pin_read
+	//      (7, Bus Pirate 5 universal-bus probe)
+	//   mifare_hardnested_host (1, container bridge to nfc-tools/mfoc-hardnested)
+	const expected = 230
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
