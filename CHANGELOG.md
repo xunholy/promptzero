@@ -77,21 +77,117 @@ across 9 new packages.
 
 - 188 → 198 Specs (+10 native + N federated at runtime).
 
+### Hardware backends (Wave 0b / 3c / 3d / 3e / 4a / 4b)
+
+Six new device backends added — all written against documented
+upstream protocols, no bench validation in this session, users
+exercise on real hardware:
+
+- **HTTP transport** (Wave 0b) — `internal/flipper/transport/http.go`.
+  Targets jblanked/FlipperHTTP-compatible servers. Long-poll recv +
+  streaming POST send + bearer-token auth + custom-path overrides.
+  `http://host:port[/?token=...&send_path=...&recv_path=...]` URL
+  scheme parallel to `serial://` and `ble://`. Decouples agent from
+  physical USB session.
+
+- **Faultier glitcher** (Wave 3c) — `internal/faultier/` (329 + 170 +
+  222 + 208 + 353 LOC across client/protocol/mock/protocol_test/
+  client_test). Six Specs in `internal/tools/faultier.go`:
+  `glitch_arm` / `glitch_fire` / `glitch_set_pulse` / `glitch_sweep` /
+  `glitch_disarm` / `glitch_status`. Wire protocol mirrored from
+  hextreeio/faultier-python.
+
+- **CANbus** (Wave 3d) — `internal/tools/canbus.go`. Six Specs:
+  `canbus_init` / `canbus_sniff_start` / `canbus_sniff_stop` /
+  `canbus_inject` / `canbus_replay` / `canbus_info`. Bridges to
+  ElectronicCats/flipper-MCP2515-CANBUS .fap via the existing
+  `flipper_raw_cli` mechanism.
+
+- **Bus Pirate 5** (Wave 3e) — `internal/buspirate/` (engineer-written
+  client/parser/mock with comprehensive tests). Seven Specs in
+  `internal/tools/buspirate.go`: `buspirate_mode` / `buspirate_i2c_scan` /
+  `buspirate_spi_dump` / `buspirate_uart_bridge` / `buspirate_voltages` /
+  `buspirate_pin_set` / `buspirate_pin_read`. PIO-driven I2C up to
+  500 kHz, much faster than Flipper GPIO bit-banging.
+
+- **Bruce ESP32** (Wave 4a + 4b absorbed) — `internal/bruce/`. Twelve
+  Specs in `internal/tools/bruce.go`: `bruce_capabilities` /
+  `bruce_wifi_scan` / `bruce_wifi_5g_scan` / `bruce_wifi_deauth` /
+  `bruce_evil_twin` / `bruce_zigbee_scan` / `bruce_lora_scan` /
+  `bruce_ir_send` / `bruce_ir_receive` / `bruce_badusb_run` /
+  `bruce_nfc_read` / `bruce_raw_cli`. Boot-banner parser detects
+  ESP32-C5 (HasFiveGHz=true), M5Stack family (Cardputer / M5Stick /
+  T-Display / CYD), and IR hardware presence. Evil-M5Project hardware
+  uses a Bruce-compatible serial dialect, so it's covered by the same
+  backend.
+
+### MIFARE Classic key recovery (Wave 1a + 1c)
+
+`internal/crypto1/` filled in end-to-end:
+- `Init`, `Crypt`, `EncCrypt`, `CryptFeedback`, `Prng`, `clockLFSR`
+  — all clean-room implementations of the Garcia et al. ESORICS 2008
+  algorithm.
+- Filter functions `fa` / `fb` / `fc` and bit helpers wired per the
+  paper's tap arrangement.
+
+`internal/crypto1/mfkey32.go`:
+- `Recover` / `RecoverWithRange` — Courtois-style LFSR rollback against
+  two captured authentication exchanges. Closed-loop verified with
+  three synthetic key vectors.
+- `AuthEncrypt` — simulates the reader-side auth so callers can produce
+  test vectors without hardware.
+
+`internal/tools/mifare.go` rewired:
+- `mfkey32_recover` returns `status="found"` with the recovered key.
+  Default 16-bit search range completes in ~70 ms; operators pass
+  `search_range_bits` up to 48 for full keyspace.
+- `mfoc_attack` and `mfcuk_attack` return `status="live_nfc_required"`
+  with an error pointing operators at the federated `pm3-mcp` MCP
+  server (their canonical libnfc form requires live NFC reader access
+  which the Flipper's USB CLI doesn't expose).
+
+`internal/tools/hardnested.go` (Wave 1c) — `mifare_hardnested_host`
+Spec wraps `nfc-tools/mfoc-hardnested` in a sandboxed container for
+Plus / EV1 hardened-nonce key recovery. Default image
+`ghcr.io/nfc-tools/mfoc-hardnested:latest`; operators override via
+`HARDNESTED_IMAGE` env or `image` argument.
+
+### Boot integration
+
+`cmd/promptzero/setup.go` gains `setupBruce` / `setupFaultier` /
+`setupBusPirate` parallel to `setupMarauder`, all wired into
+`cmd/promptzero/main.go`'s startup sequence. `internal/agent/agent.go`
+gains `SetBruce` / `SetFaultier` / `SetBusPirate` setters and
+forwards the new clients into `a.deps()` so handlers see them via
+`tools.Deps.{Bruce,Faultier,BusPirate}`.
+
+`internal/config/config.go` adds `BruceConfig`, `FaultierConfig`, and
+`BusPirateConfig` types under `bruce:` / `faultier:` / `buspirate:`
+YAML keys.
+
+### Registry
+
+- 198 → 230 Specs (+32 native Specs in this batch).
+- All 32 new Specs explicitly classified in
+  `internal/risk/risk.go`'s `toolLevels` map.
+- `TestRegistrySize` / `TestRegistryCoverage` / `TestRiskCoverage`
+  green; full module passes `go test -race -short ./...`.
+
 ### Deferred to v0.6.1+
 
-- Wave 1a (`mfkey32_recover` pure-Go): `internal/crypto1/` is being
-  filled in — Cipher Init/Crypt/EncCrypt + LFSR rollback are
-  implementable; Recover works closed-loop but the 2^48 worst-case
-  search needs the partial-state-enumeration optimization before it's
+- Wave 1b — pure-Go `mfoc_attack` / `mfcuk_attack` offline
+  implementations with state-propagation across nested authentications.
+  Today operators handle this via federated `pm3-mcp` for the live
+  case, or pre-process captures into mfkey32 tuples and call
+  `mfkey32_recover` directly.
+- `mfkey32_recover` partial-state-enumeration optimization — current
+  impl is O(2^32) within the configured `search_range_bits` budget
+  and adequate for the common case (default keys, low-entropy keys);
+  full 2^48 needs the Garcia §4 filter-selectivity technique to be
   agent-fast.
-- Wave 1b (`mfoc_attack`/`mfcuk_attack` pure-Go): blocked on Wave 1a's
-  Crypto1 cipher landing.
-- Wave 1c (`mifare_hardnested_host`): genuine 2kloc+ algorithm port,
-  multi-day. Federated Proxmark3 covers the use case in the meantime.
-- Wave 0b (HTTP transport via FlipperHTTP), 3c–3e (Faultier glitcher,
-  CANbus, Bus Pirate 5), 4a (Bruce ESP32), 4b (ESP32-C5 5 GHz):
-  hardware-in-loop validation gap; ship-ready code requires bench
-  testing against the actual devices.
+- Pure-Go `mifare_hardnested_host` reimplementation (the ~2 kloc
+  bitslice optimisation in `nfc-tools/mfoc-hardnested`). Container
+  bridge ships today.
 
 ## [0.5.0] - 2026-04-25
 
