@@ -36,3 +36,6 @@ Thumbs.db
 
 # Claude Code teammate state
 .claude/
+
+# Flipper protobuf fetch cache (task proto:fetch, if used)
+.proto-cache/

@@ -548,8 +548,8 @@ firmware_build_date           : 27-02-2025
 firmware_target               : 7
 firmware_api_major            : 82
 firmware_api_minor            : 3
-firmware_origin_fork          : 
-firmware_origin_git           : 
+firmware_origin_fork          :
+firmware_origin_git           :
 radio_alive                   : 1
 radio_mode                    : 0
 radio_stack_major             : 1
@@ -590,7 +590,7 @@ firmware_version              : 1.0.0
 firmware_build_date           : 15-03-2026
 firmware_api_major            : 85
 firmware_api_minor            : 0
-firmware_origin_fork          : 
+firmware_origin_fork          :
 radio_ble_mac                 : 802b50deadc0
 ```
 
@@ -614,7 +614,7 @@ firmware_version              : dev
 firmware_build_date           : 20-04-2026
 firmware_api_major            : 85
 firmware_api_minor            : 2
-firmware_origin_fork          : 
+firmware_origin_fork          :
 ```
 
 Expected: `FirmwareBand = "stock/dev"`, `SubGHzNeedsDev = true`.

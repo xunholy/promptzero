@@ -524,6 +524,7 @@ func (s *Server) handleDebug(w http.ResponseWriter, r *http.Request) {
 			"flipper_connected":  s.flipperOn.Load(),
 			"marauder_connected": s.marauderOn.Load(),
 			"active_connections": activeConns,
+			"mirror_active":      s.mirrorActive.Load(),
 		},
 	})
 }
@@ -547,6 +548,9 @@ const deviceCacheTTL = 5 * time.Second
 func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 	if s.flipper == nil {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
+		return
+	}
+	if s.refuseIfMirrorActive(w) {
 		return
 	}
 

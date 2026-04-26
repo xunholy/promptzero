@@ -1,0 +1,10 @@
+https://github.com/flipperdevices/flipperzero-protobuf @ 1c84fa48919cbb71d1cc65236fc0ee36740e24c6
+
+Licensing note: the upstream repository has no LICENSE file and no SPDX
+headers in the .proto files. The license status is unspecified.
+
+Per the plan: the .proto files are cached here for codegen reference only
+(task proto:check / task proto:gen). The generated .pb.go files are committed
+as a derivative work owned by this project. The proto sources are NOT
+redistributed as a library. If Flipper Device GmbH publishes a license, update
+this note and copy the LICENSE file here.

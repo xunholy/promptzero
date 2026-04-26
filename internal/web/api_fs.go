@@ -231,6 +231,9 @@ func (s *Server) handleFSList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
 		return
 	}
+	if s.refuseIfMirrorActive(w) {
+		return
+	}
 	p, reason := validateFSPath(r.URL.Query().Get("path"))
 	if reason != "" {
 		writeError(w, http.StatusBadRequest, reason)
@@ -269,6 +272,9 @@ func (s *Server) handleFSList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFSRead(w http.ResponseWriter, r *http.Request) {
 	if s.flipper == nil {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
+		return
+	}
+	if s.refuseIfMirrorActive(w) {
 		return
 	}
 	p, reason := validateFSPath(r.URL.Query().Get("path"))
@@ -338,6 +344,9 @@ func (s *Server) handleFSStat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
 		return
 	}
+	if s.refuseIfMirrorActive(w) {
+		return
+	}
 	p, reason := validateFSPath(r.URL.Query().Get("path"))
 	if reason != "" {
 		writeError(w, http.StatusBadRequest, reason)
@@ -377,6 +386,9 @@ func (s *Server) handleFSStat(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFSUpload(w http.ResponseWriter, r *http.Request) {
 	if s.flipper == nil {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
+		return
+	}
+	if s.refuseIfMirrorActive(w) {
 		return
 	}
 
@@ -459,6 +471,9 @@ func (s *Server) handleFSDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
 		return
 	}
+	if s.refuseIfMirrorActive(w) {
+		return
+	}
 	var body struct {
 		Path string `json:"path"`
 	}
@@ -492,6 +507,9 @@ func (s *Server) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
 		return
 	}
+	if s.refuseIfMirrorActive(w) {
+		return
+	}
 	var body struct {
 		Path string `json:"path"`
 	}
@@ -523,6 +541,9 @@ func (s *Server) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFSRename(w http.ResponseWriter, r *http.Request) {
 	if s.flipper == nil {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
+		return
+	}
+	if s.refuseIfMirrorActive(w) {
 		return
 	}
 	var body struct {

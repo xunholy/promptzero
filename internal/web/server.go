@@ -49,8 +49,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/obs"
@@ -126,6 +126,21 @@ type Server struct {
 	costs       *cost.Tracker
 	rulesEngine *rules.Engine
 	flipper     *flipper.Flipper
+	// flipperRPC, when non-nil, is used for RPC screen-stream acquisition.
+	// Set automatically by SetFlipper when the concrete type satisfies
+	// flipperRPCProvider; overridable in tests via SetFlipperRPC.
+	flipperRPC flipperRPCProvider
+
+	// screenMu guards screenHolder, screenCancel, screenRelease.
+	screenMu      sync.Mutex
+	screenHolder  *sessionConn
+	screenCancel  context.CancelFunc
+	screenRelease func()
+	// mirrorActive is set before EnterRPC and cleared after release.
+	// Fast-path guard for fs / input / agent / device handlers.
+	mirrorActive atomic.Bool
+	// mirrorLastSeen is the unix-nano timestamp of the last keepalive from the holder.
+	mirrorLastSeen atomic.Int64
 
 	// startedAt records the time NewServer returned; /api/debug computes
 	// uptime against it rather than os.StartTime so the number matches the
@@ -195,9 +210,10 @@ type Server struct {
 }
 
 type sessionConn struct {
-	id  string
-	ws  *websocket.Conn
-	out chan []byte
+	id     string
+	ws     *websocket.Conn
+	out    chan []byte // text frames (JSON)
+	outBin chan []byte // binary frames (screen pixels)
 }
 
 // uiContext records the latest navigation state the browser reported.
@@ -288,7 +304,30 @@ func (s *Server) SetFlipperConnected(v bool) { s.flipperOn.Store(v) }
 // /api/device can run device_info + power_info and surface the full
 // Momentum-level profile to the web UI. Safe to pass nil — /api/device
 // returns 503 until this is set.
-func (s *Server) SetFlipper(f *flipper.Flipper) { s.flipper = f }
+func (s *Server) SetFlipper(f *flipper.Flipper) {
+	s.flipper = f
+	if f == nil {
+		s.flipperRPC = nil
+		return
+	}
+	s.flipperRPC = &flipperRPCAdapter{f: f}
+}
+
+// flipperRPCAdapter bridges *flipper.Flipper to flipperRPCProvider. The
+// underlying EnterRPC returns *rpc.Client (concrete); the interface wants
+// screenClient. *rpc.Client satisfies screenClient, so the conversion is
+// automatic in the return statement.
+type flipperRPCAdapter struct{ f *flipper.Flipper }
+
+func (a *flipperRPCAdapter) EnterRPC(ctx context.Context) (screenClient, func(), error) {
+	return a.f.EnterRPC(ctx)
+}
+
+// SetFlipperRPC overrides the RPC provider used for screen-stream acquisition.
+// Call after SetFlipper when the concrete *flipper.Flipper does not yet
+// implement EnterRPC (useful in tests and during the parallel-development
+// window before the rpc package lands).
+func (s *Server) SetFlipperRPC(p flipperRPCProvider) { s.flipperRPC = p }
 
 // SetAuditLog wires the audit log so destructive FS and input-send operations
 // are recorded. Safe to pass nil — operations are skipped silently without one.
@@ -654,9 +693,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ws.SetReadLimit(10 * 1024 * 1024)
 
 	c := &sessionConn{
-		id:  newID(),
-		ws:  ws,
-		out: make(chan []byte, outboundQueue),
+		id:     newID(),
+		ws:     ws,
+		out:    make(chan []byte, outboundQueue),
+		outBin: make(chan []byte, outboundQueue),
 	}
 
 	s.mu.Lock()
@@ -676,6 +716,14 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		delete(s.conns, c)
 		s.mu.Unlock()
+		// If this connection held the screen mirror, release it so other
+		// sessions can acquire and the Flipper is not left in RPC mode.
+		s.screenMu.Lock()
+		isHolder := s.screenHolder == c
+		s.screenMu.Unlock()
+		if isHolder {
+			s.releaseScreen("holder_disconnect")
+		}
 		wg.Wait()
 	}()
 
@@ -716,6 +764,12 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			s.cancelTurn(c, msg.TurnID)
 		case "ui_context":
 			s.setUIContextFromWS(msg.View, msg.FSPath)
+		case "screen_acquire":
+			go s.handleScreenAcquire(c)
+		case "screen_release":
+			go s.handleScreenRelease(c)
+		case "screen_keepalive":
+			s.handleScreenKeepalive(c)
 		}
 	}
 }
@@ -728,6 +782,13 @@ func (s *Server) runWriter(ctx context.Context, c *sessionConn) {
 		case data := <-c.out:
 			wctx, cancel := context.WithTimeout(context.Background(), s.writeTimeout)
 			err := c.ws.Write(wctx, websocket.MessageText, data)
+			cancel()
+			if err != nil {
+				return
+			}
+		case data := <-c.outBin:
+			wctx, cancel := context.WithTimeout(context.Background(), s.writeTimeout)
+			err := c.ws.Write(wctx, websocket.MessageBinary, data)
 			cancel()
 			if err != nil {
 				return
@@ -794,6 +855,13 @@ func (s *Server) cancelTurn(c *sessionConn, turnID string) {
 }
 
 func (s *Server) handleText(ctx context.Context, c *sessionConn, text string) {
+	if s.mirrorActive.Load() {
+		s.sendTo(c, map[string]any{
+			"type":    "error",
+			"content": "Flipper screen is being mirrored. Stop the mirror to send a chat command.",
+		})
+		return
+	}
 	select {
 	case s.requestQueue <- struct{}{}:
 		defer func() { <-s.requestQueue }()
@@ -840,6 +908,13 @@ func (s *Server) handleText(ctx context.Context, c *sessionConn, text string) {
 }
 
 func (s *Server) handleAudio(ctx context.Context, c *sessionConn, audioBase64 string) {
+	if s.mirrorActive.Load() {
+		s.sendTo(c, map[string]any{
+			"type":    "error",
+			"content": "Flipper screen is being mirrored. Stop the mirror to send a chat command.",
+		})
+		return
+	}
 	select {
 	case s.requestQueue <- struct{}{}:
 		defer func() { <-s.requestQueue }()

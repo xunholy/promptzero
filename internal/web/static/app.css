@@ -568,3 +568,125 @@ body::before {
   .fs-preview-content { font-size: 11px; }
   .fs-entry .label { font-size: 13px; }
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   DEVICE SCREEN — live LCD mirror
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Panel that holds canvas + status + buttons */
+.screen-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+/* The canvas — CSS upscales the 128×64 native pixels to 4× */
+.screen-canvas {
+  width: 512px;
+  height: 256px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: var(--lcd-bg);
+  border: 4px solid var(--lcd-pixel);
+  box-shadow: 0 0 24px var(--orange-lo), 6px 6px 0 var(--lcd-pixel-soft);
+}
+.screen-canvas.offline {
+  opacity: 0.35;
+  filter: grayscale(0.4);
+}
+
+/* Status label below canvas */
+.screen-status {
+  font-family: var(--pixel);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--lcd-pixel-soft);
+}
+.screen-status[data-state="live"]    { color: var(--led-green); }
+.screen-status[data-state="opening"] { color: var(--orange-hi); }
+.screen-status[data-state="error"]   { color: var(--led-red); }
+
+/* Row of action buttons inside the panel */
+.screen-btn-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Instructional hint text */
+.screen-hint {
+  font-family: var(--pixel);
+  font-size: 7px;
+  letter-spacing: 1px;
+  color: var(--lcd-pixel-soft);
+  text-align: center;
+  margin: 0;
+}
+
+/* Sticky mirroring banner — mounts inside .lcd-inner, top */
+.screen-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 6px 12px;
+  background: var(--orange-lo);
+  color: var(--lcd-pixel);
+  font-family: var(--pixel);
+  font-size: 11px;
+  letter-spacing: 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -18px -22px 10px;   /* bleed to lcd-inner padding edges */
+}
+.screen-banner button {
+  font-family: var(--pixel);
+  font-size: 9px;
+  background: var(--lcd-pixel);
+  color: var(--lcd-bg);
+  border: none;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+/* Inline confirmation modal — re-uses .fs-modal frame */
+.screen-confirm-modal h3 {
+  color: var(--lcd-pixel);
+}
+.screen-confirm-modal p {
+  color: var(--lcd-pixel);
+}
+
+/* Toast notification */
+.pz-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9000;
+  background: var(--lcd-pixel);
+  color: var(--lcd-bg);
+  font-family: var(--pixel);
+  font-size: 8px;
+  letter-spacing: 2px;
+  padding: 8px 16px;
+  box-shadow: 4px 4px 0 var(--lcd-pixel-soft);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+  max-width: 90vw;
+  text-align: center;
+}
+.pz-toast.pz-toast-hide { opacity: 0; }
+
+@media (max-width: 640px) {
+  .screen-canvas { width: 384px; height: 192px; }
+  .screen-banner {
+    font-size: 8px;
+    margin: -12px -14px 8px;
+    padding: 5px 10px;
+  }
+}

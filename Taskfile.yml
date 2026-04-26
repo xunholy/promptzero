@@ -111,3 +111,34 @@ tasks:
     desc: Remove build artefacts.
     cmds:
       - rm -rf bin/
+
+  proto:gen:
+    desc: Regenerate *.pb.go from vendored .proto files in internal/flipper/rpc/proto.
+    cmds:
+      - >-
+        protoc
+        --go_out=internal/flipper/rpc/pb
+        --go_opt=paths=source_relative
+        --go_opt=Mflipper.proto=github.com/xunholy/promptzero/internal/flipper/rpc/pb
+        --go_opt=Msystem.proto=github.com/xunholy/promptzero/internal/flipper/rpc/pb
+        --go_opt=Mgui.proto=github.com/xunholy/promptzero/internal/flipper/rpc/pb
+        --go_opt=Mstorage.proto=github.com/xunholy/promptzero/internal/flipper/rpc/pb
+        --go_opt=Mapplication.proto=github.com/xunholy/promptzero/internal/flipper/rpc/pb
+        --go_opt=Mgpio.proto=github.com/xunholy/promptzero/internal/flipper/rpc/pb
+        --go_opt=Mproperty.proto=github.com/xunholy/promptzero/internal/flipper/rpc/pb
+        --go_opt=Mdesktop.proto=github.com/xunholy/promptzero/internal/flipper/rpc/pb
+        -I internal/flipper/rpc/proto
+        internal/flipper/rpc/proto/flipper.proto
+        internal/flipper/rpc/proto/system.proto
+        internal/flipper/rpc/proto/gui.proto
+        internal/flipper/rpc/proto/storage.proto
+        internal/flipper/rpc/proto/application.proto
+        internal/flipper/rpc/proto/gpio.proto
+        internal/flipper/rpc/proto/property.proto
+        internal/flipper/rpc/proto/desktop.proto
+
+  proto:check:
+    desc: Verify the committed *.pb.go files match the .proto sources.
+    cmds:
+      - task: proto:gen
+      - git diff --exit-code internal/flipper/rpc/pb/ || (echo "pb files out of date — run task proto:gen and commit" && exit 1)

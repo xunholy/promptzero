@@ -24,6 +24,9 @@ func (s *Server) handleInputSend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "flipper not connected")
 		return
 	}
+	if s.refuseIfMirrorActive(w) {
+		return
+	}
 	var body struct {
 		Button    string `json:"button"`
 		EventType string `json:"event_type"`

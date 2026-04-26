@@ -178,6 +178,22 @@
     try { return sessionStorage.getItem('promptzero_dpad_mode') || 'scrollback'; } catch (_) { return 'scrollback'; }
   }());
 
+  // Screen mirror constants
+  var SCREEN_WIDTH = 128, SCREEN_HEIGHT = 64, SCREEN_FRAME_LEN = 1024;
+  var SCREEN_KEEPALIVE_MS = 10000;
+
+  // Screen mirror state
+  var _screenState = { active: false, holderId: '', isHolder: false };
+  var _screenCanvas = null;
+  var _screenStatus = null;
+  var _screenStartBtn = null;
+  var _screenStopBtn = null;
+  var _screenKeepaliveTimer = null;
+  var _screenRenderPaused = false;
+  var _screenConfirmDismissed = (function () {
+    try { return sessionStorage.getItem('promptzero_screen_confirm_dismissed') === '1'; } catch (_) { return false; }
+  }());
+
   /* =========================================================================
      DOM helpers
   ========================================================================= */
@@ -447,6 +463,11 @@
     beep(660, 0.05);
     setActiveRailItem(route);
 
+    // Auto-release mirror if navigating away from device screen while holding.
+    if (_screenState.isHolder && _currentScreen === 'device' && route !== 'device') {
+      releaseScreen();
+    }
+
     // Subsystem rail items show a category landing screen with tools/attacks
     if (CATEGORY_TOOLS[route]) {
       showScreen('category-' + route);
@@ -457,6 +478,7 @@
 
     switch (route) {
       case 'agent':    showAgentScreen();   break;
+      case 'device':   showScreen('device');   setCrumbs('DEVICE', 'MIRROR');    loadDeviceScreen();   break;
       case 'files':    showScreen('files');    setCrumbs('FILES', 'BROWSE');    loadFilesScreen();    break;
       case 'audit':    showScreen('audit');    setCrumbs('AUDIT',   'LOG');      loadAuditScreen();    break;
       case 'report':   showScreen('report');   setCrumbs('REPORT',  'VALIDATE'); loadReportScreen();   break;
@@ -625,6 +647,10 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ button: buttonName, event_type: 'short' }),
+          }).then(function (r) {
+            if (r && r.status === 409) {
+              showToast('Flipper is mirrored — stop the mirror first to use this.');
+            }
           }).catch(function () {});
           return;
         }
@@ -693,6 +719,7 @@
 
   function handleBack() {
     if (_currentScreen === 'agent') return;
+    if (_currentScreen === 'device') { backToAgent(); return; }
     if (_currentScreen === 'files') { backFromFiles(); return; }
     // Settings sub-pages pop to the settings menu first, then to agent.
     if (_currentScreen.indexOf('settings-') === 0) { backToSettings(); return; }
@@ -793,8 +820,13 @@
       scheduleReconnect();
     };
     sock.onerror = function () { /* handled by onclose */ };
+    sock.binaryType = 'arraybuffer';
     sock.onmessage = function (ev) {
       if (_ws !== sock) return;
+      if (ev.data instanceof ArrayBuffer) {
+        onScreenBinaryFrame(ev.data);
+        return;
+      }
       var msg;
       try { msg = JSON.parse(ev.data); } catch (_) { return; }
       dispatch(msg);
@@ -869,6 +901,14 @@
       case 'persona_switched':
         _personas.current = msg.name || '';
         addSysMsg('● persona switched to ' + (msg.name || 'default'));
+        break;
+
+      case 'screen_state':
+        onScreenStateMessage(msg);
+        break;
+
+      case 'screen_error':
+        onScreenErrorMessage(msg);
         break;
     }
   }
@@ -1235,7 +1275,13 @@
     // Single poll: /api/device now carries all status-bar fields
     // (flipper, marauder, ble, battery.percent, sd) added by backend-bridger (task #14).
     apiFetch('api/device')
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) {
+        if (r.status === 409) {
+          // Mirror active — silently skip status bar update; state arrives via WS.
+          return null;
+        }
+        return r.ok ? r.json() : null;
+      })
       .then(function (body) { if (body) applyDeviceToStatusBar(body); })
       .catch(function () {});
   }
@@ -1840,6 +1886,16 @@
           clearEl(treePane);
           return null;
         }
+        if (r.status === 409) {
+          return r.json().catch(function () { return {}; }).then(function (b) {
+            if (isMirrorActiveError(r, b)) {
+              clearEl(treePane);
+              busyWarn.style.display = '';
+              busyWarn.textContent = 'Mirror is active — stop the mirror to browse files.';
+            }
+            return null;
+          });
+        }
         return r.json().then(function (b) { return { status: r.status, body: b }; });
       })
       .then(function (res) {
@@ -1983,6 +2039,11 @@
             return { tooLarge: true, size: (b && b.size) || 0 };
           });
         }
+        if (r.status === 409) {
+          return r.json().catch(function () { return {}; }).then(function (b) {
+            return { mirrorActive: isMirrorActiveError(r, b) };
+          });
+        }
         if (r.status === 503) { return { notConnected: true }; }
         return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
       })
@@ -1992,6 +2053,10 @@
 
         if (res.notConnected) {
           _fsPreviewPane.appendChild(mkEl('p', null, 'No Flipper connected — plug it in and the browser will pick it up.'));
+          return;
+        }
+        if (res.mirrorActive) {
+          _fsPreviewPane.appendChild(mkEl('p', null, 'Flipper is mirrored — stop the mirror first to use this.'));
           return;
         }
         if (res.tooLarge) {
@@ -2228,6 +2293,24 @@
      Utility helpers
   ========================================================================= */
 
+  function showToast(msg) {
+    if (!msg) return;
+    var existing = document.getElementById('pzToast');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    var t = mkEl('div', 'pz-toast');
+    t.id = 'pzToast';
+    t.textContent = msg;  // textContent — safe
+    document.body.appendChild(t);
+    setTimeout(function () {
+      t.classList.add('pz-toast-hide');
+      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 400);
+    }, 4000);
+  }
+
+  function isMirrorActiveError(res, body) {
+    return res && res.status === 409 && body && body.code === 'mirror_active';
+  }
+
   function makeSmallBtn(label, onclick) {
     var btn = mkEl('button', null, label);
     btn.type = 'button';
@@ -2277,6 +2360,292 @@
   }
 
   /* =========================================================================
+     Screen mirror — Device panel
+  ========================================================================= */
+
+  function backFromDevice() {
+    backToAgent();
+  }
+
+  function loadDeviceScreen() {
+    var ss = resetSubscreen('DEVICE', backFromDevice);
+    if (!ss) return;
+
+    // Sticky banner (mount outside subscreen so it persists across routes)
+    updateScreenBanner();
+
+    var panel = mkEl('div', 'screen-panel');
+
+    var canvas = document.createElement('canvas');
+    canvas.className = 'screen-canvas offline';
+    canvas.width  = 128;
+    canvas.height = 64;
+    canvas.setAttribute('aria-label', 'Flipper screen mirror');
+    panel.appendChild(canvas);
+    _screenCanvas = canvas;
+
+    var status = mkEl('div', 'screen-status');
+    status.dataset.state = 'offline';
+    status.textContent = 'MIRROR OFFLINE';
+    panel.appendChild(status);
+    _screenStatus = status;
+
+    var btnRow = mkEl('div', 'screen-btn-row');
+
+    var startBtn = mkEl('button', null, 'START MIRROR');
+    startBtn.type = 'button';
+    startBtn.style.cssText = 'font-family:var(--pixel);font-size:8px;letter-spacing:2px;padding:8px 14px;' +
+      'background:var(--lcd-pixel);color:var(--lcd-bg);border:none;cursor:pointer;';
+    _screenStartBtn = startBtn;
+
+    var stopBtn = mkEl('button', null, 'STOP MIRROR');
+    stopBtn.type = 'button';
+    stopBtn.style.cssText = 'font-family:var(--pixel);font-size:8px;letter-spacing:2px;padding:8px 14px;' +
+      'background:var(--orange-lo);color:var(--lcd-bg);border:none;cursor:pointer;display:none;';
+    _screenStopBtn = stopBtn;
+
+    startBtn.addEventListener('click', function () {
+      if (_screenConfirmDismissed) {
+        acquireScreen();
+      } else {
+        showScreenConfirmModal();
+      }
+    });
+    stopBtn.addEventListener('click', function () { releaseScreen(); });
+
+    btnRow.appendChild(startBtn);
+    btnRow.appendChild(stopBtn);
+    panel.appendChild(btnRow);
+
+    var hint = mkEl('p', 'screen-hint', 'While mirroring, chat and file operations are paused.');
+    panel.appendChild(hint);
+
+    ss.appendChild(panel);
+
+    // Apply current mirror state to the freshly built panel
+    refreshDeviceScreen();
+  }
+
+  function refreshDeviceScreen() {
+    if (!_screenCanvas) return;
+
+    if (_screenState.isHolder) {
+      _screenCanvas.className = 'screen-canvas';
+      setScreenStatus('live', 'LIVE');
+      if (_screenStartBtn) _screenStartBtn.style.display = 'none';
+      if (_screenStopBtn)  _screenStopBtn.style.display  = '';
+    } else if (_screenState.active) {
+      // Another session holds the mirror
+      _screenCanvas.className = 'screen-canvas offline';
+      setScreenStatus('offline', 'HELD BY ANOTHER SESSION');
+      if (_screenStartBtn) { _screenStartBtn.style.display = ''; _screenStartBtn.disabled = true; }
+      if (_screenStopBtn)  _screenStopBtn.style.display = 'none';
+    } else {
+      _screenCanvas.className = 'screen-canvas offline';
+      setScreenStatus('offline', 'MIRROR OFFLINE');
+      if (_screenStartBtn) { _screenStartBtn.style.display = ''; _screenStartBtn.disabled = false; }
+      if (_screenStopBtn)  _screenStopBtn.style.display = 'none';
+    }
+  }
+
+  function setScreenStatus(state, text) {
+    if (!_screenStatus) return;
+    _screenStatus.dataset.state = state;
+    _screenStatus.textContent = text;  // hard-coded strings only — safe
+  }
+
+  function showScreenConfirmModal() {
+    var ss = ensureSubscreen();
+    if (!ss) return;
+
+    var overlay = mkEl('div', 'fs-modal screen-confirm-modal');
+
+    var h3 = mkEl('h3', null, 'START LIVE SCREEN MIRROR?');
+    h3.style.cssText = 'font-family:var(--pixel);font-size:9px;letter-spacing:2px;margin:0 0 12px;';
+    overlay.appendChild(h3);
+
+    var lines = [
+      'The Flipper switches to RPC mode while mirroring.',
+      'Until you stop the mirror:',
+      '',
+      '▸ Chat with the agent will be paused',
+      '▸ File browser operations will be paused',
+      '▸ Direct button presses will be paused',
+      '',
+      'The screen updates in real time.',
+      "Stop the mirror when you're done.",
+    ];
+    lines.forEach(function (line) {
+      var p = mkEl('p', null, line);
+      p.style.cssText = 'margin:2px 0;font-family:var(--term);font-size:18px;';
+      overlay.appendChild(p);
+    });
+
+    var cbRow = mkEl('div');
+    cbRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin:12px 0 8px;';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id   = 'screenDontAsk';
+    var cbLabel = mkEl('label');
+    cbLabel.htmlFor = 'screenDontAsk';
+    cbLabel.textContent = "Don't show this confirmation again this session";
+    cbLabel.style.cssText = 'font-family:var(--pixel);font-size:7px;letter-spacing:1px;cursor:pointer;';
+    cbRow.appendChild(cb);
+    cbRow.appendChild(cbLabel);
+    overlay.appendChild(cbRow);
+
+    var btnRow = mkEl('div', 'fs-modal-btns');
+    btnRow.style.justifyContent = 'flex-end';
+
+    var cancelBtn = makeSmallBtn('CANCEL', function () {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    });
+
+    var goBtn = makeSmallBtn('START MIRROR', function () {
+      if (cb.checked) {
+        _screenConfirmDismissed = true;
+        try { sessionStorage.setItem('promptzero_screen_confirm_dismissed', '1'); } catch (_) {}
+      }
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      acquireScreen();
+    });
+    goBtn.style.background = 'var(--orange)';
+    goBtn.style.color = '#1a0e00';
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(goBtn);
+    overlay.appendChild(btnRow);
+
+    ss.appendChild(overlay);
+    setTimeout(function () { cancelBtn.focus(); }, 30);
+  }
+
+  function acquireScreen() {
+    setScreenStatus('opening', 'OPENING…');
+    sendWs({ type: 'screen_acquire' });
+  }
+
+  function releaseScreen() {
+    sendWs({ type: 'screen_release' });
+  }
+
+  function onScreenStateMessage(msg) {
+    var wasActive = _screenState.active;
+    _screenState.active   = !!msg.active;
+    _screenState.holderId = msg.holder_session_id || '';
+    _screenState.isHolder = msg.active && msg.holder_session_id === _sessionId;
+
+    // Start keepalives if we just became the holder.
+    if (_screenState.isHolder && !_screenKeepaliveTimer) {
+      _screenKeepaliveTimer = setInterval(function () {
+        sendWs({ type: 'screen_keepalive' });
+      }, SCREEN_KEEPALIVE_MS);
+    }
+    // Clear keepalives if we lost holder status.
+    if (!_screenState.isHolder && _screenKeepaliveTimer) {
+      clearInterval(_screenKeepaliveTimer);
+      _screenKeepaliveTimer = null;
+    }
+
+    // Update persistent banner.
+    updateScreenBanner();
+
+    // Refresh Device panel if it is currently visible.
+    if (_currentScreen === 'device') refreshDeviceScreen();
+
+    // Show a toast when the mirror stops for a notable reason.
+    if (wasActive && !_screenState.active && msg.reason) {
+      var reasons = {
+        timeout:           'Mirror released — no keepalive received in 30s.',
+        transport_lost:    'Mirror released — connection to Flipper lost.',
+        holder_disconnect: 'Mirror released — holder disconnected.',
+        released:          '',
+        open_failed:       'Could not start mirror.',
+        taken:             '',
+      };
+      var txt = reasons[msg.reason];
+      if (txt) showToast(txt);
+    }
+
+    // Update rail badge
+    var badge = document.getElementById('deviceBadge');
+    if (badge) badge.textContent = _screenState.active ? '▶' : '▶';
+  }
+
+  function onScreenErrorMessage(msg) {
+    setScreenStatus('error', 'ERROR');
+    showToast((msg.message || 'Screen mirror error') + (msg.code ? ' [' + msg.code + ']' : ''));
+  }
+
+  function updateScreenBanner() {
+    var existing = document.getElementById('screenBanner');
+
+    if (!_screenState.active) {
+      if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+      return;
+    }
+
+    var banner = existing;
+    if (!banner) {
+      banner = mkEl('div', 'screen-banner');
+      banner.id = 'screenBanner';
+      // Mount inside lcd-inner, before lcd content, so it is sticky within the LCD area.
+      var lcdInner = q('.lcd-inner');
+      if (!lcdInner) return;
+      lcdInner.insertBefore(banner, lcdInner.firstChild);
+    }
+
+    // Clear and rebuild banner text (textContent only — no innerHTML)
+    clearEl(banner);
+
+    var textSpan = mkEl('span');
+    if (_screenState.isHolder) {
+      textSpan.textContent = '● MIRRORING — chat and file operations paused';
+    } else {
+      textSpan.textContent = '◎ Flipper screen mirror is active in another session';
+    }
+    banner.appendChild(textSpan);
+
+    if (_screenState.isHolder) {
+      var stopBtn = mkEl('button', null, 'STOP MIRROR');
+      stopBtn.type = 'button';
+      stopBtn.addEventListener('click', function () { releaseScreen(); });
+      banner.appendChild(stopBtn);
+    }
+  }
+
+  function onScreenBinaryFrame(buf) {
+    if (_screenRenderPaused) return;
+    if (!_screenCanvas) return;
+    if (buf.byteLength < 1 + SCREEN_FRAME_LEN) return;
+    var view = new Uint8Array(buf);
+    if (view[0] !== 0x01) return; // unknown format version
+    paintScreenFrame(_screenCanvas, view.subarray(1, 1 + SCREEN_FRAME_LEN));
+  }
+
+  function paintScreenFrame(canvas, packed) {
+    var ctx = canvas.getContext('2d');
+    var img = ctx.createImageData(128, 64);
+    var data = img.data;
+    // ON pixel = --lcd-pixel (#1a0e00), OFF pixel = --lcd-bg (#ff9f1c)
+    for (var y = 0; y < 64; y++) {
+      for (var x = 0; x < 128; x++) {
+        var byte = packed[(y >> 3) * 128 + x];
+        var on = (byte >> (y & 7)) & 1;
+        var i = (y * 128 + x) * 4;
+        if (on) { data[i]=0x1a; data[i+1]=0x0e; data[i+2]=0x00; }
+        else    { data[i]=0xff; data[i+1]=0x9f; data[i+2]=0x1c; }
+        data[i+3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    _screenRenderPaused = (document.visibilityState === 'hidden');
+  });
+
+  /* =========================================================================
      Initialisation
   ========================================================================= */
 
@@ -2313,6 +2682,7 @@
       });
 
     window.addEventListener('beforeunload', function () {
+      if (_screenState.isHolder) { try { sendWs({ type: 'screen_release' }); } catch (_) {} }
       if (_ws) { try { _ws.close(); } catch (_) {} }
     });
   }

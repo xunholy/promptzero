@@ -78,6 +78,12 @@ type Flipper struct {
 	// takes the mutex, and attempts to reattach via transport.Reconnect.
 	disconnected atomic.Bool
 
+	// rpcMode is set true while an RPC session holds the transport.
+	// CLI ops check this before acquiring f.mu so they can fail fast
+	// without blocking on a mutex that may be held for the entire mirror
+	// session.
+	rpcMode atomic.Bool
+
 	// reconnectCb receives "start"/"success"/"fail" phase updates so the
 	// REPL can render "● Flipper disconnected — reconnecting..." etc.
 	reconnectCb atomic.Pointer[func(phase, message string)]
@@ -433,6 +439,9 @@ func (f *Flipper) Exec(command string) (string, error) {
 // ExecCtx is the context-aware variant of Exec. The ctx is honoured during
 // reconnect polling and during the 10 s per-command read deadline.
 func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
+	if f.rpcMode.Load() {
+		return "", ErrInRPCMode
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -537,6 +546,9 @@ func (f *Flipper) ExecLongCtx(ctx context.Context, command string, timeout time.
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
+	if f.rpcMode.Load() {
+		return "", ErrInRPCMode
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -582,6 +594,9 @@ func (f *Flipper) ExecLongCtx(ctx context.Context, command string, timeout time.
 // A Ctrl+C is always sent to the Flipper on exit so in-flight commands
 // (like `rfid read` or `subghz rx`) are halted.
 func (f *Flipper) StreamCtx(ctx context.Context, command string, onLine func(line string) (stop bool)) error {
+	if f.rpcMode.Load() {
+		return ErrInRPCMode
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -669,6 +684,9 @@ func (f *Flipper) WriteFile(path string, data []byte) error {
 // "storage remove <path>" before writing, or the re-written file will
 // contain concatenated data.
 func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) error {
+	if f.rpcMode.Load() {
+		return ErrInRPCMode
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

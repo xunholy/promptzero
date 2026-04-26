@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Live LCD screen mirror in the web UI** (qFlipper-style). New
+  **Device** rail item opens a panel that streams the Flipper's
+  128×64 framebuffer to a Canvas at the device's native ~30 fps,
+  upscaled with nearest-neighbour. Acquire is exclusive (one session
+  at a time) and gated behind a confirmation modal warning the
+  operator that all chat / file / input operations pause while the
+  mirror is active. Auto-releases on navigate-away, browser close,
+  or 30 s without a keepalive. Visibility-aware: rendering pauses
+  when the tab is hidden but the lock stays held.
+- **Flipper protobuf RPC client** (`internal/flipper/rpc/`). Vendors
+  the upstream `.proto` files at a pinned commit (license noted in
+  `LICENSE_NOTICE.md` — upstream is currently unspecified), generates
+  Go bindings (committed under `pb/`), and implements the
+  length-prefixed framing + a typed `Open` / `Close` / `Ping` /
+  `StartScreenStream` / `StopScreenStream` surface. `Open` drains
+  the firmware's CLI echo of `start_rpc_session\r` then verifies the
+  RPC transition with a Ping handshake, so callers get a clean error
+  instead of a misparsed first frame.
+- **`*flipper.Flipper.EnterRPC`**: takes the flipper mutex, switches
+  the transport into RPC mode, and returns the RPC client + a
+  release closure that restores CLI mode and re-handshakes the
+  prompt before unlocking. CLI methods (`ExecCtx`, `ExecLongCtx`,
+  `StreamCtx`, `WriteFileCtx`) now reject with `ErrInRPCMode` while
+  RPC is active so a stale concurrent CLI op can't corrupt the
+  protobuf framing.
+- **WebSocket `screen_*` taxonomy**: inbound `screen_acquire`,
+  `screen_release`, `screen_keepalive`; outbound `screen_state`
+  (broadcast on every transition with `holder_session_id` + `reason`),
+  `screen_error`, plus binary `screen_frame` (1-byte format version +
+  1024-byte packed framebuffer). Newest-frame-only forwarder on the
+  server keeps input-to-render latency below one device frame even
+  when the WS writer is slow.
+- **Audit entries**: `web.screen.start` (medium risk),
+  `web.screen.stop` (low risk).
+- **Taskfile**: `proto:gen` and `proto:check` targets for protobuf
+  binding regeneration.
+
+### Changed
+
+- `/api/fs/*`, `/api/input/send`, and `/api/device` now return 409
+  Conflict with `{"error":"flipper screen mirror is active",
+  "code":"mirror_active","retry_after_release":true}` while a mirror
+  session is held. Frontend renders inline messages (no modals).
+- Agent chat (`text` + `audio` WS frames) returns an `error` event
+  to the originating session when mirror is active, instead of
+  queueing a turn that would fail downstream.
+- `/api/debug` snapshot includes a new `state.mirror_active: bool`
+  field for diagnostic dumps.
+
 ## [0.9.1] - 2026-04-26
 
 ### Added
