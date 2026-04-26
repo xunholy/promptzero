@@ -68,6 +68,11 @@ const (
 	// be split into per-family subgroups (GroupSecurityHash,
 	// GroupSecurityRecon, etc.) in v0.6 if the tool count grows past ~10.
 	GroupSecurity Group = "security"
+
+	// GroupHostTools covers tools that run on the operator's host machine
+	// rather than on Flipper-attached hardware — firmware extraction,
+	// container-bridge tools, binary analysis utilities.
+	GroupHostTools Group = "host.tools"
 )
 
 // Handler is the single unified tool handler signature. Ctx is the turn

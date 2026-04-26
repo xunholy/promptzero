@@ -1,6 +1,7 @@
 package faultier
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -200,7 +201,7 @@ func TestSweepRoundTrip(t *testing.T) {
 	t.Cleanup(func() { _ = c.Close() })
 
 	// start=100, end=300, step=100 → delays 100, 200, 300 (3 fires)
-	mustOK(t, "Sweep", c.Sweep(100, 300, 100))
+	mustOK(t, "Sweep", c.Sweep(context.Background(), 100, 300, 100))
 
 	m.mu.Lock()
 	delay := m.State.Config.DelayUS
@@ -216,7 +217,7 @@ func TestSweepZeroStepErrors(t *testing.T) {
 	c, _ := NewMockClient()
 	t.Cleanup(func() { _ = c.Close() })
 
-	mustErr(t, "Sweep(zero step)", c.Sweep(0, 100, 0), "step_us must be > 0")
+	mustErr(t, "Sweep(zero step)", c.Sweep(context.Background(), 0, 100, 0), "step_us must be > 0")
 }
 
 // TestSweepInvertedRangeErrors verifies Sweep rejects start > end.
@@ -224,7 +225,7 @@ func TestSweepInvertedRangeErrors(t *testing.T) {
 	c, _ := NewMockClient()
 	t.Cleanup(func() { _ = c.Close() })
 
-	mustErr(t, "Sweep(inverted)", c.Sweep(200, 100, 10), "start_us")
+	mustErr(t, "Sweep(inverted)", c.Sweep(context.Background(), 200, 100, 10), "start_us")
 }
 
 // TestSweepSingleStep verifies Sweep works when start == end.
@@ -232,7 +233,7 @@ func TestSweepSingleStep(t *testing.T) {
 	c, m := NewMockClient()
 	t.Cleanup(func() { _ = c.Close() })
 
-	mustOK(t, "Sweep(single)", c.Sweep(42, 42, 10))
+	mustOK(t, "Sweep(single)", c.Sweep(context.Background(), 42, 42, 10))
 
 	m.mu.Lock()
 	delay := m.State.Config.DelayUS
@@ -240,6 +241,25 @@ func TestSweepSingleStep(t *testing.T) {
 
 	if delay != 42 {
 		t.Errorf("after Sweep(42,42,10): delay = %d, want 42", delay)
+	}
+}
+
+// TestSweepContextCancellation verifies that Sweep returns a context error
+// promptly when the context is cancelled before the range is exhausted
+// (regression for glitch_sweep context-blindness fix).
+func TestSweepContextCancellation(t *testing.T) {
+	c, _ := NewMockClient()
+	t.Cleanup(func() { _ = c.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	err := c.Sweep(ctx, 0, 1000, 1)
+	if err == nil {
+		t.Fatal("Sweep: expected error on cancelled context, got nil")
+	}
+	if !strings.Contains(err.Error(), "context") {
+		t.Errorf("Sweep: expected context error, got: %v", err)
 	}
 }
 
@@ -307,6 +327,22 @@ func TestCloseIdempotent(t *testing.T) {
 	if err := c.Close(); err != nil {
 		t.Fatalf("second Close: %v", err)
 	}
+}
+
+// TestCloseIsGoroutineSafe verifies that calling Close from two concurrent
+// goroutines does not race or panic (regression for Close concurrency fix).
+func TestCloseIsGoroutineSafe(t *testing.T) {
+	c, _ := NewMockClient()
+
+	done := make(chan struct{}, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			_ = c.Close()
+			done <- struct{}{}
+		}()
+	}
+	<-done
+	<-done
 }
 
 // --- Sequential commands (protocol integrity) --------------------------------

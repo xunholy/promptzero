@@ -34,7 +34,7 @@ func init() { //nolint:gochecknoinits
 }
 
 var firmwareExtractSpec = Spec{
-	Name: "firmware_extract",
+	Name:        "firmware_extract",
 	Description: "Recursively extract a firmware blob using onekey-sec/unblob (modern replacement for legacy binwalk). Identifies squashfs, jffs2, cpio, gzip, ext, kernel, U-Boot, and dozens of other container formats. Output is a directory tree summary plus interesting-file callouts (ssh keys, certs, init scripts, hardcoded credentials in plain-text strings). Requires Docker on the operator host.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -48,7 +48,7 @@ var firmwareExtractSpec = Spec{
 	}`),
 	Required:  []string{"input_path"},
 	Risk:      risk.Medium,
-	Group:     GroupFlipperHW,
+	Group:     GroupHostTools,
 	AgentOnly: false,
 	Handler:   firmwareExtractHandler,
 }

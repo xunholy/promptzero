@@ -1,9 +1,11 @@
 package faultier
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"go.bug.st/serial"
@@ -26,11 +28,15 @@ type Port interface {
 // goroutines would corrupt framing.  Callers that share a Client across
 // goroutines must serialize access externally (e.g. with a sync.Mutex).
 //
+// The exception is Close, which is safe to call concurrently with any other
+// method or with itself — it is guarded by its own mutex.
+//
 // The primary USB bulk channel (used by faultier-python) is not accessed here;
 // see doc.go for the rationale.
 type Client struct {
-	port   Port
-	closed bool
+	port    Port
+	closeMu sync.Mutex // guards closed
+	closed  bool
 }
 
 // DefaultBaud is the baud rate for the Faultier serial bridge.
@@ -67,7 +73,12 @@ func newWithPort(p Port) *Client {
 
 // Close closes the underlying serial port.  Calling Close more than once is
 // safe — subsequent calls return nil without touching the port.
+//
+// Close is guarded by an internal mutex so it is safe to call from any
+// goroutine even though the rest of the Client API requires external serialization.
 func (c *Client) Close() error {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
 	if c.closed {
 		return nil
 	}
@@ -80,13 +91,13 @@ func (c *Client) Close() error {
 // GlitcherConfig holds the parameters sent with OpConfigure.
 // Zero values are safe defaults (no trigger, crowbar output, zero delay/pulse).
 type GlitcherConfig struct {
-	TriggerType    TriggerType
-	TriggerSource  TriggerSource
-	GlitchOutput   GlitchOutput
-	DelayUS        uint32
-	PulseUS        uint32
-	PowerCycle     bool
-	PowerCycleLen  uint8 // cycles/10 — 0–255 encodes 0–2550 hardware cycles
+	TriggerType   TriggerType
+	TriggerSource TriggerSource
+	GlitchOutput  GlitchOutput
+	DelayUS       uint32
+	PulseUS       uint32
+	PowerCycle    bool
+	PowerCycleLen uint8 // cycles/10 — 0–255 encodes 0–2550 hardware cycles
 }
 
 // SetPulse configures the glitch delay and pulse width before the next Arm or
@@ -147,8 +158,12 @@ func (c *Client) Disarm() error {
 // re-configures and re-fires the device; there is no sweep opcode in the wire
 // protocol.
 //
-// Sweep aborts on the first device error and returns it.
-func (c *Client) Sweep(startUS, endUS, stepUS uint32) error {
+// ctx is checked at the start of every iteration so the sweep can be cancelled
+// promptly by the caller's deadline or cancel signal.
+//
+// Sweep aborts on the first device error, context cancellation, or inverted
+// range and returns the error.
+func (c *Client) Sweep(ctx context.Context, startUS, endUS, stepUS uint32) error {
 	if stepUS == 0 {
 		return fmt.Errorf("faultier.Sweep: step_us must be > 0")
 	}
@@ -156,6 +171,9 @@ func (c *Client) Sweep(startUS, endUS, stepUS uint32) error {
 		return fmt.Errorf("faultier.Sweep: start_us (%d) > end_us (%d)", startUS, endUS)
 	}
 	for delay := startUS; delay <= endUS; delay += stepUS {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("faultier.Sweep: %w", err)
+		}
 		if err := c.SetPulse(delay, 0); err != nil {
 			return fmt.Errorf("faultier.Sweep at delay=%d: configure: %w", delay, err)
 		}

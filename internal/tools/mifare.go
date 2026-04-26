@@ -170,7 +170,9 @@ func mfocAttackHandler(ctx context.Context, _ *Deps, args map[string]any) (strin
 	resCh := make(chan recoverResult, 1)
 	start := time.Now()
 	go func() {
-		key, err := crypto1.RecoverNestedWithRange(cap, 0, hiCap)
+		// runCtx is forwarded so the inner search loop is cancelled when the
+		// deadline fires, preventing a goroutine leak.
+		key, err := crypto1.RecoverNestedWithRange(runCtx, cap, 0, hiCap)
 		resCh <- recoverResult{key: key, err: err}
 	}()
 
@@ -311,7 +313,9 @@ func mfcukAttackHandler(ctx context.Context, _ *Deps, args map[string]any) (stri
 	resCh := make(chan recoverResult, 1)
 	start := time.Now()
 	go func() {
-		key, err := crypto1.RecoverDarksideWithRange(cap, 0, hiCap)
+		// runCtx is forwarded so the inner search loop is cancelled when the
+		// deadline fires, preventing a goroutine leak.
+		key, err := crypto1.RecoverDarksideWithRange(runCtx, cap, 0, hiCap)
 		resCh <- recoverResult{key: key, err: err}
 	}()
 
@@ -352,7 +356,7 @@ func mfcukAttackHandler(ctx context.Context, _ *Deps, args map[string]any) (stri
 // --- mfkey32_recover ---------------------------------------------------
 
 var mfkey32RecoverSpec = Spec{
-	Name: "mfkey32_recover",
+	Name:        "mfkey32_recover",
 	Description: "Recover a Mifare Classic 48-bit sector key from sniffed reader-authentication exchanges. Pure-Go via internal/crypto1 — closed-loop verified, no card I/O. Provide either ONE captured nonce repeated (the mfkey32 v1 case where the reader emitted the same nT twice — pass nt_hex + two nR/aR pairs) or TWO different captures (mfkey32 v2 case — pass nt0_hex/nt1_hex + matching nR/aR pairs). Default search bounds the keyspace to 16 bits (~70 ms); raise search_range_bits up to 48 for full-keyspace. When search_range_bits >= 32, the handler automatically engages the Garcia et al. ESORICS 2008 §4 filter-selectivity optimisation (RecoverFast) alongside the exhaustive baseline — the first path to complete returns its result.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -457,7 +461,9 @@ func mfkey32RecoverHandler(ctx context.Context, _ *Deps, args map[string]any) (s
 			// find the key wins.
 			key, err = crypto1.RecoverFastTimeout(runCtx, uid, nt0, nr0, ar0, nt1, nr1, ar1)
 		} else {
-			key, err = crypto1.RecoverWithRange(uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, hiCap)
+			// runCtx is forwarded so the inner search loop is cancelled when
+			// the deadline fires, preventing a goroutine leak.
+			key, err = crypto1.RecoverWithRange(runCtx, uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, hiCap)
 		}
 		resCh <- recoverResult{key: key, err: err}
 	}()

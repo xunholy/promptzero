@@ -47,7 +47,7 @@ func (d *Deps) RequireFaultier() error {
 // --- Specs -------------------------------------------------------------------
 
 var glitchArmSpec = Spec{
-	Name: "glitch_arm",
+	Name:        "glitch_arm",
 	Description: "Arm the Faultier trigger. The device will wait for the configured hardware-trigger condition (rising/falling edge on EXT0/EXT1) before firing the glitch pulse. Call glitch_set_pulse first to configure delay and pulse width. Returns OK when the device acknowledges arming.",
 	Schema: json.RawMessage(`{
 		"type": "object",
@@ -61,7 +61,7 @@ var glitchArmSpec = Spec{
 }
 
 var glitchFireSpec = Spec{
-	Name: "glitch_fire",
+	Name:        "glitch_fire",
 	Description: "Fire a single voltage glitch immediately, without waiting for a hardware trigger. The device uses the delay and pulse width last set by glitch_set_pulse. Returns OK when the glitch pulse has been delivered.",
 	Schema: json.RawMessage(`{
 		"type": "object",
@@ -75,7 +75,7 @@ var glitchFireSpec = Spec{
 }
 
 var glitchSetPulseSpec = Spec{
-	Name: "glitch_set_pulse",
+	Name:        "glitch_set_pulse",
 	Description: "Configure the glitch delay and pulse width before the next arm or fire. delay_us is the time in microseconds between the trigger event and the start of the glitch pulse. pulse_us is the duration of the glitch pulse in microseconds. Both values must be non-negative integers. These settings persist until changed.",
 	Schema: json.RawMessage(`{
 		"type": "object",
@@ -99,7 +99,7 @@ var glitchSetPulseSpec = Spec{
 }
 
 var glitchSweepSpec = Spec{
-	Name: "glitch_sweep",
+	Name:        "glitch_sweep",
 	Description: "Sweep the glitch delay from start_us to end_us, firing a glitch at each step. step_us is the increment between successive delay values. The device is re-configured and re-fired for each step. The sweep aborts on the first device error. Use this for automated fault-injection parameter exploration.",
 	Schema: json.RawMessage(`{
 		"type": "object",
@@ -127,7 +127,7 @@ var glitchSweepSpec = Spec{
 }
 
 var glitchDisarmSpec = Spec{
-	Name: "glitch_disarm",
+	Name:        "glitch_disarm",
 	Description: "Disarm the Faultier, cancelling any pending armed trigger. The device returns to idle. Safe to call even when not armed.",
 	Schema: json.RawMessage(`{
 		"type": "object",
@@ -141,7 +141,7 @@ var glitchDisarmSpec = Spec{
 }
 
 var glitchStatusSpec = Spec{
-	Name: "glitch_status",
+	Name:        "glitch_status",
 	Description: "Read the Faultier's current status: whether it is armed, the last configured delay, and the outcome of the most recent glitch attempt (none, skip, crash, glitch, ok). Read-only — does not change device state.",
 	Schema: json.RawMessage(`{
 		"type": "object",
@@ -205,7 +205,7 @@ func glitchSetPulseHandler(_ context.Context, d *Deps, args map[string]any) (str
 	return string(body), nil
 }
 
-func glitchSweepHandler(_ context.Context, d *Deps, args map[string]any) (string, error) {
+func glitchSweepHandler(ctx context.Context, d *Deps, args map[string]any) (string, error) {
 	if err := d.RequireFaultier(); err != nil {
 		return "", err
 	}
@@ -221,7 +221,8 @@ func glitchSweepHandler(_ context.Context, d *Deps, args map[string]any) (string
 	if stepUS <= 0 {
 		return "", fmt.Errorf("glitch_sweep: step_us must be > 0")
 	}
-	if err := d.Faultier.Sweep(uint32(startUS), uint32(endUS), uint32(stepUS)); err != nil {
+	// ctx is forwarded so cancellation propagates into the sweep loop.
+	if err := d.Faultier.Sweep(ctx, uint32(startUS), uint32(endUS), uint32(stepUS)); err != nil {
 		return "", fmt.Errorf("glitch_sweep: %w", err)
 	}
 	steps := (endUS-startUS)/stepUS + 1
