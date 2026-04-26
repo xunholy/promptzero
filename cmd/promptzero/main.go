@@ -172,10 +172,28 @@ func run() error {
 	setupAttack(ai, auditLog)
 	setupDetectors(&client, ai, cfg)
 
+	// Federation must come AFTER setupDetectors so any auto-detector
+	// rules referencing federated tools by name can find them, and
+	// BEFORE the REPL hands a turn to the model — federated Specs are
+	// registered into tools.Register at this point and become visible
+	// in the agent's tool advertisement on the next turn.
+	mcpfedClose := setupMCPFederation(ctx, cfg)
+	defer mcpfedClose()
+
 	genLLM := setupGenerator(cfg, ai, flip, &client, f.genProvider, f.ollamaURL, f.ollamaModel)
 
 	hasMarauder, marauderClose := setupMarauder(cfg, ai, rec, f.wifiEnabled)
 	defer marauderClose()
+
+	_, bruceClose := setupBruce(ctx, cfg, ai)
+	defer bruceClose()
+	_, faultierClose := setupFaultier(cfg, ai)
+	defer faultierClose()
+	_, busPirateClose := setupBusPirate(ctx, cfg, ai)
+	defer busPirateClose()
+
+	companionSink, companionClose := setupCompanion(ctx, cfg, flip)
+	defer companionClose()
 
 	voiceEngine := setupVoice(cfg)
 
@@ -191,6 +209,7 @@ func run() error {
 			RulesEngine:    ruleEngine,
 			Flipper:        flip,
 			MarauderOnline: hasMarauder,
+			Companion:      companionSink,
 		})
 	}
 
@@ -213,5 +232,6 @@ func run() error {
 		ruleEngine:    ruleEngine,
 		gateEnabled:   gateEnabled,
 		watchPaths:    f.watchPaths,
+		companion:     companionSink,
 	})
 }

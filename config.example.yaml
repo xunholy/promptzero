@@ -114,3 +114,57 @@ cost:
 # Inline rules can go here, or keep them in examples/rules.yaml and merge
 # with `yq`/`sops` at deploy time. See examples/rules.yaml for the schema.
 rules: []
+
+# --- Outbound MCP federation (v0.6) --------------------------------------
+# Each entry brings one external MCP server's tools into the agent's
+# catalogue under a shared prefix. See docs/integrations/mcp-federation.md
+# for the full reference; commented-out examples below.
+#
+mcp_clients: []
+#  # FuzzingLabs/mcp-security-hub (530★) — nmap/nuclei/sqlmap/ghidra/hashcat
+#  - prefix: secsec
+#    transport: stdio
+#    command: docker
+#    args: [run, --rm, -i, --network=host, ghcr.io/fuzzinglabs/security-hub:latest]
+#    sandbox: docker
+#    risk_default: high
+#    env:
+#      SHODAN_API_KEY: $SHODAN_API_KEY
+#
+#  # mplogas/pm3-mcp — Proxmark3 iceman federation (Picopass, iCLASS, HID Prox)
+#  - prefix: pm3
+#    transport: stdio
+#    command: pm3-mcp
+#    sandbox: none
+#    risk_default: high
+#
+#  # MorDavid/Hashcat-MCP — closes WiFi → cracker chain
+#  - prefix: hcat
+#    transport: stdio
+#    command: docker
+#    args: [run, --rm, -i, --gpus, all, mordavid/hashcat-mcp:latest]
+#    sandbox: docker
+#    risk_default: critical
+#
+#  # MorDavid/BloodHound-MCP-AI (335★) — AD attack-path queries
+#  - prefix: bh
+#    transport: http
+#    url: http://localhost:7474/mcp
+#    headers:
+#      Authorization: Bearer $BLOODHOUND_TOKEN
+#    risk_default: medium
+#
+#  # PortSwigger/mcp-server — official Burp MCP
+#  - prefix: burp
+#    transport: stdio
+#    command: burp-mcp-server
+#    sandbox: firejail
+#    risk_default: medium
+#
+#  # LaurieWired/GhidraMCP — reverse-engineer dumped firmware
+#  - prefix: ghidra
+#    transport: stdio
+#    command: docker
+#    args: [run, --rm, -i, lauriewired/ghidra-mcp:latest]
+#    sandbox: docker
+#    risk_default: low

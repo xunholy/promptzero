@@ -358,13 +358,10 @@ func writeJSON(ctx context.Context, c *websocket.Conn, m map[string]any) error {
 	return c.Write(ctx, websocket.MessageText, data)
 }
 
-// TestIndexScriptOrder guards against a subtle Alpine bootstrap failure:
-// Alpine's CDN build auto-starts during its script tag's execution when the
-// document is no longer in the 'loading' state (which is the case when it is
-// one of two deferred scripts — the first defer already moved readyState to
-// 'interactive'). If app.js is loaded AFTER alpine, Alpine traverses the DOM
-// and evaluates x-data="pzApp()" before window.pzApp exists, producing a
-// cascade of ReferenceErrors and a UI full of broken bindings.
+// TestIndexScriptOrder verifies the v0.9 redesign: the index serves a
+// vanilla-JS app.js (no framework) as a deferred script with the correct
+// link tags. The test replaces the old Alpine-ordering guard because the
+// redesign removed Alpine entirely.
 func TestIndexScriptOrder(t *testing.T) {
 	html, err := staticFiles.ReadFile("static/index.html")
 	if err != nil {
@@ -372,39 +369,31 @@ func TestIndexScriptOrder(t *testing.T) {
 	}
 	body := string(html)
 
-	appIdx := strings.Index(body, `src="app.js"`)
-	alpineIdx := strings.Index(body, "alpinejs")
-	if appIdx < 0 {
+	if !strings.Contains(body, `src="app.js"`) {
 		t.Fatal("index.html is missing a <script src=\"app.js\"> tag")
 	}
-	if alpineIdx < 0 {
-		t.Fatal("index.html is missing an alpinejs <script> tag")
+	if !strings.Contains(body, "defer") {
+		t.Fatal("app.js script tag must carry the defer attribute")
 	}
-	if appIdx > alpineIdx {
-		t.Fatalf("app.js must load before alpinejs (app.js at %d, alpinejs at %d) — "+
-			"otherwise Alpine's auto-start evaluates x-data=\"pzApp()\" before window.pzApp is defined",
-			appIdx, alpineIdx)
+	// Sanity: no Alpine CDN script in the redesigned UI.
+	if strings.Contains(body, "alpinejs") {
+		t.Fatal("index.html must not include Alpine CDN in the v0.9 redesign")
 	}
 }
 
-// TestNoLiteralUndefinedInTemplates catches common Alpine-template regressions
-// where a binding concatenates an unchecked property (e.g. `p.tools + ' tools'`)
-// that renders the literal string "undefined" when the source field is absent.
-// The allow-list below pins known-safe occurrences; anything else fails so a
-// defensive fallback (e.g. `(p.tools || 0)`) is added before merging.
+// TestNoLiteralUndefinedInTemplates ensures the redesigned index.html (which
+// uses DOM APIs rather than Alpine templates) contains no literal "undefined"
+// strings that could appear as visible text in the UI. The old allow-list of
+// 1 (for Alpine tool-output guards) no longer applies.
 func TestNoLiteralUndefinedInTemplates(t *testing.T) {
 	html, err := staticFiles.ReadFile("static/index.html")
 	if err != nil {
 		t.Fatalf("read index.html: %v", err)
 	}
-	// The only legitimate occurrences are the two type-check guards in the
-	// tool-output template (`item.output !== null && item.output !== undefined`).
 	body := string(html)
-	count := strings.Count(body, "undefined")
-	const allowed = 1
-	if count != allowed {
-		t.Fatalf("index.html contains %d occurrences of the literal \"undefined\" (want %d). "+
-			"Review added bindings — unchecked `x + ' label'` concatenations render "+
-			"the string \"undefined\" at runtime when x is absent.", count, allowed)
+	if count := strings.Count(body, "undefined"); count != 0 {
+		t.Fatalf("index.html contains %d occurrences of \"undefined\" — "+
+			"the redesigned markup uses static text only; no JS literals should leak into HTML.",
+			count)
 	}
 }

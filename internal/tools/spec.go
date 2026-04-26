@@ -24,7 +24,10 @@ import (
 	"sync"
 
 	"github.com/xunholy/promptzero/internal/audit"
+	"github.com/xunholy/promptzero/internal/bruce"
+	"github.com/xunholy/promptzero/internal/buspirate"
 	"github.com/xunholy/promptzero/internal/config"
+	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
@@ -65,6 +68,11 @@ const (
 	// be split into per-family subgroups (GroupSecurityHash,
 	// GroupSecurityRecon, etc.) in v0.6 if the tool count grows past ~10.
 	GroupSecurity Group = "security"
+
+	// GroupHostTools covers tools that run on the operator's host machine
+	// rather than on Flipper-attached hardware — firmware extraction,
+	// container-bridge tools, binary analysis utilities.
+	GroupHostTools Group = "host.tools"
 )
 
 // Handler is the single unified tool handler signature. Ctx is the turn
@@ -164,6 +172,25 @@ type Deps struct {
 	// helper does this in the current code; handlers can call a
 	// similar helper on Deps.
 	Marauder *marauder.Marauder
+
+	// Bruce is the optional Bruce ESP32 devboard (https://github.com/pr3y/Bruce).
+	// Nil when the operator has not configured a Bruce device (bruce.port
+	// absent in config, or --bruce flag not supplied). Bruce handlers MUST
+	// short-circuit on a nil Bruce — call [Deps.RequireBruce] at the top
+	// of every handler, mirroring the [Deps.RequireMarauder] pattern.
+	Bruce *bruce.Client
+
+	// Faultier is the optional hextreeio Faultier USB voltage-glitcher.
+	// Nil when no faultier.port is configured. Glitch handlers MUST
+	// short-circuit on a nil Faultier — call [Deps.RequireFaultier]
+	// at the top of each handler.
+	Faultier *faultier.Client
+
+	// BusPirate is the optional Bus Pirate 5 universal-bus probe.
+	// Nil when no buspirate.port is configured. BusPirate handlers
+	// MUST short-circuit on nil — call [Deps.RequireBusPirate] at
+	// the top of each handler.
+	BusPirate *buspirate.Client
 
 	// Audit is the session audit log. Nil means "audit disabled" —
 	// handlers that write to the log should no-op in that case. The

@@ -1,5 +1,7 @@
 package risk
 
+import "sync"
+
 type Level int
 
 const (
@@ -69,6 +71,30 @@ var toolLevels = func() map[string]Level {
 		"marauder_led_set", "marauder_led_rainbow",
 		// v0.5 security: hash_identify is pure offline format detection
 		"hash_identify",
+		// v0.6 OSS-expansion: passive analysis bridge — runs urh-ng in
+		// a sandboxed container against a Flipper .sub capture, no I/O.
+		"urh_decode_sub",
+		// v0.6 OSS-expansion: stateless classifier (no I/O), and
+		// keeloq_decrypt with a known key (no transmission).
+		"defense_classify_advertisement",
+		"keeloq_decrypt",
+		// v0.6 OSS-expansion: read-only corpus searches over operator-
+		// curated asset directories. No network, no transmission, no
+		// device I/O — a directory walk + grep.
+		"ir_irdb_lookup", "evil_portal_template_pick", "badusb_payload_search",
+		// v0.6 OSS-expansion: passive automotive CAN reads (controller
+		// status + stop-sniffer); no bus writes.
+		"canbus_info", "canbus_sniff_stop",
+		// v0.6 OSS-expansion: Bruce capability read-out + Faultier
+		// status read-out; no RF or bus emission.
+		"bruce_capabilities",
+		"glitch_status",
+		// v0.6 OSS-expansion: Bus Pirate 5 read-only — voltage probe,
+		// per-pin read, mode switch (HiZ is the safe idle).
+		"buspirate_voltages", "buspirate_pin_read", "buspirate_mode",
+		// v0.7 OSS-expansion: pure-Go Sub-GHz protocol classifier.
+		// Pure analysis on a captured .sub file — no I/O, no transmission.
+		"subghz_classify",
 	)
 
 	// Captures, scans, file writes
@@ -117,6 +143,28 @@ var toolLevels = func() map[string]Level {
 		// Remember/Forget can mislead future sessions, but nothing
 		// transmits over the air.
 		"target_remember", "target_forget",
+		// v0.6 OSS-expansion: container bridges that produce host-side
+		// artifacts (extracted firmware tree, compiled .fap binary).
+		// Medium because they write to host filesystem; no RF or
+		// network attack surface beyond the docker daemon.
+		"firmware_extract", "fap_build",
+		// v0.6 OSS-expansion: keeloq_dictionary tries published
+		// manufacturer keys against a captured ciphertext. Medium
+		// because a hit recovers a key that enables transmission, but
+		// the lookup itself is a 1-byte-per-vendor table check.
+		"keeloq_dictionary",
+		// v0.6 OSS-expansion: CAN init + passive sniff. No bus writes
+		// (writes are gated separately as canbus_inject Critical).
+		"canbus_init", "canbus_sniff_start",
+		// v0.6 OSS-expansion: Bruce passive scans + receive-only
+		// captures. No active transmission until explicit higher-tier
+		// Specs are invoked.
+		"bruce_wifi_scan", "bruce_wifi_5g_scan", "bruce_zigbee_scan",
+		"bruce_lora_scan", "bruce_ir_receive", "bruce_nfc_read",
+		// v0.6 OSS-expansion: Bus Pirate 5 active bus operations.
+		// I2C scan + SPI dump + UART bridge are all bus reads/writes
+		// but limited to the connected target — no broader blast.
+		"buspirate_i2c_scan", "buspirate_spi_dump", "buspirate_uart_bridge",
 	)
 
 	// Active transmission, emulation, execution
@@ -150,6 +198,14 @@ var toolLevels = func() map[string]Level {
 		// recovered keys enable cloning of access credentials.
 		"mfoc_attack", "mfcuk_attack", "mfkey32_recover",
 		"iclass_loclass_recover",
+		// v0.6 OSS-expansion: Bruce active transmission Specs.
+		"bruce_ir_send",
+		// v0.6 OSS-expansion: Bus Pirate 5 pin drive — mis-set a high
+		// voltage and damage the target. Same tier as gpio_set.
+		"buspirate_pin_set",
+		// v0.6 OSS-expansion: hardnested container bridge — recovers
+		// a hardened MIFARE Classic key. Same tier as mfoc/mfcuk.
+		"mifare_hardnested_host",
 		"loader_signal",
 		"crypto_store_key",
 		"workflow_nfc_badge_pipeline",
@@ -185,15 +241,73 @@ var toolLevels = func() map[string]Level {
 		"workflow_rolljam_lab_demo",
 		// v0.5 security: offline dictionary hash cracking (same tier as subghz_bruteforce)
 		"hash_crack_dictionary",
+		// v0.6 OSS-expansion: KeeLoq CPU brute-force can run for hours
+		// against a multi-billion-key range; once recovered, the key
+		// enables open-air rolling-code replay. Same tier as
+		// subghz_bruteforce.
+		"keeloq_bruteforce",
+		// v0.6 OSS-expansion: CAN injection + replay can write to a
+		// live vehicle bus; same tier as wifi_deauth.
+		"canbus_inject", "canbus_replay",
+		// v0.6 OSS-expansion: Bruce destructive Specs — deauth, evil
+		// twin, BadUSB execution, raw CLI passthrough. Same tier as
+		// the equivalent Marauder / Flipper raw_cli Specs.
+		"bruce_wifi_deauth", "bruce_evil_twin", "bruce_badusb_run",
+		"bruce_raw_cli",
+		// v0.6 OSS-expansion: Faultier glitch Specs — arming, firing,
+		// disarming, or even just setting pulse parameters can lead
+		// to chip damage if mis-sequenced. The Faultier engineer
+		// marked all five as Critical for safety; we honour that
+		// classification here.
+		"glitch_arm", "glitch_fire", "glitch_sweep",
+		"glitch_disarm", "glitch_set_pulse",
 	)
 
 	return m
 }()
 
-// Classify returns the risk level for a given tool name. Tools that have not
-// been explicitly classified default to High so an unknown capability is
-// gated behind a confirmation rather than silently auto-approved.
+// runtimeLevels is the post-init overlay used by federated tools (internal/mcpfed)
+// and any other code path that needs to publish a risk level after the static
+// init has run. Reads are checked first in Classify so an explicit Register
+// always wins over the static fallback.
+var (
+	runtimeMu     sync.RWMutex
+	runtimeLevels = map[string]Level{}
+)
+
+// Register publishes a risk level for tool at runtime. Used by mcpfed to
+// classify federated MCP tools after their annotations are read at startup.
+// A second Register call for the same tool overrides the previous level —
+// the most recent assertion wins.
+func Register(tool string, level Level) {
+	if tool == "" {
+		return
+	}
+	runtimeMu.Lock()
+	runtimeLevels[tool] = level
+	runtimeMu.Unlock()
+}
+
+// Unregister removes a runtime entry. Falls through to the static toolLevels
+// map and ultimately the High default. Used in tests to keep the runtime
+// overlay clean between cases.
+func Unregister(tool string) {
+	runtimeMu.Lock()
+	delete(runtimeLevels, tool)
+	runtimeMu.Unlock()
+}
+
+// Classify returns the risk level for a given tool name. The runtime overlay
+// is consulted first; otherwise the static toolLevels map; otherwise High
+// (the safe default — an unknown capability is gated behind a confirmation
+// rather than silently auto-approved).
 func Classify(tool string) Level {
+	runtimeMu.RLock()
+	if l, ok := runtimeLevels[tool]; ok {
+		runtimeMu.RUnlock()
+		return l
+	}
+	runtimeMu.RUnlock()
 	if l, ok := toolLevels[tool]; ok {
 		return l
 	}
@@ -201,10 +315,17 @@ func Classify(tool string) Level {
 }
 
 // ClassifyExplicit returns the registered risk level and true if the tool
-// has an explicit classification, or (High, false) if the tool fell through
-// to the safe default. Used by the agent-package coverage test to detect
-// drift between the tool catalogue and this registry.
+// has an explicit classification (either from the runtime overlay or the
+// static map), or (High, false) if the tool fell through to the safe
+// default. Used by the agent-package coverage test to detect drift between
+// the tool catalogue and this registry.
 func ClassifyExplicit(tool string) (Level, bool) {
+	runtimeMu.RLock()
+	if l, ok := runtimeLevels[tool]; ok {
+		runtimeMu.RUnlock()
+		return l, true
+	}
+	runtimeMu.RUnlock()
 	l, ok := toolLevels[tool]
 	return l, ok
 }

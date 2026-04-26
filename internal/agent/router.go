@@ -32,6 +32,9 @@ const (
 	GroupGen            = "gen"
 	GroupWorkflows      = "workflows"
 	GroupVision         = "vision"
+	// GroupHostTools covers tools that run on the operator's host machine
+	// (firmware extraction, container-bridge tools, binary analysis).
+	GroupHostTools = "host.tools"
 )
 
 // alwaysOnGroups names groups that the router is never allowed to
@@ -80,6 +83,8 @@ func ToolGroup(name string) string {
 		return GroupWorkflows
 	case name == "analyze_image":
 		return GroupVision
+	case name == "firmware_extract":
+		return GroupHostTools
 	case strings.HasPrefix(name, "loader_"),
 		strings.HasPrefix(name, "storage_"),
 		name == "list_apps",

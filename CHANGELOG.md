@@ -7,6 +7,223 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-26
+
+First tagged release since v0.5.0. Collapses four development tranches
+(v0.6 OSS-expansion → v0.9 web redesign) into a single semver release;
+the per-tranche labels in commit subjects remain as historical markers.
+
+### Added — v0.9 web redesign
+
+- **Flipper-themed web UI** (`internal/web/static/`): rewritten with a
+  hardware-shell layout — bezel chrome, dot-matrix LCD scrollback, side
+  rail, and chunky d-pad. Reactive across desktop / tablet / phone with
+  safe-area insets, hover-none and reduced-motion paths, ≥44 px touch
+  targets, and iOS zoom suppression. All agent-originated content goes
+  through `createElement` + `textContent`; no `innerHTML` carries
+  untrusted data.
+- **Typed `/api/device` sections** for the new status bar: `flipper`,
+  `marauder`, `ble`, `sd` (uint64 bytes), `battery.percent` (numeric).
+  Existing string-shaped fields preserved for back-compat.
+- **PromptZero Companion FAP** (`fap/companion/`,
+  `internal/flipper/companion/`, `cmd/install-companion-fap/`):
+  optional Flipper application that renders agent events on the device
+  LCD and lets OK/Back answer the high-risk confirm gate. NopSink is
+  the default — operators without the FAP run unchanged.
+- **Marauder firmware lazy-probe**: non-blocking goroutine populates
+  `marauder.firmware` after connect; first `/api/device` returns empty,
+  subsequent return populated.
+- **canbus tool**: expanded coverage and first unit test file.
+
+### Fixed — v0.9
+
+- crypto1 polish: small bug fixes and expanded fixtures across mfcuk,
+  mfkey32, mfoc, and RecoverFast (iterations on the v0.7 native ports).
+- Faultier client + tool spec touch-ups (faultier, firmware_extract,
+  mifare, spec).
+
+### Added — v0.6 OSS-expansion: outbound federation + cracker primitives
+
+Driven by a multi-agent dev team: 1 lead + 3 parallel engineers (Crypto1,
+KeeLoq, pcap) + cross-cutting wiring on the lead thread. ~7000 LOC
+across 9 new packages.
+
+- **`internal/mcpfed/`** (new) — outbound MCP client federating external
+  servers as native Specs. Stdio/HTTP/SSE transports, sandbox profiles
+  (none/docker/bwrap/firejail) wired via `transport.WithCommandFunc`,
+  prefix `__` namespacing within Anthropic's 64-char tool-name limit,
+  schema pass-through via `mcp.Tool.RawInputSchema`, MCP annotation →
+  `risk.Level` mapping (DestructiveHint→Critical, ReadOnlyHint→Low,
+  OpenWorldHint→+1 tier), one-shot retry on `ErrTransportClosed` plus
+  background health pings. Boot integration in
+  `cmd/promptzero/setup.go:setupMCPFederation`; config block in
+  `config.example.yaml` under `mcp_clients:[]` with six high-leverage
+  examples (FuzzingLabs hub, pm3-mcp, Hashcat-MCP, BloodHound-MCP-AI,
+  Burp, GhidraMCP). Operator guide:
+  `docs/integrations/mcp-federation.md`.
+
+- **`internal/keeloq/`** (new) — pure-Go KeeLoq cipher
+  (32-bit block, 64-bit key, 528 rounds, NLFSR with S-box 0x3A5C742E),
+  CPU brute-force sharded across `runtime.NumCPU()` (~12M keys/sec on a
+  16-core host), and a manufacturer-key dictionary covering HCS-200/300/360/410.
+  Specs: `keeloq_decrypt` (Low), `keeloq_dictionary` (Medium),
+  `keeloq_bruteforce` (Critical). Closed-loop verified plus published
+  test vector cross-checked against an independent Python reference.
+
+- **`internal/pcap/`** (new) — pure-Go libpcap classic writer +
+  radiotap-header builder (link-types 1/105/127). Closes the WiFi
+  capture → hashcat chain in `workflow_wifi_target_to_hashcat`.
+
+- **`internal/defense/`** (new) — Wall-of-Flippers heuristic classifier
+  for BLE advertisements. Detects Apple Continuity spam (action types
+  outside the published set), Microsoft Swift Pair malformed payloads,
+  Samsung sentinel model-id, Google Fast Pair repeated-byte signatures,
+  and Flipper service UUID 0xFE60. Stateful `Tracker` adds high-frequency
+  MAC-rotation detection. Spec: `defense_classify_advertisement` (Low).
+
+- **`internal/containerbridge/`** (new) — shared sandboxed `docker run`
+  runner powering three new Specs:
+  - `urh_decode_sub` (Low, GroupFlipperSubGHz) — PentHertz/urh-ng SubGHz
+    classifier across 327 known protocols.
+  - `firmware_extract` (Medium, GroupFlipperHW) — onekey-sec/unblob
+    recursive firmware extractor.
+  - `fap_build` (Medium, GroupGen) — flipperdevices/ufbt SDK build with
+    optional Flipper-side deploy.
+
+- **`internal/tools/corpora.go`** (new) — three read-only Specs that
+  search operator-curated asset directories (no third-party content
+  bundled — license clarity + staleness avoidance):
+  - `ir_irdb_lookup` — Lucaslhm/Flipper-IRDB layout.
+  - `evil_portal_template_pick` — HTML/JS templates by brand+language.
+  - `badusb_payload_search` — Ducky-script grep by goal keyword.
+  Default paths from `PZ_IRDB_DIR`, `PZ_EVIL_PORTAL_DIR`, `PZ_BADUSB_DIR`.
+
+### Changed
+
+- **`internal/risk/`** — added `Register/Unregister` runtime overlay so
+  federated MCP tools (and any post-init Spec) publish risk levels
+  without touching the static `toolLevels` map. `Classify` consults the
+  overlay first; static fallback unchanged.
+- **`internal/config/`** — added `MCPClients []yaml.Node` field for raw
+  federation config. Decoded by `mcpfed.ParseClientConfigs` so config
+  remains independent of the federation runtime.
+
+### Registry
+
+- 188 → 198 Specs (+10 native + N federated at runtime).
+
+### Hardware backends (Wave 0b / 3c / 3d / 3e / 4a / 4b)
+
+Six new device backends added — all written against documented
+upstream protocols, no bench validation in this session, users
+exercise on real hardware:
+
+- **HTTP transport** (Wave 0b) — `internal/flipper/transport/http.go`.
+  Targets jblanked/FlipperHTTP-compatible servers. Long-poll recv +
+  streaming POST send + bearer-token auth + custom-path overrides.
+  `http://host:port[/?token=...&send_path=...&recv_path=...]` URL
+  scheme parallel to `serial://` and `ble://`. Decouples agent from
+  physical USB session.
+
+- **Faultier glitcher** (Wave 3c) — `internal/faultier/` (329 + 170 +
+  222 + 208 + 353 LOC across client/protocol/mock/protocol_test/
+  client_test). Six Specs in `internal/tools/faultier.go`:
+  `glitch_arm` / `glitch_fire` / `glitch_set_pulse` / `glitch_sweep` /
+  `glitch_disarm` / `glitch_status`. Wire protocol mirrored from
+  hextreeio/faultier-python.
+
+- **CANbus** (Wave 3d) — `internal/tools/canbus.go`. Six Specs:
+  `canbus_init` / `canbus_sniff_start` / `canbus_sniff_stop` /
+  `canbus_inject` / `canbus_replay` / `canbus_info`. Bridges to
+  ElectronicCats/flipper-MCP2515-CANBUS .fap via the existing
+  `flipper_raw_cli` mechanism.
+
+- **Bus Pirate 5** (Wave 3e) — `internal/buspirate/` (engineer-written
+  client/parser/mock with comprehensive tests). Seven Specs in
+  `internal/tools/buspirate.go`: `buspirate_mode` / `buspirate_i2c_scan` /
+  `buspirate_spi_dump` / `buspirate_uart_bridge` / `buspirate_voltages` /
+  `buspirate_pin_set` / `buspirate_pin_read`. PIO-driven I2C up to
+  500 kHz, much faster than Flipper GPIO bit-banging.
+
+- **Bruce ESP32** (Wave 4a + 4b absorbed) — `internal/bruce/`. Twelve
+  Specs in `internal/tools/bruce.go`: `bruce_capabilities` /
+  `bruce_wifi_scan` / `bruce_wifi_5g_scan` / `bruce_wifi_deauth` /
+  `bruce_evil_twin` / `bruce_zigbee_scan` / `bruce_lora_scan` /
+  `bruce_ir_send` / `bruce_ir_receive` / `bruce_badusb_run` /
+  `bruce_nfc_read` / `bruce_raw_cli`. Boot-banner parser detects
+  ESP32-C5 (HasFiveGHz=true), M5Stack family (Cardputer / M5Stick /
+  T-Display / CYD), and IR hardware presence. Evil-M5Project hardware
+  uses a Bruce-compatible serial dialect, so it's covered by the same
+  backend.
+
+### MIFARE Classic key recovery (Wave 1a + 1c)
+
+`internal/crypto1/` filled in end-to-end:
+- `Init`, `Crypt`, `EncCrypt`, `CryptFeedback`, `Prng`, `clockLFSR`
+  — all clean-room implementations of the Garcia et al. ESORICS 2008
+  algorithm.
+- Filter functions `fa` / `fb` / `fc` and bit helpers wired per the
+  paper's tap arrangement.
+
+`internal/crypto1/mfkey32.go`:
+- `Recover` / `RecoverWithRange` — Courtois-style LFSR rollback against
+  two captured authentication exchanges. Closed-loop verified with
+  three synthetic key vectors.
+- `AuthEncrypt` — simulates the reader-side auth so callers can produce
+  test vectors without hardware.
+
+`internal/tools/mifare.go` rewired:
+- `mfkey32_recover` returns `status="found"` with the recovered key.
+  Default 16-bit search range completes in ~70 ms; operators pass
+  `search_range_bits` up to 48 for full keyspace.
+- `mfoc_attack` and `mfcuk_attack` return `status="live_nfc_required"`
+  with an error pointing operators at the federated `pm3-mcp` MCP
+  server (their canonical libnfc form requires live NFC reader access
+  which the Flipper's USB CLI doesn't expose).
+
+`internal/tools/hardnested.go` (Wave 1c) — `mifare_hardnested_host`
+Spec wraps `nfc-tools/mfoc-hardnested` in a sandboxed container for
+Plus / EV1 hardened-nonce key recovery. Default image
+`ghcr.io/nfc-tools/mfoc-hardnested:latest`; operators override via
+`HARDNESTED_IMAGE` env or `image` argument.
+
+### Boot integration
+
+`cmd/promptzero/setup.go` gains `setupBruce` / `setupFaultier` /
+`setupBusPirate` parallel to `setupMarauder`, all wired into
+`cmd/promptzero/main.go`'s startup sequence. `internal/agent/agent.go`
+gains `SetBruce` / `SetFaultier` / `SetBusPirate` setters and
+forwards the new clients into `a.deps()` so handlers see them via
+`tools.Deps.{Bruce,Faultier,BusPirate}`.
+
+`internal/config/config.go` adds `BruceConfig`, `FaultierConfig`, and
+`BusPirateConfig` types under `bruce:` / `faultier:` / `buspirate:`
+YAML keys.
+
+### Registry
+
+- 198 → 230 Specs (+32 native Specs in this batch).
+- All 32 new Specs explicitly classified in
+  `internal/risk/risk.go`'s `toolLevels` map.
+- `TestRegistrySize` / `TestRegistryCoverage` / `TestRiskCoverage`
+  green; full module passes `go test -race -short ./...`.
+
+### Deferred to v0.6.1+
+
+- Wave 1b — pure-Go `mfoc_attack` / `mfcuk_attack` offline
+  implementations with state-propagation across nested authentications.
+  Today operators handle this via federated `pm3-mcp` for the live
+  case, or pre-process captures into mfkey32 tuples and call
+  `mfkey32_recover` directly.
+- `mfkey32_recover` partial-state-enumeration optimization — current
+  impl is O(2^32) within the configured `search_range_bits` budget
+  and adequate for the common case (default keys, low-entropy keys);
+  full 2^48 needs the Garcia §4 filter-selectivity technique to be
+  agent-fast.
+- Pure-Go `mifare_hardnested_host` reimplementation (the ~2 kloc
+  bitslice optimisation in `nfc-tools/mfoc-hardnested`). Container
+  bridge ships today.
+
 ## [0.5.0] - 2026-04-25
 
 v0.5 opens the offensive-capability expansion track. This release

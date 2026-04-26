@@ -661,6 +661,14 @@ func (f *Flipper) WriteFile(path string, data []byte) error {
 // needed, uses a cancellable sleep between command and payload, and tags
 // any disconnect-class error via markDisconnectedIfRelevant so the next
 // op can recover.
+//
+// Firmware append behaviour: some firmware builds — notably Momentum dev
+// branch as of mntm-dev 430a3d50 (2026-03-09) — do NOT truncate an existing
+// file when storage write_chunk is called; they append to the existing
+// content instead. Callers that need truncate semantics must issue
+// "storage remove <path>" before writing, or the re-written file will
+// contain concatenated data. See cmd/install-companion-fap for the
+// canonical rm-before-write pattern.
 func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

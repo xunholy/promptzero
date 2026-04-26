@@ -61,7 +61,19 @@ func TestRegistrySize(t *testing.T) {
 	//   docs/refactor/mifare-algorithms.md is the v0.5 deliverable)
 	// v0.5 task #8 (loclass): +1 spec (iclass_loclass_recover) — sub-primitives
 	//   functional, end-to-end deferred to v0.5.1 (CSN-selection bug)
-	const expected = 188
+	// +1 fap_build (H4)
+	//
+	// Subsequent waves (v0.7 native crypto1 ports, v0.8 hardware-backend
+	// expansion: Bruce/Faultier/Bus Pirate, FlipperHTTP, Sub-GHz
+	// classifier; v0.9 Companion FAP integration) added a further +42
+	// specs without re-narrating the wave deltas in this comment block.
+	// When this number drifts, the right action is *not* to bump the
+	// constant blindly — diff `tools.Names()` against the prior known
+	// good (git blame this line) and confirm every new name is
+	// intentional. A surprise +1 usually means a duplicate alias or a
+	// loader_* generated for a new firmware app; both are bugs to fix
+	// at the source.
+	const expected = 231
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
