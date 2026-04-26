@@ -392,8 +392,8 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
 /* LCD bottom-right credit watermark */
 .lcd .credit {
   position: absolute;
-  right: 28px;
-  bottom: 18px;
+  right: 40px;
+  bottom: 20px;
   z-index: 4;
   font-family: var(--pixel);
   font-size: 7px;
@@ -406,7 +406,7 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
 }
 .lcd .credit:hover  { opacity: 1; color: var(--lcd-pixel); }
 .lcd .credit:active { color: var(--lcd-pixel); }
-@media (max-width: 640px) { .lcd .credit { font-size: 6px; right: 18px; bottom: 14px; } }
+@media (max-width: 640px) { .lcd .credit { font-size: 6px; right: 26px; bottom: 14px; } }
 
 /* Sub-screen header — back button + title */
 .subscreen-header { display: flex; align-items: center; gap: 10px; padding: 0 0 8px; margin-bottom: 10px; border-bottom: 2px solid var(--lcd-pixel); }
@@ -611,7 +611,7 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
   justify-content: center;
   gap: clamp(4px, 1vh, 12px);
   padding: clamp(4px, 1vh, 12px);
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
   container-type: size;

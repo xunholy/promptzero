@@ -547,7 +547,8 @@
     _subscreenEl = document.createElement('div');
     _subscreenEl.id = 'subscreen';
     _subscreenEl.style.cssText = 'flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;' +
-      '-webkit-overflow-scrolling:touch;padding-right:6px;scrollbar-width:thin;display:none;';
+      '-webkit-overflow-scrolling:touch;padding-right:6px;scrollbar-width:thin;' +
+      'flex-direction:column;display:none;';
     var sb = document.getElementById('scrollback');
     lcdInner.insertBefore(_subscreenEl, sb || null);
     return _subscreenEl;
@@ -573,7 +574,7 @@
     var sb = document.getElementById('scrollback');
     var ss = ensureSubscreen();
     if (sb) sb.style.display = 'none';
-    if (ss) { ss.style.display = ''; clearEl(ss); }
+    if (ss) { ss.style.display = 'flex'; clearEl(ss); }
   }
 
   function setCrumbs(c1, c2, c3) {
