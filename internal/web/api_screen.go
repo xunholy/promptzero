@@ -8,6 +8,7 @@ package web
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -142,12 +143,17 @@ func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 	cli := s.screenActiveRPC
 	isHolder := s.screenHolder == c
 	s.screenMu.Unlock()
+	slog.Info("screen_input received",
+		"session", c.id, "button", button, "event", event,
+		"is_holder", isHolder, "rpc_nil", cli == nil)
 	if !isHolder || cli == nil {
 		return
 	}
 	ctx := context.Background()
 	send := func(ev string) bool {
 		if err := cli.SendInput(ctx, button, ev); err != nil {
+			slog.Warn("screen_input dispatch failed",
+				"session", c.id, "button", button, "event", ev, "err", err)
 			s.sendTo(c, map[string]any{
 				"type":    "screen_error",
 				"code":    "input_failed",
@@ -155,6 +161,8 @@ func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 			})
 			return false
 		}
+		slog.Info("screen_input dispatched",
+			"session", c.id, "button", button, "event", ev)
 		return true
 	}
 	switch event {
