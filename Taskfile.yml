@@ -107,6 +107,29 @@ tasks:
       - cp docs/scenarios/*.md internal/rag/corpus/
       - echo "corpus synced — remember to run 'task test' and commit the regenerated files"
 
+  fap:companion:build:
+    desc: Build the on-device PromptZero Companion FAP using the
+      flipperdevices/flipperzero-ufbt container. Mirrors what the
+      built-in fap_build Spec does, just with no agent in the loop.
+      Output lands in bin/fap/promptzero_companion.fap. Requires
+      Docker on the host.
+    cmds:
+      - mkdir -p bin/fap
+      - >-
+        docker run --rm
+        -v $PWD/fap/companion:/src
+        -w /src
+        ghcr.io/flipperdevices/ufbt:latest
+        build
+      - find fap/companion/dist -maxdepth 2 -name '*.fap' -exec cp {} bin/fap/ \;
+      - ls -la bin/fap/
+
+  fap:companion:clean:
+    desc: Remove ufbt build artefacts from fap/companion/.
+    cmds:
+      - rm -rf fap/companion/dist fap/companion/.ufbt
+      - rm -f bin/fap/promptzero_companion.fap
+
   clean:
     desc: Remove build artefacts.
     cmds:

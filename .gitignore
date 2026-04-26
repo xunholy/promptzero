@@ -3,6 +3,15 @@ zeropilot
 /bin/
 /dist/
 
+# FAP (Flipper app) build artefacts — ufbt's per-app dist/ + cache.
+/fap/*/dist/
+/fap/*/.ufbt/
+
+# Project-local Python venv used to install ufbt for FAP builds.
+# Created by `python3 -m venv .ufbt-venv && .ufbt-venv/bin/pip install ufbt`.
+# Reusable across builds; never check in.
+/.ufbt-venv/
+
 # Go
 *.exe
 *.exe~
