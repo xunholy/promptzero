@@ -610,10 +610,16 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
   padding: 16px;
 }
 
-/* The canvas — CSS upscales the 128×64 native pixels to 4× */
+/* The canvas — fluid, aspect-locked, pixel-perfect upscale of the 128×64
+   native framebuffer. width:100% lets it fill the panel; max-width caps it
+   so it never grows beyond either 1024 px or 70 vh tall (whichever is
+   smaller). aspect-ratio derives the height automatically. */
 .screen-canvas {
-  width: 512px;
-  height: 256px;
+  display: block;
+  width: 100%;
+  max-width: min(1024px, calc(70vh * 2));
+  aspect-ratio: 2 / 1;
+  height: auto;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   background: var(--lcd-bg);
@@ -711,7 +717,6 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
 .pz-toast.pz-toast-hide { opacity: 0; }
 
 @media (max-width: 640px) {
-  .screen-canvas { width: 384px; height: 192px; }
   .screen-banner {
     font-size: 8px;
     margin: -12px -14px 8px;
