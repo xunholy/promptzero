@@ -606,18 +606,19 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
+  gap: clamp(6px, 1.5vh, 16px);
+  padding: clamp(6px, 1.5vh, 16px);
 }
 
 /* The canvas — fluid, aspect-locked, pixel-perfect upscale of the 128×64
-   native framebuffer. width:100% lets it fill the panel; max-width caps it
-   so it never grows beyond either 1024 px or 70 vh tall (whichever is
-   smaller). aspect-ratio derives the height automatically. */
+   native framebuffer. width:100% fills the panel; max-width caps it so the
+   canvas height never exceeds 45 vh — leaves room for the STOP MIRROR
+   button + status + hint without scrolling on standard viewports.
+   1024 px hard cap so it doesn't dwarf 4K monitors. */
 .screen-canvas {
   display: block;
   width: 100%;
-  max-width: min(1024px, calc(70vh * 2));
+  max-width: min(1024px, calc(45vh * 2));
   aspect-ratio: 2 / 1;
   height: auto;
   image-rendering: pixelated;
