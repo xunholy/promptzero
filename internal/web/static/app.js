@@ -285,13 +285,35 @@
       }
 
       function skipHandler(e) {
-        if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); finish(); }
+        // Space skips at any point; Enter confirms/continues (only meaningful once ready).
+        if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); finish(); return; }
+        if (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); finish(); }
       }
       document.addEventListener('keydown', skipHandler);
 
+      function markReady() {
+        var hint = bootEl.querySelector('.boot-skip');
+        if (hint) {
+          hint.classList.add('ready');
+          // Replace contextual hint: streaming SKIP → ready CONTINUE
+          while (hint.firstChild) hint.removeChild(hint.firstChild);
+          hint.appendChild(document.createTextNode('PRESS '));
+          var kbd = document.createElement('kbd');
+          kbd.textContent = 'ENTER';
+          hint.appendChild(kbd);
+          hint.appendChild(document.createTextNode(' TO CONTINUE'));
+        }
+        var ready = document.createElement('div');
+        ready.className = 'ok';
+        ready.textContent = '▸ READY — AWAITING USER             [HOLD]';
+        logEl.appendChild(ready);
+        logEl.scrollTop = logEl.scrollHeight;
+        barEl.classList.add('pulse');
+      }
+
       function tick() {
         if (done) return;
-        if (i >= total) { setTimeout(finish, 350); return; }
+        if (i >= total) { markReady(); return; }   // hold open; wait for Space or Enter
         var line = BOOT_LINES[i++];
         var div = document.createElement('div');
         if (line.cls) div.className = line.cls;
@@ -299,7 +321,7 @@
         logEl.appendChild(div);
         logEl.scrollTop = logEl.scrollHeight;
         barEl.style.width = Math.round((i / total) * 100) + '%';
-        setTimeout(tick, prefersReducedMotion() ? 8 : 70 + Math.random() * 50);
+        setTimeout(tick, prefersReducedMotion() ? 8 : 280 + Math.random() * 100);
       }
       tick();
     });

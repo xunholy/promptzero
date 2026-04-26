@@ -82,13 +82,18 @@ body::before {
 .boot-card { width: min(560px, 86vw); border: 2px solid var(--orange); background: #0a0a0c; padding: 28px 28px 22px; box-shadow: 0 0 0 4px #000 inset, 0 0 60px #ff6b0033; }
 .boot-card h1 { margin: 0 0 14px; font-family: var(--pixel); font-size: 18px; letter-spacing: 2px; color: var(--orange-hi); text-shadow: 2px 2px 0 #000; }
 .boot-card .tag { font-family: var(--pixel); font-size: 8px; letter-spacing: 2px; color: #6a4520; margin-bottom: 22px; }
-.boot-log { font-family: var(--term); font-size: 20px; line-height: 1.05; color: #ffa550; height: 132px; overflow: hidden; margin-bottom: 16px; }
+.boot-log { font-family: var(--term); font-size: 20px; line-height: 1.05; color: #ffa550; height: 132px; overflow-y: auto; margin-bottom: 16px; scrollbar-width: thin; scrollbar-color: var(--orange) #000; }
+.boot-log::-webkit-scrollbar { width: 8px; }
+.boot-log::-webkit-scrollbar-track { background: #000; }
+.boot-log::-webkit-scrollbar-thumb { background: var(--orange); }
 .boot-log .ok  { color: var(--led-green); }
 .boot-log .warn{ color: var(--orange-hi); }
 .boot-bar { height: 14px; border: 2px solid var(--orange); padding: 2px; background: #000; }
 .boot-bar > span { display: block; height: 100%; width: 0%; background: repeating-linear-gradient(90deg, var(--orange) 0 8px, #000 8px 10px); transition: width .12s linear; }
 .boot-skip { margin-top: 14px; font-family: var(--pixel); font-size: 8px; letter-spacing: 2px; color: #6a4520; text-align: right; }
 .boot-skip kbd { color: var(--orange-hi); border: 1px solid #6a4520; padding: 2px 5px; }
+.boot-skip.ready { color: var(--orange-hi); animation: blink 1s steps(2, start) infinite; }
+.boot-bar.pulse { animation: blink 1.2s steps(2, start) infinite; }
 
 /* Device chrome — full viewport on every breakpoint */
 .device {
