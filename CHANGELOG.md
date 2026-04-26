@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-04-27
+
+### Changed
+
+- **Mirror canvas now scales fluidly to fill the Device panel.** Was a
+  fixed 512×256 (desktop) / 384×192 (mobile). Now uses container
+  queries (`container-type: size` on `.screen-panel`) with
+  `width: min(1024px, 100cqw, calc((100cqh - 170px) * 2))` so the
+  canvas grows along whichever dimension is tighter while keeping the
+  2:1 aspect ratio and reserving room for the status / buttons / hint
+  below. Pixelated render preserved.
+
+### Fixed
+
+- **Device panel no longer scrolls.** The subscreen container is now a
+  flex column (`display: flex; flex-direction: column`), and the
+  `.screen-panel` switched from `height: 100%` to `flex: 1 1 auto`.
+  Previously the panel sized against the full subscreen — including
+  the ~40 px subscreen-header sibling — so total content exceeded the
+  container by exactly the header's height, triggering a scrollbar
+  that pushed the STOP MIRROR control out of view.
+- **`BUILT BY XUNHOLY` credit no longer covered by scrollbar.** Right
+  offset bumped 12 → 40 px (mobile 8 → 26 px) so it stays clear of the
+  subscreen scrollbar on screens that legitimately scroll (Files,
+  Settings) where the scrollbar sits at most ~22 px from the LCD edge.
+
 ## [0.9.2] - 2026-04-27
 
 ### Added
