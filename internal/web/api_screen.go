@@ -131,10 +131,12 @@ func (s *Server) handleScreenKeepalive(c *sessionConn) {
 // RPC session. Only the screen holder may send input; non-holders are ignored
 // silently.
 //
-// For a "tap" (event_type "" or "short") we emit the full PRESS → SHORT →
-// RELEASE triplet that real hardware generates. App input handlers consume
-// PRESS or RELEASE — sending only SHORT alone is silently dropped by most
-// firmware apps because their event filters key off the press/release edges.
+// A "tap" sends PRESS, waits, then RELEASE — the firmware synthesises the
+// SHORT event from that timing the same way it does for the physical
+// buttons. Three back-to-back events with no delay arrive in a single USB
+// transaction and the firmware's input pipeline does not register them as
+// distinct presses, which is why "press,short,release" without delays
+// produced no on-device reaction.
 func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 	s.screenMu.Lock()
 	cli := s.screenActiveRPC
@@ -144,24 +146,32 @@ func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 		return
 	}
 	ctx := context.Background()
-	var seq []string
-	switch event {
-	case "", "short":
-		seq = []string{"press", "short", "release"}
-	case "long":
-		seq = []string{"press", "long", "release"}
-	default:
-		seq = []string{event}
-	}
-	for _, ev := range seq {
+	send := func(ev string) bool {
 		if err := cli.SendInput(ctx, button, ev); err != nil {
 			s.sendTo(c, map[string]any{
 				"type":    "screen_error",
 				"code":    "input_failed",
 				"message": err.Error(),
 			})
+			return false
+		}
+		return true
+	}
+	switch event {
+	case "", "short":
+		if !send("press") {
 			return
 		}
+		time.Sleep(60 * time.Millisecond)
+		send("release")
+	case "long":
+		if !send("press") {
+			return
+		}
+		time.Sleep(550 * time.Millisecond) // > INPUT_LONG_PRESS (~500ms)
+		send("release")
+	default:
+		send(event)
 	}
 }
 

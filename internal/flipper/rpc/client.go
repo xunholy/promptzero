@@ -32,12 +32,20 @@ func NewClient(tx transport.Transport) *Client {
 }
 
 // Open transitions the Flipper from CLI mode to RPC mode by writing
-// "start_rpc_session\r\n" to the transport. After this call, the byte
+// "start_rpc_session\r" to the transport. After this call, the byte
 // stream is framed protobuf and the transport must not be used for CLI.
 //
 // The firmware echoes the command back as CLI bytes before switching to
-// RPC mode; Open drains those bytes and verifies the transition with a
-// Ping so callers see a clean error instead of a misparsed first frame.
+// RPC mode. The amount of echo varies between firmware versions and
+// transient device state (a freshly opened CLI vs one that just emitted
+// a notification). Open handles this by:
+//  1. Draining for an initial silence window (~250 ms).
+//  2. Sending a Ping and trying to read its response; if the read fails to
+//     parse, drain again and retry. Each Ping carries a fresh command_id
+//     so a stale RPC response from earlier (rare) can be discarded.
+//
+// Up to 5 attempts; total handshake budget ~3 s. Returns a wrapped error
+// describing the last failure if every attempt fails.
 func (c *Client) Open(ctx context.Context) error {
 	if c.open.Swap(true) {
 		return ErrAlreadyOpen
@@ -46,31 +54,42 @@ func (c *Client) Open(ctx context.Context) error {
 		c.open.Store(false)
 		return fmt.Errorf("rpc: open: %w", err)
 	}
-	c.drainCLIEcho()
+	c.drainCLIEcho(250 * time.Millisecond)
 
-	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	if err := c.Ping(pingCtx); err != nil {
-		c.open.Store(false)
-		return fmt.Errorf("rpc: handshake ping failed: %w", err)
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		err := c.Ping(pingCtx)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		// CLI bytes still in the buffer poisoned the read — drain and retry.
+		c.drainCLIEcho(150 * time.Millisecond)
 	}
-	return nil
+	c.open.Store(false)
+	return fmt.Errorf("rpc: handshake ping failed after retries: %w", lastErr)
 }
 
-// drainCLIEcho consumes bytes for ~300 ms after the start_rpc_session write
-// so the firmware's CLI echo of the command doesn't poison the first
-// protobuf read. The drain uses a short transport read deadline so we exit
-// promptly when the wire goes silent.
-func (c *Client) drainCLIEcho() {
+// drainCLIEcho consumes bytes for the supplied window. Uses a short
+// transport read deadline so we exit promptly when the wire goes silent.
+func (c *Client) drainCLIEcho(window time.Duration) {
 	_ = c.tx.SetReadTimeout(50 * time.Millisecond)
 	defer func() { _ = c.tx.SetReadTimeout(500 * time.Millisecond) }()
 
-	deadline := time.Now().Add(300 * time.Millisecond)
+	deadline := time.Now().Add(window)
 	buf := make([]byte, 256)
 	for time.Now().Before(deadline) {
 		n, err := c.tx.Read(buf)
-		if err != nil || n == 0 {
+		if err != nil {
 			return
+		}
+		if n == 0 {
+			// Brief silence — give the firmware a moment more in case more
+			// echo is on the way, then check again. If still silent we exit
+			// on the next iteration when the read deadline elapses.
+			time.Sleep(20 * time.Millisecond)
 		}
 	}
 }
