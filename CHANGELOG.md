@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-26
+
+First tagged release since v0.5.0. Collapses four development tranches
+(v0.6 OSS-expansion → v0.9 web redesign) into a single semver release;
+the per-tranche labels in commit subjects remain as historical markers.
+
+### Added — v0.9 web redesign
+
+- **Flipper-themed web UI** (`internal/web/static/`): rewritten with a
+  hardware-shell layout — bezel chrome, dot-matrix LCD scrollback, side
+  rail, and chunky d-pad. Reactive across desktop / tablet / phone with
+  safe-area insets, hover-none and reduced-motion paths, ≥44 px touch
+  targets, and iOS zoom suppression. All agent-originated content goes
+  through `createElement` + `textContent`; no `innerHTML` carries
+  untrusted data.
+- **Typed `/api/device` sections** for the new status bar: `flipper`,
+  `marauder`, `ble`, `sd` (uint64 bytes), `battery.percent` (numeric).
+  Existing string-shaped fields preserved for back-compat.
+- **PromptZero Companion FAP** (`fap/companion/`,
+  `internal/flipper/companion/`, `cmd/install-companion-fap/`):
+  optional Flipper application that renders agent events on the device
+  LCD and lets OK/Back answer the high-risk confirm gate. NopSink is
+  the default — operators without the FAP run unchanged.
+- **Marauder firmware lazy-probe**: non-blocking goroutine populates
+  `marauder.firmware` after connect; first `/api/device` returns empty,
+  subsequent return populated.
+- **canbus tool**: expanded coverage and first unit test file.
+
+### Fixed — v0.9
+
+- crypto1 polish: small bug fixes and expanded fixtures across mfcuk,
+  mfkey32, mfoc, and RecoverFast (iterations on the v0.7 native ports).
+- Faultier client + tool spec touch-ups (faultier, firmware_extract,
+  mifare, spec).
+
 ### Added — v0.6 OSS-expansion: outbound federation + cracker primitives
 
 Driven by a multi-agent dev team: 1 lead + 3 parallel engineers (Crypto1,
