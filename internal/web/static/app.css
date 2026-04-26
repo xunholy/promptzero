@@ -90,14 +90,27 @@ body::before {
 .boot-skip { margin-top: 14px; font-family: var(--pixel); font-size: 8px; letter-spacing: 2px; color: #6a4520; text-align: right; }
 .boot-skip kbd { color: var(--orange-hi); border: 1px solid #6a4520; padding: 2px 5px; }
 
-/* Device chrome */
-.device { --pad: 14px; position: relative; width: min(1280px, 96vw); height: min(820px, 94vh); margin: 3vh auto; background: linear-gradient(180deg, var(--bezel-2) 0%, var(--bezel-1) 100%); border: 1px solid var(--bezel-edge); box-shadow: 0 0 0 1px #000 inset, 0 1px 0 #ffffff10 inset, 0 30px 80px #000a, 0 0 120px #ff6b0014; padding: var(--pad); display: grid; grid-template-rows: auto 1fr auto; gap: var(--pad); }
-.device::before, .device::after, .device > .screw { display: block; }
-.device > .screw { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #4a4a52 0%, #1a1a1e 60%, #000 100%); box-shadow: 0 1px 0 #ffffff10, 0 0 0 1px #00000080; }
-.screw.tl { top: 6px; left: 6px; }
-.screw.tr { top: 6px; right: 6px; }
-.screw.bl { bottom: 6px; left: 6px; }
-.screw.br { bottom: 6px; right: 6px; }
+/* Device chrome — full viewport on every breakpoint */
+.device {
+  --pad: 14px;
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0;
+  background: linear-gradient(180deg, var(--bezel-2) 0%, var(--bezel-1) 100%);
+  border: none;
+  box-shadow: 0 0 0 1px #000 inset, 0 0 120px #ff6b0014;
+  padding: var(--pad);
+  padding-top: max(var(--pad), env(safe-area-inset-top));
+  padding-bottom: max(var(--pad), env(safe-area-inset-bottom));
+  padding-left: max(var(--pad), env(safe-area-inset-left));
+  padding-right: max(var(--pad), env(safe-area-inset-right));
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--pad);
+}
+.device > .screw { display: none; }
 
 /* Status bar */
 .status-bar { display: grid; grid-template-areas: "menu brand meta battery"; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 18px; padding: 8px 12px; background: linear-gradient(180deg, #07070a, #0c0c10); border: 1px solid var(--bezel-edge); font-family: var(--pixel); font-size: 9px; letter-spacing: 2px; color: #ffa550; }
@@ -106,7 +119,6 @@ body::before {
 .status-meta  { grid-area: meta; }
 .battery      { grid-area: battery; }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--orange-hi); text-shadow: 1px 1px 0 #000; }
-.brand .logo { width: 18px; height: 18px; display: grid; place-items: center; background: var(--orange); color: #000; font-size: 9px; box-shadow: 2px 2px 0 #000; }
 .brand small { color: var(--rail-text-dim); letter-spacing: 1px; }
 .status-meta { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
 .stat { display: inline-flex; align-items: center; gap: 8px; color: #ffa550; }
@@ -234,7 +246,7 @@ body::before {
 
 /* RESPONSIVE — preserve all four breakpoints exactly */
 @media (max-width: 1024px) {
-  .device { width: min(1280px, 99vw); padding: 10px; }
+  .device { padding: 10px; }
   .brand small { display: none; }
   .stat[data-state="off"] { display: none; }
   .status-meta { gap: 12px; }
@@ -253,19 +265,13 @@ body::before {
 @media (max-width: 640px) {
   body { overflow: hidden; }
   .device {
-    width: 100vw; height: 100vh; height: 100dvh; margin: 0;
-    border: none; border-radius: 0; box-shadow: none; padding: 6px;
-    padding-top: max(6px, env(safe-area-inset-top));
-    padding-bottom: max(6px, env(safe-area-inset-bottom));
-    padding-left: max(6px, env(safe-area-inset-left));
-    padding-right: max(6px, env(safe-area-inset-right));
+    --pad: 6px;
+    box-shadow: none;
     gap: 6px;
   }
-  .screw { display: none; }
   .status-bar { grid-template-areas: "menu  brand   battery" "meta  meta    meta"; grid-template-columns: auto 1fr auto; gap: 4px 10px; padding: 6px 8px; font-size: 7px; letter-spacing: 1.5px; }
   .menu-toggle { grid-area: menu; }
   .brand       { grid-area: brand; gap: 6px; }
-  .brand .logo { width: 16px; height: 16px; font-size: 8px; box-shadow: 2px 2px 0 #000; }
   .battery     { grid-area: battery; }
   .battery .cell { width: 30px; height: 10px; }
   .status-meta { grid-area: meta; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; gap: 14px; padding-top: 5px; margin-top: 2px; border-top: 1px solid var(--bezel-edge); scrollbar-width: none; -webkit-overflow-scrolling: touch; }
@@ -323,3 +329,34 @@ body::before {
 }
 
 .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+
+/* LCD bottom-right credit watermark */
+.lcd .credit {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  z-index: 4;
+  font-family: var(--pixel);
+  font-size: 7px;
+  letter-spacing: 2px;
+  color: var(--lcd-pixel-soft);
+  text-decoration: none;
+  opacity: 0.55;
+  transition: opacity .15s, color .15s;
+  pointer-events: auto;
+}
+.lcd .credit:hover  { opacity: 1; color: var(--lcd-pixel); }
+.lcd .credit:active { color: var(--lcd-pixel); }
+@media (max-width: 640px) { .lcd .credit { font-size: 6px; right: 6px; bottom: 4px; } }
+
+/* Sub-screen header — back button + title */
+.subscreen-header { display: flex; align-items: center; gap: 10px; padding: 0 0 8px; margin-bottom: 10px; border-bottom: 2px solid var(--lcd-pixel); }
+.subscreen-back { font-family: var(--pixel); font-size: 9px; letter-spacing: 2px; padding: 6px 10px; background: var(--lcd-pixel); color: var(--lcd-bg); border: none; box-shadow: 2px 2px 0 var(--lcd-pixel-soft); cursor: pointer; transition: transform .04s, box-shadow .04s; }
+.subscreen-back:hover  { filter: brightness(1.08); }
+.subscreen-back:active { transform: translate(2px,2px); box-shadow: none; }
+.subscreen-title { font-family: var(--pixel); font-size: 10px; letter-spacing: 2px; color: var(--lcd-pixel); }
+
+@media (max-width: 640px) {
+  .subscreen-back  { font-size: 8px; padding: 8px 10px; min-height: 36px; }
+  .subscreen-title { font-size: 9px; }
+}

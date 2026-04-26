@@ -10,16 +10,100 @@
      Constants
   ========================================================================= */
 
-  var RAIL_HINTS = {
-    subghz:   'scan sub-ghz around me',
-    rfid:     'read the rfid tag on my desk',
-    nfc:      'read the nfc tag on my desk',
-    ir:       'scan infrared signals around me',
-    ibutton:  'read the ibutton key on this device',
-    gpio:     'show gpio pin states',
-    badusb:   'create a badusb script that …',
-    apps:     'list available apps on the flipper',
-    marauder: 'scan wifi networks with marauder',
+  // Per-subsystem catalog of likely tools / attacks.
+  // Clicking an item prefills the agent input — the user reviews + sends.
+  // risk: 'low' | 'med' | 'high' (renders as a badge; affects nothing else)
+  var CATEGORY_TOOLS = {
+    subghz: {
+      title: 'SUB-GHZ',
+      items: [
+        { label: 'Frequency analyzer',     prompt: 'run sub-ghz frequency analyzer and tell me what is active around me',                       risk: 'low'  },
+        { label: 'Scan default presets',   prompt: 'scan sub-ghz on the default preset list and report any captures',                            risk: 'low'  },
+        { label: 'Read fixed-code remote', prompt: 'capture the next sub-ghz transmission from a nearby remote and decode it',                   risk: 'low'  },
+        { label: 'Save capture to SD',     prompt: 'save the most recent sub-ghz capture to the SD card under /subghz/',                          risk: 'low'  },
+        { label: 'Replay saved signal',    prompt: 'list saved sub-ghz files and replay the one I pick',                                          risk: 'med'  },
+        { label: 'RAW capture',            prompt: 'start a sub-ghz RAW capture for 10 seconds at 433.92 MHz',                                    risk: 'low'  },
+      ],
+    },
+    rfid: {
+      title: '125 kHz RFID',
+      items: [
+        { label: 'Read tag',               prompt: 'read the 125 kHz rfid tag held to the flipper and identify the format',                     risk: 'low'  },
+        { label: 'Save read to SD',        prompt: 'save the rfid tag I just read to the SD card',                                                risk: 'low'  },
+        { label: 'Emulate saved tag',      prompt: 'list saved 125 kHz rfid tags and emulate the one I pick',                                    risk: 'med'  },
+        { label: 'Write to T5577 blank',   prompt: 'clone the rfid tag I just read onto a T5577 blank held to the flipper',                      risk: 'med'  },
+        { label: 'Identify common formats', prompt: 'read the rfid tag and tell me whether it is EM4100, HID Prox, Indala, or something else',  risk: 'low'  },
+      ],
+    },
+    nfc: {
+      title: 'NFC',
+      items: [
+        { label: 'Read tag',               prompt: 'read the nfc tag held to the flipper and report UID, ATQA, SAK, and detected type',         risk: 'low'  },
+        { label: 'Save dump',              prompt: 'save a full dump of the nfc tag I just read to the SD card',                                  risk: 'low'  },
+        { label: 'Emulate UID',            prompt: 'emulate the UID of the nfc tag I last read',                                                  risk: 'med'  },
+        { label: 'Mifare dictionary',      prompt: 'attempt the standard Mifare Classic key dictionary attack against the tag held to the flipper', risk: 'high' },
+        { label: 'Mifare nested',          prompt: 'run the Mifare Classic nested attack against the tag, assuming we know one key',              risk: 'high' },
+        { label: 'Read NDEF',              prompt: 'read NDEF records from the nfc tag held to the flipper',                                      risk: 'low'  },
+      ],
+    },
+    ir: {
+      title: 'INFRARED',
+      items: [
+        { label: 'Universal TV remote',    prompt: 'launch the IR universal remote and try to power off the TV in front of me',                  risk: 'low'  },
+        { label: 'Universal AC remote',    prompt: 'launch the IR universal remote and try to control the air conditioner in front of me',       risk: 'low'  },
+        { label: 'Capture IR signal',      prompt: 'capture the next IR signal pointed at the flipper and decode the protocol',                   risk: 'low'  },
+        { label: 'Replay captured signal', prompt: 'list saved IR captures and replay the one I pick',                                            risk: 'med'  },
+        { label: 'Decode protocol',        prompt: 'identify the protocol (NEC, Sony, RC5, RC6, Samsung, …) of the last captured IR signal',     risk: 'low'  },
+      ],
+    },
+    ibutton: {
+      title: 'IBUTTON',
+      items: [
+        { label: 'Read key',               prompt: 'read the iButton (1-Wire) key touched to the flipper contact',                               risk: 'low'  },
+        { label: 'Save key to SD',         prompt: 'save the iButton key I just read to the SD card',                                             risk: 'low'  },
+        { label: 'Write to blank',         prompt: 'write the last-read iButton key to the blank touched to the contact',                        risk: 'med'  },
+        { label: 'Emulate saved key',      prompt: 'list saved iButton keys and emulate the one I pick',                                          risk: 'med'  },
+      ],
+    },
+    gpio: {
+      title: 'GPIO',
+      items: [
+        { label: 'Read pin states',        prompt: 'read the current state of every GPIO pin on the flipper',                                    risk: 'low'  },
+        { label: 'Set pin output',         prompt: 'set GPIO pin <number> to <high|low> as an output',                                            risk: 'med'  },
+        { label: 'I2C scan',               prompt: 'scan the I2C bus on the flipper GPIO and list any responding addresses',                     risk: 'low'  },
+        { label: 'UART bridge',            prompt: 'open a UART bridge on the flipper GPIO at 115200 baud',                                      risk: 'low'  },
+      ],
+    },
+    badusb: {
+      title: 'BAD USB',
+      items: [
+        { label: 'List saved payloads',    prompt: 'list saved bad-usb (DuckyScript) payloads on the SD card',                                   risk: 'low'  },
+        { label: 'Generate hello-world',   prompt: 'generate a tiny DuckyScript that opens a terminal and prints "hello from promptzero"',       risk: 'low'  },
+        { label: 'Generate recon script',  prompt: 'generate a DuckyScript that prints basic system info (OS, user, hostname) into a text file', risk: 'med'  },
+        { label: 'Validate a payload',     prompt: 'validate a DuckyScript payload — I will paste the contents next',                            risk: 'low'  },
+        { label: 'Run saved payload',      prompt: 'run a saved bad-usb payload from the SD card after I confirm',                               risk: 'high' },
+      ],
+    },
+    apps: {
+      title: 'APPS',
+      items: [
+        { label: 'List installed FAPs',    prompt: 'list every installed app (FAP) on the flipper SD card',                                      risk: 'low'  },
+        { label: 'Browse apps folder',     prompt: 'show me what is in /apps on the flipper SD card',                                            risk: 'low'  },
+        { label: 'Launch app by name',     prompt: 'launch the app named <name> on the flipper',                                                  risk: 'med'  },
+      ],
+    },
+    marauder: {
+      title: 'MARAUDER',
+      items: [
+        { label: 'Scan WiFi APs',          prompt: 'scan for nearby WiFi access points with marauder and list SSID, BSSID, channel, RSSI',      risk: 'low'  },
+        { label: 'Scan stations',          prompt: 'scan for WiFi client stations with marauder and list MAC, RSSI, associated AP',              risk: 'low'  },
+        { label: 'Probe-request sniff',    prompt: 'sniff WiFi probe requests with marauder for 30 seconds and summarise what you see',          risk: 'low'  },
+        { label: 'Beacon spam',            prompt: 'broadcast a short beacon-spam burst with marauder for lab demonstration only',               risk: 'high' },
+        { label: 'Deauth (lab only)',      prompt: 'send a deauth burst against the AP I select — lab use only, get my confirmation first',     risk: 'high' },
+        { label: 'BLE scan',               prompt: 'scan for nearby BLE devices with marauder and list name, MAC, RSSI',                          risk: 'low'  },
+        { label: 'BLE spam',               prompt: 'send a short BLE-spam burst with marauder for lab demonstration only',                       risk: 'high' },
+      ],
+    },
   };
 
   // 11 columns x 9 rows — Flipper dolphin pixel art
@@ -321,11 +405,11 @@
     beep(660, 0.05);
     setActiveRailItem(route);
 
-    // Natural-language entry points: prefill input and return to agent view
-    if (RAIL_HINTS[route]) {
-      var inp = document.getElementById('cmd');
-      if (inp) { inp.value = RAIL_HINTS[route]; inp.focus(); inp.select(); }
-      showAgentScreen();
+    // Subsystem rail items show a category landing screen with tools/attacks
+    if (CATEGORY_TOOLS[route]) {
+      showScreen('category-' + route);
+      setCrumbs(CATEGORY_TOOLS[route].title, 'TOOLS');
+      loadCategoryScreen(route);
       return;
     }
 
@@ -336,6 +420,55 @@
       case 'settings': showScreen('settings'); setCrumbs('SETTINGS','MAIN');     loadSettingsMenu();   break;
       default:         showAgentScreen();   break;
     }
+  }
+
+  /* =========================================================================
+     Category landing screens — list of likely tools / attacks per subsystem
+  ========================================================================= */
+
+  function loadCategoryScreen(route) {
+    var cat = CATEGORY_TOOLS[route];
+    if (!cat) return;
+    var ss = resetSubscreen(cat.title, backToAgent); if (!ss) return;
+
+    var hint = mkEl('p', null, 'RUN ▶ dispatches immediately. Items with a risk badge load into the prompt so you can review/edit first.');
+    hint.style.cssText = 'color:var(--lcd-pixel-soft);font-size:15px;margin:0 0 10px;';
+    ss.appendChild(hint);
+
+    cat.items.forEach(function (it) {
+      var risk = String(it.risk || 'low').toLowerCase();
+      var hasPlaceholder = /<[^>]+>/.test(it.prompt);
+      var direct = (risk === 'low' && !hasPlaceholder);
+
+      var div = mkEl('div', 'rail-item');
+      div.tabIndex = 0;
+      div.setAttribute('role', 'button');
+      div.appendChild(mkEl('span', 'ic', direct ? '▶' : '▸'));
+
+      div.appendChild(mkEl('span', 'label', it.label));
+
+      var badge = mkEl('span', 'badge', direct ? 'RUN ▶' : risk.toUpperCase());
+      if (!direct && risk === 'med')  badge.style.color = 'var(--orange-hi)';
+      if (!direct && risk === 'high') badge.style.color = 'var(--led-red)';
+      div.appendChild(badge);
+
+      div.title = it.prompt;
+
+      var go = direct
+        ? function () { showAgentScreen(); submitText(it.prompt); }
+        : function () {
+            var inp = document.getElementById('cmd');
+            if (inp) { inp.value = it.prompt; }
+            showAgentScreen();
+            if (inp) { inp.focus(); inp.select(); }
+          };
+
+      div.addEventListener('click', go);
+      div.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+      });
+      ss.appendChild(div);
+    });
   }
 
   /* =========================================================================
@@ -380,6 +513,35 @@
     if (e1) e1.textContent = c1 || 'AGENT';
     if (e2) e2.textContent = c2 || 'SESSION';
     if (e3) e3.textContent = c3 !== undefined ? c3 : '—';
+  }
+
+  /** Append a sub-screen header with a left-aligned back button. */
+  function appendSubscreenHeader(container, title, onBack) {
+    var header = mkEl('div', 'subscreen-header');
+    var back   = mkEl('button', 'subscreen-back', '◀ BACK');
+    back.type  = 'button';
+    back.setAttribute('aria-label', 'Back');
+    back.addEventListener('click', function () { beep(440, 0.04); if (onBack) onBack(); });
+    header.appendChild(back);
+    if (title) header.appendChild(mkEl('span', 'subscreen-title', title));
+    container.appendChild(header);
+  }
+
+  /** Shared back targets for sub-screens. */
+  function backToAgent()    { showAgentScreen(); }
+  function backToSettings() {
+    showScreen('settings');
+    setCrumbs('SETTINGS', 'MAIN');
+    loadSettingsMenu();
+    setActiveRailItem('settings');
+  }
+
+  /** Reset a sub-screen and re-append its header so the back button survives reloads. */
+  function resetSubscreen(title, onBack) {
+    var ss = ensureSubscreen(); if (!ss) return null;
+    clearEl(ss);
+    appendSubscreenHeader(ss, title, onBack);
+    return ss;
   }
 
   /* =========================================================================
@@ -431,7 +593,10 @@
   }
 
   function handleBack() {
-    if (_currentScreen !== 'agent') showAgentScreen();
+    if (_currentScreen === 'agent') return;
+    // Settings sub-pages pop to the settings menu first, then to agent.
+    if (_currentScreen.indexOf('settings-') === 0) { backToSettings(); return; }
+    backToAgent();
   }
 
   /* =========================================================================
@@ -1071,9 +1236,8 @@
   ========================================================================= */
 
   function loadSettingsMenu() {
-    var ss = ensureSubscreen();
+    var ss = resetSubscreen('SETTINGS', backToAgent);
     if (!ss) return;
-    clearEl(ss);
 
     var items = [
       ['persona', 'PERSONA',    'Switch agent persona'],
@@ -1110,12 +1274,12 @@
 
   /* --- Persona --- */
   function loadPersonaScreen() {
-    var ss = ensureSubscreen(); if (!ss) return;
-    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    var ss = resetSubscreen('PERSONA', backToSettings); if (!ss) return;
+    ss.appendChild(mkEl('p', null, 'Loading…'));
     apiFetch('api/personas')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
-        clearEl(ss);
+        ss = resetSubscreen('PERSONA', backToSettings); if (!ss) return;
         if (!data) { ss.appendChild(mkEl('p', null, 'Personas not configured.')); return; }
         _personas.current = data.current || '';
         var list = Array.isArray(data.available) ? data.available : [];
@@ -1134,7 +1298,10 @@
           ss.appendChild(div);
         });
       })
-      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Failed to load personas.')); });
+      .catch(function () {
+        ss = resetSubscreen('PERSONA', backToSettings);
+        if (ss) ss.appendChild(mkEl('p', null, 'Failed to load personas.'));
+      });
   }
 
   function doSwitchPersona(name) {
@@ -1150,12 +1317,12 @@
 
   /* --- Rules --- */
   function loadRulesScreen() {
-    var ss = ensureSubscreen(); if (!ss) return;
-    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    var ss = resetSubscreen('RULES', backToSettings); if (!ss) return;
+    ss.appendChild(mkEl('p', null, 'Loading…'));
     apiFetch('api/rules')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
-        clearEl(ss);
+        ss = resetSubscreen('RULES', backToSettings); if (!ss) return;
         var list = Array.isArray(data) ? data : [];
         if (!list.length) { ss.appendChild(mkEl('p', null, 'No rules loaded.')); return; }
         list.forEach(function (rule) {
@@ -1180,7 +1347,10 @@
           ss.appendChild(div);
         });
       })
-      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Rules engine not configured.')); });
+      .catch(function () {
+        ss = resetSubscreen('RULES', backToSettings);
+        if (ss) ss.appendChild(mkEl('p', null, 'Rules engine not configured.'));
+      });
   }
 
   function doToggleRule(name, shouldEnable) {
@@ -1203,12 +1373,12 @@
 
   /* --- Cost --- */
   function loadCostScreen() {
-    var ss = ensureSubscreen(); if (!ss) return;
-    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    var ss = resetSubscreen('COST', backToSettings); if (!ss) return;
+    ss.appendChild(mkEl('p', null, 'Loading…'));
     apiFetch('api/cost')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (body) {
-        clearEl(ss);
+        ss = resetSubscreen('COST', backToSettings); if (!ss) return;
         if (!body) { ss.appendChild(mkEl('p', null, 'Cost tracker not configured.')); return; }
         var total  = body.total || {};
         var usd    = Number(total.usd || 0);
@@ -1235,17 +1405,20 @@
           });
         }
       })
-      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Failed to load cost.')); });
+      .catch(function () {
+        ss = resetSubscreen('COST', backToSettings);
+        if (ss) ss.appendChild(mkEl('p', null, 'Failed to load cost.'));
+      });
   }
 
   /* --- Watch --- */
   function loadWatchScreen() {
-    var ss = ensureSubscreen(); if (!ss) return;
-    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    var ss = resetSubscreen('WATCH', backToSettings); if (!ss) return;
+    ss.appendChild(mkEl('p', null, 'Loading…'));
     apiFetch('api/watch')
       .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
       .then(function (res) {
-        clearEl(ss);
+        ss = resetSubscreen('WATCH', backToSettings); if (!ss) return;
         if (!res.ok) {
           var msg = (res.body && res.body.error) || 'watch unavailable';
           if (msg === 'watcher not configured') msg = 'Watcher not enabled — launch with --watch';
@@ -1293,17 +1466,20 @@
           ss.appendChild(d);
         });
       })
-      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Failed to load watch state.')); });
+      .catch(function () {
+        ss = resetSubscreen('WATCH', backToSettings);
+        if (ss) ss.appendChild(mkEl('p', null, 'Failed to load watch state.'));
+      });
   }
 
   /* --- Debug --- */
   function loadDebugScreen() {
-    var ss = ensureSubscreen(); if (!ss) return;
-    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    var ss = resetSubscreen('DEBUG', backToSettings); if (!ss) return;
+    ss.appendChild(mkEl('p', null, 'Loading…'));
     apiFetch('api/debug')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (body) {
-        clearEl(ss);
+        ss = resetSubscreen('DEBUG', backToSettings); if (!ss) return;
         if (!body) { ss.appendChild(mkEl('p', null, 'Debug unavailable.')); return; }
         var sections = [
           ['BUILD',   [ ['version', (body.build   && body.build.version)   || '—'],
@@ -1339,13 +1515,15 @@
         copyBtn.style.marginTop = '8px';
         ss.appendChild(copyBtn);
       })
-      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Debug unavailable.')); });
+      .catch(function () {
+        ss = resetSubscreen('DEBUG', backToSettings);
+        if (ss) ss.appendChild(mkEl('p', null, 'Debug unavailable.'));
+      });
   }
 
   /* --- About --- */
   function loadAboutScreen() {
-    var ss = ensureSubscreen(); if (!ss) return;
-    clearEl(ss);
+    var ss = resetSubscreen('ABOUT', backToSettings); if (!ss) return;
     apiFetch('api/debug')
       .then(function (r) { return r.ok ? r.json() : {}; })
       .catch(function () { return {}; })
@@ -1372,8 +1550,7 @@
   ========================================================================= */
 
   function loadAuditScreen() {
-    var ss = ensureSubscreen(); if (!ss) return;
-    clearEl(ss);
+    var ss = resetSubscreen('AUDIT LOG', backToAgent); if (!ss) return;
     var notice = mkEl('p', null, 'Audit entries appear as tool calls are made during the session. Tool calls recorded this session:');
     notice.style.cssText = 'color:var(--lcd-pixel-soft);font-size:15px;margin-bottom:10px;';
     ss.appendChild(notice);
@@ -1398,8 +1575,7 @@
   ========================================================================= */
 
   function loadReportScreen() {
-    var ss = ensureSubscreen(); if (!ss) return;
-    clearEl(ss);
+    var ss = resetSubscreen('REPORT', backToAgent); if (!ss) return;
 
     ss.appendChild(mkEl('div', null, 'VALIDATE BADUSB SCRIPT:'));
 
