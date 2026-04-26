@@ -392,8 +392,8 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
 /* LCD bottom-right credit watermark */
 .lcd .credit {
   position: absolute;
-  right: 12px;
-  bottom: 16px;
+  right: 28px;
+  bottom: 18px;
   z-index: 4;
   font-family: var(--pixel);
   font-size: 7px;
@@ -406,7 +406,10 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
 }
 .lcd .credit:hover  { opacity: 1; color: var(--lcd-pixel); }
 .lcd .credit:active { color: var(--lcd-pixel); }
-@media (max-width: 640px) { .lcd .credit { font-size: 6px; right: 8px; bottom: 12px; } }
+/* Hide on the Device panel — the canvas's drop shadow can clip the credit
+   and there's no good way to avoid overlap when the panel goes near full-bleed. */
+body[data-mirror-holder="1"] .lcd .credit { display: none; }
+@media (max-width: 640px) { .lcd .credit { font-size: 6px; right: 18px; bottom: 14px; } }
 
 /* Sub-screen header — back button + title */
 .subscreen-header { display: flex; align-items: center; gap: 10px; padding: 0 0 8px; margin-bottom: 10px; border-bottom: 2px solid var(--lcd-pixel); }
@@ -601,26 +604,37 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
    DEVICE SCREEN — live LCD mirror
    ───────────────────────────────────────────────────────────────────── */
 
-/* Panel that holds canvas + status + buttons */
+/* Panel that holds canvas + status + buttons. Fills the subscreen exactly
+   (height:100% + overflow:hidden) so the canvas can shrink to fit instead
+   of overflowing the subscreen and triggering the parent scrollbar. */
 .screen-panel {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: clamp(6px, 1.5vh, 16px);
-  padding: clamp(6px, 1.5vh, 16px);
+  justify-content: center;
+  gap: clamp(4px, 1vh, 12px);
+  padding: clamp(4px, 1vh, 12px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* The canvas — fluid, aspect-locked, pixel-perfect upscale of the 128×64
-   native framebuffer. width:100% fills the panel; max-width caps it so the
-   canvas height never exceeds 45 vh — leaves room for the STOP MIRROR
-   button + status + hint without scrolling on standard viewports.
-   1024 px hard cap so it doesn't dwarf 4K monitors. */
+   native framebuffer. flex:0 1 auto + aspect-ratio + max-{width,height}:100%
+   makes the canvas shrink along whichever dimension is tighter (parent
+   width or remaining vertical space after status/buttons/hint take theirs)
+   while maintaining the 2:1 ratio. 1024 px hard cap so it doesn't dwarf
+   4K monitors. */
 .screen-canvas {
   display: block;
-  width: 100%;
-  max-width: min(1024px, calc(45vh * 2));
-  aspect-ratio: 2 / 1;
+  flex: 0 1 auto;
+  width: auto;
   height: auto;
+  max-width: min(1024px, 100%);
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 2 / 1;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   background: var(--lcd-bg);
