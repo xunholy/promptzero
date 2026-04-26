@@ -1,30 +1,31 @@
-// fap_build.go — flipperdevices/flipperzero-ufbt bridge for compiling
-// Flipper application packages (.fap) from source.
+// fap_build.go — flipperdevices/ufbt bridge for compiling Flipper
+// application packages (.fap) from source.
 //
-// ufbt (the user-facing flipper build tool) wraps the full Flipper SDK
-// + a pinned clang/Python chain. Running it inside a container gives a
-// hermetic build that doesn't pollute the operator host.
+// ufbt is the upstream Flipper build tool distributed as a Python package:
 //
-// Default image: `ghcr.io/flipperdevices/ufbt:latest` (mirrors the
-// upstream PyPI release). Override with UFBT_IMAGE env or the `image`
-// argument.
+//	pip install ufbt          # install once
+//	ufbt                      # builds the FAP in the current directory
+//
+// This tool shells out to the ufbt binary found on the operator's PATH.
+// If ufbt is not available, the handler returns an actionable error
+// pointing at the install step.  No Docker or container runtime is required.
 
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/xunholy/promptzero/internal/containerbridge"
 	"github.com/xunholy/promptzero/internal/risk"
 )
-
-const defaultUFBTImage = "ghcr.io/flipperdevices/ufbt:latest"
 
 func init() { //nolint:gochecknoinits
 	Register(fapBuildSpec)
@@ -32,15 +33,20 @@ func init() { //nolint:gochecknoinits
 
 var fapBuildSpec = Spec{
 	Name: "fap_build",
-	Description: "Compile a Flipper application package (.fap) from a source directory using flipperdevices/flipperzero-ufbt. Runs in a containerised SDK toolchain to avoid host setup. Returns the path to the built .fap, the stdout/stderr of the build, and any warnings detected. The deploy flag will additionally push the built .fap to the connected Flipper's /ext/apps directory. Requires Docker on the operator host.",
+	Description: "Compile a Flipper application package (.fap) from a source directory " +
+		"using the flipperdevices/ufbt tool (install with `pip install ufbt`). " +
+		"ufbt must be present on the operator's PATH; no Docker is required. " +
+		"Returns the path to the built .fap, stdout/stderr of the build, and any " +
+		"warnings detected. The deploy flag additionally pushes the built .fap to " +
+		"the connected Flipper's /ext/apps directory.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
 			"source_dir":{"type":"string","description":"Local filesystem path to the .fap source directory (must contain application.fam)."},
 			"output_dir":{"type":"string","description":"Host directory to receive the built .fap. Defaults to a TempDir."},
-			"deploy":{"type":"boolean","description":"After a successful build, push the .fap to the connected Flipper's /ext/apps via storage_write. Default false."},
-			"image":{"type":"string","description":"Override ufbt docker image. Defaults to UFBT_IMAGE env or ghcr.io/flipperdevices/ufbt:latest."},
-			"timeout_seconds":{"type":"integer","description":"Per-call timeout. Defaults to 600s (Flipper SDK builds can be slow on first run)."}
+			"deploy":{"type":"boolean","description":"After a successful build, push the .fap to the connected Flipper's /ext/apps via WriteFile. Default false."},
+			"ufbt_path":{"type":"string","description":"Explicit path to the ufbt binary. Defaults to 'ufbt' on PATH (or UFBT_PATH env var)."},
+			"timeout_seconds":{"type":"integer","description":"Per-call timeout in seconds. Defaults to 300 (5 min)."}
 		},
 		"required":["source_dir"]
 	}`),
@@ -52,20 +58,33 @@ var fapBuildSpec = Spec{
 }
 
 func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string, error) {
-	if !containerbridge.Available() {
-		return "", fmt.Errorf("fap_build: docker not available — install Docker to use the ufbt bridge")
+	// Resolve ufbt binary: explicit arg > env var > PATH.
+	ufbt := str(args, "ufbt_path")
+	if ufbt == "" {
+		ufbt = os.Getenv("UFBT_PATH")
+	}
+	if ufbt == "" {
+		ufbt = "ufbt"
+	}
+	ufbtBin, err := exec.LookPath(ufbt)
+	if err != nil {
+		return "", fmt.Errorf(
+			"fap_build: ufbt not found on PATH (looked for %q): "+
+				"install with `pip install ufbt` or set UFBT_PATH to the binary location. "+
+				"Alternatively run `task fap:companion:build` to build via the Taskfile.",
+			ufbt,
+		)
 	}
 
 	srcDir := str(args, "source_dir")
 	if srcDir == "" {
-		return "", fmt.Errorf("fap_build: source_dir is required")
+		return "", errors.New("fap_build: source_dir is required")
 	}
 	absSrc, err := filepath.Abs(srcDir)
 	if err != nil {
 		return "", fmt.Errorf("fap_build: resolve %s: %w", srcDir, err)
 	}
-	famPath := filepath.Join(absSrc, "application.fam")
-	if _, err := os.Stat(famPath); err != nil {
+	if _, err := os.Stat(filepath.Join(absSrc, "application.fam")); err != nil {
 		return "", fmt.Errorf("fap_build: missing application.fam in %s", absSrc)
 	}
 
@@ -82,61 +101,50 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 	}
 	absOut, err := filepath.Abs(outDir)
 	if err != nil {
-		return "", fmt.Errorf("fap_build: resolve output_dir: %w", err)
+		return "", fmt.Errorf("fap_build: resolve output_dir %s: %w", outDir, err)
 	}
 
-	image := str(args, "image")
-	if image == "" {
-		image = os.Getenv("UFBT_IMAGE")
-	}
-	if image == "" {
-		image = defaultUFBTImage
-	}
+	timeoutSecs := intOr(args, "timeout_seconds", 300)
+	buildCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
+	defer cancel()
 
-	timeout := time.Duration(intOr(args, "timeout_seconds", 600)) * time.Second
+	// ufbt is invoked in the source directory; it auto-discovers
+	// application.fam there and writes build artefacts to .ufbt/dist/.
+	cmd := exec.CommandContext(buildCtx, ufbtBin) //nolint:gosec
+	cmd.Dir = absSrc
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-	cfg := containerbridge.Config{
-		Image:   image,
-		Args:    []string{"build"},
-		WorkDir: "/src",
-		Mounts: []containerbridge.Mount{
-			{HostPath: absSrc, ContainerPath: "/src", ReadOnly: false},
-			{HostPath: absOut, ContainerPath: "/out", ReadOnly: false},
-		},
-		Network: "bridge", // ufbt may pull SDK toolchain on first run
-		Timeout: timeout,
-	}
+	buildErr := cmd.Run()
 
-	res, err := containerbridge.Run(ctx, cfg)
 	out := map[string]any{
 		"source_dir":  absSrc,
 		"output_dir":  absOut,
-		"image":       image,
-		"duration_ms": res.Duration.Milliseconds(),
-		"exit_code":   res.ExitCode,
-		"stdout":      tail(res.Stdout, 16384),
-		"stderr":      tail(res.Stderr, 16384),
+		"stdout":      tail(stdout.Bytes(), 16384),
+		"stderr":      tail(stderr.Bytes(), 16384),
+		"exit_code":   exitCode(cmd),
 	}
-
-	if err != nil {
+	if buildErr != nil {
 		body, _ := json.Marshal(out)
-		return string(body), fmt.Errorf("fap_build: %w", err)
+		return string(body), fmt.Errorf("fap_build: %w", buildErr)
 	}
 
-	// Locate the produced .fap.
 	produced := findFAP(absSrc, absOut)
 	out["fap_paths"] = produced
 	if len(produced) == 0 {
 		body, _ := json.Marshal(out)
-		return string(body), fmt.Errorf("fap_build: build succeeded but no .fap found in %s or %s", absSrc, absOut)
+		return string(body), fmt.Errorf(
+			"fap_build: build succeeded but no .fap found in %s or %s",
+			absSrc, absOut,
+		)
 	}
 
-	// Optional deploy step.
 	if deploy := boolOr(args, "deploy", false); deploy {
 		if d == nil || d.Flipper == nil {
 			out["deploy_status"] = "skipped: Flipper transport unavailable"
 		} else {
-			pushed, perr := pushFAPs(d, produced)
+			pushed, perr := pushFAPs(ctx, d, produced)
 			out["deploy_pushed"] = pushed
 			if perr != nil {
 				out["deploy_error"] = perr.Error()
@@ -148,9 +156,9 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 	return string(body), nil
 }
 
-// findFAP recursively scans dirs for *.fap files and returns absolute
-// paths. Both source and output dirs are searched because ufbt may
-// place the artifact in either location depending on its config.
+// findFAP recursively scans dirs for *.fap files and returns absolute paths.
+// Both the source dir (ufbt writes to .ufbt/dist/ inside it) and any
+// explicit output_dir are searched.
 func findFAP(dirs ...string) []string {
 	var out []string
 	for _, d := range dirs {
@@ -167,21 +175,21 @@ func findFAP(dirs ...string) []string {
 	return out
 }
 
-// pushFAPs writes each built .fap to the connected Flipper's /ext/apps
-// directory. Returns the on-device paths successfully written and a
-// joined error for any that failed.
-func pushFAPs(d *Deps, faps []string) ([]string, error) {
+// pushFAPs writes each built .fap to the connected Flipper's /ext/apps.
+// Returns the on-device paths successfully written and a joined error for
+// any that failed.
+func pushFAPs(ctx context.Context, d *Deps, faps []string) ([]string, error) {
 	var pushed []string
 	var errs []string
 	for _, p := range faps {
-		bytes, err := os.ReadFile(p) //nolint:gosec // operator-built artifact
+		b, err := os.ReadFile(p) //nolint:gosec
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: read: %v", p, err))
 			continue
 		}
 		dst := "/ext/apps/" + filepath.Base(p)
-		d.SnapshotBeforeWrite(context.Background(), dst)
-		if err := d.Flipper.WriteFile(dst, bytes); err != nil {
+		d.SnapshotBeforeWrite(ctx, dst)
+		if err := d.Flipper.WriteFile(dst, b); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: write %s: %v", p, dst, err))
 			continue
 		}
@@ -191,4 +199,12 @@ func pushFAPs(d *Deps, faps []string) ([]string, error) {
 		return pushed, fmt.Errorf("fap_build deploy: %s", strings.Join(errs, "; "))
 	}
 	return pushed, nil
+}
+
+// exitCode reads the process exit code, or -1 when unavailable.
+func exitCode(cmd *exec.Cmd) int {
+	if cmd.ProcessState == nil {
+		return -1
+	}
+	return cmd.ProcessState.ExitCode()
 }

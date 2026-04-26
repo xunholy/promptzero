@@ -48,6 +48,7 @@ type Config struct {
 	Bruce         BruceConfig         `yaml:"bruce,omitempty"`
 	Faultier      FaultierConfig      `yaml:"faultier,omitempty"`
 	BusPirate     BusPirateConfig     `yaml:"buspirate,omitempty"`
+	Companion     CompanionConfig     `yaml:"companion,omitempty"`
 	Flipper       FlipperConfig       `yaml:"flipper,omitempty"`
 	Agent         AgentConfig         `yaml:"agent,omitempty"`
 	Web           WebConfig           `yaml:"web"`
@@ -89,6 +90,31 @@ type FaultierConfig struct {
 type BusPirateConfig struct {
 	Port string `yaml:"port,omitempty"`
 	Baud int    `yaml:"baud,omitempty"`  // default 115200
+}
+
+// CompanionConfig configures the optional on-device PromptZero
+// Companion FAP integration. The host writes status events to a
+// JSON file on the Flipper SD card; the FAP reads and renders them
+// so the operator sees what the agent is doing without looking at
+// the laptop.
+//
+// Defaults are auto: when Enabled is nil, the host probes the SD
+// card for the FAP at startup and wires the sink only if found.
+// Setting Enabled=true with no FAP installed produces a warning;
+// Enabled=false skips the probe entirely.
+type CompanionConfig struct {
+	// Enabled overrides the auto-detect default. nil = auto-detect
+	// (preferred). true = require the FAP and warn if missing.
+	// false = disable even if the FAP is installed.
+	Enabled *bool `yaml:"enabled,omitempty"`
+	// StatusPath overrides the SD-card path where the status file
+	// is written. Empty uses companion.DefaultStatusPath.
+	StatusPath string `yaml:"status_path,omitempty"`
+	// AutoIdleAfter is how long after the last tool finish to push
+	// an Idle event so the FAP returns to a "ready" header. Zero
+	// uses 1.5s. Set to a negative value to disable auto-idle (the
+	// FAP keeps showing the last Done state until the next turn).
+	AutoIdleAfter time.Duration `yaml:"auto_idle_after,omitempty"`
 }
 
 // FlipperConfig holds per-operation timeout overrides for the Flipper

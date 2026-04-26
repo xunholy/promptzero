@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,9 +19,10 @@ import (
 	"github.com/xunholy/promptzero/internal/bruce"
 	"github.com/xunholy/promptzero/internal/buspirate"
 	"github.com/xunholy/promptzero/internal/config"
-	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/cost"
+	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/flipper/companion"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/mcp"
@@ -738,6 +740,27 @@ func setupMarauder(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder, wifiE
 	return true, func() { m.Close() }
 }
 
+// probeMarauderFirmware runs the `info` command and updates the web
+// server's marauder.firmware status field. Intended to be called in a
+// goroutine — the probe blocks the serial port for ~100ms, which is too
+// slow to inline in the connect path. Failures are silent; the firmware
+// pill simply stays empty when the probe times out or returns garbage.
+func probeMarauderFirmware(m *marauder.Marauder, srv *web.Server, port string) {
+	out, err := m.Exec("info", 2*time.Second)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(line, "version:"); ok {
+			if fw := strings.TrimSpace(rest); fw != "" {
+				srv.SetMarauderInfo(port, fw)
+				return
+			}
+		}
+	}
+}
+
 // setupBruce attempts to connect a Bruce ESP32 devboard when the
 // operator has configured one. Failure is non-fatal — the agent runs
 // without Bruce and bruce_* Specs return a "not connected" error.
@@ -800,6 +823,35 @@ func setupBusPirate(ctx context.Context, cfg *config.Config, ai *agent.Agent) (b
 	ai.SetBusPirate(c)
 	statusOK("Bus Pirate 5 universal-bus probe connected")
 	return true, func() { _ = c.Close() }
+}
+
+// setupCompanion probes the Flipper SD card for the optional
+// PromptZero Companion FAP and, if found, returns a sink the REPL
+// can push status events into. Returns a NopSink when the FAP is
+// absent or the integration is disabled in config — every existing
+// flow runs unchanged.
+//
+// The probe is short-deadline (3 s) so a flaky USB link can't stall
+// startup; any error is treated as "not installed".
+func setupCompanion(ctx context.Context, cfg *config.Config, flip *flipper.Flipper) (companion.Sink, func()) {
+	if cfg.Companion.Enabled != nil && !*cfg.Companion.Enabled {
+		return companion.NopSink{}, func() {}
+	}
+	if flip == nil {
+		return companion.NopSink{}, func() {}
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	foundAt := companion.Detect(probeCtx, flip)
+	if foundAt == "" {
+		if cfg.Companion.Enabled != nil && *cfg.Companion.Enabled {
+			statusWarn("Companion FAP enabled in config but not found on /ext/apps; status sink disabled")
+		}
+		return companion.NopSink{}, func() {}
+	}
+	sink := companion.NewFlipperSink(flip, cfg.Companion.StatusPath, slog.Default())
+	statusOK(fmt.Sprintf("Companion FAP %s(at %s)%s", dim, foundAt, reset))
+	return sink, func() { _ = sink.Close() }
 }
 
 // setupVoice constructs the Whisper-backed voice engine when the
@@ -889,6 +941,10 @@ type WebDeps struct {
 	RulesEngine    *rules.Engine
 	Flipper        *flipper.Flipper
 	MarauderOnline bool
+	// Companion is the on-device FAP status sink. NopSink is used
+	// when nil so the web server runs unchanged for operators
+	// without the Companion FAP installed.
+	Companion companion.Sink
 }
 
 // runWebMode binds the HTTP UI on the configured address and serves
@@ -923,8 +979,17 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	if deps.Flipper != nil {
 		srv.SetFlipper(deps.Flipper)
 	}
+	if deps.Companion != nil {
+		srv.SetCompanion(deps.Companion)
+	}
 	srv.SetFlipperConnected(true)
 	srv.SetMarauderConnected(deps.MarauderOnline)
+	if deps.MarauderOnline {
+		srv.SetMarauderInfo(cfg.Marauder.Port, "")
+		if m := deps.Ai.Marauder(); m != nil {
+			go probeMarauderFirmware(m, srv, cfg.Marauder.Port)
+		}
+	}
 	statusOK(fmt.Sprintf("Web UI at %s%shttp://%s%s", bold, cyan, srv.Addr(), reset))
 	if deps.Rec != nil {
 		path := cfg.Observability.MetricsPath

@@ -20,6 +20,7 @@ import (
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/flipper/companion"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
@@ -62,6 +63,7 @@ type REPLDeps struct {
 	ruleEngine    *rules.Engine
 	gateEnabled   bool
 	watchPaths    []string
+	companion     companion.Sink
 
 	// REPL-owned (populated inside enterREPL).
 	ed       *lineEditor

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/flipper/companion"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
@@ -434,6 +435,13 @@ func enterREPL(deps *REPLDeps) error {
 	rec := deps.rec
 	wh := deps.wh
 	voiceEngine := deps.voiceEngine
+	// companion is always non-nil thanks to setupCompanion's NopSink
+	// fallback; callers don't need a guard at every push site.
+	comp := deps.companion
+	if comp == nil {
+		comp = companion.NopSink{}
+	}
+	comp.Idle()
 
 	if deps.voiceMode {
 		if voiceEngine == nil {
@@ -554,6 +562,16 @@ func enterREPL(deps *REPLDeps) error {
 		if streaming.Swap(false) {
 			ed.endDelta()
 		}
+		// Mirror to the on-device Companion FAP so the operator at
+		// the Flipper sees what the agent is touching. Fires before
+		// the terminal writeOutput so the device update isn't gated
+		// on local rendering. NopSink when no FAP is installed.
+		switch ev.Phase {
+		case "start":
+			comp.Busy(ev.Name, companion.SummarizeInput(ev.Input), risk.Classify(ev.Name).String())
+		case "finish":
+			comp.Done(ev.Name, !ev.Err)
+		}
 		ed.writeOutput(func() {
 			switch ev.Phase {
 			case "start":
@@ -613,18 +631,52 @@ func enterREPL(deps *REPLDeps) error {
 				"input": string(req.Input),
 			}
 			wh.Fire(webhook.EventRiskPrompted, promptPayload)
+			// Surface the pending confirm on the Companion FAP so
+			// the operator at the device sees the agent is paused
+			// waiting on them, and accept their answer back through
+			// the FAP's response channel — whichever surface (FAP
+			// buttons or terminal keystroke) responds first wins.
+			confirmID := companion.NewID()
+			comp.Confirm(confirmID, req.Tool, req.Risk.String())
+			comp.PollResponses(true)
+			defer comp.PollResponses(false)
 			resultCh := make(chan agent.ConfirmResponse, 1)
 			pendingConfirm.Store(&confirmState{req: req, result: resultCh})
 			ed.writeOutput(func() {
 				renderConfirmPrompt(req, ui.Cols())
 			})
 			defer pendingConfirm.Store(nil)
+			respCh := comp.Responses()
 			var resp agent.ConfirmResponse
-			select {
-			case r := <-resultCh:
-				resp = r
-			case <-ctx.Done():
-				resp = agent.ConfirmResponse{Decision: agent.DecisionDeny}
+		wait:
+			for {
+				select {
+				case r := <-resultCh:
+					resp = r
+					break wait
+				case fr := <-respCh:
+					if fr.ID != confirmID {
+						// Stale — likely a leftover from a prior
+						// confirm; keep waiting on this one.
+						continue
+					}
+					if fr.Approved() {
+						resp = agent.ConfirmResponse{Decision: agent.DecisionApprove}
+					} else {
+						resp = agent.ConfirmResponse{Decision: agent.DecisionDeny}
+					}
+					ed.writeOutput(func() {
+						source := green + "approved" + reset
+						if !fr.Approved() {
+							source = red + "denied" + reset
+						}
+						fmt.Fprintf(os.Stderr, "  %sFAP %s%s\n", dim, source, reset)
+					})
+					break wait
+				case <-ctx.Done():
+					resp = agent.ConfirmResponse{Decision: agent.DecisionDeny}
+					break wait
+				}
 			}
 			rec.RecordRiskPrompt(req.Tool, decisionLabel(resp.Decision))
 			if resp.Decision == agent.DecisionDeny {
@@ -653,6 +705,11 @@ func enterREPL(deps *REPLDeps) error {
 			fmt.Fprintf(os.Stderr, "\n%s%s>%s %s%s%s\n", pad, dim, reset, dim, input, reset)
 		})
 		_ = flip.SetLED("b", 0xff)
+		// Push an immediate Busy("thinking") so the Companion FAP
+		// shows activity even on a text-only turn that never fires
+		// a tool call. Subsequent ToolEvents override this with the
+		// real tool name + detail.
+		comp.Busy("agent", "thinking", "low")
 		now := time.Now()
 		turnStartedAt.Store(&now)
 		turnToolCount.Store(0)
@@ -815,6 +872,7 @@ func enterREPL(deps *REPLDeps) error {
 		case r := <-turnDone:
 			ed.running.Store(false)
 			_ = flip.SetLED("b", 0)
+			comp.Idle()
 			streamed := streaming.Swap(false)
 			// Close any in-flight delta stream first so subsequent atomic
 			// writes land on a fresh row instead of racing writeDelta's

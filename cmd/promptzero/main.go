@@ -192,6 +192,9 @@ func run() error {
 	_, busPirateClose := setupBusPirate(ctx, cfg, ai)
 	defer busPirateClose()
 
+	companionSink, companionClose := setupCompanion(ctx, cfg, flip)
+	defer companionClose()
+
 	voiceEngine := setupVoice(cfg)
 
 	printCapabilitySummary(hasMarauder, voiceEngine != nil)
@@ -206,6 +209,7 @@ func run() error {
 			RulesEngine:    ruleEngine,
 			Flipper:        flip,
 			MarauderOnline: hasMarauder,
+			Companion:      companionSink,
 		})
 	}
 
@@ -228,5 +232,6 @@ func run() error {
 		ruleEngine:    ruleEngine,
 		gateEnabled:   gateEnabled,
 		watchPaths:    f.watchPaths,
+		companion:     companionSink,
 	})
 }

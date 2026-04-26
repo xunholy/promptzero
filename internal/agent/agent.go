@@ -236,6 +236,11 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 
 func (a *Agent) SetMarauder(m *marauder.Marauder)        { a.marauder = m }
 
+// Marauder returns the attached Marauder client, or nil when unconnected.
+// Read-only access for callers (e.g. setup.go probing firmware) that hold
+// the agent reference but should not own the client lifecycle.
+func (a *Agent) Marauder() *marauder.Marauder { return a.marauder }
+
 // SetBruce attaches a Bruce ESP32 backend client. Nil disables Bruce
 // Specs (handlers short-circuit via [tools.Deps.RequireBruce]).
 func (a *Agent) SetBruce(c *bruce.Client) { a.bruce = c }

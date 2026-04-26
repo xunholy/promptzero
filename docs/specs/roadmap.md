@@ -171,6 +171,8 @@ main. See `CHANGELOG.md [0.3.0]` for per-item notes and coverage of
 deferred sub-items (structured tactic→technique→tool planner is the
 only explicit deferral, tracked with P2-19 Campaigns).
 
+**v0.9 keystone note:** Companion FAP v2 (confirm round-trip from device buttons) has shipped; see `fap/companion/README.md`.
+
 ### P1-07 — ATT&CK-tagged workflows + constrained planner
 
 - **Effort:** M · **Impact:** High · **Touch:** `internal/workflows/`,
