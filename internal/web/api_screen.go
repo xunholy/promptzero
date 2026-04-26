@@ -1,5 +1,3 @@
-//go:build linux
-
 // Screen-mirror WebSocket layer.
 //
 // Owns the screen_acquire / screen_release / screen_keepalive WS frames,

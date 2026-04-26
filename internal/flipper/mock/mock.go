@@ -1,3 +1,5 @@
+//go:build linux
+
 // Package mock provides a pty-backed fake Flipper CLI so serial.go and the
 // command wrappers can be exercised without real hardware.
 //
@@ -6,6 +8,9 @@
 // bytes the CLI-under-test "sends" to the Flipper), dispatches them to a
 // scripted command table, and writes canned responses back. A handshake
 // banner is emitted as soon as the slave is first read from.
+//
+// Linux-only: uses Linux-specific TIOCSPTLCK / TIOCGPTN ioctls. Tests on
+// other platforms must skip or use a different harness.
 package mock
 
 import (

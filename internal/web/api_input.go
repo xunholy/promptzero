@@ -1,5 +1,3 @@
-//go:build linux
-
 // Flipper Zero input-send REST handler — /api/input/send.
 
 package web

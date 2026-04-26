@@ -55,4 +55,3 @@ message GetErrorResponse {
 message DataExchangeRequest {
     bytes data = 1;
 }
-

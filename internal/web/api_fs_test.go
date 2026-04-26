@@ -4,7 +4,6 @@ package web
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -667,17 +666,4 @@ func TestServerUIContext(t *testing.T) {
 	if v != "preview" || p != "/ext/subghz/garage.sub" {
 		t.Errorf("hostile view changed state to (%q, %q)", v, p)
 	}
-}
-
-// ---------------------------------------------------------------------------
-// GET /api/fs/list — helper that decodes JSON list response
-// ---------------------------------------------------------------------------
-
-func decodeListBody(t *testing.T, raw []byte) map[string]any {
-	t.Helper()
-	var body map[string]any
-	if err := json.Unmarshal(raw, &body); err != nil {
-		t.Fatalf("unmarshal: %v — raw=%s", err, raw)
-	}
-	return body
 }

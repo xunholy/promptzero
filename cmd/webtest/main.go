@@ -1,3 +1,5 @@
+//go:build !windows
+
 // webtest spawns `promptzero --web` against a real Flipper, then drives
 // every HTTP API endpoint and the websocket handshake to confirm the
 // public web surface is wired correctly. Read-only by default — no LLM
@@ -6,6 +8,8 @@
 // Sets ANTHROPIC_API_KEY=dummy because cfg.RequireAPIKey() gates the
 // agent-construction path in --web mode. The dummy key is never used
 // because we never call /ws to drive a turn.
+//
+// Not built on Windows — uses POSIX process-group + signal primitives.
 package main
 
 import (

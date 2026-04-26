@@ -1,5 +1,3 @@
-//go:build linux
-
 // Flipper Zero filesystem REST handlers — /api/fs/*.
 //
 // All mutations (upload, delete, mkdir, rename) require the Flipper to be

@@ -1,3 +1,5 @@
+//go:build linux
+
 // Package testmocks centralises the shared mock harness used across
 // PromptZero's test surfaces — flipper-agent tests, end-to-end REPL
 // tests, workflow tests. Callers get ready-to-use backends without having
@@ -5,7 +7,8 @@
 // port for marauder, httptest.Server for the Anthropic SDK).
 //
 // Every constructor registers cleanup hooks with the supplied testing.T,
-// so tests don't need to defer Close themselves.
+// so tests don't need to defer Close themselves. Linux-only because the
+// underlying flipper mock uses Linux pty syscalls.
 package testmocks
 
 import (
