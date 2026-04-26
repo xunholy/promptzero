@@ -639,12 +639,20 @@
         var inp = document.getElementById('cmd');
         var sb  = document.getElementById('scrollback');
 
+        // One-line diagnostic so operators can confirm in DevTools that the
+        // click reached the handler and which branch fires. Cheap; useful.
+        try {
+          console.log('[dpad]', dir, 'isHolder=' + (_screenState && _screenState.isHolder),
+            'mode=' + _dpadMode, 'wsOpen=' + (_ws && _ws.readyState === WebSocket.OPEN));
+        } catch (_) {}
+
         // Mirror-mode takes priority: when this session holds the mirror,
         // the CLI input/send endpoint is locked, so route the press through
         // the held RPC session via the screen_input WS frame instead.
         if (_screenState && _screenState.isHolder) {
           beep(dir === 'ok' ? 880 : 660, 0.04);
-          sendWs({ type: 'screen_input', button: dir, event_type: 'short' });
+          var ok = sendWs({ type: 'screen_input', button: dir, event_type: 'short' });
+          try { console.log('[dpad] screen_input sent=' + ok); } catch (_) {}
           return;
         }
 
