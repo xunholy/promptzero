@@ -7,16 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-04-27
+
 ### Added
 
 - **Dpad drives the live mirror via RPC** (`Gui.SendInputEventRequest`).
   When the operator holds the screen mirror, dpad presses are routed
   through the held RPC session as a new WS frame `screen_input
   {button, event_type}` — the dpad is no longer locked out while
-  mirror owns the serial port. Visual: the dpad gets a `mirror`
-  data-mode tint with a "MIRROR" badge so the operator sees they're
-  driving the live device. The SCROLL/DEVICE toggle hides while
-  mirror is active (the dpad auto-locks to RPC input).
+  mirror owns the serial port. The dpad auto-hides outside mirror
+  mode (it'd just 409 against the locked CLI input/send), and gets a
+  bright orange tint + "MIRROR" badge while you're holding it.
+  Each tap dispatches `PRESS → SHORT → RELEASE` to match what
+  qFlipper sends — the firmware's RPC input handler does NOT
+  synthesise SHORT from press/release the way the hardware path
+  does, so apps subscribing to `InputTypeShort` need the explicit
+  event.
 
 - **Live LCD screen mirror in the web UI** (qFlipper-style). New
   **Device** rail item opens a panel that streams the Flipper's
@@ -66,6 +72,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   queueing a turn that would fail downstream.
 - `/api/debug` snapshot includes a new `state.mirror_active: bool`
   field for diagnostic dumps.
+
+### Fixed
+
+- **RPC handshake retry loop** — `start_rpc_session\r` echo length
+  varies between firmware builds and device states; a single 300 ms
+  drain wasn't always enough and the first protobuf read could
+  misparse. `Open()` now retries the Ping up to 5 times with a 150 ms
+  drain between attempts.
+- **Cross-platform build** — production handlers (`api_fs.go`,
+  `api_input.go`, `api_screen.go`) carried `//go:build linux` tags
+  inherited from the test pattern, breaking darwin/windows builds.
+  Tags moved to test files only. `internal/flipper/mock` and
+  `internal/testmocks` (Linux pty) and `cmd/webtest` (POSIX signals)
+  now declare their constraints explicitly.
+- **CLI 409 polling spam** — the frontend's 30s `/api/device` poll
+  was logged by the browser as "failed resource load" while mirror
+  was active. Skip the poll entirely while held; status arrives via
+  `screen_state` WS frames anyway.
+- **Arrow glyphs match** — left dpad arrow used U+25C4 (POINTER), all
+  others used the TRIANGLE family. Normalised to `▲ ▼ ◀ ▶` so they
+  read as the same icon set.
+
+### Changed
+
+- Settings rail icon swapped from sun-burst (circle + 8 radial lines)
+  to a proper 8-tooth cog SVG.
+- Category landing screen badge `RUN ▶` shortened to `RUN` — reads
+  cleaner alongside the LOW/MED/HIGH siblings.
+- Prompt bar prefix `promptzero>` shortened to `>` — brand already
+  lives in the status bar.
 
 ## [0.9.1] - 2026-04-26
 
