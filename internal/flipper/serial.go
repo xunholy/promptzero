@@ -667,8 +667,7 @@ func (f *Flipper) WriteFile(path string, data []byte) error {
 // file when storage write_chunk is called; they append to the existing
 // content instead. Callers that need truncate semantics must issue
 // "storage remove <path>" before writing, or the re-written file will
-// contain concatenated data. See cmd/install-companion-fap for the
-// canonical rm-before-write pattern.
+// contain concatenated data.
 func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

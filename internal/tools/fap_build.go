@@ -70,8 +70,7 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 	if err != nil {
 		return "", fmt.Errorf(
 			"fap_build: ufbt not found on PATH (looked for %q) — "+
-				"install with `pip install ufbt` or set UFBT_PATH to the binary location, "+
-				"or run `task fap:companion:build` to build via the Taskfile",
+				"install with `pip install ufbt` or set UFBT_PATH to the binary location",
 			ufbt,
 		)
 	}

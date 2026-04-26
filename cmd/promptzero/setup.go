@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,7 +21,6 @@ import (
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/flipper"
-	"github.com/xunholy/promptzero/internal/flipper/companion"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/mcp"
@@ -825,35 +823,6 @@ func setupBusPirate(ctx context.Context, cfg *config.Config, ai *agent.Agent) (b
 	return true, func() { _ = c.Close() }
 }
 
-// setupCompanion probes the Flipper SD card for the optional
-// PromptZero Companion FAP and, if found, returns a sink the REPL
-// can push status events into. Returns a NopSink when the FAP is
-// absent or the integration is disabled in config — every existing
-// flow runs unchanged.
-//
-// The probe is short-deadline (3 s) so a flaky USB link can't stall
-// startup; any error is treated as "not installed".
-func setupCompanion(ctx context.Context, cfg *config.Config, flip *flipper.Flipper) (companion.Sink, func()) {
-	if cfg.Companion.Enabled != nil && !*cfg.Companion.Enabled {
-		return companion.NopSink{}, func() {}
-	}
-	if flip == nil {
-		return companion.NopSink{}, func() {}
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	foundAt := companion.Detect(probeCtx, flip)
-	if foundAt == "" {
-		if cfg.Companion.Enabled != nil && *cfg.Companion.Enabled {
-			statusWarn("Companion FAP enabled in config but not found on /ext/apps; status sink disabled")
-		}
-		return companion.NopSink{}, func() {}
-	}
-	sink := companion.NewFlipperSink(flip, cfg.Companion.StatusPath, slog.Default())
-	statusOK(fmt.Sprintf("Companion FAP %s(at %s)%s", dim, foundAt, reset))
-	return sink, func() { _ = sink.Close() }
-}
-
 // setupVoice constructs the Whisper-backed voice engine when the
 // OpenAI key is present. Returns nil when absent — the CLI still runs,
 // just without voice input.
@@ -940,11 +909,8 @@ type WebDeps struct {
 	CostTracker    *cost.Tracker
 	RulesEngine    *rules.Engine
 	Flipper        *flipper.Flipper
+	FlipperOnline  bool
 	MarauderOnline bool
-	// Companion is the on-device FAP status sink. NopSink is used
-	// when nil so the web server runs unchanged for operators
-	// without the Companion FAP installed.
-	Companion companion.Sink
 }
 
 // runWebMode binds the HTTP UI on the configured address and serves
@@ -964,9 +930,11 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	} else {
 		statusWarn("Web auth disabled — set web.token or PROMPTZERO_WEB_TOKEN")
 	}
-	// Wire the Phase-14 panel surface. Flipper is always connected here
-	// (run() bailed earlier if the serial connect failed); Marauder and
-	// the others may be nil, and the panels handle that.
+	// Wire the Phase-14 panel surface. Flipper may be nil when the
+	// operator launched --web without a device attached; Marauder and
+	// the others are independently optional. Panels guard on their own
+	// nil deps and render an offline state when the backing facility
+	// isn't wired.
 	if deps.Personas != nil {
 		srv.SetPersonaRegistry(deps.Personas)
 	}
@@ -979,10 +947,7 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	if deps.Flipper != nil {
 		srv.SetFlipper(deps.Flipper)
 	}
-	if deps.Companion != nil {
-		srv.SetCompanion(deps.Companion)
-	}
-	srv.SetFlipperConnected(true)
+	srv.SetFlipperConnected(deps.FlipperOnline)
 	srv.SetMarauderConnected(deps.MarauderOnline)
 	if deps.MarauderOnline {
 		srv.SetMarauderInfo(cfg.Marauder.Port, "")

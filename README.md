@@ -86,7 +86,6 @@ promptzero> what's this?  [photo of a remote control]
 | **Operator UX** | `/rewind`, `/report`, `/attack`, `/stats` | Undo SD writes; Markdown engagement reports with ATT&CK heatmap; per-session technique constraint; prompt-cache hit-rate |
 | **Integration** | OpenTelemetry GenAI spans | `gen_ai.*` semantic conventions; honours `OTEL_EXPORTER_OTLP_ENDPOINT`; noop when unset |
 | **Quality** | Detector engine + chain-of-verification | LLM-as-judge on WiFi deauth / PMKID / NFC clone; Haiku pre-deploy verification on generated payloads with severity-blocked deploys |
-| **On-device UI** | Companion FAP | Renders agent events on the Flipper screen; OK/Back buttons drive the confirm gate. See [`fap/companion/`](fap/companion/README.md). |
 
 ---
 

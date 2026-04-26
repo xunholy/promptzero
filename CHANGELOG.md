@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **PromptZero Companion FAP**: dropped the on-device status renderer
+  (`fap/companion/`, `internal/flipper/companion/`,
+  `cmd/install-companion-fap/`, `bin/fap/`, `setupCompanion`,
+  `Server.SetCompanion`, `CompanionConfig`, the `fap:companion:*`
+  Taskfile targets). The Flipper CLI refuses commands while any FAP is
+  open ("this command cannot be run while an application is open"), so
+  a host that drives the device over CLI cannot also have an on-device
+  companion app running. The risk-confirm gate now lives only in the
+  REPL/web surfaces.
+
 ## [0.9.0] - 2026-04-26
 
 First tagged release since v0.5.0. Collapses four development tranches

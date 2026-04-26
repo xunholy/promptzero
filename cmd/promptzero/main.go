@@ -116,7 +116,17 @@ func run() error {
 
 	flip, flipClose, err := connectFlipper(ctx, sh, cfg, f.connectTimeout)
 	if err != nil {
-		return err
+		// --web is allowed to start without a Flipper attached so the
+		// operator can open the cockpit, browse panels, and plug the
+		// device in later. SIGINT during connect still aborts. Other
+		// modes (REPL, --mcp) keep the original fatal behaviour because
+		// they have no useful surface without the device.
+		if !f.webMode || errors.Is(err, context.Canceled) {
+			return err
+		}
+		statusWarn("continuing without Flipper — device-dependent panels and tool calls will be disabled until reconnect")
+		flip = nil
+		flipClose = func() {}
 	}
 	defer flipClose()
 
@@ -192,9 +202,6 @@ func run() error {
 	_, busPirateClose := setupBusPirate(ctx, cfg, ai)
 	defer busPirateClose()
 
-	companionSink, companionClose := setupCompanion(ctx, cfg, flip)
-	defer companionClose()
-
 	voiceEngine := setupVoice(cfg)
 
 	printCapabilitySummary(hasMarauder, voiceEngine != nil)
@@ -208,8 +215,8 @@ func run() error {
 			CostTracker:    costTracker,
 			RulesEngine:    ruleEngine,
 			Flipper:        flip,
+			FlipperOnline:  flip != nil,
 			MarauderOnline: hasMarauder,
-			Companion:      companionSink,
 		})
 	}
 
@@ -232,6 +239,5 @@ func run() error {
 		ruleEngine:    ruleEngine,
 		gateEnabled:   gateEnabled,
 		watchPaths:    f.watchPaths,
-		companion:     companionSink,
 	})
 }
