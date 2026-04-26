@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/xunholy/promptzero/internal/risk"
@@ -38,10 +39,53 @@ func init() { //nolint:gochecknoinits
 	Register(canbusInfoSpec)
 }
 
+// reCanHexID matches a valid 11-bit or 29-bit CAN arbitration ID in hex:
+// 1 to 8 hex digits, optionally prefixed with "0x" or "0X".
+var reCanHexID = regexp.MustCompile(`(?i)^(0x)?[0-9a-f]{1,8}$`)
+
+// reFlipperPath matches safe Flipper SD paths: starts with "/ext/",
+// contains only alphanumeric, slash, dot, underscore, and hyphen characters.
+var reFlipperPath = regexp.MustCompile(`^/ext/[a-zA-Z0-9/_.\-]+$`)
+
+// validateCanHexID returns an error when s is not a valid CAN hex ID.
+// Prevents shell-injection via the id_filter / arbitration_id_hex fields.
+func validateCanHexID(field, s string) error {
+	if !reCanHexID.MatchString(s) {
+		return fmt.Errorf("canbus: %s %q is not a valid hex CAN ID (expected 1-8 hex digits)", field, s)
+	}
+	return nil
+}
+
+// validateFlipperPath returns an error when s is not a safe Flipper SD path.
+// Prevents path-traversal and shell-injection via output_path / path fields.
+// A safe path must start with /ext/ and contain only alphanumeric, /, ., _, -
+// characters, without path-traversal sequences (e.g. "..").
+func validateFlipperPath(field, s string) error {
+	if !reFlipperPath.MatchString(s) {
+		return fmt.Errorf("canbus: %s %q must start with /ext/ and contain only alphanumeric, /, ., _, - characters", field, s)
+	}
+	// Explicit check for path-traversal even when the character set is valid.
+	if strings.Contains(s, "..") {
+		return fmt.Errorf("canbus: %s %q must not contain path-traversal sequences (..)", field, s)
+	}
+	return nil
+}
+
+// validateCanHexData returns an error when s is not a valid hex data string
+// (up to 16 hex chars, no prefix). Prevents injection via data_hex.
+var reCanHexData = regexp.MustCompile(`(?i)^[0-9a-f]{0,16}$`)
+
+func validateCanHexData(field, s string) error {
+	if !reCanHexData.MatchString(s) {
+		return fmt.Errorf("canbus: %s %q is not valid hex data (expected up to 16 hex chars)", field, s)
+	}
+	return nil
+}
+
 // --- canbus_init -------------------------------------------------------
 
 var canbusInitSpec = Spec{
-	Name: "canbus_init",
+	Name:        "canbus_init",
 	Description: "Initialise the MCP2515 CAN controller at the given bitrate. Required before any other canbus_* Spec works. Bitrate is in kbps; common values: 125, 250, 500 (vehicle high-speed bus), 1000. Requires the Flipper to have ElectronicCats/flipper-MCP2515-CANBUS .fap installed and the MCP2515 hat connected via the GPIO header.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -72,13 +116,13 @@ func canbusInitHandler(_ context.Context, d *Deps, args map[string]any) (string,
 // --- canbus_sniff_start / canbus_sniff_stop ----------------------------
 
 var canbusSniffStartSpec = Spec{
-	Name: "canbus_sniff_start",
+	Name:        "canbus_sniff_start",
 	Description: "Begin sniffing CAN frames. Frames are written to /ext/canbus/sniff.log on the Flipper SD until canbus_sniff_stop is called. Optional id_filter limits the capture to a single arbitration ID; default is all IDs. Use storage_read to retrieve the log when finished.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
 			"id_filter":{"type":"string","description":"11-bit or 29-bit hex CAN ID to filter on (e.g. 7DF). Empty = capture everything."},
-			"output_path":{"type":"string","description":"Override the default /ext/canbus/sniff.log path."}
+			"output_path":{"type":"string","description":"Override the default /ext/canbus/sniff.log path. Must be under /ext/."}
 		}
 	}`),
 	Required:  nil,
@@ -94,9 +138,15 @@ func canbusSniffStartHandler(_ context.Context, d *Deps, args map[string]any) (s
 	}
 	cmd := "canbus sniff start"
 	if f := str(args, "id_filter"); f != "" {
+		if err := validateCanHexID("id_filter", f); err != nil {
+			return "", err
+		}
 		cmd += " --id " + f
 	}
 	if p := str(args, "output_path"); p != "" {
+		if err := validateFlipperPath("output_path", p); err != nil {
+			return "", err
+		}
 		cmd += " --out " + p
 	}
 	out, err := d.Flipper.RawCLI(cmd)
@@ -104,9 +154,9 @@ func canbusSniffStartHandler(_ context.Context, d *Deps, args map[string]any) (s
 }
 
 var canbusSniffStopSpec = Spec{
-	Name: "canbus_sniff_stop",
+	Name:        "canbus_sniff_stop",
 	Description: "Stop the running CAN sniffer. Returns the path to the captured log on the Flipper SD.",
-	Schema: json.RawMessage(`{"type":"object","properties":{}}`),
+	Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
 	Required:    nil,
 	Risk:        risk.Low,
 	Group:       GroupFlipperHW,
@@ -123,7 +173,7 @@ var canbusSniffStopSpec = Spec{
 // --- canbus_inject -----------------------------------------------------
 
 var canbusInjectSpec = Spec{
-	Name: "canbus_inject",
+	Name:        "canbus_inject",
 	Description: "Transmit a single CAN frame onto the bus. Use ONLY in authorized engagements — injecting onto a live vehicle CAN bus can cause unsafe behaviour. arbitration_id_hex is the 11-bit (e.g. 7E0) or 29-bit ID; data_hex is up to 8 bytes payload (16 hex chars).",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -149,9 +199,15 @@ func canbusInjectHandler(_ context.Context, d *Deps, args map[string]any) (strin
 	if id == "" {
 		return "", fmt.Errorf("canbus_inject: arbitration_id_hex is required")
 	}
+	if err := validateCanHexID("arbitration_id_hex", id); err != nil {
+		return "", err
+	}
 	data := strings.TrimSpace(str(args, "data_hex"))
 	if len(data) > 16 {
 		return "", fmt.Errorf("canbus_inject: data_hex too long (max 16 chars / 8 bytes)")
+	}
+	if err := validateCanHexData("data_hex", data); err != nil {
+		return "", err
 	}
 	cmd := fmt.Sprintf("canbus inject %s %s", id, data)
 	if boolOr(args, "extended", false) {
@@ -164,7 +220,7 @@ func canbusInjectHandler(_ context.Context, d *Deps, args map[string]any) (strin
 // --- canbus_replay -----------------------------------------------------
 
 var canbusReplaySpec = Spec{
-	Name: "canbus_replay",
+	Name:        "canbus_replay",
 	Description: "Replay a captured CAN log file (path on the Flipper SD). Use to reproduce a previously-observed bus sequence — e.g. unlock-door message replay during authorized testing. Uses Critical risk because it writes to a live bus.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -189,6 +245,9 @@ func canbusReplayHandler(_ context.Context, d *Deps, args map[string]any) (strin
 	if p == "" {
 		return "", fmt.Errorf("canbus_replay: path is required")
 	}
+	if err := validateFlipperPath("path", p); err != nil {
+		return "", err
+	}
 	cmd := "canbus replay " + p
 	if boolOr(args, "loop", false) {
 		cmd += " --loop"
@@ -200,7 +259,7 @@ func canbusReplayHandler(_ context.Context, d *Deps, args map[string]any) (strin
 // --- canbus_info -------------------------------------------------------
 
 var canbusInfoSpec = Spec{
-	Name: "canbus_info",
+	Name:        "canbus_info",
 	Description: "Report MCP2515 controller status, bitrate, error counters, and bus loading. Read-only; safe to call freely.",
 	Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
 	Required:    nil,
