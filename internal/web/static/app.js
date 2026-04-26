@@ -1285,16 +1285,12 @@
   }
 
   function pollDevice() {
-    // Single poll: /api/device now carries all status-bar fields
-    // (flipper, marauder, ble, battery.percent, sd) added by backend-bridger (task #14).
+    // While the mirror is held the endpoint always returns 409, which the
+    // browser logs as a failed resource load. Skip the request entirely so
+    // DevTools stays clean; state arrives via screen_state WS frames.
+    if (_screenState && _screenState.active) return;
     apiFetch('api/device')
-      .then(function (r) {
-        if (r.status === 409) {
-          // Mirror active — silently skip status bar update; state arrives via WS.
-          return null;
-        }
-        return r.ok ? r.json() : null;
-      })
+      .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (body) { if (body) applyDeviceToStatusBar(body); })
       .catch(function () {});
   }

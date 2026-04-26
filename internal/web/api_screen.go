@@ -129,7 +129,12 @@ func (s *Server) handleScreenKeepalive(c *sessionConn) {
 
 // handleScreenInput dispatches a button event to the firmware via the active
 // RPC session. Only the screen holder may send input; non-holders are ignored
-// silently. Validation happens server-side in *rpc.Client.SendInput.
+// silently.
+//
+// For a "tap" (event_type "" or "short") we emit the full PRESS → SHORT →
+// RELEASE triplet that real hardware generates. App input handlers consume
+// PRESS or RELEASE — sending only SHORT alone is silently dropped by most
+// firmware apps because their event filters key off the press/release edges.
 func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 	s.screenMu.Lock()
 	cli := s.screenActiveRPC
@@ -138,15 +143,25 @@ func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 	if !isHolder || cli == nil {
 		return
 	}
-	if event == "" {
-		event = "short"
+	ctx := context.Background()
+	var seq []string
+	switch event {
+	case "", "short":
+		seq = []string{"press", "short", "release"}
+	case "long":
+		seq = []string{"press", "long", "release"}
+	default:
+		seq = []string{event}
 	}
-	if err := cli.SendInput(context.Background(), button, event); err != nil {
-		s.sendTo(c, map[string]any{
-			"type":    "screen_error",
-			"code":    "input_failed",
-			"message": err.Error(),
-		})
+	for _, ev := range seq {
+		if err := cli.SendInput(ctx, button, ev); err != nil {
+			s.sendTo(c, map[string]any{
+				"type":    "screen_error",
+				"code":    "input_failed",
+				"message": err.Error(),
+			})
+			return
+		}
 	}
 }
 
