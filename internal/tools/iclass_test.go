@@ -89,14 +89,15 @@ func TestIClassHandlerDumpFile(t *testing.T) {
 
 	spec := iclassSpec(t)
 
-	// 300s gives ~2.5× headroom for race-overhead on CI; under -short the
-	// test is skipped entirely above.
+	// 300s outer + 270s handler: race-instrumented loclass on shared CI
+	// runners genuinely needs more than the previous 120s budget; under
+	// -short the test is skipped entirely above.
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
 	result, err := spec.Handler(ctx, nil, map[string]any{
 		"captures":   dumpPath,
-		"timeout_ms": float64(120000),
+		"timeout_ms": float64(270000),
 	})
 	if err != nil {
 		t.Fatalf("handler error: %v", err)
