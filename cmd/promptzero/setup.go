@@ -947,6 +947,11 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	if deps.Flipper != nil {
 		srv.SetFlipper(deps.Flipper)
 	}
+	// Forward web UI navigation state into the agent so buildUIContextBlock
+	// can inject it as a turn prefix (same pipeline as device-state oracle).
+	srv.OnUIContext(func(view, path string) {
+		deps.Ai.SetUIContext(view, path)
+	})
 	srv.SetFlipperConnected(deps.FlipperOnline)
 	srv.SetMarauderConnected(deps.MarauderOnline)
 	if deps.MarauderOnline {

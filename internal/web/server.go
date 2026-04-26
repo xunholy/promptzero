@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
@@ -177,12 +178,32 @@ type Server struct {
 	// allowUnauthedPublic, when true, falls back to warn-and-continue when the
 	// server is bound non-loopback without a token. Default false = fail-closed.
 	allowUnauthedPublic bool
+
+	// auditLog, when non-nil, records destructive FS and input-send operations.
+	// Set via SetAuditLog. Nil means skip silently.
+	auditLog *audit.Log
+
+	// maxUploadBytes caps /api/fs/upload. Default 1 MiB.
+	maxUploadBytes int64
+
+	// latestUIContext carries the most recent ui_context frame from the browser.
+	latestUIContext atomic.Pointer[uiContext]
+
+	// onUIContext, when set, is called whenever a ui_context WebSocket frame
+	// arrives. setup.go wires this to the agent.
+	onUIContext func(view, path string)
 }
 
 type sessionConn struct {
 	id  string
 	ws  *websocket.Conn
 	out chan []byte
+}
+
+// uiContext records the latest navigation state the browser reported.
+type uiContext struct {
+	View string
+	Path string
 }
 
 type turnState struct {
@@ -205,6 +226,9 @@ type wsInbound struct {
 	// every other decision kind.
 	Revision string `json:"revision,omitempty"`
 	T        string `json:"t,omitempty"`
+	// View and Path carry the current UI view and path in ui_context frames.
+	View   string `json:"view,omitempty"`
+	FSPath string `json:"path,omitempty"`
 }
 
 // NewServer creates a web server bound to addr. If the host portion of addr
@@ -265,6 +289,50 @@ func (s *Server) SetFlipperConnected(v bool) { s.flipperOn.Store(v) }
 // Momentum-level profile to the web UI. Safe to pass nil — /api/device
 // returns 503 until this is set.
 func (s *Server) SetFlipper(f *flipper.Flipper) { s.flipper = f }
+
+// SetAuditLog wires the audit log so destructive FS and input-send operations
+// are recorded. Safe to pass nil — operations are skipped silently without one.
+func (s *Server) SetAuditLog(l *audit.Log) { s.auditLog = l }
+
+// SetMaxUploadBytes sets the upload size cap for /api/fs/upload.
+// Default is 1 MiB. Must be called before Start.
+func (s *Server) SetMaxUploadBytes(n int64) { s.maxUploadBytes = n }
+
+// SetUIContext records the latest UI navigation state forwarded from the browser.
+func (s *Server) SetUIContext(view, path string) {
+	s.latestUIContext.Store(&uiContext{View: view, Path: path})
+}
+
+// UIContext returns the latest view+path the browser reported, or empty strings
+// when no ui_context frame has arrived yet.
+func (s *Server) UIContext() (view, path string) {
+	if v := s.latestUIContext.Load(); v != nil {
+		return v.View, v.Path
+	}
+	return "", ""
+}
+
+// OnUIContext installs a callback invoked whenever a ui_context WebSocket frame
+// arrives. Use this to forward the navigation state to the agent.
+func (s *Server) OnUIContext(fn func(view, path string)) { s.onUIContext = fn }
+
+// setUIContextFromWS is called from the WebSocket read loop on ui_context
+// frames. View is allowlisted so a hostile client cannot inject XML attributes
+// into the agent prompt via buildUIContextBlock.
+func (s *Server) setUIContextFromWS(view, path string) {
+	switch view {
+	case "", "agent", "files", "preview":
+	default:
+		return
+	}
+	if len(path) > 240 || strings.ContainsRune(path, 0) {
+		return
+	}
+	s.SetUIContext(view, path)
+	if s.onUIContext != nil {
+		s.onUIContext(view, path)
+	}
+}
 
 // SetMarauderConnected records the current Marauder serial state for the
 // /api/debug snapshot. Call on connect/disconnect transitions.
@@ -646,6 +714,8 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			})
 		case "cancel":
 			s.cancelTurn(c, msg.TurnID)
+		case "ui_context":
+			s.setUIContextFromWS(msg.View, msg.FSPath)
 		}
 	}
 }

@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-04-26
+
+### Added
+
+- **Direct Flipper navigation in the web UI** (qFlipper-style file
+  browser + virtual D-pad), running alongside the existing chat. New
+  rail item **Files** opens a two-pane SD-card browser with read-only
+  preview of `.sub` / `.nfc` / `.rfid` / `.ir` / `.txt` formats; binary
+  files render as base64. Action buttons in the preview (Replay, Emulate,
+  Send, Run) synthesise a chat turn so the existing risk-confirm flow
+  applies — no new risk surface. Upload, delete, mkdir, rename are gated
+  behind in-pane confirms and audited as `web.fs.*`.
+- **D-pad SCROLL ↔ DEVICE toggle**: the on-screen d-pad now optionally
+  forwards button events to the Flipper via `POST /api/input/send`,
+  audited as `web.input.send`. Default mode (`scrollback`) preserves
+  the existing chat-navigation behaviour.
+- **`/api/fs/*` endpoints**: `list`, `read` (256 KiB cap), `stat`,
+  `upload` (1 MiB cap, configurable via `Server.SetMaxUploadBytes`),
+  `delete`, `mkdir`, `rename`. All require bearer auth and reject paths
+  outside `/ext`.
+- **`/api/input/send`** for short-event button dispatch.
+- **UI-context plumbing**: a new `ui_context` WebSocket frame tells the
+  agent which file the operator is currently browsing; the agent prompt
+  gains a `<ui-context view="..." path="..."/>` line so questions like
+  "what is this?" land in the right context. View values are
+  allowlisted server-side to prevent prompt-attribute injection.
+- **Awesome Flipper Zero ecosystem index**
+  (`docs/awesome-flipper-zero-projects.md`): flat catalog of every
+  Flipper-Zero-adjacent repo discovered as of 2026-04-26, plus an
+  appendix flagging adversarial bundles for the firmware-allowlist /
+  payload-blocklist Specs.
+
+### Changed
+
+- **`--web` mode starts without a Flipper attached** so the operator
+  can open the cockpit and plug the device in later. REPL and `--mcp`
+  modes keep the original fatal connect behaviour.
+- Web UI shell now fills the entire viewport on every breakpoint
+  instead of the boxed `min(1280px, 96vw)` cap; bezel screws and the
+  redundant "PZ" wordmark icon removed. Subtle "BUILT BY XUNHOLY"
+  watermark added in the LCD bottom-right.
+- Subsystem rail items (Sub-GHz, RFID, NFC, IR, iButton, GPIO, Bad
+  USB, Apps, Marauder) now open a category landing screen listing
+  likely tools/attacks. Low-risk read-only items (e.g. "List installed
+  FAPs", "Read tag") show `RUN ▶` and dispatch immediately; med/high
+  risk or items with `<placeholder>` parameters prefill the prompt
+  for review.
+- Every sub-screen (settings root + children, audit, report, files,
+  category) now has an on-screen `◀ BACK` button. Files screen back
+  walks up the directory tree before exiting; settings children pop
+  to the settings menu first.
+- Sub-screen rail items now use the LCD palette on hover (legible
+  against the orange background), and all chevrons normalised to the
+  same Unicode glyph and 8 px size.
+
 ### Removed
 
 - **PromptZero Companion FAP**: dropped the on-device status renderer

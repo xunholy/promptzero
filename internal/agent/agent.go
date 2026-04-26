@@ -185,6 +185,15 @@ type Agent struct {
 	// who haven't opted in or who hit a DB open failure at startup
 	// still get a working agent without the facts feature.
 	targetMem *targetmem.Store
+
+	// latestUIContext carries the navigation state forwarded from the web UI.
+	latestUIContext atomic.Pointer[agentUIContext]
+}
+
+// agentUIContext is the latest view+path the web UI reported.
+type agentUIContext struct {
+	View string
+	Path string
 }
 
 // SetDetectorEngine installs a rules.DetectorEngine. When set, the
@@ -197,6 +206,20 @@ func (a *Agent) SetDetectorEngine(e *rules.DetectorEngine) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.detectorEngine = e
+}
+
+// SetUIContext records the latest browser navigation state (view + path)
+// so buildUIContextBlock can inject it into the next turn prefix.
+func (a *Agent) SetUIContext(view, path string) {
+	a.latestUIContext.Store(&agentUIContext{View: view, Path: path})
+}
+
+// UIContext returns the last view and path the web UI reported.
+func (a *Agent) UIContext() (view, path string) {
+	if v := a.latestUIContext.Load(); v != nil {
+		return v.View, v.Path
+	}
+	return "", ""
 }
 
 // SetSnapshotManager wires an optional pre-write SD snapshotter.
@@ -556,7 +579,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	// connected?" / "what mode are you in?" every few turns. Stays
 	// outside the prompt-cache window because the snapshot changes
 	// every few seconds (see state_prompt.go).
-	userInput = buildDeviceStateBlock(ctx, a.flipper) + userInput
+	uiView, uiPath := a.UIContext()
+	userInput = buildUIContextBlock(uiView, uiPath) + buildDeviceStateBlock(ctx, a.flipper) + userInput
 
 	a.history = append(a.history, anthropic.NewUserMessage(
 		anthropic.NewTextBlock(userInput),

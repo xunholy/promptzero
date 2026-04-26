@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -49,4 +50,24 @@ func buildDeviceStateBlock(parent context.Context, f *flipper.Flipper) string {
 	b.Write(body)
 	b.WriteString("\n</device-state>\n\n")
 	return b.String()
+}
+
+// buildUIContextBlock returns a one-line XML annotation for the current web
+// UI navigation state, or the empty string when both view and path are empty.
+// Control characters are stripped from path; XML-special characters are not
+// escaped — filesystem paths never contain them and path validation upstream
+// rejects anything that would require escaping.
+func buildUIContextBlock(view, path string) string {
+	if view == "" && path == "" {
+		return ""
+	}
+	// Strip control characters; keep printable UTF-8 only.
+	var b strings.Builder
+	for _, r := range path {
+		if r >= 32 {
+			b.WriteRune(r)
+		}
+	}
+	cleanPath := b.String()
+	return fmt.Sprintf("<ui-context view=%q path=%q/>\n", view, cleanPath)
 }

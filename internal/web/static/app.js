@@ -132,6 +132,15 @@
     { text: 'System ready.', cls: '' },
   ];
 
+  // Actions surfaced in the file preview bar, keyed by content_type.
+  var FILE_ACTIONS = {
+    'flipper/sub':    [{ label: 'Replay',  prompt: 'replay sub-ghz file %p' }],
+    'flipper/nfc':    [{ label: 'Emulate', prompt: 'emulate the nfc dump at %p' }],
+    'flipper/rfid':   [{ label: 'Emulate', prompt: 'emulate the rfid dump at %p' }],
+    'flipper/ir':     [{ label: 'Send',    prompt: 'send the ir signal at %p' }],
+    'flipper/badusb': [{ label: 'Run',     prompt: 'run the BadUSB payload at %p (require my confirmation)' }],
+  };
+
   /* =========================================================================
      State
   ========================================================================= */
@@ -157,6 +166,17 @@
   var _beepCtx        = null;
   var _toolEls        = {};   // (turn_id|name) -> DOM element
   var _personas       = { current: '', list: [] };
+
+  // Files screen state
+  var _fsCwd          = '/ext';   // current directory being shown in tree pane
+  var _fsOpenPath     = '';       // last file opened (for ui_context clearing)
+  var _fsTreePane     = null;     // left pane element
+  var _fsPreviewPane  = null;     // right pane element
+
+  // D-pad mode: 'scrollback' (default) or 'device'
+  var _dpadMode = (function () {
+    try { return sessionStorage.getItem('promptzero_dpad_mode') || 'scrollback'; } catch (_) { return 'scrollback'; }
+  }());
 
   /* =========================================================================
      DOM helpers
@@ -415,6 +435,7 @@
 
     switch (route) {
       case 'agent':    showAgentScreen();   break;
+      case 'files':    showScreen('files');    setCrumbs('FILES', 'BROWSE');    loadFilesScreen();    break;
       case 'audit':    showScreen('audit');    setCrumbs('AUDIT',   'LOG');      loadAuditScreen();    break;
       case 'report':   showScreen('report');   setCrumbs('REPORT',  'VALIDATE'); loadReportScreen();   break;
       case 'settings': showScreen('settings'); setCrumbs('SETTINGS','MAIN');     loadSettingsMenu();   break;
@@ -443,7 +464,7 @@
       var div = mkEl('div', 'rail-item');
       div.tabIndex = 0;
       div.setAttribute('role', 'button');
-      div.appendChild(mkEl('span', 'ic', direct ? '▶' : '▸'));
+      div.appendChild(mkEl('span', 'ic', direct ? '▶' : '▶'));
 
       div.appendChild(mkEl('span', 'label', it.label));
 
@@ -489,6 +510,11 @@
   }
 
   function showAgentScreen() {
+    // If we were viewing a file, clear the agent's ui_context awareness
+    if (_fsOpenPath) {
+      sendUIContext('agent', '');
+      _fsOpenPath = '';
+    }
     _currentScreen = 'agent';
     var sb = document.getElementById('scrollback');
     var ss = ensureSubscreen();
@@ -535,6 +561,20 @@
     loadSettingsMenu();
     setActiveRailItem('settings');
   }
+  function backFromFiles() {
+    // Mobile: collapse preview to the tree first.
+    if (_fsPreviewPane && _fsPreviewPane.dataset.visible === '1' && window.innerWidth < 900) {
+      showFsTreeOnly();
+      return;
+    }
+    // In a subdirectory: walk up one level instead of leaving the screen.
+    if (_fsCwd && _fsCwd !== '/ext') {
+      var parent = _fsCwd.replace(/\/[^\/]+$/, '') || '/ext';
+      if (_fsTreePane) loadFsDir(parent, _fsTreePane, q('.fs-busy-warn'));
+      return;
+    }
+    backToAgent();
+  }
 
   /** Reset a sub-screen and re-append its header so the back button survives reloads. */
   function resetSubscreen(title, onBack) {
@@ -549,11 +589,25 @@
   ========================================================================= */
 
   function setupDpad() {
-    qAll('.dpad button').forEach(function (btn) {
+    qAll('.dpad button[data-dir]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var dir = btn.dataset.dir;
         var inp = document.getElementById('cmd');
         var sb  = document.getElementById('scrollback');
+
+        if (_dpadMode === 'device') {
+          // In device mode, forward button presses to the Flipper.
+          var buttonName = dir; // up/down/left/right/ok/back
+          beep(dir === 'ok' ? 880 : 660, 0.04);
+          apiFetch('api/input/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ button: buttonName, event_type: 'short' }),
+          }).catch(function () {});
+          return;
+        }
+
+        // scrollback mode — original behaviour
         beep(dir === 'ok' ? 880 : 440, 0.04);
         switch (dir) {
           case 'up':
@@ -592,8 +646,32 @@
     });
   }
 
+  function setupDpadModeToggle() {
+    var btn = document.getElementById('dpadModeToggle');
+    if (!btn) return;
+    applyDpadMode();
+    btn.addEventListener('click', function () {
+      _dpadMode = (_dpadMode === 'scrollback') ? 'device' : 'scrollback';
+      try { sessionStorage.setItem('promptzero_dpad_mode', _dpadMode); } catch (_) {}
+      // Distinctive beep: 660 Hz = scroll, 880 Hz = device
+      beep(_dpadMode === 'device' ? 880 : 660, 0.1);
+      applyDpadMode();
+    });
+  }
+
+  function applyDpadMode() {
+    var dpad = document.getElementById('dpad');
+    var btn  = document.getElementById('dpadModeToggle');
+    if (dpad) dpad.dataset.mode = _dpadMode;
+    if (btn) {
+      btn.textContent = _dpadMode === 'device' ? 'DEVICE' : 'SCROLL';
+      btn.setAttribute('aria-pressed', _dpadMode === 'device' ? 'true' : 'false');
+    }
+  }
+
   function handleBack() {
     if (_currentScreen === 'agent') return;
+    if (_currentScreen === 'files') { backFromFiles(); return; }
     // Settings sub-pages pop to the settings menu first, then to agent.
     if (_currentScreen.indexOf('settings-') === 0) { backToSettings(); return; }
     backToAgent();
@@ -1251,9 +1329,9 @@
       var div = mkEl('div', 'rail-item');
       div.tabIndex = 0;
       div.setAttribute('role', 'button');
-      div.appendChild(mkEl('span', 'ic', '▸'));
+      div.appendChild(mkEl('span', 'ic', '▶'));
       div.appendChild(mkEl('span', 'label', item[1]));
-      div.appendChild(mkEl('span', 'badge', '▸'));
+      div.appendChild(mkEl('span', 'badge', '▶'));
       if (item[2]) div.title = item[2];
       div.addEventListener('click', function () { openSettingsSubscreen(item[0]); });
       div.addEventListener('keydown', function (e) {
@@ -1691,6 +1769,440 @@
   }
 
   /* =========================================================================
+     Files screen — two-pane filesystem browser
+     RULE: all path strings from the device go through textContent only.
+  ========================================================================= */
+
+  function loadFilesScreen() {
+    var ss = resetSubscreen('FILES', backFromFiles);
+    if (!ss) return;
+
+    _fsTreePane    = null;
+    _fsPreviewPane = null;
+
+    // Busy-warning banner (one-line, no modal)
+    var busyWarn = mkEl('div', 'fs-busy-warn');
+    busyWarn.style.display = 'none';
+    busyWarn.textContent = 'Flipper is busy — close the running app on-device or via the agent.';
+    ss.appendChild(busyWarn);
+
+    // Two-pane container
+    var panes = mkEl('div', 'fs-panes');
+    ss.appendChild(panes);
+
+    var tree = mkEl('div', 'fs-tree-pane');
+    _fsTreePane = tree;
+    panes.appendChild(tree);
+
+    var preview = mkEl('div', 'fs-preview-pane');
+    _fsPreviewPane = preview;
+    panes.appendChild(preview);
+
+    _fsCwd = '/ext';
+    loadFsDir('/ext', tree, busyWarn);
+  }
+
+  function loadFsDir(path, treePane, busyWarn) {
+    _fsCwd = path;
+    clearEl(treePane);
+
+    var loading = mkEl('p', null, 'Loading…');
+    loading.style.color = 'var(--lcd-pixel-soft)';
+    treePane.appendChild(loading);
+
+    apiFetch('api/fs/list?path=' + encodeURIComponent(path))
+      .then(function (r) {
+        if (r.status === 503) {
+          busyWarn.style.display = '';
+          busyWarn.textContent = 'No Flipper connected — plug it in and the browser will pick it up.';
+          clearEl(treePane);
+          return null;
+        }
+        return r.json().then(function (b) { return { status: r.status, body: b }; });
+      })
+      .then(function (res) {
+        if (!res) return;
+        clearEl(treePane);
+
+        if (res.body && res.body.error) {
+          var errMsg = String(res.body.error);
+          if (errMsg.indexOf('cannot be run while an application is open') !== -1) {
+            busyWarn.style.display = '';
+            busyWarn.textContent = 'Flipper is busy — close the running app on-device or via the agent.';
+          } else {
+            treePane.appendChild(mkEl('p', null, 'Error: ' + errMsg));   // textContent — safe
+          }
+          return;
+        }
+        busyWarn.style.display = 'none';
+        renderFsList(treePane, res.body, busyWarn);
+      })
+      .catch(function () {
+        clearEl(treePane);
+        treePane.appendChild(mkEl('p', null, 'Failed to load directory.'));
+      });
+  }
+
+  function renderFsList(parentEl, listResp, busyWarn) {
+    var entries = Array.isArray(listResp.entries) ? listResp.entries : [];
+    var currentPath = listResp.path || '/ext';
+
+    // Breadcrumb path header
+    var pathRow = mkEl('div', 'fs-path-row');
+    var pathEl  = mkEl('span', 'fs-path-text');
+    pathEl.textContent = currentPath;   // textContent — safe
+    pathRow.appendChild(pathEl);
+    parentEl.appendChild(pathRow);
+
+    // Parent / up navigation
+    if (listResp.parent && listResp.parent !== currentPath) {
+      var upRow = mkEl('div', 'rail-item fs-entry');
+      upRow.tabIndex = 0;
+      upRow.setAttribute('role', 'button');
+      upRow.appendChild(mkEl('span', 'ic', '▴'));
+      upRow.appendChild(mkEl('span', 'label', '..'));
+      upRow.appendChild(mkEl('span', 'badge', ''));
+      var parentPath = listResp.parent;
+      upRow.addEventListener('click', function () { loadFsDir(parentPath, _fsTreePane, busyWarn); });
+      upRow.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); loadFsDir(parentPath, _fsTreePane, busyWarn); }
+      });
+      parentEl.appendChild(upRow);
+    }
+
+    if (!entries.length) { parentEl.appendChild(mkEl('p', null, '(empty)')); }
+
+    entries.forEach(function (entry) {
+      var isDir = entry.type === 'dir';
+      var row = mkEl('div', 'rail-item fs-entry');
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      row.appendChild(mkEl('span', 'ic', isDir ? '▶' : '·'));
+
+      var nameSpan = mkEl('span', 'label');
+      nameSpan.textContent = entry.name;   // textContent — safe
+      row.appendChild(nameSpan);
+
+      var badge = mkEl('span', 'badge');
+      if (!isDir && entry.size != null) badge.textContent = fmtBytes(entry.size);
+      else if (isDir) badge.textContent = '▶';
+      row.appendChild(badge);
+
+      var entryPath = currentPath.replace(/\/$/, '') + '/' + entry.name;
+
+      if (isDir) {
+        row.addEventListener('click', function () { loadFsDir(entryPath, _fsTreePane, busyWarn); });
+        row.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); loadFsDir(entryPath, _fsTreePane, busyWarn); }
+        });
+      } else {
+        row.addEventListener('click', function () { openFsFile(entryPath); });
+        row.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFsFile(entryPath); }
+        });
+      }
+      parentEl.appendChild(row);
+    });
+
+    if (listResp.truncated) {
+      var trunc = mkEl('p', null, '(listing truncated)');
+      trunc.style.color = 'var(--lcd-pixel-soft)';
+      parentEl.appendChild(trunc);
+    }
+
+    // Toolbar: mkdir + upload
+    var toolbar = mkEl('div', 'fs-toolbar');
+    var mkdirBtn = makeSmallBtn('NEW DIR', function () {
+      showFsModal('New directory name:', '', function (name) {
+        if (!name) return;
+        doFsMkdir(currentPath.replace(/\/$/, '') + '/' + name, function () {
+          loadFsDir(currentPath, _fsTreePane, busyWarn);
+        });
+      });
+    });
+    toolbar.appendChild(mkdirBtn);
+
+    var uploadInput = document.createElement('input');
+    uploadInput.type = 'file';
+    uploadInput.style.display = 'none';
+    uploadInput.addEventListener('change', function () {
+      var file = uploadInput.files && uploadInput.files[0];
+      if (!file) return;
+      doFsUpload(file, currentPath.replace(/\/$/, '') + '/' + file.name, false, function () {
+        loadFsDir(currentPath, _fsTreePane, busyWarn);
+      });
+    });
+    toolbar.appendChild(uploadInput);
+    toolbar.appendChild(makeSmallBtn('UPLOAD', function () { uploadInput.click(); }));
+    parentEl.appendChild(toolbar);
+  }
+
+  function openFsFile(path) {
+    if (!_fsPreviewPane) return;
+
+    if (window.innerWidth < 900) { showFsPreviewOnly(); }
+
+    clearEl(_fsPreviewPane);
+    _fsPreviewPane.dataset.visible = '1';
+
+    var loading = mkEl('p', null, 'Loading…');
+    loading.style.color = 'var(--lcd-pixel-soft)';
+    _fsPreviewPane.appendChild(loading);
+
+    if (path !== _fsOpenPath) {
+      _fsOpenPath = path;
+      sendUIContext('preview', path);
+    }
+
+    apiFetch('api/fs/read?path=' + encodeURIComponent(path))
+      .then(function (r) {
+        if (r.status === 413) {
+          return r.json().catch(function () { return {}; }).then(function (b) {
+            return { tooLarge: true, size: (b && b.size) || 0 };
+          });
+        }
+        if (r.status === 503) { return { notConnected: true }; }
+        return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
+      })
+      .then(function (res) {
+        clearEl(_fsPreviewPane);
+        _fsPreviewPane.dataset.visible = '1';
+
+        if (res.notConnected) {
+          _fsPreviewPane.appendChild(mkEl('p', null, 'No Flipper connected — plug it in and the browser will pick it up.'));
+          return;
+        }
+        if (res.tooLarge) {
+          var msg = mkEl('p');
+          msg.textContent = 'File too large to preview' + (res.size ? ' (' + fmtBytes(res.size) + ')' : '') + '.';
+          _fsPreviewPane.appendChild(msg);
+          var hint = mkEl('p');
+          // Build hint without injecting path into innerHTML
+          hint.textContent = "Use the agent: 'read the file at " + path + "'";
+          _fsPreviewPane.appendChild(hint);
+          return;
+        }
+        if (!res.ok || !res.body) {
+          var errMsg2 = (res.body && res.body.error) ? String(res.body.error) : 'Unknown error';
+          if (errMsg2.indexOf('cannot be run while an application is open') !== -1) {
+            var warn = q('.fs-busy-warn');
+            if (warn) { warn.style.display = ''; warn.textContent = 'Flipper is busy — close the running app on-device or via the agent.'; }
+          } else {
+            _fsPreviewPane.appendChild(mkEl('p', null, 'Error: ' + errMsg2));   // textContent — safe
+          }
+          return;
+        }
+
+        var data = res.body;
+        var contentType = data.content_type || '';
+
+        // Build action bar
+        var actionDefs = FILE_ACTIONS[contentType] || [];
+        var bar = mkEl('div', 'fs-actions');
+        actionDefs.forEach(function (action) {
+          var btn = makeSmallBtn(action.label, function () {
+            var prompt = action.prompt.replace('%p', path);
+            showAgentScreen();
+            submitText(prompt);
+          });
+          bar.appendChild(btn);
+        });
+
+        // Delete button
+        bar.appendChild(makeSmallBtn('DELETE', function () {
+          showFsConfirmModal('Delete ' + path + '?', 'DELETE', function () {
+            doFsDelete(path, function () {
+              clearEl(_fsPreviewPane);
+              _fsPreviewPane.dataset.visible = '0';
+              loadFsDir(_fsCwd, _fsTreePane, q('.fs-busy-warn'));
+            });
+          });
+        }));
+
+        // Rename button
+        bar.appendChild(makeSmallBtn('RENAME', function () {
+          showFsModal('New name (same directory):', path.split('/').pop(), function (newName) {
+            if (!newName) return;
+            var parts = path.split('/');
+            parts[parts.length - 1] = newName;
+            var dst = parts.join('/');
+            doFsRename(path, dst, function () {
+              loadFsDir(_fsCwd, _fsTreePane, q('.fs-busy-warn'));
+              openFsFile(dst);
+            });
+          });
+        }));
+        _fsPreviewPane.appendChild(bar);
+
+        // Path heading
+        var pathHead = mkEl('div', 'fs-preview-path');
+        pathHead.textContent = path;   // textContent — safe
+        _fsPreviewPane.appendChild(pathHead);
+
+        // Content
+        var pre = document.createElement('pre');
+        pre.className = 'fs-preview-content';
+        pre.textContent = data.content || '';   // textContent — safe for both text and base64
+        _fsPreviewPane.appendChild(pre);
+
+        if (data.encoding === 'base64') {
+          _fsPreviewPane.appendChild(mkEl('div', 'fs-preview-note', 'binary file (base64)'));
+        }
+      })
+      .catch(function () {
+        clearEl(_fsPreviewPane);
+        _fsPreviewPane.appendChild(mkEl('p', null, 'Failed to load file.'));
+      });
+  }
+
+  function showFsPreviewOnly() {
+    if (_fsTreePane)    _fsTreePane.classList.add('fs-pane-hidden');
+    if (_fsPreviewPane) _fsPreviewPane.classList.remove('fs-pane-hidden');
+  }
+
+  function showFsTreeOnly() {
+    if (_fsTreePane)    _fsTreePane.classList.remove('fs-pane-hidden');
+    if (_fsPreviewPane) {
+      _fsPreviewPane.classList.add('fs-pane-hidden');
+      _fsPreviewPane.dataset.visible = '0';
+    }
+    if (_fsOpenPath) { sendUIContext('preview', ''); _fsOpenPath = ''; }
+  }
+
+  /* ---- Filesystem mutation helpers (no innerHTML) ---- */
+
+  function doFsUpload(file, dest, overwrite, onSuccess) {
+    var fd = new FormData();
+    fd.append('path', dest);
+    fd.append('file', file);
+    var url = 'api/fs/upload' + (overwrite ? '?overwrite=true' : '');
+    apiFetch(url, { method: 'POST', body: fd })
+      .then(function (r) {
+        if (r.status === 503) { alert('No Flipper connected.'); return; }
+        return r.json().then(function (b) { return { ok: r.ok, body: b }; });
+      })
+      .then(function (res) {
+        if (!res) return;
+        if (!res.ok) { alert('Upload failed: ' + ((res.body && res.body.error) || 'unknown')); return; }
+        if (onSuccess) onSuccess();
+      })
+      .catch(function () { alert('Upload failed.'); });
+  }
+
+  function doFsDelete(path, onSuccess) {
+    apiFetch('api/fs/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path }),
+    })
+      .then(function (r) {
+        if (r.status === 503) { alert('No Flipper connected.'); return; }
+        return r.json().then(function (b) { return { ok: r.ok, body: b }; });
+      })
+      .then(function (res) {
+        if (!res) return;
+        if (!res.ok) { alert('Delete failed: ' + ((res.body && res.body.error) || 'unknown')); return; }
+        if (onSuccess) onSuccess();
+      })
+      .catch(function () { alert('Delete failed.'); });
+  }
+
+  function doFsMkdir(path, onSuccess) {
+    apiFetch('api/fs/mkdir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: path }),
+    })
+      .then(function (r) {
+        if (r.status === 503) { alert('No Flipper connected.'); return; }
+        return r.json().then(function (b) { return { ok: r.ok, body: b }; });
+      })
+      .then(function (res) {
+        if (!res) return;
+        if (!res.ok) { alert('Mkdir failed: ' + ((res.body && res.body.error) || 'unknown')); return; }
+        if (onSuccess) onSuccess();
+      })
+      .catch(function () { alert('Mkdir failed.'); });
+  }
+
+  function doFsRename(src, dst, onSuccess) {
+    apiFetch('api/fs/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ src: src, dst: dst }),
+    })
+      .then(function (r) {
+        if (r.status === 503) { alert('No Flipper connected.'); return; }
+        return r.json().then(function (b) { return { ok: r.ok, body: b }; });
+      })
+      .then(function (res) {
+        if (!res) return;
+        if (!res.ok) { alert('Rename failed: ' + ((res.body && res.body.error) || 'unknown')); return; }
+        if (onSuccess) onSuccess();
+      })
+      .catch(function () { alert('Rename failed.'); });
+  }
+
+  /* ---- Inline modals (no alert/prompt for paths) ---- */
+
+  function showFsModal(label, defaultValue, onConfirm) {
+    var ss = ensureSubscreen();
+    if (!ss) return;
+    var overlay = mkEl('div', 'fs-modal');
+    overlay.appendChild(mkEl('label', 'fs-modal-label', label));  // static string — safe
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'fs-modal-input';
+    inp.value = defaultValue || '';
+    inp.autocomplete = 'off';
+    inp.spellcheck = false;
+    overlay.appendChild(inp);
+    var btnRow = mkEl('div', 'fs-modal-btns');
+    btnRow.appendChild(makeSmallBtn('OK', function () {
+      var val = inp.value.trim();
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (val) onConfirm(val);
+    }));
+    btnRow.appendChild(makeSmallBtn('CANCEL', function () {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }));
+    overlay.appendChild(btnRow);
+    ss.appendChild(overlay);
+    setTimeout(function () { inp.focus(); inp.select(); }, 30);
+  }
+
+  function showFsConfirmModal(message, actionLabel, onConfirm) {
+    var ss = ensureSubscreen();
+    if (!ss) return;
+    var overlay = mkEl('div', 'fs-modal');
+    var msg = mkEl('p', 'fs-modal-label');
+    msg.textContent = message;   // textContent — safe
+    overlay.appendChild(msg);
+    var btnRow = mkEl('div', 'fs-modal-btns');
+    var doBtn = makeSmallBtn(actionLabel, function () {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      onConfirm();
+    });
+    doBtn.style.background = '#8a0d0d';
+    doBtn.style.color = '#fff';
+    btnRow.appendChild(doBtn);
+    btnRow.appendChild(makeSmallBtn('CANCEL', function () {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    }));
+    overlay.appendChild(btnRow);
+    ss.appendChild(overlay);
+    setTimeout(function () { var c = overlay.querySelector('button:last-child'); if (c) c.focus(); }, 30);
+  }
+
+  /* =========================================================================
+     WebSocket ui_context helper
+  ========================================================================= */
+
+  function sendUIContext(view, path) {
+    sendWs({ type: 'ui_context', view: view, path: path || '' });
+  }
+
+  /* =========================================================================
      Utility helpers
   ========================================================================= */
 
@@ -1751,6 +2263,7 @@
     setupDrawer();
     setupRailNav();
     setupDpad();
+    setupDpadModeToggle();
     setupHistory();
     setupInputForm();
 

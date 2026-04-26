@@ -34,3 +34,23 @@ func TestBuildDeviceStateBlock_ConnectedFlipper(t *testing.T) {
 		t.Errorf("block should report connected=true when caps populated, got: %q", got)
 	}
 }
+
+func TestBuildUIContextBlock(t *testing.T) {
+	cases := []struct {
+		name, view, path, want string
+	}{
+		{"empty", "", "", ""},
+		{"view only", "agent", "", "<ui-context view=\"agent\" path=\"\"/>\n"},
+		{"path only", "", "/ext/subghz/garage.sub", "<ui-context view=\"\" path=\"/ext/subghz/garage.sub\"/>\n"},
+		{"both", "preview", "/ext/nfc/card.nfc", "<ui-context view=\"preview\" path=\"/ext/nfc/card.nfc\"/>\n"},
+		{"strip control chars", "preview", "/ext/foo\x00\x07bar", "<ui-context view=\"preview\" path=\"/ext/foobar\"/>\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := buildUIContextBlock(tc.view, tc.path)
+			if got != tc.want {
+				t.Errorf("buildUIContextBlock(%q,%q) = %q, want %q", tc.view, tc.path, got, tc.want)
+			}
+		})
+	}
+}

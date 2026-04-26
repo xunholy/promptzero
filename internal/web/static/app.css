@@ -222,7 +222,7 @@ body::before {
 .input-line .ok-btn:active { transform: translate(3px, 3px); box-shadow: 0 0 0 #000, inset 0 -3px 0 #00000022; }
 
 /* D-pad */
-.dpad { display: grid; grid-template-columns: 36px 36px 36px; grid-template-rows: 36px 36px 36px auto; gap: 4px; background: linear-gradient(180deg, #07070a, #0c0c10); border: 1px solid var(--bezel-edge); padding: 10px; }
+.dpad { display: grid; grid-template-columns: 36px 36px 36px; grid-template-rows: 36px 36px 36px auto auto; gap: 4px; background: linear-gradient(180deg, #07070a, #0c0c10); border: 1px solid var(--bezel-edge); padding: 10px; }
 .dpad button { background: #1a1a1e; color: var(--orange-hi); border: 1px solid #2a2a30; font-family: var(--pixel); font-size: 11px; cursor: pointer; box-shadow: inset 0 1px 0 #ffffff10, inset 0 -2px 0 #00000080, 0 1px 0 #000; transition: transform .04s, box-shadow .04s, background .04s; }
 .dpad button:hover { background: #22221c; color: var(--orange); }
 .dpad button:active { transform: translateY(1px); box-shadow: inset 0 0 0 #fff0, inset 0 1px 0 #00000080; background: var(--orange); color: #1a0e00; }
@@ -233,6 +233,16 @@ body::before {
 .dpad [data-dir="right"] { grid-column: 3; grid-row: 2; }
 .dpad [data-dir="down"]  { grid-column: 2; grid-row: 3; }
 .dpad [data-dir="back"]  { grid-column: 1 / span 3; grid-row: 4; margin-top: 4px; padding: 8px 0; font-size: 9px; letter-spacing: 2px; }
+
+/* D-pad mode toggle button */
+#dpadModeToggle { grid-column: 1 / span 3; grid-row: 5; margin-top: 4px; padding: 6px 0; font-size: 8px; letter-spacing: 2px; background: #0e0e12; color: var(--rail-text-dim); border: 1px dashed var(--bezel-edge); }
+#dpadModeToggle:hover { color: var(--orange-hi); background: #12121a; }
+
+/* Device mode tint — buttons get a warm orange-lo wash so operator can't miss it */
+.dpad[data-mode="device"] button[data-dir] { background: var(--orange-lo); color: #ffe8cc; }
+.dpad[data-mode="device"] button[data-dir]:hover { background: var(--orange); color: #1a0e00; }
+.dpad[data-mode="device"] [data-dir="ok"] { background: var(--orange); color: #1a0e00; }
+#dpadModeToggle[aria-pressed="true"] { background: var(--orange-lo); color: var(--orange-hi); border-style: solid; border-color: var(--orange-lo); }
 
 /* Helpers */
 .blink-cursor-text { display: inline-block; width: 0.55em; height: 1em; background: var(--lcd-pixel); animation: blink 1s steps(2, start) infinite; vertical-align: -2px; margin-left: 2px; }
@@ -260,6 +270,8 @@ body::before {
   .rail-item { grid-template-columns: 18px 1fr auto; padding: 10px 14px; min-height: 44px; }
   .rail-item .label, .rail-item .badge, .rail-section { display: revert; }
   .lcd-inner { padding: 14px 16px; font-size: 19px; }
+  /* On mobile, files pane stacks as single column — JS shows/hides via class */
+  .fs-panes { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
@@ -297,10 +309,11 @@ body::before {
   .input-line input { font-size: 16px; min-height: 32px; }
   .input-line .ok-btn { padding: 10px 12px; font-size: 10px; min-height: 44px; box-shadow: 2px 2px 0 #000, inset 0 -2px 0 #00000022; }
   .controls { grid-template-columns: 1fr; gap: 6px; }
-  .dpad { display: flex; gap: 4px; padding: 6px; justify-content: stretch; align-items: stretch; }
+  .dpad { display: flex; gap: 4px; padding: 6px; justify-content: stretch; align-items: stretch; flex-wrap: wrap; }
   .dpad button { flex: 1; min-height: 44px; grid-column: auto !important; grid-row: auto !important; font-size: 14px; padding: 0; margin: 0 !important; }
   .dpad [data-dir="back"] { flex: 0 0 auto; padding: 0 14px; font-size: 8px; letter-spacing: 1.5px; }
   .dpad [data-dir="ok"] { flex: 1.4; }
+  #dpadModeToggle { flex: 1 0 100%; min-height: 36px; font-size: 7px; margin-top: 2px; }
   .boot-card { padding: 18px 16px 14px; }
   .boot-card h1 { font-size: 13px; }
   .boot-card .tag { font-size: 7px; margin-bottom: 14px; }
@@ -318,6 +331,7 @@ body::before {
   .input-line .ok-btn:hover { filter: none; }
   .menu-toggle:hover { filter: none; }
   .dpad button:hover { background: #1a1a1e; color: var(--orange-hi); }
+  .dpad[data-mode="device"] button[data-dir]:hover { background: var(--orange-lo); color: #ffe8cc; }
   .tx-actions button:hover { transform: none; box-shadow: 3px 3px 0 var(--lcd-pixel-soft); }
 }
 
@@ -330,11 +344,23 @@ body::before {
 
 .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 
+/* Rail-item rendered inside the LCD subscreen needs its own hover/active —
+   the sidebar's #150d04 hover blends into the dark text on the orange LCD. */
+.lcd-inner .rail-item                 { color: var(--lcd-pixel); }
+.lcd-inner .rail-item .badge          { color: var(--lcd-pixel-soft); }
+.lcd-inner .rail-item:hover           { background: var(--lcd-pixel); color: var(--lcd-bg); border-left-color: var(--lcd-pixel-soft); }
+.lcd-inner .rail-item:hover .badge    { color: var(--lcd-bg); }
+.lcd-inner .rail-item.active          { background: var(--lcd-pixel); color: var(--lcd-bg); border-left-color: var(--lcd-pixel); }
+.lcd-inner .rail-item.active .badge   { color: var(--lcd-bg); }
+.lcd-inner .rail-item .ic             { font-size: 8px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; color: var(--lcd-pixel-soft); }
+.lcd-inner .rail-item:hover .ic,
+.lcd-inner .rail-item.active .ic      { color: var(--lcd-bg); }
+
 /* LCD bottom-right credit watermark */
 .lcd .credit {
   position: absolute;
-  right: 10px;
-  bottom: 6px;
+  right: 12px;
+  bottom: 16px;
   z-index: 4;
   font-family: var(--pixel);
   font-size: 7px;
@@ -347,7 +373,7 @@ body::before {
 }
 .lcd .credit:hover  { opacity: 1; color: var(--lcd-pixel); }
 .lcd .credit:active { color: var(--lcd-pixel); }
-@media (max-width: 640px) { .lcd .credit { font-size: 6px; right: 6px; bottom: 4px; } }
+@media (max-width: 640px) { .lcd .credit { font-size: 6px; right: 8px; bottom: 12px; } }
 
 /* Sub-screen header — back button + title */
 .subscreen-header { display: flex; align-items: center; gap: 10px; padding: 0 0 8px; margin-bottom: 10px; border-bottom: 2px solid var(--lcd-pixel); }
@@ -359,4 +385,181 @@ body::before {
 @media (max-width: 640px) {
   .subscreen-back  { font-size: 8px; padding: 8px 10px; min-height: 36px; }
   .subscreen-title { font-size: 9px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   FILES SCREEN — two-pane filesystem browser
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Busy / not-connected warning banner — one line, no modal */
+.fs-busy-warn {
+  font-family: var(--pixel);
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--orange-hi);
+  background: #3a1400;
+  border: 1px solid var(--orange-lo);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}
+
+/* Two-pane grid: 260px tree | 1fr preview */
+.fs-panes {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 0;
+  min-height: 0;
+  flex: 1;
+  border: 1px solid var(--lcd-pixel-soft);
+}
+
+/* Thin divider between panes via border */
+.fs-tree-pane {
+  border-right: 1px solid var(--lcd-pixel-soft);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--lcd-pixel) transparent;
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.fs-preview-pane {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--lcd-pixel) transparent;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+/* Hide a pane — used on mobile when swapping tree/preview */
+.fs-pane-hidden { display: none !important; }
+
+/* Path breadcrumb row */
+.fs-path-row {
+  padding: 4px 14px 6px;
+  border-bottom: 1px solid var(--lcd-pixel-soft);
+  margin-bottom: 4px;
+}
+.fs-path-text {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--lcd-pixel-soft);
+  word-break: break-all;
+}
+
+/* File entry rows reuse .rail-item layout — override colors slightly */
+.fs-entry { border-left: none; font-size: 18px; }
+.fs-entry:hover { background: rgba(0,0,0,0.08); }
+.fs-entry .label { font-family: var(--mono); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fs-entry .badge { font-family: var(--mono); font-size: 11px; color: var(--lcd-pixel-soft); }
+
+/* Toolbar row inside the tree pane (mkdir, upload) */
+.fs-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 8px 14px 4px;
+  border-top: 1px solid var(--lcd-pixel-soft);
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+/* Preview heading — shows full path */
+.fs-preview-path {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--lcd-pixel-soft);
+  word-break: break-all;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--lcd-pixel-soft);
+}
+
+/* Preview <pre> block */
+.fs-preview-content {
+  margin: 0;
+  padding: 8px;
+  background: var(--lcd-pixel);
+  color: var(--lcd-bg);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Binary note below the base64 preview */
+.fs-preview-note {
+  font-family: var(--pixel);
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--lcd-pixel-soft);
+  margin-top: 4px;
+}
+
+/* Action bar above preview (Replay, Emulate, Run, Delete, Rename) */
+.fs-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--lcd-pixel-soft);
+}
+
+/* Inline confirm / input modal */
+.fs-modal {
+  margin-top: 10px;
+  border: 2px solid var(--lcd-pixel);
+  background: var(--lcd-bg);
+  padding: 12px;
+  box-shadow: 4px 4px 0 var(--lcd-pixel-soft);
+}
+.fs-modal-label {
+  display: block;
+  font-family: var(--pixel);
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--lcd-pixel);
+  margin-bottom: 8px;
+}
+.fs-modal-input {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--lcd-pixel);
+  color: var(--lcd-pixel);
+  padding: 6px;
+  font-family: var(--mono);
+  font-size: 14px;
+  margin-bottom: 8px;
+  outline: none;
+}
+.fs-modal-btns {
+  display: flex;
+  gap: 8px;
+}
+
+/* ≥900px — show both panes side-by-side */
+@media (min-width: 900px) {
+  .fs-panes { grid-template-columns: 260px 1fr; }
+  /* Both panes always visible on desktop */
+  .fs-tree-pane, .fs-preview-pane { display: block !important; }
+}
+
+/* <900px — single-column stack; JS controls which pane is shown */
+@media (max-width: 899px) {
+  .fs-panes { grid-template-columns: 1fr; }
+  .fs-tree-pane { border-right: none; border-bottom: 1px solid var(--lcd-pixel-soft); }
+}
+
+/* Tight small-screen tweaks */
+@media (max-width: 640px) {
+  .fs-preview-content { font-size: 11px; }
+  .fs-entry .label { font-size: 13px; }
 }
