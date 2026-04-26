@@ -406,9 +406,6 @@ body[data-mirror-holder="1"] .dpad { display: grid; }
 }
 .lcd .credit:hover  { opacity: 1; color: var(--lcd-pixel); }
 .lcd .credit:active { color: var(--lcd-pixel); }
-/* Hide on the Device panel — the canvas's drop shadow can clip the credit
-   and there's no good way to avoid overlap when the panel goes near full-bleed. */
-body[data-mirror-holder="1"] .lcd .credit { display: none; }
 @media (max-width: 640px) { .lcd .credit { font-size: 6px; right: 18px; bottom: 14px; } }
 
 /* Sub-screen header — back button + title */
@@ -604,9 +601,9 @@ body[data-mirror-holder="1"] .lcd .credit { display: none; }
    DEVICE SCREEN — live LCD mirror
    ───────────────────────────────────────────────────────────────────── */
 
-/* Panel that holds canvas + status + buttons. Fills the subscreen exactly
-   (height:100% + overflow:hidden) so the canvas can shrink to fit instead
-   of overflowing the subscreen and triggering the parent scrollbar. */
+/* Panel that holds canvas + status + buttons. Container queries
+   (container-type: size) let the canvas size itself against the panel's
+   actual width AND height, accounting for the chrome below. */
 .screen-panel {
   display: flex;
   flex-direction: column;
@@ -617,23 +614,19 @@ body[data-mirror-holder="1"] .lcd .credit { display: none; }
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  container-type: size;
 }
 
 /* The canvas — fluid, aspect-locked, pixel-perfect upscale of the 128×64
-   native framebuffer. flex:0 1 auto + aspect-ratio + max-{width,height}:100%
-   makes the canvas shrink along whichever dimension is tighter (parent
-   width or remaining vertical space after status/buttons/hint take theirs)
-   while maintaining the 2:1 ratio. 1024 px hard cap so it doesn't dwarf
-   4K monitors. */
+   native framebuffer. Width is the smaller of: 1024 px hard cap, full
+   container width, or a width that — when paired with the 2:1 aspect —
+   leaves ~170 px below for status / buttons / hint / gaps. The container
+   queries reference the panel's actual size, not viewport, so the
+   estimate doesn't drift when the dpad inflates the controls footer. */
 .screen-canvas {
   display: block;
-  flex: 0 1 auto;
-  width: auto;
+  width: min(1024px, 100cqw, calc((100cqh - 170px) * 2));
   height: auto;
-  max-width: min(1024px, 100%);
-  max-height: 100%;
-  min-width: 0;
-  min-height: 0;
   aspect-ratio: 2 / 1;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
