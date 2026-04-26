@@ -3,982 +3,189 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0c">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="PromptZero — AI operator cockpit for Flipper Zero">
   <title>PROMPTZERO</title>
-
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=VT323&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="app.css">
-
   <script src="app.js" defer></script>
-  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
 </head>
-<body x-data="pzApp()" x-init="init()" x-cloak>
+<body>
 
-  <!-- Skip link (first focusable element) -->
-  <a class="pz-skip" href="#pz-composer">Skip to composer</a>
+<!-- Boot overlay -->
+<div id="boot" role="status" aria-live="polite">
+  <div class="boot-card">
+    <h1>PROMPTZERO v0.9</h1>
+    <div class="tag">AI · OPERATED · FLIPPER · ZERO</div>
+    <div class="boot-log" id="bootLog"></div>
+    <div class="boot-bar"><span id="bootBar"></span></div>
+    <div class="boot-skip">PRESS <kbd>SPACE</kbd> TO SKIP</div>
+  </div>
+</div>
 
-  <!-- Screen-reader-only live region: announces phase transitions only (never text deltas) -->
-  <div class="pz-sr-only" aria-live="polite" aria-atomic="true" x-text="liveRegionText"></div>
+<!-- Device -->
+<div class="device" role="application" aria-label="PromptZero local device console">
+  <span class="screw tl"></span>
+  <span class="screw tr"></span>
+  <span class="screw bl"></span>
+  <span class="screw br"></span>
 
-  <!-- ================================================================
-       Header (40px sticky)
-       ================================================================ -->
-  <header class="pz-header" role="banner">
-    <div class="pz-header-scan" aria-hidden="true"></div>
-
-    <div class="pz-header-left">
-      <div class="pz-wordmark" aria-label="PROMPTZERO">
-        <span>PROMPTZER</span><span class="pz-pixel-zero" aria-hidden="true"></span>
-      </div>
-      <span class="pz-dot-sep" aria-hidden="true">·</span>
-      <span class="pz-chip pz-chip-firmware" x-text="firmwareLabel"></span>
-      <span class="pz-chip pz-chip-device"   x-text="session.device.name || '—'"></span>
+  <header class="status-bar">
+    <button class="menu-toggle" id="menuToggle" aria-label="Open subsystem menu" aria-controls="rail" aria-expanded="false" type="button">&#9776;</button>
+    <div class="brand">
+      <div class="logo" aria-hidden="true">PZ</div>
+      <div>PROMPTZERO <small>&#183; v0.9</small></div>
     </div>
 
-    <div class="pz-header-right">
-      <!-- Sidebar toggle (Watch / Rules) -->
-      <button type="button"
-              class="pz-chip pz-sidebar-btn"
-              :class="{ 'pz-sidebar-btn-open': sidebar.open }"
-              @click="toggleSidebar()"
-              :aria-expanded="sidebar.open ? 'true' : 'false'"
-              aria-label="panels">
-        <span class="pz-sidebar-glyph" aria-hidden="true">☰</span>
-        <span>PANELS</span>
-      </button>
-
-      <!-- Persona switcher (REPL /persona parity) -->
-      <div class="pz-persona" @click.away="personaUI.open = false">
-        <button type="button"
-                class="pz-persona-btn pz-chip"
-                :class="{ 'pz-persona-btn-open': personaUI.open }"
-                @click="togglePersonaMenu()"
-                :aria-expanded="personaUI.open ? 'true' : 'false'"
-                aria-haspopup="menu"
-                :aria-label="'persona: ' + (personaUI.current || 'default')"
-                :title="'persona: ' + (personaUI.current || 'default')">
-          <span class="pz-persona-glyph" aria-hidden="true">◆</span>
-          <span class="pz-persona-name pz-tabular" x-text="personaUI.current || 'default'"></span>
-        </button>
-        <ul class="pz-persona-menu"
-            x-show="personaUI.open"
-            x-cloak
-            role="menu">
-          <template x-if="personaUI.list.length === 0">
-            <li class="pz-persona-empty">no personas loaded</li>
-          </template>
-          <template x-for="p in personaUI.list" :key="p.name">
-            <li role="menuitem"
-                class="pz-persona-item"
-                :class="{ 'pz-persona-item-active': p.name === personaUI.current }"
-                @click="switchPersona(p.name)">
-              <div class="pz-persona-item-head">
-                <span class="pz-persona-item-name" x-text="p.name"></span>
-                <span class="pz-persona-item-tools pz-tabular" x-text="p.unrestricted ? 'all tools' : ((p.tools || 0) + ' tools')"></span>
-              </div>
-              <div class="pz-persona-item-desc" x-text="p.description"></div>
-            </li>
-          </template>
-        </ul>
+    <div class="status-meta">
+      <div class="stat" data-state="off" id="statFlipper">
+        <span class="led"></span>
+        <span>FLIPPER</span>
       </div>
+      <div class="stat" data-state="off" id="statMarauder">
+        <span class="led"></span>
+        <span>MARAUDER</span>
+      </div>
+      <div class="stat" data-state="off" id="statBLE">
+        <span class="led"></span>
+        <span>BLE</span>
+      </div>
+      <div class="sd" title="SD card free space">
+        <span>SD</span>
+        <span class="bars" aria-hidden="true">
+          <span></span><span></span><span></span><span class="off"></span>
+        </span>
+        <span id="sdText">—</span>
+      </div>
+    </div>
 
-      <span class="pz-conn"
-            :class="'pz-conn-' + connection"
-            :title="'connection: ' + connection"
-            role="status"
-            :aria-label="'connection ' + connection">
-        <span class="pz-led" aria-hidden="true"></span>
-        <span class="pz-conn-glyph pz-tabular" aria-hidden="true" x-text="connectionGlyph"></span>
-      </span>
-
-      <!-- Cost pill (REPL /cost parity; polled every 5s, click for per-model breakdown) -->
-      <button type="button"
-              class="pz-cost-pill pz-chip pz-tabular"
-              x-show="costPillVisible"
-              x-cloak
-              :class="{ 'pz-cost-offline': costUI.offline }"
-              @click="toggleCostModal()"
-              :title="costUI.offline ? 'offline pricing estimate' : 'click for per-model breakdown'"
-              aria-label="session cost">
-        <span class="pz-cost-glyph" aria-hidden="true">$</span>
-        <span x-text="costPillText"></span>
-      </button>
-
-      <span class="pz-battery" :title="'battery ' + batteryLabel" role="status" aria-live="polite">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="16" height="10" rx="1"/><path d="M22 11v2"/></svg>
-        <span class="pz-tabular" x-text="batteryLabel"></span>
-      </span>
-
-      <button type="button"
-              class="pz-session-pill"
-              :class="{ 'pz-copied': copied }"
-              @click="copySession()"
-              :title="copied ? 'copied' : 'click to copy session id'"
-              x-text="sessionPillText"></button>
-
-      <!-- Device profile (full device_info surface) -->
-      <button type="button"
-              class="pz-device-btn"
-              @click="openDevice()"
-              title="device profile"
-              aria-label="device profile">◎</button>
-
-      <!-- Debug snapshot (REPL /debug parity) -->
-      <button type="button"
-              class="pz-debug-btn"
-              @click="openDebug()"
-              title="runtime debug"
-              aria-label="runtime debug">i</button>
+    <div class="battery" aria-label="Battery">
+      <span class="cell" aria-hidden="true"><span class="fill" id="battFill"></span></span>
+      <span class="pct" id="battPct">—</span>
     </div>
   </header>
 
-  <!-- ================================================================
-       Message stack
-       ================================================================ -->
-  <main class="pz-messages" x-ref="messages" role="log" aria-live="off" aria-label="conversation">
-    <template x-for="item in feed" :key="item.id">
-      <article class="pz-item" :class="'pz-item-' + item.kind">
+  <div class="body">
+    <div class="rail-backdrop" id="railBackdrop" aria-hidden="true"></div>
+    <nav class="rail" id="rail" aria-label="Subsystems">
+      <div class="rail-section">MAIN MENU</div>
 
-        <!-- USER -->
-        <template x-if="item.kind === 'user'">
-          <div class="pz-msg pz-msg-user">
-            <span class="pz-msg-label">
-              YOU<template x-if="item.voice"><span> · VOICE</span></template>
-            </span>
-            <div class="pz-msg-body" x-text="item.text"></div>
+      <div class="rail-item active" data-route="agent" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="12" height="9"/><path d="M5 12v2M11 12v2M2 7h12"/></svg>
+        <span class="label">Agent</span>
+        <span class="badge">&#9679;</span>
+      </div>
+      <div class="rail-item" data-route="subghz" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 14V6M5 9c0-2 1.5-3 3-3s3 1 3 3M2 11c0-4 2.5-6 6-6s6 2 6 6"/></svg>
+        <span class="label">Sub-GHz</span>
+        <span class="badge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="rfid" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="12" height="8"/><path d="M5 8h6M5 10h4"/></svg>
+        <span class="label">125 kHz RFID</span>
+        <span class="badge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="nfc" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="8" r="5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>
+        <span class="label">NFC</span>
+        <span class="badge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="ir" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2"/><path d="M3 4l2 2M13 4l-2 2M3 12l2-2M13 12l-2-2"/></svg>
+        <span class="label">Infrared</span>
+        <span class="badge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="ibutton" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></svg>
+        <span class="label">iButton</span>
+        <span class="badge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="gpio" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4h12M2 8h12M2 12h12M5 2v12M11 2v12"/></svg>
+        <span class="label">GPIO</span>
+        <span class="badge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="badusb" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="10" height="6"/><path d="M7 6V3h2v3M5 9h6"/></svg>
+        <span class="label">Bad USB</span>
+        <span class="badge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="apps" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>
+        <span class="label">Apps</span>
+        <span class="badge">&#9658;</span>
+      </div>
+
+      <div class="rail-divider"></div>
+      <div class="rail-section">DEVBOARDS</div>
+
+      <div class="rail-item" data-route="marauder" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 11c2-3 4-3 6 0s4 3 6 0M2 7c2-3 4-3 6 0s4 3 6 0"/></svg>
+        <span class="label">Marauder</span>
+        <span class="badge">&#9658;</span>
+      </div>
+
+      <div class="rail-divider"></div>
+      <div class="rail-section">SYSTEM</div>
+
+      <div class="rail-item" data-route="audit" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2h8l3 3v9H3z"/><path d="M6 8h6M6 11h4"/></svg>
+        <span class="label">Audit Log</span>
+        <span class="badge" id="auditBadge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="report" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 14V2h9l3 3v9z"/><path d="M5 9l2 2 4-4"/></svg>
+        <span class="label">Report</span>
+        <span class="badge">&#9658;</span>
+      </div>
+      <div class="rail-item" data-route="settings" tabindex="0" role="button">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3M3 3l2 2M11 11l2 2M3 13l2-2M11 5l2-2"/></svg>
+        <span class="label">Settings</span>
+        <span class="badge">&#9658;</span>
+      </div>
+    </nav>
+
+    <main class="lcd" aria-label="Console">
+      <div class="lcd-inner">
+        <div class="screen-title">
+          <div class="crumbs">
+            <span id="crumb1">AGENT</span>
+            <span id="crumb2">SESSION</span>
+            <span id="sessionId">&#8212;</span>
           </div>
-        </template>
-
-        <!-- AGENT -->
-        <template x-if="item.kind === 'agent'">
-          <div class="pz-msg pz-msg-agent">
-            <span class="pz-msg-label">PROMPTZERO</span>
-            <div class="pz-msg-body">
-              <span x-text="item.text"></span><span
-                    class="pz-caret"
-                    x-show="item.streaming"
-                    aria-hidden="true"></span>
-            </div>
+          <div class="meta">
+            <span id="modelTag">connecting&#8230;</span>
           </div>
-        </template>
-
-        <!-- TOOL CALL -->
-        <template x-if="item.kind === 'tool'">
-          <details class="pz-tool"
-                   :class="'pz-risk-' + (item.risk || 'low') + ' pz-tool-' + item.status + (item.glitch ? ' pz-tool-glitch' : '')"
-                   :open="item.status === 'err'">
-            <summary class="pz-tool-head">
-              <span class="pz-tool-icon" x-html="toolMotifSvg(item.name)" aria-hidden="true"></span>
-              <span class="pz-tool-name" x-text="item.name"></span>
-              <span class="pz-tool-sep">·</span>
-              <span class="pz-tool-dur pz-tabular" x-text="toolDurationLabel(item)"></span>
-              <span class="pz-tool-long-hint" x-show="toolLongRunHint(item)" x-text="toolLongRunHint(item)" aria-live="polite"></span>
-              <span class="pz-tool-args-toggle" x-show="item.input">{…}</span>
-              <span class="pz-tool-status" x-html="statusIcon(item.status)" aria-hidden="true"></span>
-            </summary>
-            <div class="pz-tool-body">
-              <template x-if="item.input">
-                <div>
-                  <div class="pz-tool-block-label">input</div>
-                  <pre class="pz-tool-block" x-text="formatJSON(item.input)"></pre>
-                </div>
-              </template>
-              <template x-if="item.err">
-                <div>
-                  <div class="pz-tool-block-label">error</div>
-                  <pre class="pz-tool-block pz-tool-err pz-tool-output" aria-label="tool error output" x-text="item.err"></pre>
-                </div>
-              </template>
-              <template x-if="!item.err && (item.output !== null && item.output !== undefined && item.output !== '')">
-                <div>
-                  <div class="pz-tool-block-label">output</div>
-                  <pre class="pz-tool-block pz-tool-output" aria-label="tool output" x-text="formatJSON(item.output)"></pre>
-                </div>
-              </template>
-            </div>
-          </details>
-        </template>
-
-        <!-- SKELETON (shape-accurate: paragraph / tool / line) -->
-        <template x-if="item.kind === 'skeleton'">
-          <div :class="'pz-skel pz-skel-' + item.shape" aria-hidden="true">
-            <template x-if="item.shape === 'paragraph'">
-              <div class="pz-skel-para">
-                <span class="pz-skel-bar" style="width:92%"></span>
-                <span class="pz-skel-bar" style="width:78%"></span>
-                <span class="pz-skel-bar" style="width:85%"></span>
-                <span class="pz-skel-bar" style="width:44%"></span>
-              </div>
-            </template>
-            <template x-if="item.shape === 'tool'">
-              <div class="pz-skel-tool">
-                <div class="pz-skel-tool-head">
-                  <span class="pz-skel-bar" style="width:16px;height:16px"></span>
-                  <span class="pz-skel-bar" style="width:120px"></span>
-                  <span class="pz-skel-bar pz-skel-bar-sm" style="width:44px;margin-left:auto"></span>
-                </div>
-                <div class="pz-skel-tool-body"><span class="pz-skel-bar" style="width:70%"></span></div>
-              </div>
-            </template>
-            <template x-if="item.shape === 'line'">
-              <span class="pz-skel-bar" style="width:60%"></span>
-            </template>
-          </div>
-        </template>
-
-        <!-- DISCONNECT BANNER (in-thread, with live countdown) -->
-        <template x-if="item.kind === 'disconnect'">
-          <div class="pz-disconnect" role="status" aria-live="polite">
-            <span class="pz-disconnect-glyph" aria-hidden="true">⚠</span>
-            <span>Device disconnected — retrying in <span class="pz-tabular" x-text="item.secondsLeft"></span>s…</span>
-          </div>
-        </template>
-
-      </article>
-    </template>
-
-    <!-- INLINE RISK-GATE CARD (low / medium / high — critical goes modal below) -->
-    <template x-if="inlineConfirm">
-      <section class="pz-gate" :class="'pz-gate-' + confirmRequest.risk" role="group" aria-label="tool approval required">
-        <header class="pz-gate-head">
-          <span class="pz-gate-pill" :class="'pz-gate-pill-' + confirmRequest.risk" x-text="confirmRequest.risk.toUpperCase()"></span>
-          <span class="pz-gate-tool" x-text="confirmRequest.tool"></span>
-          <span class="pz-gate-desc">requires approval</span>
-        </header>
-        <div class="pz-gate-args">
-          <div class="pz-tool-block-label">args</div>
-          <pre class="pz-tool-block" x-text="formatJSON(confirmRequest.input)"></pre>
         </div>
-        <div class="pz-gate-actions">
-          <button type="button"
-                  class="pz-gate-btn pz-gate-deny"
-                  data-pz-confirm-deny
-                  @click="respondConfirm('deny')">
-            <span>Deny</span><span class="pz-keyhint">[N]</span>
-          </button>
-          <button type="button"
-                  class="pz-gate-btn pz-gate-approve"
-                  @click="respondConfirm('approve')">
-            <span>Approve</span><span class="pz-keyhint">[A]</span>
-          </button>
-          <button type="button"
-                  class="pz-gate-btn pz-gate-approve-all"
-                  @click="respondConfirm('approve_all')">
-            <span>Approve all like this</span><span class="pz-keyhint">[L]</span>
-          </button>
+
+        <div class="scrollback" id="scrollback" aria-live="polite" aria-relevant="additions">
+          <div class="idle-mascot" id="mascot" aria-hidden="true"></div>
+          <div class="idle-line" id="idleLine">READY &#183; TYPE A COMMAND</div>
         </div>
-      </section>
-    </template>
-
-    <!-- Jump-to-latest pill (only shown when auto-scroll is paused AND new content arrived) -->
-    <button type="button"
-            class="pz-jump-pill"
-            x-show="newMessagesPending"
-            x-cloak
-            @click="scrollToLatest()"
-            title="↓ new messages"
-            aria-label="↓ new messages">↓ new messages</button>
-  </main>
-
-  <!-- ================================================================
-       Typed error banner (between messages and ticker)
-       ================================================================ -->
-  <template x-if="errorBanner">
-    <div class="pz-err"
-         :class="'pz-err-' + errorBanner.kind"
-         :role="errorBanner.kind === 'cancelled' ? 'status' : 'alert'"
-         :aria-live="errorBanner.kind === 'cancelled' ? 'polite' : 'assertive'">
-      <span class="pz-err-glyph" aria-hidden="true" x-text="errorBanner.kind === 'cancelled' ? '■' : '!'"></span>
-      <span class="pz-err-label" x-text="{
-              api: 'API',
-              tool: 'TOOL',
-              device: 'DEVICE',
-              cancelled: 'STOPPED'
-            }[errorBanner.kind]"></span>
-      <span class="pz-err-msg" x-text="errorBanner.message"></span>
-      <span class="pz-err-actions">
-        <template x-if="errorBanner.kind === 'api'">
-          <button type="button" class="pz-err-btn" @click="retryLastPrompt()">Retry</button>
-        </template>
-        <template x-if="errorBanner.kind === 'tool'">
-          <button type="button" class="pz-err-btn" :disabled="!errorBanner.canRetryTool" @click="retryLastTool()">Retry tool</button>
-        </template>
-        <template x-if="errorBanner.kind === 'device'">
-          <button type="button" class="pz-err-btn" @click="triggerReconnect()">Reconnect</button>
-        </template>
-        <button type="button" class="pz-err-dismiss" @click="dismissError()" aria-label="dismiss">✕</button>
-      </span>
-    </div>
-  </template>
-
-  <!-- Persistent offline card (after 30s of reconnect failures) -->
-  <template x-if="offlineCard">
-    <div class="pz-offline" role="alert" aria-live="assertive">
-      <div class="pz-offline-title">OFFLINE</div>
-      <div class="pz-offline-body">Couldn't reach the server after 30s.</div>
-      <button type="button" class="pz-offline-btn" @click="triggerReconnect()">Reconnect</button>
-    </div>
-  </template>
-
-  <!-- Reconnect toast (bottom-centre, 2s auto-dismiss) -->
-  <div class="pz-toast" x-show="reconnectToast" x-cloak role="status" aria-live="polite">Reconnected</div>
-
-  <!-- ================================================================
-       Status ticker (only visible when phase != Idle)
-       ================================================================ -->
-  <div class="pz-ticker" x-show="showTicker" x-cloak role="status" aria-live="polite">
-    <span class="pz-ticker-left">
-      <span class="pz-spinner" x-text="spinnerFrame" aria-hidden="true"></span>
-      <span class="pz-ticker-verb" x-text="session.verb"></span>
-      <span class="pz-ticker-sep">·</span>
-      <span class="pz-ticker-elapsed pz-tabular" x-text="elapsedLabel"></span>
-    </span>
-    <button type="button" class="pz-stop" @click="cancelTurn()" title="cancel turn (Esc)">Stop (Esc)</button>
+      </div>
+    </main>
   </div>
 
-  <!-- ================================================================
-       Queue chip (above composer)
-       ================================================================ -->
-  <div class="pz-queue-row" x-show="queuedPrompts.length > 0" x-cloak>
-    <span class="pz-queue-chip"
-          x-text="queuedPrompts.length + ' queued'"
-          :title="'Backspace on empty composer to cancel'"></span>
-  </div>
+  <footer class="controls">
+    <form class="input-line" id="inputForm" autocomplete="off">
+      <span class="prompt">promptzero&gt;</span>
+      <label class="sr" for="cmd">Command</label>
+      <input id="cmd" name="cmd" placeholder="describe what you want the flipper to do&#8230;" autocomplete="off" spellcheck="false" />
+      <button class="ok-btn" type="submit" aria-label="Transmit">TX &#9658;</button>
+    </form>
 
-  <!-- ================================================================
-       Composer (sharp-cornered REPL)
-       ================================================================ -->
-  <form id="pz-composer"
-        class="pz-composer"
-        :class="{ 'pz-composer-running': showTicker }"
-        @submit.prevent="submit()">
-    <span class="pz-composer-prompt" aria-hidden="true">promptzero&gt;</span>
-    <textarea class="pz-composer-input"
-              x-ref="composer"
-              x-model="input"
-              @keydown="onKeyDown($event)"
-              rows="1"
-              :placeholder="placeholder"
-              autocomplete="off"
-              spellcheck="false"
-              aria-label="command input"
-              autofocus></textarea>
-    <span class="pz-composer-count pz-tabular"
-          :class="charCountClass"
-          x-text="input.length"
-          aria-label="character count"
-          aria-live="polite"></span>
-    <button type="submit"
-            class="pz-send"
-            :disabled="!canSend"
-            aria-label="send"
-            x-html="icons.send"></button>
-  </form>
-
-  <!-- ================================================================
-       Collapsible side panel: Watch / Rules tabs
-       (REPL /watch, /rules parity — opens from the right, 360px wide)
-       ================================================================ -->
-  <aside class="pz-sidebar" x-show="sidebar.open" x-cloak role="complementary" aria-label="REPL panels">
-    <header class="pz-sidebar-head">
-      <nav class="pz-sidebar-tabs" role="tablist">
-        <button type="button"
-                role="tab"
-                class="pz-sidebar-tab"
-                :class="{ 'pz-sidebar-tab-active': sidebar.tab === 'watch' }"
-                :aria-selected="sidebar.tab === 'watch' ? 'true' : 'false'"
-                @click="selectSidebarTab('watch')">WATCH</button>
-        <button type="button"
-                role="tab"
-                class="pz-sidebar-tab"
-                :class="{ 'pz-sidebar-tab-active': sidebar.tab === 'rules' }"
-                :aria-selected="sidebar.tab === 'rules' ? 'true' : 'false'"
-                @click="selectSidebarTab('rules')">RULES</button>
-      </nav>
-      <button type="button"
-              class="pz-sidebar-action"
-              @click="openValidateModal()"
-              title="validate a BadUSB script"
-              aria-label="validate script">VALIDATE</button>
-      <button type="button"
-              class="pz-sidebar-close"
-              @click="sidebar.open = false"
-              aria-label="close panels">✕</button>
-    </header>
-
-    <!-- WATCH TAB -->
-    <section class="pz-sidebar-body" x-show="sidebar.tab === 'watch'" role="tabpanel">
-      <template x-if="!watchUI.loaded">
-        <div class="pz-panel-empty">loading…</div>
-      </template>
-      <template x-if="watchUI.loaded && watchUI.error">
-        <div class="pz-panel-empty pz-panel-err" x-text="watchUI.error"></div>
-      </template>
-      <template x-if="watchUI.loaded && !watchUI.error">
-        <div>
-          <div class="pz-watch-state">
-            <span class="pz-watch-pill"
-                  :class="watchUI.paused ? 'pz-watch-pill-paused' : 'pz-watch-pill-active'"
-                  x-text="watchUI.paused ? 'PAUSED' : 'ACTIVE'"></span>
-            <span class="pz-watch-paths pz-tabular"
-                  x-text="(watchUI.paths.length || 0) + ' path' + (watchUI.paths.length === 1 ? '' : 's')"></span>
-            <span class="pz-panel-spacer"></span>
-            <button type="button"
-                    class="pz-panel-btn"
-                    x-show="!watchUI.paused"
-                    @click="watchPause()">Pause</button>
-            <button type="button"
-                    class="pz-panel-btn pz-panel-btn-primary"
-                    x-show="watchUI.paused"
-                    @click="watchResume()">Resume</button>
-          </div>
-
-          <h4 class="pz-panel-heading">Rules</h4>
-          <template x-if="watchUI.rules.length === 0">
-            <div class="pz-panel-empty">No rules configured — add some to ~/.promptzero/rules.yaml</div>
-          </template>
-          <template x-for="r in watchUI.rules" :key="r.pattern + r.prompt">
-            <div class="pz-watch-rule">
-              <div class="pz-watch-rule-head">
-                <span class="pz-watch-rule-pat pz-mono" x-text="r.pattern"></span>
-                <template x-if="r.persona">
-                  <span class="pz-watch-rule-persona" x-text="r.persona"></span>
-                </template>
-              </div>
-              <div class="pz-watch-rule-prompt" x-text="r.prompt"></div>
-            </div>
-          </template>
-
-          <h4 class="pz-panel-heading">Recent fires</h4>
-          <template x-if="watchUI.events.length === 0">
-            <div class="pz-panel-empty">no recent events</div>
-          </template>
-          <template x-for="e in watchUI.events" :key="e.at + e.path">
-            <div class="pz-watch-event">
-              <div class="pz-watch-event-head">
-                <span class="pz-watch-event-time pz-tabular" x-text="shortTime(e.at)"></span>
-                <span class="pz-watch-event-rule pz-mono" x-text="e.rule"></span>
-              </div>
-              <div class="pz-watch-event-path pz-mono" x-text="e.path"></div>
-              <template x-if="e.error">
-                <div class="pz-watch-event-err" x-text="e.error"></div>
-              </template>
-            </div>
-          </template>
-        </div>
-      </template>
-    </section>
-
-    <!-- RULES TAB -->
-    <section class="pz-sidebar-body" x-show="sidebar.tab === 'rules'" role="tabpanel">
-      <template x-if="!rulesUI.loaded">
-        <div class="pz-panel-empty">loading…</div>
-      </template>
-      <template x-if="rulesUI.loaded && rulesUI.error">
-        <div class="pz-panel-empty pz-panel-err" x-text="rulesUI.error"></div>
-      </template>
-      <template x-if="rulesUI.loaded && !rulesUI.error">
-        <div>
-          <h4 class="pz-panel-heading">
-            <span>Rules</span>
-            <span class="pz-panel-spacer"></span>
-            <span class="pz-tabular pz-rule-fires" x-text="rulesSummary"></span>
-          </h4>
-          <template x-if="rulesUI.list.length === 0">
-            <div class="pz-panel-empty">no rules loaded</div>
-          </template>
-          <template x-for="r in rulesUI.list" :key="r.name">
-            <div class="pz-rule">
-              <div class="pz-rule-head">
-                <label class="pz-rule-toggle" :title="r.enabled ? 'pause ' + r.name : 'resume ' + r.name">
-                  <input type="checkbox"
-                         :checked="r.enabled"
-                         @change.prevent="toggleRule(r)"
-                         :aria-label="(r.enabled ? 'pause ' : 'resume ') + r.name">
-                  <span class="pz-rule-toggle-track" aria-hidden="true"></span>
-                </label>
-                <span class="pz-rule-name pz-mono" x-text="r.name"></span>
-                <span class="pz-rule-fires pz-tabular"
-                      x-text="(r.fire_count || 0) + ' fires'"></span>
-              </div>
-              <template x-if="r.description">
-                <div class="pz-rule-desc" x-text="r.description"></div>
-              </template>
-              <div class="pz-rule-actions">
-                <button type="button"
-                        class="pz-panel-btn"
-                        @click="testRule(r.name)">Test</button>
-                <template x-if="r.last_fired">
-                  <span class="pz-rule-fires pz-tabular"
-                        x-text="'last fired ' + shortTime(r.last_fired)"></span>
-                </template>
-              </div>
-              <template x-if="rulesUI.testResults[r.name]">
-                <pre class="pz-rule-test" x-text="rulesUI.testResults[r.name]"></pre>
-              </template>
-            </div>
-          </template>
-        </div>
-      </template>
-    </section>
-  </aside>
-
-  <!-- Debug snapshot modal (REPL /debug parity) -->
-  <template x-if="debugUI.open">
-    <div class="pz-modal-backdrop"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="pz-debug-modal-title"
-         @click.self="closeDebug()"
-         @keydown.escape.window="closeDebug()">
-      <div class="pz-modal pz-modal-debug">
-        <div class="pz-modal-title" id="pz-debug-modal-title">RUNTIME DEBUG</div>
-        <template x-if="!debugUI.loaded">
-          <div class="pz-panel-empty">loading…</div>
-        </template>
-        <template x-if="debugUI.loaded && debugUI.error">
-          <div class="pz-validate-err" x-text="debugUI.error"></div>
-        </template>
-        <template x-if="debugUI.loaded && !debugUI.error && debugUI.snapshot">
-          <div>
-            <div class="pz-debug-grid">
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">version</span>
-                <span class="pz-debug-val pz-mono"
-                      x-text="(debugUI.snapshot.build && debugUI.snapshot.build.version) || '—'"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">commit</span>
-                <span class="pz-debug-val pz-mono"
-                      x-text="(debugUI.snapshot.build && debugUI.snapshot.build.commit) || '—'"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">go</span>
-                <span class="pz-debug-val pz-mono"
-                      x-text="(debugUI.snapshot.runtime && debugUI.snapshot.runtime.go_version) || '—'"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">uptime</span>
-                <span class="pz-debug-val pz-tabular"
-                      x-text="(debugUI.snapshot.runtime && debugUI.snapshot.runtime.uptime_seconds) + 's'"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">goroutines</span>
-                <span class="pz-debug-val pz-tabular"
-                      x-text="(debugUI.snapshot.runtime && debugUI.snapshot.runtime.goroutines) || 0"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">heap / sys</span>
-                <span class="pz-debug-val pz-tabular"
-                      x-text="((debugUI.snapshot.runtime && debugUI.snapshot.runtime.heap_mb) || 0) + ' / ' + ((debugUI.snapshot.runtime && debugUI.snapshot.runtime.sys_mb) || 0) + ' MB'"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">persona</span>
-                <span class="pz-debug-val pz-mono"
-                      x-text="(debugUI.snapshot.state && debugUI.snapshot.state.persona) || 'default'"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">connections</span>
-                <span class="pz-debug-val pz-tabular"
-                      x-text="(debugUI.snapshot.state && debugUI.snapshot.state.active_connections) || 0"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">flipper</span>
-                <span class="pz-debug-val pz-mono"
-                      :class="(debugUI.snapshot.state && debugUI.snapshot.state.flipper_connected) ? 'pz-validate-ok' : 'pz-validate-blocked'"
-                      x-text="(debugUI.snapshot.state && debugUI.snapshot.state.flipper_connected) ? 'online' : 'offline'"></span>
-              </div>
-              <div class="pz-debug-cell">
-                <span class="pz-debug-label">marauder</span>
-                <span class="pz-debug-val pz-mono"
-                      :class="(debugUI.snapshot.state && debugUI.snapshot.state.marauder_connected) ? 'pz-validate-ok' : 'pz-validate-blocked'"
-                      x-text="(debugUI.snapshot.state && debugUI.snapshot.state.marauder_connected) ? 'online' : 'offline'"></span>
-              </div>
-            </div>
-            <pre class="pz-debug-raw pz-mono" x-text="debugText"></pre>
-          </div>
-        </template>
-        <div class="pz-modal-actions">
-          <button type="button" class="pz-panel-btn" @click="loadDebug()">Refresh</button>
-          <button type="button"
-                  class="pz-panel-btn"
-                  :class="{ 'pz-panel-btn-primary': debugUI.copied }"
-                  :disabled="!debugUI.snapshot"
-                  @click="copyDebug()"
-                  x-text="debugUI.copied ? 'Copied' : 'Copy JSON'"></button>
-          <button type="button" class="pz-panel-btn" @click="closeDebug()">Close</button>
-        </div>
-      </div>
+    <div class="dpad" role="toolbar" aria-label="Navigation">
+      <button data-dir="up"    aria-label="Up"    type="button">&#9650;</button>
+      <button data-dir="left"  aria-label="Left"  type="button">&#9668;</button>
+      <button data-dir="ok"    aria-label="OK"    type="button">&#9679;</button>
+      <button data-dir="right" aria-label="Right" type="button">&#9658;</button>
+      <button data-dir="down"  aria-label="Down"  type="button">&#9660;</button>
+      <button data-dir="back"  aria-label="Back"  type="button">BACK</button>
     </div>
-  </template>
-
-  <!-- Device profile modal (full device_info / power_info surface) -->
-  <template x-if="deviceUI.open">
-    <div class="pz-modal-backdrop"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="pz-device-modal-title"
-         @click.self="closeDevice()"
-         @keydown.escape.window="closeDevice()">
-      <div class="pz-modal pz-modal-device">
-        <div class="pz-modal-title" id="pz-device-modal-title" x-text="deviceUI.title"></div>
-
-        <template x-if="!deviceUI.loaded">
-          <div class="pz-panel-empty">loading device_info…</div>
-        </template>
-        <template x-if="deviceUI.loaded && deviceUI.error">
-          <div class="pz-validate-err" x-text="deviceUI.error"></div>
-        </template>
-
-        <template x-if="deviceUI.loaded && !deviceUI.error && deviceUI.snapshot">
-          <div class="pz-device-body">
-            <template x-if="(deviceUI.snapshot.power_info_errors && deviceUI.snapshot.power_info_errors.length) || (deviceUI.snapshot.storage_info_errors && deviceUI.snapshot.storage_info_errors.length)">
-              <div class="pz-validate-err">
-                <template x-for="(e, i) in (deviceUI.snapshot.power_info_errors || [])" :key="'p' + i">
-                  <div x-text="'power_info: ' + e"></div>
-                </template>
-                <template x-for="(e, i) in (deviceUI.snapshot.storage_info_errors || [])" :key="'s' + i">
-                  <div x-text="'storage_info: ' + e"></div>
-                </template>
-              </div>
-            </template>
-            <!-- Battery: big, visual because it's what operators look at first -->
-            <section class="pz-device-section pz-device-battery">
-              <div class="pz-device-section-head">BATTERY</div>
-              <div class="pz-device-battery-bar" :style="`--pz-batt:${deviceChargePct}%`">
-                <div class="pz-device-battery-fill"></div>
-                <span class="pz-device-battery-label pz-tabular"
-                      x-text="deviceChargePct + '% · ' + (deviceUI.snapshot.battery.charge_state || '—')"></span>
-              </div>
-              <div class="pz-device-grid">
-                <div><span class="pz-debug-label">gauge ok</span>
-                  <span class="pz-debug-val pz-mono"
-                        :class="deviceUI.snapshot.battery.gauge_is_ok === 'true' ? 'pz-validate-ok' : 'pz-validate-blocked'"
-                        x-text="deviceUI.snapshot.battery.gauge_is_ok === 'true' ? 'true' : (deviceUI.snapshot.battery.gauge_is_ok || '—')"></span></div>
-                <div><span class="pz-debug-label">voltage</span>
-                  <span class="pz-debug-val pz-tabular" x-text="formatVoltage(deviceUI.snapshot.battery.battery_voltage)"></span></div>
-                <div><span class="pz-debug-label">current</span>
-                  <span class="pz-debug-val pz-tabular" x-text="formatCurrent(deviceUI.snapshot.battery.battery_current)"></span></div>
-                <div><span class="pz-debug-label">temp</span>
-                  <span class="pz-debug-val pz-tabular" x-text="_val(deviceUI.snapshot.battery.battery_temp) + '°C'"></span></div>
-                <div><span class="pz-debug-label">health</span>
-                  <span class="pz-debug-val pz-tabular" x-text="_val(deviceUI.snapshot.battery.battery_health) + '%'"></span></div>
-                <div><span class="pz-debug-label">capacity</span>
-                  <span class="pz-debug-val pz-tabular"
-                        x-text="_val(deviceUI.snapshot.battery.capacity_remain) + ' / ' + _val(deviceUI.snapshot.battery.capacity_full) + ' mAh'"></span></div>
-                <div><span class="pz-debug-label">design</span>
-                  <span class="pz-debug-val pz-tabular"
-                        x-text="_val(deviceUI.snapshot.battery.capacity_design) + ' mAh'"></span></div>
-              </div>
-            </section>
-
-            <!-- Storage -->
-            <section class="pz-device-section">
-              <div class="pz-device-section-head">STORAGE</div>
-              <div class="pz-device-storage-bar" :style="`--pz-stor:${deviceStorageUsedPct}%`">
-                <div class="pz-device-storage-fill"></div>
-                <span class="pz-device-storage-label pz-tabular" x-text="deviceStorageLabel"></span>
-              </div>
-              <div class="pz-device-grid">
-                <div><span class="pz-debug-label">sd card</span>
-                  <span class="pz-debug-val pz-mono"
-                        x-text="deviceUI.snapshot.storage.storage_sdcard_present === 'true'
-                          ? ((deviceUI.snapshot.storage.storage_sdcard_label || '—') + ' · ' + (deviceUI.snapshot.storage.storage_sdcard_type || '—'))
-                          : (deviceUI.snapshot.storage.storage_sdcard_error || 'not inserted')"></span></div>
-                <div><span class="pz-debug-label">sd free</span>
-                  <span class="pz-debug-val pz-tabular" x-text="deviceSdFreeLabel"></span></div>
-                <div><span class="pz-debug-label">internal</span>
-                  <span class="pz-debug-val pz-mono"
-                        x-text="(deviceUI.snapshot.storage.storage_internal_label || '—') + ' · ' + (deviceUI.snapshot.storage.storage_internal_type || '—')"></span></div>
-                <div><span class="pz-debug-label">int free</span>
-                  <span class="pz-debug-val pz-tabular" x-text="deviceIntFreeLabel"></span></div>
-              </div>
-            </section>
-
-            <!-- Firmware -->
-            <section class="pz-device-section">
-              <div class="pz-device-section-head">FIRMWARE</div>
-              <div class="pz-device-grid">
-                <div><span class="pz-debug-label">fork</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.firmware.firmware_origin_fork || 'stock'"></span></div>
-                <div><span class="pz-debug-label">version</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.firmware.firmware_version || '—'"></span></div>
-                <div><span class="pz-debug-label">branch</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.firmware.firmware_branch || '—'"></span></div>
-                <div><span class="pz-debug-label">commit</span>
-                  <span class="pz-debug-val pz-mono"
-                        x-text="(deviceUI.snapshot.firmware.firmware_commit || '—') + (deviceUI.snapshot.firmware.firmware_commit_dirty === 'true' ? ' (dirty)' : '')"></span></div>
-                <div><span class="pz-debug-label">build date</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.firmware.firmware_build_date || '—'"></span></div>
-                <div><span class="pz-debug-label">api</span>
-                  <span class="pz-debug-val pz-tabular"
-                        x-text="(deviceUI.snapshot.firmware.firmware_api_major || '—') + '.' + (deviceUI.snapshot.firmware.firmware_api_minor || '—')"></span></div>
-              </div>
-            </section>
-
-            <!-- Hardware -->
-            <section class="pz-device-section">
-              <div class="pz-device-section-head">HARDWARE</div>
-              <div class="pz-device-grid">
-                <div><span class="pz-debug-label">model</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_model || '—'"></span></div>
-                <div><span class="pz-debug-label">name</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_name || '—'"></span></div>
-                <div><span class="pz-debug-label">UID</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_uid || '—'"></span></div>
-                <div><span class="pz-debug-label">ver</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_ver || '—'"></span></div>
-                <div><span class="pz-debug-label">region</span>
-                  <span class="pz-debug-val pz-mono"
-                        x-text="(deviceUI.snapshot.hardware.hardware_region || '—') + ' (prov: ' + (deviceUI.snapshot.hardware.hardware_region_provisioned || '—') + ')'"></span></div>
-                <div><span class="pz-debug-label">color</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.hardware.hardware_color || '—'"></span></div>
-              </div>
-            </section>
-
-            <!-- Radio -->
-            <section class="pz-device-section">
-              <div class="pz-device-section-head">RADIO</div>
-              <div class="pz-device-grid">
-                <div><span class="pz-debug-label">stack</span>
-                  <span class="pz-debug-val pz-mono"
-                        x-text="(deviceUI.snapshot.radio.radio_stack_major || '—') + '.' + (deviceUI.snapshot.radio.radio_stack_minor || '—') + '.' + (deviceUI.snapshot.radio.radio_stack_sub || '—')"></span></div>
-                <div><span class="pz-debug-label">FUS</span>
-                  <span class="pz-debug-val pz-mono"
-                        x-text="(deviceUI.snapshot.radio.radio_fus_major || '—') + '.' + (deviceUI.snapshot.radio.radio_fus_minor || '—') + '.' + (deviceUI.snapshot.radio.radio_fus_sub || '—')"></span></div>
-                <div><span class="pz-debug-label">mode</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.radio.radio_mode || '—'"></span></div>
-                <div><span class="pz-debug-label">BLE MAC</span>
-                  <span class="pz-debug-val pz-mono" x-text="deviceUI.snapshot.radio.radio_ble_mac || '—'"></span></div>
-                <div><span class="pz-debug-label">stack flash</span>
-                  <span class="pz-debug-val pz-tabular" x-text="deviceUI.snapshot.radio.radio_stack_flash || '—'"></span></div>
-                <div><span class="pz-debug-label">alive</span>
-                  <span class="pz-debug-val pz-mono"
-                        :class="deviceUI.snapshot.radio.radio_alive === 'true' ? 'pz-validate-ok' : 'pz-validate-blocked'"
-                        x-text="deviceUI.snapshot.radio.radio_alive || '—'"></span></div>
-              </div>
-            </section>
-
-            <!-- System + enclave -->
-            <section class="pz-device-section">
-              <div class="pz-device-section-head">SYSTEM</div>
-              <div class="pz-device-grid">
-                <div><span class="pz-debug-label">protobuf</span>
-                  <span class="pz-debug-val pz-tabular"
-                        x-text="(deviceUI.snapshot.system.protobuf_version_major || '—') + '.' + (deviceUI.snapshot.system.protobuf_version_minor || '—')"></span></div>
-                <div><span class="pz-debug-label">enclave</span>
-                  <span class="pz-debug-val pz-mono"
-                        :class="deviceUI.snapshot.system.enclave_valid === 'true' ? 'pz-validate-ok' : 'pz-validate-blocked'"
-                        x-text="(deviceUI.snapshot.system.enclave_valid === 'true' ? 'valid' : 'invalid') + ' (' + (deviceUI.snapshot.system.enclave_valid_keys || '0') + ' keys)'"></span></div>
-                <div><span class="pz-debug-label">debug</span>
-                  <span class="pz-debug-val pz-mono"
-                        x-text="deviceUI.snapshot.system.system_debug === '1' ? 'enabled' : 'disabled'"></span></div>
-                <div><span class="pz-debug-label">lock</span>
-                  <span class="pz-debug-val pz-mono"
-                        x-text="deviceUI.snapshot.system.system_lock === '1' ? 'enabled' : 'disabled'"></span></div>
-              </div>
-            </section>
-
-            <!-- Raw dump: every key parsed from device_info + power_info, so
-                 field-name mismatches or missing keys are visible directly. -->
-            <section class="pz-device-section">
-              <div class="pz-device-section-head">RAW</div>
-              <pre class="pz-debug-raw pz-mono" aria-label="raw device data" x-text="deviceRawText"></pre>
-            </section>
-          </div>
-        </template>
-
-        <div class="pz-modal-actions">
-          <button type="button" class="pz-panel-btn" @click="loadDevice()">Refresh</button>
-          <button type="button" class="pz-panel-btn" @click="closeDevice()">Close</button>
-        </div>
-      </div>
-    </div>
-  </template>
-
-  <!-- Validate modal (REPL /validate parity) -->
-  <template x-if="validateUI.open">
-    <div class="pz-modal-backdrop"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="pz-validate-modal-title"
-         @click.self="closeValidateModal()"
-         @keydown.escape.window="closeValidateModal()">
-      <div class="pz-modal pz-modal-validate">
-        <div class="pz-modal-title" id="pz-validate-modal-title">VALIDATE SCRIPT</div>
-        <p class="pz-validate-desc">
-          Scan a BadUSB Ducky payload for destructive patterns before running it.
-          Paste content below, or point at a file on the server.
-        </p>
-
-        <label class="pz-modal-confirm-label" for="pz-validate-path">path (optional)</label>
-        <input id="pz-validate-path"
-               class="pz-modal-confirm-input pz-mono"
-               type="text"
-               autocomplete="off"
-               spellcheck="false"
-               placeholder="/path/to/payload.txt"
-               x-model="validateUI.path">
-
-        <label class="pz-modal-confirm-label" for="pz-validate-content">content</label>
-        <textarea id="pz-validate-content"
-                  class="pz-validate-textarea pz-mono"
-                  rows="6"
-                  spellcheck="false"
-                  placeholder="DELAY 500&#10;STRING echo hello&#10;ENTER"
-                  x-model="validateUI.content"></textarea>
-
-        <template x-if="validateUI.error">
-          <div class="pz-validate-err" x-text="validateUI.error"></div>
-        </template>
-
-        <template x-if="validateUI.report">
-          <div class="pz-validate-result">
-            <div class="pz-validate-summary">
-              <span class="pz-validate-badge"
-                    :class="'pz-sev-' + validateUI.report.overall_risk"
-                    x-text="validateUI.report.overall_risk.toUpperCase()"></span>
-              <span class="pz-validate-summary-name pz-mono" x-text="validateUI.report.name"></span>
-              <span class="pz-panel-spacer"></span>
-              <span class="pz-validate-summary-verdict pz-tabular"
-                    :class="validateUI.report.approved ? 'pz-validate-ok' : 'pz-validate-blocked'"
-                    x-text="validateUI.report.approved ? 'APPROVED' : 'BLOCKED'"></span>
-            </div>
-            <template x-if="(validateUI.report.findings || []).length === 0">
-              <div class="pz-panel-empty">no findings — payload looks clean</div>
-            </template>
-            <template x-for="(f, i) in (validateUI.report.findings || [])" :key="i">
-              <div class="pz-validate-finding">
-                <div class="pz-validate-finding-head">
-                  <span class="pz-validate-badge"
-                        :class="'pz-sev-' + f.severity"
-                        x-text="f.severity.toUpperCase()"></span>
-                  <span class="pz-validate-rule pz-mono" x-text="f.rule"></span>
-                  <span class="pz-panel-spacer"></span>
-                  <span class="pz-validate-line pz-tabular"
-                        x-text="'L' + (f.line || 0)"></span>
-                </div>
-                <div class="pz-validate-msg" x-text="f.message"></div>
-                <template x-if="f.excerpt">
-                  <pre class="pz-validate-excerpt" x-text="f.excerpt"></pre>
-                </template>
-              </div>
-            </template>
-          </div>
-        </template>
-
-        <div class="pz-modal-actions">
-          <button type="button"
-                  class="pz-panel-btn"
-                  @click="closeValidateModal()">Close</button>
-          <button type="button"
-                  class="pz-panel-btn pz-panel-btn-primary"
-                  :disabled="validateUI.loading"
-                  @click="runValidate()"
-                  x-text="validateUI.loading ? 'Validating…' : 'Validate'"></button>
-        </div>
-      </div>
-    </div>
-  </template>
-
-  <!-- Cost breakdown modal (REPL /cost parity) -->
-  <template x-if="costUI.modalOpen">
-    <div class="pz-modal-backdrop"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="pz-cost-modal-title"
-         @click.self="costUI.modalOpen = false">
-      <div class="pz-modal pz-modal-cost">
-        <div class="pz-modal-title" id="pz-cost-modal-title">SESSION COST</div>
-        <div class="pz-cost-total">
-          <span class="pz-cost-total-usd pz-tabular" x-text="formatUSD(costUI.usd)"></span>
-          <span class="pz-cost-total-sep">·</span>
-          <span class="pz-cost-total-tokens pz-tabular"
-                x-text="formatTokens(costUI.inputTokens + costUI.outputTokens) + ' tokens'"></span>
-          <template x-if="costUI.offline">
-            <span class="pz-cost-offline-pill">OFFLINE ESTIMATE</span>
-          </template>
-        </div>
-        <div class="pz-cost-split pz-tabular">
-          <span>in&nbsp;<span x-text="formatTokens(costUI.inputTokens)"></span></span>
-          <span>out&nbsp;<span x-text="formatTokens(costUI.outputTokens)"></span></span>
-        </div>
-        <h4 class="pz-panel-heading">By model</h4>
-        <template x-if="costUI.byModel.length === 0">
-          <div class="pz-panel-empty">no usage yet</div>
-        </template>
-        <table class="pz-cost-table" x-show="costUI.byModel.length > 0">
-          <thead>
-            <tr>
-              <th>model</th>
-              <th class="pz-cost-num">in</th>
-              <th class="pz-cost-num">out</th>
-              <th class="pz-cost-num">usd</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template x-for="m in costUI.byModel" :key="m.model">
-              <tr>
-                <td class="pz-mono" x-text="m.model || '(unknown)'"></td>
-                <td class="pz-cost-num pz-tabular" x-text="formatTokens(m.input_tokens)"></td>
-                <td class="pz-cost-num pz-tabular" x-text="formatTokens(m.output_tokens)"></td>
-                <td class="pz-cost-num pz-tabular" x-text="formatUSD(m.usd)"></td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-        <div class="pz-modal-actions">
-          <button type="button" class="pz-panel-btn" @click="costUI.modalOpen = false">Close</button>
-        </div>
-      </div>
-    </div>
-  </template>
-
-  <!-- CRITICAL RISK MODAL (only for risk === 'critical'; requires typing 'confirm' to enable Approve) -->
-  <template x-if="criticalConfirm">
-    <div class="pz-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="pz-modal-title">
-      <div class="pz-modal pz-modal-critical">
-        <div class="pz-modal-title" id="pz-modal-title">AUTHORISE CRITICAL TOOL</div>
-        <div class="pz-gate-head">
-          <span class="pz-gate-pill pz-gate-pill-critical">CRITICAL</span>
-          <span class="pz-gate-tool" x-text="confirmRequest.tool"></span>
-        </div>
-        <div class="pz-gate-args">
-          <div class="pz-tool-block-label">args</div>
-          <pre class="pz-tool-block" x-text="formatJSON(confirmRequest.input)"></pre>
-        </div>
-        <label class="pz-modal-confirm-label" for="pz-critical-confirm">
-          Type <span class="pz-mono">confirm</span> to enable approval:
-        </label>
-        <input id="pz-critical-confirm"
-               class="pz-modal-confirm-input pz-mono"
-               type="text"
-               autocomplete="off"
-               spellcheck="false"
-               pattern="confirm"
-               placeholder="confirm"
-               x-model="criticalConfirmText"
-               @keydown.enter.prevent="criticalReady && respondConfirm('approve')">
-        <div class="pz-gate-actions">
-          <button type="button"
-                  class="pz-gate-btn pz-gate-deny"
-                  data-pz-confirm-deny
-                  @click="respondConfirm('deny')">
-            <span>Deny</span><span class="pz-keyhint">[N]</span>
-          </button>
-          <button type="button"
-                  class="pz-gate-btn pz-gate-approve"
-                  :disabled="!criticalReady"
-                  @click="respondConfirm('approve')">
-            <span>Approve</span><span class="pz-keyhint">[A]</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </template>
+  </footer>
+</div>
 
 </body>
 </html>

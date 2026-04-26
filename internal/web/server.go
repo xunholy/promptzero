@@ -52,8 +52,10 @@ import (
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/flipper/companion"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
+	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
@@ -143,6 +145,16 @@ type Server struct {
 	flipperOn  atomic.Bool
 	marauderOn atomic.Bool
 
+	// marauderInfo* fields back the status-bar Marauder pill. Both are
+	// optional metadata captured at setup time via SetMarauderInfo; the
+	// server itself never queries the Marauder directly because the only
+	// firmware probe ("info") blocks the serial port for ~hundreds of ms.
+	// Guarded by marauderInfoMu so the host can refresh either field on
+	// reconnect without racing /api/device readers.
+	marauderInfoMu   sync.Mutex
+	marauderPort     string
+	marauderFirmware string
+
 	// token, when non-empty, is the shared bearer the server requires on
 	// every /api and /ws request. Empty means auth disabled (dev mode);
 	// the server prints a loud warning when the bind is also non-loopback.
@@ -167,6 +179,11 @@ type Server struct {
 	// allowUnauthedPublic, when true, falls back to warn-and-continue when the
 	// server is bound non-loopback without a token. Default false = fail-closed.
 	allowUnauthedPublic bool
+
+	// comp is the on-device Companion FAP status sink. Always non-nil
+	// (NopSink default) so callbacks can push without nil checks. Set
+	// via SetCompanion before Start.
+	comp companion.Sink
 }
 
 type sessionConn struct {
@@ -216,9 +233,21 @@ func NewServer(addr string, ag agentDriver, v *voice.Engine) *Server {
 		writeTimeout:      30 * time.Second,
 		requestQueue:      make(chan struct{}, 64),
 		startedAt:         time.Now(),
+		comp:              companion.NopSink{},
 	}
 	s.attachAgentCallbacks()
 	return s
+}
+
+// SetCompanion wires the on-device Companion FAP status sink. When
+// not called, the server uses NopSink and the FAP receives nothing
+// (matches the optional-by-default contract). Must be called before
+// Start so attachAgentCallbacks' captured closure stays consistent.
+func (s *Server) SetCompanion(c companion.Sink) {
+	if c == nil {
+		c = companion.NopSink{}
+	}
+	s.comp = c
 }
 
 // SetMetrics wires a Prometheus Recorder onto the server. When non-nil
@@ -259,6 +288,22 @@ func (s *Server) SetFlipper(f *flipper.Flipper) { s.flipper = f }
 // SetMarauderConnected records the current Marauder serial state for the
 // /api/debug snapshot. Call on connect/disconnect transitions.
 func (s *Server) SetMarauderConnected(v bool) { s.marauderOn.Store(v) }
+
+// SetMarauderInfo records the Marauder serial port name (e.g.
+// "/dev/ttyACM1") and firmware version string for the /api/device
+// status-bar pill. Either argument may be empty when the host doesn't
+// know that field — the status bar renders empty strings as "—".
+//
+// Decoupled from SetMarauderConnected because the connect/disconnect
+// callback fires on every transport event; the descriptive metadata is
+// only known once at setup time (port from config, firmware from a
+// one-shot "info" probe the host may add later).
+func (s *Server) SetMarauderInfo(port, firmware string) {
+	s.marauderInfoMu.Lock()
+	defer s.marauderInfoMu.Unlock()
+	s.marauderPort = port
+	s.marauderFirmware = firmware
+}
 
 // SetAuthToken installs the shared bearer token for /api and /ws. Empty
 // disables the check (dev-mode default). Must be called before Start —
@@ -414,6 +459,16 @@ func (s *Server) attachAgentCallbacks() {
 		if ts == nil {
 			return
 		}
+		// Mirror to the on-device Companion FAP (NopSink when none
+		// installed). Same surface the REPL exposes — the operator
+		// at the device sees activity regardless of whether the
+		// host driver is the terminal or the browser.
+		switch e.Phase {
+		case "start":
+			s.comp.Busy(e.Name, companion.SummarizeInput(e.Input), risk.Classify(e.Name).String())
+		case "finish":
+			s.comp.Done(e.Name, !e.Err)
+		}
 		m := map[string]any{
 			"type":    "tool_status",
 			"phase":   e.Phase,
@@ -457,16 +512,44 @@ func (s *Server) attachAgentCallbacks() {
 			"confirm_id": id,
 			"turn_id":    ts.id,
 		})
-		// Full ConfirmResponse carries both the decision and the
-		// revision text — DecisionRevise from a future web client
-		// reaches the agent intact rather than silently collapsing
-		// to DecisionApprove via the zero-value of the old narrow
-		// channel.
-		select {
-		case r := <-ch:
-			return r
-		case <-ctx.Done():
-			return agent.ConfirmResponse{Decision: agent.DecisionDeny}
+		// Mirror the prompt to the Companion FAP. The browser owns
+		// the canonical confirm UI; the FAP races against it so an
+		// operator can answer from the device they're holding.
+		// Whichever surface (browser ws message or FAP button)
+		// responds first wins — same shape as the REPL wiring.
+		//
+		// Race policy (decision logged 2026-04-26): both surfaces
+		// are equally authoritative. There is no "browser sees it
+		// first then FAP can override" lockout. Rationale: an
+		// operator at the device should always be able to deny a
+		// pending high-risk action even if the browser tab is
+		// stale, refreshing, or owned by a different teammate.
+		// Trade-off: if the operator approves on the FAP while
+		// the browser owner is mid-typing a Revise response, the
+		// FAP wins. Acceptable — the operator is physically
+		// closer to the consequence (the device is about to TX).
+		fapID := companion.NewID()
+		s.comp.Confirm(fapID, req.Tool, req.Risk.String())
+		s.comp.PollResponses(true)
+		defer s.comp.PollResponses(false)
+		respCh := s.comp.Responses()
+		for {
+			select {
+			case r := <-ch:
+				return r
+			case fr := <-respCh:
+				if fr.ID != fapID {
+					// Stale response from a prior confirm; keep
+					// waiting on this one.
+					continue
+				}
+				if fr.Approved() {
+					return agent.ConfirmResponse{Decision: agent.DecisionApprove}
+				}
+				return agent.ConfirmResponse{Decision: agent.DecisionDeny}
+			case <-ctx.Done():
+				return agent.ConfirmResponse{Decision: agent.DecisionDeny}
+			}
 		}
 	})
 }
@@ -731,6 +814,13 @@ func (s *Server) handleText(ctx context.Context, c *sessionConn, text string) {
 		_ = s.flipper.SetLED("b", 0xff)
 		defer func() { _ = s.flipper.SetLED("b", 0) }()
 	}
+
+	// Push an immediate Busy("thinking") to the Companion FAP so
+	// the device shows activity for text-only turns that never
+	// fire a tool. ToolEvents will override this with the real
+	// tool name + detail. Idle on return.
+	s.comp.Busy("agent", "thinking", "low")
+	defer s.comp.Idle()
 
 	resp, err := s.agent.Run(turnCtx, text)
 	if err != nil {

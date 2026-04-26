@@ -1,1269 +1,1611 @@
-/* PromptZero — Alpine state shell + WS client + dev mock */
+/* PromptZero v0.9 — Web UI
+ * All agent-originated content is set via textContent / createElement.
+ * No innerHTML assignments for agent-supplied data anywhere in this file.
+ */
 
 (function () {
   'use strict';
 
-  /* ----------------------------------------------------------------------
-     Lucide inline icons (stroke 1.75, 16px)
-  ---------------------------------------------------------------------- */
-  var ICONS = {
-    send:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
-    check:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-11"/></svg>',
-    x:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
-    spinner: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-9-9"/></svg>',
-    battery: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="1"/><path d="M22 11v2"/></svg>',
+  /* =========================================================================
+     Constants
+  ========================================================================= */
+
+  var RAIL_HINTS = {
+    subghz:   'scan sub-ghz around me',
+    rfid:     'read the rfid tag on my desk',
+    nfc:      'read the nfc tag on my desk',
+    ir:       'scan infrared signals around me',
+    ibutton:  'read the ibutton key on this device',
+    gpio:     'show gpio pin states',
+    badusb:   'create a badusb script that …',
+    apps:     'list available apps on the flipper',
+    marauder: 'scan wifi networks with marauder',
   };
 
-  /* ----------------------------------------------------------------------
-     Flipper motif loader (lazy fetch, reactive cache)
-     Tool name → motif: subghz_* → waveform, rfid_* → antenna,
-     nfc_* → chip, wifi_*|*marauder* → dish, else dolphin.
-  ---------------------------------------------------------------------- */
-  var MOTIFS = ['dolphin', 'subghz-waveform', 'rfid-antenna', 'nfc-chip', 'marauder-dish'];
+  // 11 columns x 9 rows — Flipper dolphin pixel art
+  // Values: 1=on, 'd'=dim, 0=transparent
+  var MASCOT_ROWS = [
+    [0,0,0,0,1,1,0,0,0,0,0],
+    [0,0,0,1,1,1,1,0,0,0,0],
+    [0,0,1,1,1,1,1,1,1,0,0],
+    [0,1,1,'d','d',1,1,1,1,1,0],
+    [1,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,'d',1,1,1,0],
+    [0,0,1,1,1,1,1,0,1,1,0],
+    [0,0,0,1,1,1,0,0,0,1,1],
+    [0,0,0,0,1,0,0,0,0,0,0],
+  ];
 
-  function motifFor(toolName) {
-    if (!toolName) return 'dolphin';
-    var n = String(toolName).toLowerCase();
-    if (n.indexOf('subghz') === 0 || n.indexOf('sub_ghz') === 0 || n.indexOf('sub-ghz') === 0) return 'subghz-waveform';
-    if (n.indexOf('rfid') === 0) return 'rfid-antenna';
-    if (n.indexOf('nfc') === 0)  return 'nfc-chip';
-    if (n.indexOf('wifi') === 0 || n.indexOf('marauder') !== -1) return 'marauder-dish';
-    return 'dolphin';
+  var BOOT_LINES = [
+    { text: 'BIOS v2.1.0  Copyright (c) PromptZero Systems', cls: '' },
+    { text: 'CPU: ARM Cortex-M33 @ 64MHz              [OK]', cls: 'ok' },
+    { text: 'Initializing USB-CDC transport ...        [OK]', cls: 'ok' },
+    { text: 'Mounting SD filesystem (FAT32) ...        [OK]', cls: 'ok' },
+    { text: 'Loading tool registry ...                 [OK]', cls: 'ok' },
+    { text: 'Connecting to Claude API ...              [OK]', cls: 'ok' },
+    { text: 'Calibrating RF front-end ...            [WARN]', cls: 'warn' },
+    { text: 'Starting WebSocket bridge ...             [OK]', cls: 'ok' },
+    { text: 'System ready.', cls: '' },
+  ];
+
+  /* =========================================================================
+     State
+  ========================================================================= */
+
+  var _token          = '';
+  var _ws             = null;
+  var _wsBackoff      = 800;
+  var _sessionId      = '';
+  var _currentTurnId  = null;
+  var _phase          = 'Idle';
+  var _currentScreen  = 'agent';
+  var _cmdHistory     = [];
+  var _histIdx        = -1;
+  var _savedInput     = '';
+  var _confirmPending = null;
+  var _costTimer      = null;
+  var _deviceTimer    = null;
+  var _streamingMsgEl = null;
+  var _streamingTurnId = null;
+  var _autoScrollPaused = false;
+  var _countdownTimer = null;
+  var _subscreenEl    = null;
+  var _beepCtx        = null;
+  var _toolEls        = {};   // (turn_id|name) -> DOM element
+  var _personas       = { current: '', list: [] };
+
+  /* =========================================================================
+     DOM helpers
+  ========================================================================= */
+
+  function q(sel)    { return document.querySelector(sel); }
+  function qAll(sel) { return document.querySelectorAll(sel); }
+
+  /** Create element with optional class and textContent. */
+  function mkEl(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls)             e.className    = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
   }
 
-  var BRAILLE = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
-
-  var CAPTURE_TOOLS = /^(rfid_read|nfc_detect|ir_receive|subghz_receive|ibutton_read)$/;
-
-  /* User prompt → expected output shape for skeleton placeholder */
-  var Q_WORDS = /^\s*(what|how|why|when|where|who|tell me|explain|describe|is|are|does|do|can|should)\b/i;
-  var CMD_WORDS = /^\s*(scan|read|detect|transmit|send|write|emulate|replay|sweep|capture|list|show|run|execute|start|stop)\b/i;
-
-  function skeletonShape(text) {
-    if (!text) return 'line';
-    if (Q_WORDS.test(text)) return 'paragraph';
-    if (CMD_WORDS.test(text)) return 'tool';
-    return 'line';
+  /** Remove all children without touching innerHTML. */
+  function clearEl(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
   }
 
-  /* Dedup set for classifyError fallback warnings (avoids console spam) */
-  var _classifyWarnedMessages = new Set();
+  /* =========================================================================
+     Auth bootstrap  (ported from app.js v0.8)
+  ========================================================================= */
 
-  /* Map error content/kind → banner class */
-  function classifyError(msg) {
-    if (msg && typeof msg.kind === 'string') return msg.kind;
-    var s = String((msg && msg.content) || '').toLowerCase();
-    if (s.indexOf('cancel') !== -1 || s.indexOf('stopped') !== -1) return 'cancelled';
-    if (s.indexOf('flipper') !== -1 || s.indexOf('device') !== -1 || s.indexOf('serial') !== -1 || s.indexOf('disconnect') !== -1) return 'device';
-    if (s.indexOf('tool') !== -1) return 'tool';
-    /* Unknown error — warn once per unique message to help identify missing keywords */
-    var raw = String((msg && msg.content) || msg || '');
-    if (raw && !_classifyWarnedMessages.has(raw)) {
-      _classifyWarnedMessages.add(raw);
-      try { console.warn('[pz] classifyError fallback hit for:', raw); } catch (_) {}
+  function authBootstrap() {
+    // 1. URL fragment  #token=xxx
+    if (location.hash.indexOf('token=') !== -1) {
+      try {
+        var p = new URLSearchParams(location.hash.slice(1));
+        var ft = p.get('token');
+        if (ft) {
+          _token = ft;
+          try { sessionStorage.setItem('promptzero_token', ft); } catch (_) {}
+          history.replaceState(null, '', location.pathname + location.search);
+        }
+      } catch (_) {}
     }
-    return 'api';
+    // 2. sessionStorage
+    if (!_token) {
+      try { _token = sessionStorage.getItem('promptzero_token') || ''; } catch (_) {}
+    }
+    // 3. Ask server whether auth is required; prompt if so and no token yet
+    return fetch('api/auth')
+      .then(function (r) { return r.ok ? r.json() : { required: false }; })
+      .catch(function ()  { return { required: false }; })
+      .then(function (info) {
+        if (!info.required) {
+          _token = '';
+          try { sessionStorage.removeItem('promptzero_token'); } catch (_) {}
+          return;
+        }
+        if (!_token) {
+          var entered = '';
+          try { entered = window.prompt('PromptZero bearer token:') || ''; } catch (_) {}
+          _token = entered.trim();
+          if (_token) {
+            try { sessionStorage.setItem('promptzero_token', _token); } catch (_) {}
+          }
+        }
+      });
   }
 
-  function prefersReducedMotion() {
-    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function apiFetch(path, opts) {
+    opts = opts || {};
+    if (_token) {
+      opts.headers = Object.assign({}, opts.headers || {}, {
+        'Authorization': 'Bearer ' + _token,
+      });
+    }
+    return fetch(path, opts).then(function (r) {
+      if (r.status === 401) {
+        try { sessionStorage.removeItem('promptzero_token'); } catch (_) {}
+        _token = '';
+      }
+      return r;
+    });
   }
 
-  function shortId(prefix) {
-    var r;
-    try { r = crypto.randomUUID().replace(/-/g, ''); }
-    catch (_) { r = Math.random().toString(36).slice(2) + Date.now().toString(36); }
-    return (prefix || '') + r.slice(0, 8);
+  /* =========================================================================
+     Boot sequence
+  ========================================================================= */
+
+  function runBoot() {
+    return new Promise(function (resolve) {
+      var bootEl = document.getElementById('boot');
+      var logEl  = document.getElementById('bootLog');
+      var barEl  = document.getElementById('bootBar');
+      if (!bootEl || !logEl || !barEl) { resolve(); return; }
+
+      var total = BOOT_LINES.length;
+      var i = 0;
+      var done = false;
+
+      function finish() {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keydown', skipHandler);
+        bootEl.classList.add('gone');
+        // Resolve after transition completes (or after safety timeout)
+        var tid = setTimeout(resolve, 400);
+        bootEl.addEventListener('transitionend', function () {
+          clearTimeout(tid);
+          resolve();
+        }, { once: true });
+      }
+
+      function skipHandler(e) {
+        if (e.key === ' ' || e.code === 'Space') { e.preventDefault(); finish(); }
+      }
+      document.addEventListener('keydown', skipHandler);
+
+      function tick() {
+        if (done) return;
+        if (i >= total) { setTimeout(finish, 350); return; }
+        var line = BOOT_LINES[i++];
+        var div = document.createElement('div');
+        if (line.cls) div.className = line.cls;
+        div.textContent = line.text;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+        barEl.style.width = Math.round((i / total) * 100) + '%';
+        setTimeout(tick, prefersReducedMotion() ? 8 : 70 + Math.random() * 50);
+      }
+      tick();
+    });
   }
 
-  /* ----------------------------------------------------------------------
-     Alpine factory
-  ---------------------------------------------------------------------- */
-  function pzApp() {
-    return {
-      /* state shape (per spec) */
-      connection: 'connecting',
-      session: {
-        id: shortId(''),
-        device: { name: '', fork: '', version: '', battery: null },
-        phase: 'Idle',
-        verb: 'Thinking',
-        turnStartedAt: null,
-      },
-      feed: [],                /* unified timeline: {id, kind:'user'|'agent'|'tool'|'skeleton'|'disconnect', ...} */
-      queuedPrompts: [],
-      confirmRequest: null,
-      criticalConfirmText: '',
-      currentTurnId: null,
-      input: '',
-      recordingAudio: false,
+  /* =========================================================================
+     Pixel mascot
+  ========================================================================= */
 
-      /* polish layer state */
-      errorBanner: null,               /* {kind:'api'|'tool'|'device'|'cancelled', message, retryTarget?} */
-      reconnectToast: false,
-      offlineCard: false,
-      newMessagesPending: false,
-      liveRegionText: '',              /* phase-only announcements */
+  function buildMascot() {
+    var m = document.getElementById('mascot');
+    if (!m) return;
+    for (var r = 0; r < MASCOT_ROWS.length; r++) {
+      for (var c = 0; c < MASCOT_ROWS[r].length; c++) {
+        var cell = document.createElement('i');
+        var v = MASCOT_ROWS[r][c];
+        if (v === 1)   cell.classList.add('on');
+        else if (v === 'd') cell.classList.add('dim');
+        m.appendChild(cell);
+      }
+    }
+    // Blinking cursor in idle line
+    var il = document.getElementById('idleLine');
+    if (il) {
+      var cur = document.createElement('span');
+      cur.className = 'blink-cursor';
+      il.appendChild(cur);
+    }
+  }
 
-      /* ui-only */
-      copied: false,
-      spinnerFrame: BRAILLE[0],
-      elapsedLabel: '0.0s',
-      motifSvg: Object.create(null),   /* reactive: motif → svg string */
-      icons: ICONS,
+  function showMascot() {
+    var m = document.getElementById('mascot');
+    var il = document.getElementById('idleLine');
+    if (m)  m.style.display  = '';
+    if (il) il.style.display = '';
+  }
 
-      /* REPL-parity panels */
-      personaUI: { open: false, current: '', list: [] },
-      sidebar:   { open: false, tab: 'watch' },
-      watchUI:   { loaded: false, error: '', enabled: false, paused: false, paths: [], rules: [], events: [] },
-      rulesUI:   { loaded: false, error: '', list: [], testResults: {} },
-      costUI:    { loaded: false, error: '', usd: 0, inputTokens: 0, outputTokens: 0, offline: false, byModel: [], modalOpen: false },
-      validateUI: { open: false, path: '', content: '', loading: false, error: '', report: null },
-      debugUI:   { open: false, loaded: false, error: '', snapshot: null, copied: false },
-      deviceUI:  { open: false, loaded: false, error: '', snapshot: null, title: 'DEVICE PROFILE' },
+  function hideMascot() {
+    var m = document.getElementById('mascot');
+    var il = document.getElementById('idleLine');
+    if (m)  m.style.display  = 'none';
+    if (il) il.style.display = 'none';
+  }
 
-      /* internals */
-      _ws: null,
-      _wsBackoff: 800,
-      _token: '',                      /* bearer token for /api + /ws; '' = auth disabled server-side */
-      _authReady: false,               /* true once _authBootstrap has resolved */
-      _spinnerTimer: null,
-      _elapsedTimer: null,
-      _costTimer: null,
-      _deviceTimer: null,
-      _knownPersonaSwitchIds: [],
-      _reduced: false,
-      _autoScrollPaused: false,
-      _lastUserPrompt: '',
-      _lastToolCall: null,             /* {name, input, turn_id} for 'Retry tool' */
-      _disconnectStartedAt: 0,
-      _disconnectTimer: null,
-      _skeletonIds: [],                /* ids in feed that are skeletons */
+  /* =========================================================================
+     Web-audio beep
+  ========================================================================= */
 
-      /* ---------- derived ---------- */
-      get canSend()         { return !!this.input.trim() && this.connection !== 'offline' && !this.composerDisabled; },
-      get composerDisabled(){ return false; /* never disabled: Enter queues during a turn */ },
-      get charCountClass() {
-        var n = this.input.length;
-        if (n > 3500) return 'pz-count-crit';
-        if (n > 2000) return 'pz-count-warn';
-        return '';
-      },
-      get placeholder() {
-        if (this.connection === 'offline') return 'reconnecting…';
-        if (this.session.phase === 'Idle') return 'type a command  ↵';
-        return 'queue next turn  ↵';
-      },
-      get showTicker() { return this.session.phase !== 'Idle'; },
-      get sessionPillText() { return '#s-' + (this.session.id || '').slice(0, 6); },
-      get firmwareLabel() {
-        var fork = this.session.device.fork || '';
-        var ver  = this.session.device.version || '';
-        if (!fork && !ver) return '—';
-        if (!ver) return fork;
-        return fork ? fork + ' ' + ver : ver;
-      },
-      get batteryLabel() {
-        var n = this.session.device.battery;
-        return (n === null || n === undefined) ? '—' : (n + '%');
-      },
-      get inlineConfirm()   { return this.confirmRequest && this.confirmRequest.risk !== 'critical' ? this.confirmRequest : null; },
-      get criticalConfirm() { return this.confirmRequest && this.confirmRequest.risk === 'critical' ? this.confirmRequest : null; },
-      get criticalReady()   { return this.criticalConfirmText.trim().toLowerCase() === 'confirm'; },
-      get connectionGlyph() {
-        if (this.connection === 'online')  return '●';
-        if (this.connection === 'offline') return '✕';
-        return '○';
-      },
-      /* Rules panel summary: "3 enabled · 1 paused" */
-      get rulesSummary() {
-        var list = this.rulesUI.list;
-        if (!list || list.length === 0) return '0 total';
-        var enabled = 0;
-        var paused  = 0;
-        for (var i = 0; i < list.length; i++) {
-          if (list[i].enabled) enabled++;
-          else paused++;
-        }
-        var parts = [];
-        if (enabled > 0) parts.push(enabled + ' enabled');
-        if (paused  > 0) parts.push(paused  + ' paused');
-        return parts.length ? parts.join(' · ') : list.length + ' total';
-      },
+  function beep(freq, dur) {
+    if (prefersReducedMotion()) return;
+    try {
+      if (!_beepCtx) _beepCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var osc  = _beepCtx.createOscillator();
+      var gain = _beepCtx.createGain();
+      osc.connect(gain);
+      gain.connect(_beepCtx.destination);
+      osc.type = 'square';
+      osc.frequency.value = freq || 880;
+      gain.gain.setValueAtTime(0.04, _beepCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, _beepCtx.currentTime + (dur || 0.08));
+      osc.start(_beepCtx.currentTime);
+      osc.stop(_beepCtx.currentTime + (dur || 0.08));
+    } catch (_) {}
+  }
 
-      /* ---------- lifecycle ---------- */
-      init() {
-        this._reduced = prefersReducedMotion();
-        this._loadMotifs();
-        this._startSpinner();
-        this._startElapsed();
-        this._installMock();
-        /* Gate every network-dependent call behind the auth handshake so
-           the WS and first fetches carry the bearer the server demands. */
-        this._authBootstrap().then(() => {
-          this._connect();
-          this.loadPersonas();
-          this.loadCost();
-          this._costTimer = setInterval(() => this.loadCost(), 5000);
-          this.loadSessionDevice();
-          this._deviceTimer = setInterval(() => this.loadSessionDevice(), 30000);
-        });
+  /* =========================================================================
+     Drawer (mobile menu ≤900px)
+  ========================================================================= */
 
-        document.addEventListener('keydown', (e) => this._globalKey(e));
+  function setupDrawer() {
+    var toggle   = document.getElementById('menuToggle');
+    var rail     = document.getElementById('rail');
+    var backdrop = document.getElementById('railBackdrop');
+    if (!toggle || !rail || !backdrop) return;
 
-        /* Scroll-pause detection: if user scrolls up > 40px from bottom, pause auto-scroll. */
-        this.$nextTick(() => {
-          var el = this.$refs.messages;
-          if (el) {
-            el.addEventListener('scroll', () => {
-              var gap = el.scrollHeight - el.scrollTop - el.clientHeight;
-              var paused = gap > 40;
-              if (paused !== this._autoScrollPaused) {
-                this._autoScrollPaused = paused;
-                if (!paused) this.newMessagesPending = false;
-              }
-            }, { passive: true });
-          }
-        });
+    function openRail() {
+      rail.classList.add('open');
+      backdrop.classList.add('open');
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+    function closeRail() {
+      rail.classList.remove('open');
+      backdrop.classList.remove('open');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
 
-        window.addEventListener('beforeunload', () => {
-          if (this._ws) { try { this._ws.close(); } catch (_) {} }
-        });
+    toggle.addEventListener('click', function () {
+      rail.classList.contains('open') ? closeRail() : openRail();
+    });
+    backdrop.addEventListener('click', closeRail);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && rail.classList.contains('open')) closeRail();
+    });
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 900) closeRail();
+    });
+    // Auto-close on item tap when drawer is open
+    rail.addEventListener('click', function (e) {
+      if (e.target.closest('.rail-item') && window.innerWidth <= 900) closeRail();
+    });
+  }
 
-        this.$nextTick(() => this.$refs.composer && this.$refs.composer.focus());
-      },
+  /* =========================================================================
+     Rail navigation
+  ========================================================================= */
 
-      _globalKey(e) {
-        /* Risk-gate shortcuts take precedence when an inline confirm is active
-           AND focus is not inside the composer/textarea. */
-        if (this.confirmRequest) {
-          var tag = (document.activeElement && document.activeElement.tagName) || '';
-          var inInput = tag === 'TEXTAREA' || tag === 'INPUT';
-          if (!inInput) {
-            var k = e.key.toLowerCase();
-            if (k === 'y' || k === 'a')        { e.preventDefault(); this.respondConfirm('approve'); return; }
-            if (k === 'l')                     { e.preventDefault(); this.respondConfirm('approve_all'); return; }
-            if (k === 'n' || e.key === 'Enter'){ e.preventDefault(); this.respondConfirm('deny'); return; }
-            if (e.key === 'Escape')            { e.preventDefault(); this.respondConfirm('deny'); return; }
-          }
-        }
-        if (e.key === 'Escape' && this.session.phase !== 'Idle') {
-          e.preventDefault();
-          this.cancelTurn();
-        }
-      },
+  function setupRailNav() {
+    qAll('.rail-item[data-route]').forEach(function (item) {
+      item.addEventListener('click', function () { activateRoute(item.dataset.route); });
+      item.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateRoute(item.dataset.route); }
+      });
+    });
+  }
 
-      _loadMotifs() {
-        MOTIFS.forEach((name) => {
-          fetch('icons/' + name + '.svg')
-            .then((r) => (r.ok ? r.text() : ''))
-            .then((svg) => { this.motifSvg[name] = svg; })
-            .catch(() => { this.motifSvg[name] = ''; });
-        });
-      },
+  function setActiveRailItem(route) {
+    qAll('.rail-item[data-route]').forEach(function (i) {
+      i.classList.toggle('active', i.dataset.route === route);
+    });
+  }
 
-      toolMotifSvg(toolName) {
-        return this.motifSvg[motifFor(toolName)] || '';
-      },
+  function activateRoute(route) {
+    beep(660, 0.05);
+    setActiveRailItem(route);
 
-      statusIcon(status) {
-        if (status === 'ok')  return ICONS.check;
-        if (status === 'err') return ICONS.x;
-        return ICONS.spinner;
-      },
+    // Natural-language entry points: prefill input and return to agent view
+    if (RAIL_HINTS[route]) {
+      var inp = document.getElementById('cmd');
+      if (inp) { inp.value = RAIL_HINTS[route]; inp.focus(); inp.select(); }
+      showAgentScreen();
+      return;
+    }
 
-      /* ---------- Auth ----------
-         Token is sourced, in order, from:
-           1. URL fragment  (#token=xxx) — convenient for copy/paste from server stderr
-           2. sessionStorage.promptzero_token — survives reloads in the same tab
-           3. window.prompt()            — fallback when neither is present
-         The fragment is stripped after read so the token doesn't linger in
-         the address bar. `_fetch` rides every /api call; `_connect` sends
-         the token via the Sec-WebSocket-Protocol negotiation (`bearer,
-         <token>`) so it never appears in access logs. If auth is disabled
-         server-side, the flow short-circuits and `_token` stays ''. */
-      _authBootstrap() {
-        /* 1. URL fragment */
-        if (location.hash.indexOf('token=') !== -1) {
-          var params = new URLSearchParams(location.hash.slice(1));
-          var fragTok = params.get('token');
-          if (fragTok) {
-            this._token = fragTok;
-            try { sessionStorage.setItem('promptzero_token', fragTok); } catch (_) {}
-            history.replaceState(null, '', location.pathname + location.search);
-          }
-        }
-        /* 2. sessionStorage (if not set from fragment) */
-        if (!this._token) {
-          try { this._token = sessionStorage.getItem('promptzero_token') || ''; } catch (_) {}
-        }
-        /* Ask the server whether auth is even required. Open endpoint by
-           design — returns {required: bool}. Use plain fetch here so a
-           stale token in sessionStorage doesn't trip the _fetch 401
-           handler on an endpoint that never 401s. */
-        return fetch('api/auth')
-          .then((r) => (r.ok ? r.json() : { required: false }))
-          .catch(() => ({ required: false }))
-          .then((info) => {
-            if (!info.required) {
-              this._token = '';
-              try { sessionStorage.removeItem('promptzero_token'); } catch (_) {}
-              this._authReady = true;
-              return;
-            }
-            /* Auth required and no token yet → prompt once. */
-            if (!this._token) {
-              var entered = '';
-              try { entered = window.prompt('PromptZero bearer token:') || ''; } catch (_) {}
-              this._token = entered.trim();
-              if (this._token) {
-                try { sessionStorage.setItem('promptzero_token', this._token); } catch (_) {}
-              }
-            }
-            this._authReady = true;
-          });
-      },
+    switch (route) {
+      case 'agent':    showAgentScreen();   break;
+      case 'audit':    showScreen('audit');    setCrumbs('AUDIT',   'LOG');      loadAuditScreen();    break;
+      case 'report':   showScreen('report');   setCrumbs('REPORT',  'VALIDATE'); loadReportScreen();   break;
+      case 'settings': showScreen('settings'); setCrumbs('SETTINGS','MAIN');     loadSettingsMenu();   break;
+      default:         showAgentScreen();   break;
+    }
+  }
 
-      _fetch(path, opts) {
-        opts = opts || {};
-        if (this._token) {
-          opts.headers = Object.assign({}, opts.headers || {}, {
-            'Authorization': 'Bearer ' + this._token,
-          });
-        }
-        return fetch(path, opts).then((r) => {
-          if (r.status === 401) {
-            /* Stored token is wrong / rotated. Drop it and re-prompt on next load. */
-            try { sessionStorage.removeItem('promptzero_token'); } catch (_) {}
-            this._token = '';
-            this.errorBanner = { kind: 'api', message: 'auth failed — reload to re-enter token' };
-          }
-          return r;
-        });
-      },
+  /* =========================================================================
+     Screen manager
+  ========================================================================= */
 
-      /* ---------- WebSocket ---------- */
-      _connect() {
-        /* Tear down any prior socket before opening a new one. Without
-           this, a stale WS whose onclose hasn't run yet (BFCache, auth
-           retry, a scheduled reconnect racing a still-open socket)
-           keeps delivering messages through its captured closures —
-           every text_delta and tool_status lands twice in the feed and
-           the UI renders each chunk double. Nulling the handlers first
-           makes absolutely sure the closed socket can't emit after
-           close(). */
-        if (this._ws) {
-          try {
-            this._ws.onopen = null;
-            this._ws.onmessage = null;
-            this._ws.onclose = null;
-            this._ws.onerror = null;
-            this._ws.close();
-          } catch (_) {}
-          this._ws = null;
-        }
+  function ensureSubscreen() {
+    if (_subscreenEl) return _subscreenEl;
+    var lcdInner = q('.lcd-inner');
+    if (!lcdInner) return null;
+    _subscreenEl = document.createElement('div');
+    _subscreenEl.id = 'subscreen';
+    _subscreenEl.style.cssText = 'flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;' +
+      '-webkit-overflow-scrolling:touch;padding-right:6px;scrollbar-width:thin;display:none;';
+    var sb = document.getElementById('scrollback');
+    lcdInner.insertBefore(_subscreenEl, sb || null);
+    return _subscreenEl;
+  }
 
-        var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        var url = proto + '//' + location.host + '/ws';
-        /* Token travels via the Sec-WebSocket-Protocol negotiation (`bearer,
-           <token>`) so it never lands in server access logs or the browser
-           history the way ?token= used to. Server echoes `bearer` back on a
-           successful match. */
-        var wsArgs = this._token ? ['bearer', this._token] : undefined;
-        var sock;
-        try { sock = wsArgs ? new WebSocket(url, wsArgs) : new WebSocket(url); }
-        catch (_) { this._onWsDown(); return; }
-        this._ws = sock;
+  function showAgentScreen() {
+    _currentScreen = 'agent';
+    var sb = document.getElementById('scrollback');
+    var ss = ensureSubscreen();
+    if (sb) sb.style.display = '';
+    if (ss) ss.style.display = 'none';
+    setCrumbs('AGENT', 'SESSION', _sessionId ? _sessionId.slice(0, 8) : '—');
+    setActiveRailItem('agent');
+  }
 
-        /* Every handler short-circuits if `this._ws` has moved on — a
-           second layer of defence against orphan sockets firing events
-           into the live Alpine state. */
-        sock.onopen = () => {
-          if (this._ws !== sock) return;
-          var wasDown = this.connection !== 'online';
-          this.connection = 'online';
-          this._wsBackoff = 800;
-          this._clearDisconnectBanner();
-          this.offlineCard = false;
-          if (wasDown) this._showReconnectToast();
-        };
-        sock.onclose = () => {
-          if (this._ws !== sock) return;
-          this._onWsDown();
-        };
-        sock.onerror = () => { /* handled via onclose */ };
-        sock.onmessage = (ev) => {
-          if (this._ws !== sock) return;
-          var msg;
-          try { msg = JSON.parse(ev.data); } catch (_) { return; }
-          this._dispatch(msg);
-        };
-      },
+  function showScreen(name) {
+    _currentScreen = name;
+    var sb = document.getElementById('scrollback');
+    var ss = ensureSubscreen();
+    if (sb) sb.style.display = 'none';
+    if (ss) { ss.style.display = ''; clearEl(ss); }
+  }
 
-      _onWsDown() {
-        if (this.connection === 'offline') return;  /* already handling */
-        this.connection = 'offline';
-        /* In-thread banner only during an active turn */
-        if (this.session.phase !== 'Idle') this._startDisconnectCountdown();
-        if (!this._disconnectStartedAt) this._disconnectStartedAt = Date.now();
-        this._scheduleReconnect();
-      },
+  function setCrumbs(c1, c2, c3) {
+    var e1 = document.getElementById('crumb1');
+    var e2 = document.getElementById('crumb2');
+    var e3 = document.getElementById('sessionId');
+    if (e1) e1.textContent = c1 || 'AGENT';
+    if (e2) e2.textContent = c2 || 'SESSION';
+    if (e3) e3.textContent = c3 !== undefined ? c3 : '—';
+  }
 
-      _scheduleReconnect() {
-        /* 30s budget before persistent offline card replaces the banner */
-        if (Date.now() - this._disconnectStartedAt > 30000) {
-          this._clearDisconnectBanner();
-          this.offlineCard = true;
-          return;
-        }
-        var delay = Math.min(this._wsBackoff, 8000);
-        this._wsBackoff = Math.min(Math.round(this._wsBackoff * 1.6), 8000);
-        setTimeout(() => this._connect(), delay);
-      },
+  /* =========================================================================
+     D-pad
+  ========================================================================= */
 
-      _showReconnectToast() {
-        this.reconnectToast = true;
-        setTimeout(() => { this.reconnectToast = false; }, 2000);
-      },
-
-      _startDisconnectCountdown() {
-        /* Insert an in-thread banner inside the active agent message with a live countdown. */
-        if (this.feed.some((f) => f.kind === 'disconnect')) return;
-        var banner = {
-          id: shortId('d-'), kind: 'disconnect',
-          secondsLeft: 3, turn_id: this.currentTurnId,
-        };
-        this.feed.push(banner);
-        if (this._disconnectTimer) clearInterval(this._disconnectTimer);
-        this._disconnectTimer = setInterval(() => {
-          var b = this.feed.find((f) => f.kind === 'disconnect');
-          if (!b) { clearInterval(this._disconnectTimer); this._disconnectTimer = null; return; }
-          b.secondsLeft = Math.max(0, b.secondsLeft - 1);
-        }, 1000);
-      },
-
-      _clearDisconnectBanner() {
-        this._disconnectStartedAt = 0;
-        if (this._disconnectTimer) { clearInterval(this._disconnectTimer); this._disconnectTimer = null; }
-        this.feed = this.feed.filter((f) => f.kind !== 'disconnect');
-      },
-
-      _clientReconnect() {
-        /* Manual reconnect (from offline card or device-error banner). */
-        this.offlineCard = false;
-        this._disconnectStartedAt = 0;
-        this._wsBackoff = 800;
-        try { if (this._ws) this._ws.close(); } catch (_) {}
-        this._connect();
-      },
-
-      _send(obj) {
-        if (!this._ws || this._ws.readyState !== WebSocket.OPEN) return false;
-        try { this._ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
-      },
-
-      /* ---------- reducer ---------- */
-      _dispatch(msg) {
-        switch (msg.type) {
-          case 'status':
-            if (msg.content === 'connected')          { this.connection = 'online'; if (msg.session_id) this.session.id = msg.session_id; }
-            else if (msg.content === 'thinking')      { this._setPhase('Thinking', 'Thinking'); }
-            else if (msg.content === 'transcribing')  { this._setPhase('Responding', 'Transcribing'); }
-            else if (msg.content === 'conversation reset') { this._resetConversation('Conversation reset.'); }
+  function setupDpad() {
+    qAll('.dpad button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var dir = btn.dataset.dir;
+        var inp = document.getElementById('cmd');
+        var sb  = document.getElementById('scrollback');
+        beep(dir === 'ok' ? 880 : 440, 0.04);
+        switch (dir) {
+          case 'up':
+            if (document.activeElement === inp) historyUp();
+            else if (sb) sb.scrollTop -= Math.round(sb.clientHeight * 0.35);
             break;
-
-          case 'transcription':
-            this._addUser(msg.content, { voice: true });
+          case 'down':
+            if (document.activeElement === inp) historyDown();
+            else if (sb) sb.scrollTop += Math.round(sb.clientHeight * 0.35);
             break;
-
-          case 'response': {
-            this._dropSkeletons();
-            var existing = null;
-            for (var i = this.feed.length - 1; i >= 0; i--) {
-              var f = this.feed[i];
-              if (f.kind !== 'agent') continue;
-              if (msg.turn_id && f.turn_id !== msg.turn_id) continue;
-              existing = f; break;
-            }
-            if (existing) {
-              existing.streaming = false;
-              if (!existing.text && msg.content) existing.text = msg.content;
-            } else {
-              this._addAgent(msg.content, msg.turn_id || null, { streaming: false });
-            }
-            this._setPhase('Idle', 'Idle');
+          case 'ok':
+            if (inp) { var t = inp.value.trim(); if (t) { submitText(t); inp.value = ''; } }
             break;
-          }
-
-          case 'error': {
-            this._dropSkeletons();
-            var kind = classifyError(msg);
-            this.errorBanner = {
-              kind: kind,
-              message: msg.content || 'error',
-              canRetryTool: kind === 'tool' && !!this._lastToolCall,
-            };
-            this._setPhase('Idle', 'Idle');
-            break;
-          }
-
-          case 'text_delta':
-            this._dropSkeletons();
-            this._appendDelta(msg.turn_id, msg.content || '');
-            break;
-
-          case 'tool_status':
-            this._dropSkeletons();
-            if (msg.phase === 'start') {
-              this._lastToolCall = { name: msg.name, input: msg.input, turn_id: msg.turn_id };
-              this._addTool({
-                turn_id: msg.turn_id, name: msg.name,
-                input: msg.input, risk: msg.risk || 'low',
-                status: 'running', startedAt: Date.now(),
-              });
-            } else {
-              this._finishTool(msg);
-            }
-            break;
-
-          case 'confirm_request':
-            this.confirmRequest = {
-              confirm_id: msg.confirm_id,
-              tool: msg.tool,
-              input: msg.input,
-              risk: msg.risk || 'medium',
-            };
-            this.criticalConfirmText = '';
-            /* Focus Deny (safe default) when the card mounts. */
-            this.$nextTick(() => {
-              var btn = document.querySelector('[data-pz-confirm-deny]');
-              if (btn) btn.focus();
-            });
-            break;
-
-          case 'phase':
-            this._onPhase(msg.verb, msg.turn_id);
-            break;
-
-          case 'persona_switched':
-            this.personaUI.current = msg.name || '';
-            if (msg.switch_id) {
-              var idx = this._knownPersonaSwitchIds.indexOf(msg.switch_id);
-              if (idx !== -1) {
-                this._knownPersonaSwitchIds.splice(idx, 1);
-                break;
-              }
-            }
-            this._addAgent('● ' + (msg.content || ('persona switched to ' + msg.name)), null, { streaming: false, system: true });
+          case 'back':
+            handleBack();
             break;
         }
-      },
+      });
+    });
 
-      /* ---------- feed helpers ---------- */
-      _addUser(text, extras) {
-        this.feed.push(Object.assign({
-          id: shortId('u-'), kind: 'user', text: text, turn_id: null,
-        }, extras || {}));
-        this._scrollSoon();
-      },
+    // Keyboard navigation when focus is NOT in the input
+    document.addEventListener('keydown', function (e) {
+      var tag = (document.activeElement && document.activeElement.tagName) || '';
+      var inInput = (tag === 'INPUT' || tag === 'TEXTAREA');
 
-      _addAgent(text, turnId, extras) {
-        this.feed.forEach((f) => { if (f.kind === 'agent') f.streaming = false; });
-        this.feed.push(Object.assign({
-          id: shortId('a-'), kind: 'agent', text: text || '',
-          streaming: !!(extras && extras.streaming),
-          turn_id: turnId || null,
-        }, extras || {}));
-        this._scrollSoon();
-      },
+      if (e.key === 'Escape') {
+        if (_confirmPending)           { e.preventDefault(); respondConfirm('deny'); return; }
+        if (_currentScreen !== 'agent'){ e.preventDefault(); handleBack(); return; }
+        if (_phase !== 'Idle')         { e.preventDefault(); cancelTurn(); return; }
+      }
+      if (!inInput) {
+        var sb = document.getElementById('scrollback');
+        if (e.key === 'ArrowUp')   { e.preventDefault(); if (sb) sb.scrollTop -= 60; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); if (sb) sb.scrollTop += 60; }
+      }
+    });
+  }
 
-      _addTool(t) {
-        this.feed.push(Object.assign({
-          id: shortId('t-'), kind: 'tool',
-          status: 'running', durationMs: 0, input: null, output: null, err: null, risk: 'low',
-        }, t));
-        this._scrollSoon();
-      },
+  function handleBack() {
+    if (_currentScreen !== 'agent') showAgentScreen();
+  }
 
-      _appendDelta(turnId, content) {
-        var last = this.feed[this.feed.length - 1];
-        if (last && last.kind === 'agent' && last.turn_id === turnId) {
-          last.text = (last.text || '') + content;
-          last.streaming = true;
-        } else {
-          this._addAgent(content, turnId, { streaming: true });
-        }
-      },
+  /* =========================================================================
+     Command history
+  ========================================================================= */
 
-      _finishTool(msg) {
-        for (var i = this.feed.length - 1; i >= 0; i--) {
-          var t = this.feed[i];
-          if (t.kind !== 'tool') continue;
-          if (t.status !== 'running') continue;
-          if (msg.name && t.name !== msg.name) continue;
-          if (msg.turn_id && t.turn_id && t.turn_id !== msg.turn_id) continue;
-          t.status = msg.err ? 'err' : 'ok';
-          t.durationMs = msg.duration_ms != null ? msg.duration_ms : (Date.now() - (t.startedAt || Date.now()));
-          t.output = msg.output;
-          t.err = msg.err;
-          /* Capture-success glitch: only on success, only for capture tools. */
-          if (!msg.err && CAPTURE_TOOLS.test(String(t.name || '')) && !this._reduced) {
-            t.glitch = true;
-            setTimeout(() => { t.glitch = false; }, 320);
-          }
-          return;
-        }
-      },
+  function setupHistory() {
+    var inp = document.getElementById('cmd');
+    if (!inp) return;
+    inp.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp')   { e.preventDefault(); historyUp();   }
+      if (e.key === 'ArrowDown') { e.preventDefault(); historyDown(); }
+    });
+  }
 
-      _addSkeleton(shape, turnId) {
-        var skel = { id: shortId('s-'), kind: 'skeleton', shape: shape, turn_id: turnId };
-        this.feed.push(skel);
-        this._skeletonIds.push(skel.id);
-        this._scrollSoon();
-      },
+  function historyUp() {
+    var inp = document.getElementById('cmd');
+    if (!inp || !_cmdHistory.length) return;
+    if (_histIdx === -1) { _savedInput = inp.value; _histIdx = _cmdHistory.length - 1; }
+    else if (_histIdx > 0) _histIdx--;
+    inp.value = _cmdHistory[_histIdx];
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
 
-      _dropSkeletons() {
-        if (!this._skeletonIds.length) return;
-        this.feed = this.feed.filter((f) => f.kind !== 'skeleton');
-        this._skeletonIds = [];
-      },
+  function historyDown() {
+    var inp = document.getElementById('cmd');
+    if (!inp || _histIdx === -1) return;
+    _histIdx++;
+    if (_histIdx >= _cmdHistory.length) { _histIdx = -1; inp.value = _savedInput; }
+    else inp.value = _cmdHistory[_histIdx];
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  }
 
-      _onPhase(verb, turnId) {
-        if (turnId) this.currentTurnId = turnId;
-        var v = String(verb || '').toLowerCase();
-        var phase;
-        if (v === 'idle' || v === 'done' || v === '')         phase = 'Idle';
-        else if (v.indexOf('running') === 0)                  phase = 'Running';
-        else if (v.indexOf('respond') === 0)                  phase = 'Responding';
-        else                                                  phase = 'Thinking';
-        var wasIdle = this.session.phase === 'Idle';
-        this._setPhase(phase, verb || phase);
-        /* Announce phase change (and only phase change) to screen readers. */
-        this.liveRegionText = phase === 'Idle' ? 'Idle' : (verb || phase);
-        /* When a new turn begins and no content has streamed yet, insert a skeleton. */
-        if (wasIdle && phase !== 'Idle') {
-          var shape = skeletonShape(this._lastUserPrompt);
-          this._addSkeleton(shape, turnId || this.currentTurnId);
-        }
-        if (phase === 'Idle') {
-          this._dropSkeletons();
-          this.feed.forEach((f) => { if (f.kind === 'agent') f.streaming = false; });
-          this._flushQueue();
-        }
-      },
+  /* =========================================================================
+     Input form
+  ========================================================================= */
 
-      _setPhase(phase, verb) {
-        var wasIdle = this.session.phase === 'Idle';
-        this.session.phase = phase;
-        this.session.verb = verb || phase;
-        if (wasIdle && phase !== 'Idle') this.session.turnStartedAt = Date.now();
-        if (phase === 'Idle')            this.session.turnStartedAt = null;
-      },
+  function setupInputForm() {
+    var form = document.getElementById('inputForm');
+    var inp  = document.getElementById('cmd');
+    if (!form || !inp) return;
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var text = inp.value.trim();
+      if (!text) return;
+      submitText(text);
+      inp.value = '';
+    });
+  }
 
-      _resetConversation(note) {
-        this.feed = [];
-        this.queuedPrompts = [];
-        this.confirmRequest = null;
-        this.errorBanner = null;
-        this._skeletonIds = [];
-        this.currentTurnId = null;
-        this._setPhase('Idle', 'Idle');
-        if (note) this._addAgent(note, null, { streaming: false, system: true });
-      },
+  function submitText(text) {
+    _histIdx = -1;
+    _savedInput = '';
+    _cmdHistory.push(text);
+    if (_cmdHistory.length > 50) _cmdHistory.shift();
+    hideMascot();
+    addUserMsg(text, false);
+    sendWs({ type: 'text', content: text });
+    setPhase('Thinking');
+  }
 
-      _flushQueue() {
-        if (!this.queuedPrompts.length) return;
-        var next = this.queuedPrompts.shift();
-        if (next) this._submitText(next);
-      },
+  /* =========================================================================
+     WebSocket client  (ported from app.js v0.8)
+  ========================================================================= */
 
-      _scrollSoon() {
-        this.$nextTick(() => {
-          var el = this.$refs.messages;
-          if (!el) return;
-          if (this._autoScrollPaused) {
-            this.newMessagesPending = true;
-            return;
-          }
-          el.scrollTop = el.scrollHeight;
-        });
-      },
+  function connect() {
+    // Tear down any prior socket before opening to prevent stale-event double-delivery
+    if (_ws) {
+      try {
+        _ws.onopen = null; _ws.onmessage = null;
+        _ws.onclose = null; _ws.onerror  = null;
+        _ws.close();
+      } catch (_) {}
+      _ws = null;
+    }
 
-      scrollToLatest() {
-        var el = this.$refs.messages;
-        if (!el) return;
-        this._autoScrollPaused = false;
-        this.newMessagesPending = false;
-        el.scrollTop = el.scrollHeight;
-      },
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var url   = proto + '//' + location.host + '/ws';
+    // Token travels via Sec-WebSocket-Protocol (never in URL — avoids access-log leaks)
+    var args  = _token ? ['bearer', _token] : undefined;
+    var sock;
+    try { sock = args ? new WebSocket(url, args) : new WebSocket(url); }
+    catch (_) { scheduleReconnect(); return; }
+    _ws = sock;
 
-      /* ---------- composer actions ---------- */
-      onKeyDown(ev) {
-        if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
-          ev.preventDefault();
-          this.onEnter();
-        } else if (ev.key === 'Backspace' && this.input === '' && this.queuedPrompts.length > 0) {
-          ev.preventDefault();
-          this.queuedPrompts.pop();
-        }
-      },
-      onEnter() {
-        var text = this.input.trim();
-        if (!text) return;
-        if (this.session.phase !== 'Idle') {
-          this.queuedPrompts.push(text);
-          this.input = '';
-          return;
-        }
-        this._submitText(text);
-        this.input = '';
-      },
-      submit() {
-        this.onEnter();
-      },
-      _submitText(text) {
-        this._lastUserPrompt = text;
-        this.errorBanner = null;
-        this._addUser(text);
-        this._send({ type: 'text', content: text });
-        this._setPhase('Thinking', 'Thinking');
-      },
-      cancelTurn() {
-        if (this.session.phase === 'Idle') return;
-        this._send({ type: 'cancel', turn_id: this.currentTurnId });
-        this.feed.forEach((f) => { if (f.kind === 'agent') f.streaming = false; });
-        this._dropSkeletons();
-        /* If there was a pending confirm, drop it when the user cancels the turn. */
-        this.confirmRequest = null;
-        this._setPhase('Idle', 'Idle');
-      },
-      reset() {
-        this._send({ type: 'reset' });
-        this._resetConversation('Conversation reset.');
-      },
-      respondConfirm(decision) {
-        if (!this.confirmRequest) return;
-        if (this.confirmRequest.risk === 'critical' && decision === 'approve' && !this.criticalReady) return;
-        this._send({ type: 'confirm_response', confirm_id: this.confirmRequest.confirm_id, decision: decision });
-        this.confirmRequest = null;
-        this.criticalConfirmText = '';
-        this.$nextTick(() => this.$refs.composer && this.$refs.composer.focus());
-      },
-
-      /* ---------- error recovery ---------- */
-      dismissError() { this.errorBanner = null; },
-      retryLastPrompt() {
-        if (!this._lastUserPrompt) { this.errorBanner = null; return; }
-        var text = this._lastUserPrompt;
-        this.errorBanner = null;
-        this._send({ type: 'text', content: text });
-        this._setPhase('Thinking', 'Thinking');
-      },
-      retryLastTool() {
-        var t = this._lastToolCall;
-        if (!t) { this.errorBanner = null; return; }
-        this.errorBanner = null;
-        this._send({ type: 'retry_tool', name: t.name, input: t.input, turn_id: t.turn_id });
-      },
-      triggerReconnect() {
-        this.errorBanner = null;
-        this._clientReconnect();
-      },
-      copySession() {
-        try {
-          navigator.clipboard.writeText(this.session.id);
-          this.copied = true;
-          setTimeout(() => (this.copied = false), 1400);
-        } catch (_) {}
-      },
-
-      /* ---------- spinners / elapsed ---------- */
-      _startSpinner() {
-        if (this._reduced) { this.spinnerFrame = BRAILLE[0]; return; }
-        var i = 0;
-        this._spinnerTimer = setInterval(() => {
-          if (!this.showTicker) return;
-          i = (i + 1) % BRAILLE.length;
-          this.spinnerFrame = BRAILLE[i];
-        }, 100);
-      },
-      _startElapsed() {
-        this._elapsedTimer = setInterval(() => {
-          if (this.session.turnStartedAt) {
-            var s = (Date.now() - this.session.turnStartedAt) / 1000;
-            this.elapsedLabel = s < 10 ? s.toFixed(1) + 's' : Math.round(s) + 's';
-          } else {
-            this.elapsedLabel = '0.0s';
-          }
-        }, 500);
-      },
-
-      /* ---------- tool card formatters ---------- */
-      toolDurationLabel(item) {
-        if (item.status === 'running' && item.startedAt) {
-          return ((Date.now() - item.startedAt) / 1000).toFixed(1) + 's';
-        }
-        if (item.durationMs != null) {
-          var s = item.durationMs / 1000;
-          return s < 10 ? s.toFixed(2) + 's' : Math.round(s) + 's';
-        }
-        return '';
-      },
-      // 5s is the eye-friendly threshold — long enough to not nag on quick ops,
-      // short enough to help when the device needs physical interaction.
-      TOOL_LONG_RUN_MS: 5000,
-      toolLongRunHint(item) {
-        if (item.status !== 'running' || !item.startedAt) return '';
-        if ((Date.now() - item.startedAt) < this.TOOL_LONG_RUN_MS) return '';
-        return 'check Flipper screen for prompts';
-      },
-      formatJSON(obj) {
-        if (obj == null || obj === '') return '';
-        if (typeof obj === 'string') {
-          var t = obj.trim();
-          if (t.length && (t[0] === '{' || t[0] === '[')) {
-            try { return JSON.stringify(JSON.parse(t), null, 2); } catch (_) { /* fall through */ }
-          }
-          return obj;
-        }
-        try { return JSON.stringify(obj, null, 2); } catch (_) { return String(obj); }
-      },
-
-      /* ---------- persona switcher (REPL /persona parity) ---------- */
-      loadPersonas() {
-        this._fetch('api/personas')
-          .then((r) => (r.ok ? r.json() : null))
-          .then((data) => {
-            if (!data) return;
-            this.personaUI.current = data.current || '';
-            this.personaUI.list = Array.isArray(data.available) ? data.available : [];
-          })
-          .catch(() => { /* panel stays empty; hide in UI */ });
-      },
-      togglePersonaMenu() {
-        if (!this.personaUI.open) this.loadPersonas();
-        this.personaUI.open = !this.personaUI.open;
-      },
-      switchPersona(name) {
-        if (!name || name === this.personaUI.current) { this.personaUI.open = false; return; }
-        this._fetch('api/personas/switch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name }),
-        })
-          .then((r) => (r.ok ? r.json() : Promise.reject(r)))
-          .then((data) => {
-            this.personaUI.current = data.current || name;
-            if (data.switch_id) {
-              this._knownPersonaSwitchIds.push(data.switch_id);
-              if (this._knownPersonaSwitchIds.length > 8) this._knownPersonaSwitchIds.shift();
-            }
-            this.personaUI.open = false;
-          })
-          .catch((err) => {
-            this.errorBanner = { kind: 'api', message: 'persona switch failed: ' + (err.message || err) };
-          });
-      },
-
-      /* ---------- sidebar tabs (Watch / Rules) ---------- */
-      toggleSidebar() {
-        this.sidebar.open = !this.sidebar.open;
-        if (this.sidebar.open) this._refreshSidebarTab();
-      },
-      selectSidebarTab(tab) {
-        this.sidebar.tab = tab;
-        this._refreshSidebarTab();
-      },
-      _refreshSidebarTab() {
-        if (this.sidebar.tab === 'watch') this.loadWatch();
-        else if (this.sidebar.tab === 'rules') this.loadRules();
-      },
-
-      /* ---------- watch panel (REPL /watch parity) ---------- */
-      loadWatch() {
-        this._fetch('api/watch')
-          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
-          .then(({ ok, body }) => {
-            this.watchUI.loaded = true;
-            if (!ok) {
-              /* Distinguish "watcher not configured" from other errors */
-              var errMsg = body.error || 'watch unavailable';
-              if (errMsg === 'watcher not configured') {
-                this.watchUI.error = 'Watcher not enabled — launch promptzero with `--watch`';
-              } else {
-                this.watchUI.error = errMsg;
-              }
-              return;
-            }
-            this.watchUI.error = '';
-            this.watchUI.enabled = !!body.enabled;
-            this.watchUI.paused = !!body.paused;
-            this.watchUI.paths = Array.isArray(body.paths) ? body.paths : [];
-            this.watchUI.rules = Array.isArray(body.rules) ? body.rules : [];
-            this.watchUI.events = Array.isArray(body.recent_events) ? body.recent_events : [];
-          })
-          .catch((e) => { this.watchUI.loaded = true; this.watchUI.error = "couldn't load watch rules: " + (e.message || e); });
-      },
-      watchPause()  { this._watchToggle('api/watch/pause',  true);  },
-      watchResume() { this._watchToggle('api/watch/resume', false); },
-      _watchToggle(url, paused) {
-        this._fetch(url, { method: 'POST' })
-          .then((r) => { if (r.ok) this.watchUI.paused = paused; })
-          .catch(() => {});
-      },
-
-      /* ---------- rules panel (REPL /rules parity) ---------- */
-      loadRules() {
-        this._fetch('api/rules')
-          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
-          .then(({ ok, body }) => {
-            this.rulesUI.loaded = true;
-            if (!ok) { this.rulesUI.error = (body && body.error) || 'rules unavailable'; return; }
-            this.rulesUI.error = '';
-            this.rulesUI.list = Array.isArray(body) ? body : [];
-          })
-          .catch((e) => { this.rulesUI.loaded = true; this.rulesUI.error = "couldn't load rules: " + (e.message || e); });
-      },
-      toggleRule(r) {
-        var target = r.enabled ? 'pause' : 'resume';
-        this._fetch('api/rules/' + encodeURIComponent(r.name) + '/' + target, { method: 'POST' })
-          .then((resp) => { if (resp.ok) r.enabled = !r.enabled; })
-          .catch(() => {});
-      },
-      testRule(name) {
-        this._fetch('api/rules/' + encodeURIComponent(name) + '/test', { method: 'POST' })
-          .then((r) => r.json())
-          .then((body) => {
-            var text = Array.isArray(body.actions) ? body.actions.join('\n') : (body.error || 'no actions');
-            this.rulesUI.testResults = Object.assign({}, this.rulesUI.testResults, { [name]: text });
-          })
-          .catch((e) => {
-            this.rulesUI.testResults = Object.assign({}, this.rulesUI.testResults, { [name]: String(e) });
-          });
-      },
-
-      /* ---------- debug snapshot (REPL /debug parity) ---------- */
-      openDebug() {
-        this.debugUI.open = true;
-        this.loadDebug();
-      },
-      closeDebug() {
-        this.debugUI.open = false;
-        this.debugUI.copied = false;
-      },
-      loadDebug() {
-        this.debugUI.loaded = false;
-        this.debugUI.error = '';
-        this._fetch('api/debug')
-          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
-          .then(({ ok, body }) => {
-            this.debugUI.loaded = true;
-            if (!ok) { this.debugUI.error = (body && body.error) || 'debug unavailable'; return; }
-            this.debugUI.snapshot = body;
-          })
-          .catch((e) => { this.debugUI.loaded = true; this.debugUI.error = String(e); });
-      },
-      get debugText() {
-        if (!this.debugUI.snapshot) return '';
-        try { return JSON.stringify(this.debugUI.snapshot, null, 2); }
-        catch (_) { return String(this.debugUI.snapshot); }
-      },
-      copyDebug() {
-        var text = this.debugText;
-        if (!text) return;
-        var reset = () => { setTimeout(() => { this.debugUI.copied = false; }, 1500); };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text)
-            .then(() => { this.debugUI.copied = true; reset(); })
-            .catch(() => { this._fallbackCopy(text); });
-          return;
-        }
-        this._fallbackCopy(text);
-      },
-      _fallbackCopy(text) {
-        try {
-          var ta = document.createElement('textarea');
-          ta.value = text;
-          ta.setAttribute('readonly', '');
-          ta.style.position = 'fixed';
-          ta.style.opacity = '0';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-          this.debugUI.copied = true;
-          setTimeout(() => { this.debugUI.copied = false; }, 1500);
-        } catch (_) { /* noop */ }
-      },
-
-      /* ---------- device profile modal (full device_info surface) ---------- */
-      openDevice() {
-        this.deviceUI.open = true;
-        if (this._deviceTimer) { clearInterval(this._deviceTimer); }
-        this._deviceTimer = setInterval(() => this.loadSessionDevice(), 30000);
-        this.loadDevice();
-      },
-      closeDevice() {
-        this.deviceUI.open = false;
-      },
-      loadDevice() {
-        this.deviceUI.loaded = false;
-        this.deviceUI.error = '';
-        var ctrl = new AbortController();
-        var tid = setTimeout(function() { ctrl.abort(); }, 5000);
-        this._fetch('api/device', { signal: ctrl.signal })
-          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
-          .then(({ ok, body }) => {
-            clearTimeout(tid);
-            this.deviceUI.loaded = true;
-            if (!ok) { this.deviceUI.error = (body && body.error) || 'device info unavailable'; return; }
-            /* Ensure every section is present as an object so x-text dereferences don't throw. */
-            var sections = ['firmware', 'hardware', 'radio', 'battery', 'storage', 'system'];
-            sections.forEach((k) => { if (!body[k] || typeof body[k] !== 'object') body[k] = {}; });
-            this.deviceUI.snapshot = body;
-            this._applyDeviceToSession(body);
-            /* Title: "DEVICE · <name> · <fork>" */
-            var name = (body.hardware && body.hardware.hardware_name) || 'flipper';
-            var fork = (body.firmware && body.firmware.firmware_origin_fork) || 'stock';
-            this.deviceUI.title = 'DEVICE · ' + name + ' · ' + fork;
-          })
-          .catch((e) => {
-            clearTimeout(tid);
-            this.deviceUI.loaded = true;
-            if (e && e.name === 'AbortError') {
-              this.deviceUI.error = 'Flipper unreachable (timed out after 5s)';
-            } else {
-              this.deviceUI.error = String(e);
-            }
-          });
-      },
-      /* Background refresh for the header chips + battery indicator. Shares
-         the /api/device endpoint with the modal so a single round-trip
-         drives both surfaces. Silent on failure — we'd rather show empty
-         chips than a banner for every transient serial hiccup. */
-      loadSessionDevice() {
-        var ctrl = new AbortController();
-        setTimeout(function() { ctrl.abort(); }, 5000);
-        this._fetch('api/device', { signal: ctrl.signal })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((body) => { if (body) this._applyDeviceToSession(body); })
-          .catch(() => {});
-      },
-      _applyDeviceToSession(body) {
-        if (!body) return;
-        var hw = body.hardware || {};
-        var fw = body.firmware || {};
-        var bat = body.battery || {};
-        if (hw.hardware_name) this.session.device.name = hw.hardware_name;
-        if (fw.firmware_origin_fork) this.session.device.fork = fw.firmware_origin_fork.toUpperCase();
-        if (fw.firmware_version) this.session.device.version = fw.firmware_version;
-        var n = parseInt(bat.charge_level, 10);
-        if (isFinite(n)) this.session.device.battery = Math.max(0, Math.min(100, n));
-      },
-      get deviceChargePct() {
-        var b = this.deviceUI.snapshot && this.deviceUI.snapshot.battery;
-        if (!b) return 0;
-        var n = parseInt(b.charge_level, 10);
-        return isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
-      },
-      get deviceStorageUsedPct() {
-        var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
-        if (!s) return 0;
-        var total = Number(s.storage_sdcard_totalSpace || 0);
-        var free  = Number(s.storage_sdcard_freeSpace  || 0);
-        if (!total || total <= 0) return 0;
-        var used = Math.max(0, total - free);
-        return Math.min(100, Math.round((used / total) * 100));
-      },
-      get deviceRawText() {
-        var raw = this.deviceUI.snapshot && this.deviceUI.snapshot.raw;
-        if (!raw || typeof raw !== 'object') return '(empty)';
-        var keys = Object.keys(raw).sort();
-        if (keys.length === 0) return '(empty)';
-        var lines = new Array(keys.length);
-        for (var i = 0; i < keys.length; i++) {
-          lines[i] = keys[i] + ': ' + raw[keys[i]];
-        }
-        return lines.join('\n');
-      },
-      get deviceStorageLabel() {
-        var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
-        if (!s) return '—';
-        var total = Number(s.storage_sdcard_totalSpace || 0);
-        var free  = Number(s.storage_sdcard_freeSpace  || 0);
-        if (!total) return 'no SD card detected';
-        var used = Math.max(0, total - free);
-        return this._fmtBytes(used) + ' used · ' + this._fmtBytes(total) + ' total';
-      },
-      get deviceSdFreeLabel() {
-        var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
-        if (!s) return '—';
-        var total = Number(s.storage_sdcard_totalSpace || 0);
-        var free  = Number(s.storage_sdcard_freeSpace  || 0);
-        if (!total) return '—';
-        return this._fmtBytes(free) + ' / ' + this._fmtBytes(total);
-      },
-      get deviceIntFreeLabel() {
-        var s = this.deviceUI.snapshot && this.deviceUI.snapshot.storage;
-        if (!s) return '—';
-        var total = Number(s.storage_internal_totalSpace || 0);
-        var free  = Number(s.storage_internal_freeSpace  || 0);
-        if (!total) return '—';
-        return this._fmtBytes(free) + ' / ' + this._fmtBytes(total);
-      },
-      _val(v) { return (v != null && v !== '') ? v : '—'; },
-      formatVoltage(mv) {
-        var n = Number(mv);
-        if (!isFinite(n) || n <= 0) return '—';
-        return (n / 1000).toFixed(2) + ' V';
-      },
-      formatCurrent(ma) {
-        if (ma === undefined || ma === null || ma === '') return '—';
-        var n = Number(ma);
-        if (!isFinite(n)) return '—';
-        return n.toFixed(0) + ' mA';
-      },
-      _fmtBytes(n) {
-        n = Number(n);
-        if (!isFinite(n) || n <= 0) return '0 B';
-        var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-        var i = 0;
-        while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
-        return n.toFixed(n >= 100 ? 0 : n >= 10 ? 1 : 2) + ' ' + units[i];
-      },
-
-      /* ---------- validate modal (REPL /validate parity) ---------- */
-      openValidateModal() {
-        this.validateUI.open = true;
-        this.validateUI.error = '';
-        this.validateUI.report = null;
-      },
-      closeValidateModal() {
-        this.validateUI.open = false;
-      },
-      runValidate() {
-        var path = (this.validateUI.path || '').trim();
-        var content = this.validateUI.content || '';
-        if (!path && !content) {
-          this.validateUI.error = 'enter a path or paste script content';
-          return;
-        }
-        this.validateUI.loading = true;
-        this.validateUI.error = '';
-        this.validateUI.report = null;
-        this._fetch('api/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: path, content: content }),
-        })
-          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
-          .then(({ ok, body }) => {
-            if (!ok) { this.validateUI.error = (body && body.error) || 'validate failed'; return; }
-            this.validateUI.report = body;
-          })
-          .catch((e) => { this.validateUI.error = 'validate failed: ' + (e.message || e); })
-          .finally(() => { this.validateUI.loading = false; });
-      },
-
-      /* ---------- cost pill (REPL /cost parity) ---------- */
-      loadCost() {
-        this._fetch('api/cost')
-          .then((r) => r.json().then((body) => ({ ok: r.ok, body: body })))
-          .then(({ ok, body }) => {
-            this.costUI.loaded = true;
-            if (!ok) {
-              this.costUI.error = (body && body.error) || 'cost tracker unavailable';
-              return;
-            }
-            this.costUI.error = '';
-            var total = (body && body.total) || {};
-            this.costUI.usd          = Number(total.usd || 0);
-            this.costUI.inputTokens  = Number(total.input_tokens || 0);
-            this.costUI.outputTokens = Number(total.output_tokens || 0);
-            this.costUI.offline      = !!body.offline;
-            this.costUI.byModel      = Array.isArray(body.by_model) ? body.by_model : [];
-          })
-          .catch((e) => { this.costUI.loaded = true; this.costUI.error = String(e); });
-      },
-      toggleCostModal() {
-        if (!this.costUI.modalOpen) this.loadCost();
-        this.costUI.modalOpen = !this.costUI.modalOpen;
-      },
-      formatTokens(n) {
-        var v = Number(n || 0);
-        if (v >= 1e6) return (v / 1e6).toFixed(v >= 1e7 ? 0 : 1) + 'M';
-        if (v >= 1e3) return (v / 1e3).toFixed(v >= 1e4 ? 0 : 1) + 'k';
-        return String(v);
-      },
-      formatUSD(n) {
-        var v = Number(n || 0);
-        if (v >= 100) return '$' + v.toFixed(0);
-        if (v >= 1)   return '$' + v.toFixed(2);
-        return '$' + v.toFixed(v < 0.01 ? 4 : 2);
-      },
-      get costPillText() {
-        var tokens = this.costUI.inputTokens + this.costUI.outputTokens;
-        return this.formatUSD(this.costUI.usd) + ' · ' + this.formatTokens(tokens) + ' tok';
-      },
-      get costPillVisible() {
-        return this.costUI.loaded && !this.costUI.error;
-      },
-
-      /* ---------- shared formatters ---------- */
-      shortTime(iso) {
-        if (!iso) return '';
-        try {
-          var d = new Date(iso);
-          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        } catch (_) { return String(iso); }
-      },
-
-      /* ---------- dev mock console (localhost only) ---------- */
-      _installMock() {
-        var host = location.hostname;
-        var isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '';
-        if (!isLocal) return;
-        var self = this;
-        window.pzMock = {
-          fire: function (type, payload) {
-            self._dispatch(Object.assign({ type: type }, payload || {}));
-          },
-          queue: function (arr) { arr.forEach((m, i) => setTimeout(() => self._dispatch(m), i * 80)); },
-          demo: function () {
-            var t = 'turn-' + Math.random().toString(36).slice(2, 6);
-            self._lastUserPrompt = 'scan 433 mhz';
-            self._dispatch({ type: 'phase', verb: 'Thinking', turn_id: t });
-            setTimeout(() => self._dispatch({ type: 'text_delta', turn_id: t, content: 'Sweeping 433.92 MHz for a capture. ' }), 200);
-            setTimeout(() => self._dispatch({ type: 'tool_status', phase: 'start', name: 'subghz_receive', turn_id: t, input: { freq: 433920000, modulation: 'OOK' }, risk: 'medium' }), 500);
-            setTimeout(() => self._dispatch({ type: 'phase', verb: 'Running subghz_receive', turn_id: t }), 550);
-            setTimeout(() => self._dispatch({ type: 'tool_status', phase: 'finish', name: 'subghz_receive', turn_id: t, duration_ms: 842, output: 'OOK capture: 0xDEADBEEF (18 edges)' }), 1400);
-            setTimeout(() => self._dispatch({ type: 'phase', verb: 'Responding', turn_id: t }), 1450);
-            setTimeout(() => self._dispatch({ type: 'text_delta', turn_id: t, content: 'Got a clean capture — waveform saved.' }), 1500);
-            setTimeout(() => self._dispatch({ type: 'phase', verb: 'Idle', turn_id: t }), 1900);
-          },
-          confirm: function (risk) {
-            self._dispatch({ type: 'confirm_request', confirm_id: 'c-' + Math.random().toString(36).slice(2, 6),
-              tool: 'subghz_transmit', input: { freq: 433920000, payload: '0xDEADBEEF' }, risk: risk || 'high' });
-          },
-          err: function (kind) {
-            var map = {
-              api: 'Anthropic API call failed: 529 overloaded',
-              tool: 'Tool error: subghz_transmit failed (device busy)',
-              device: 'Flipper disconnected from serial port',
-              cancelled: 'Turn cancelled by user',
-            };
-            self._dispatch({ type: 'error', kind: kind || 'api', content: map[kind || 'api'] });
-          },
-          disconnect: function () {
-            self._onWsDown();
-          },
-        };
-        try {
-          console.info('%c[pzMock]', 'color:#FF8200', 'dev console ready — pzMock.demo() for a scripted turn, pzMock.fire(type, payload) for raw events');
-        } catch (_) {}
-      },
+    sock.onopen = function () {
+      if (_ws !== sock) return;
+      _wsBackoff = 800;
+      setModelTag('ready');
+    };
+    sock.onclose = function () {
+      if (_ws !== sock) return;
+      setModelTag('reconnecting…');
+      scheduleReconnect();
+    };
+    sock.onerror = function () { /* handled by onclose */ };
+    sock.onmessage = function (ev) {
+      if (_ws !== sock) return;
+      var msg;
+      try { msg = JSON.parse(ev.data); } catch (_) { return; }
+      dispatch(msg);
     };
   }
 
-  window.pzApp = pzApp;
+  function scheduleReconnect() {
+    var delay = Math.min(_wsBackoff, 8000);
+    _wsBackoff = Math.min(Math.round(_wsBackoff * 1.6), 8000);
+    setTimeout(connect, delay);
+  }
+
+  function sendWs(obj) {
+    if (!_ws || _ws.readyState !== WebSocket.OPEN) return false;
+    try { _ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
+  }
+
+  /* =========================================================================
+     WS message dispatch
+  ========================================================================= */
+
+  function dispatch(msg) {
+    switch (msg.type) {
+
+      case 'status':
+        if (msg.content === 'connected') {
+          if (msg.session_id) {
+            _sessionId = msg.session_id;
+            var sid = document.getElementById('sessionId');
+            if (sid) sid.textContent = msg.session_id.slice(0, 8);
+          }
+          setModelTag('ready');
+        } else if (msg.content === 'conversation reset') {
+          resetConversation();
+        } else if (msg.content === 'transcribing') {
+          setModelTag('transcribing…');
+        }
+        break;
+
+      case 'transcription':
+        addUserMsg(msg.content || '', true);
+        break;
+
+      case 'response':
+        finalizeStreaming(msg.turn_id, msg.content || '');
+        setPhase('Idle');
+        break;
+
+      case 'error':
+        finalizeStreaming(msg.turn_id, null);
+        setPhase('Idle');
+        addSysMsg('ERROR: ' + (msg.content || 'unknown error'));
+        break;
+
+      case 'text_delta':
+        appendDelta(msg.turn_id, msg.content || '');
+        break;
+
+      case 'tool_status':
+        if (msg.phase === 'start')  addToolStart(msg);
+        else if (msg.phase === 'finish') finishTool(msg);
+        break;
+
+      case 'confirm_request':
+        showConfirm(msg);
+        break;
+
+      case 'phase':
+        onPhase(msg.verb, msg.turn_id);
+        break;
+
+      case 'persona_switched':
+        _personas.current = msg.name || '';
+        addSysMsg('● persona switched to ' + (msg.name || 'default'));
+        break;
+    }
+  }
+
+  /* =========================================================================
+     Phase
+  ========================================================================= */
+
+  function setPhase(phase) {
+    _phase = phase;
+    var labels = { Idle: 'ready', Thinking: 'thinking…', Running: 'running…', Responding: 'responding…' };
+    setModelTag(labels[phase] || phase.toLowerCase() + '…');
+  }
+
+  function setModelTag(text) {
+    var mt = document.getElementById('modelTag');
+    if (mt) mt.textContent = text;
+  }
+
+  function onPhase(verb, turnId) {
+    if (turnId) _currentTurnId = turnId;
+    var v = String(verb || '').toLowerCase();
+    var phase = (v === 'idle' || v === 'done' || v === '') ? 'Idle'
+              : v.indexOf('running')   === 0              ? 'Running'
+              : v.indexOf('respond')   === 0              ? 'Responding'
+              :                                             'Thinking';
+    setPhase(phase);
+  }
+
+  function cancelTurn() {
+    sendWs({ type: 'cancel', turn_id: _currentTurnId });
+    setPhase('Idle');
+    if (_streamingMsgEl) {
+      var c = _streamingMsgEl.querySelector('.blink-cursor-text');
+      if (c) c.parentNode.removeChild(c);
+    }
+    _streamingMsgEl  = null;
+    _streamingTurnId = null;
+    clearConfirm();
+  }
+
+  function resetConversation() {
+    var sb = document.getElementById('scrollback');
+    if (!sb) return;
+    // Remove dynamic message nodes; keep mascot + idle-line
+    var toRemove = [];
+    for (var n = sb.firstChild; n; n = n.nextSibling) {
+      if (n.id !== 'mascot' && n.id !== 'idleLine') toRemove.push(n);
+    }
+    toRemove.forEach(function (n) { sb.removeChild(n); });
+    showMascot();
+    setPhase('Idle');
+    _streamingMsgEl  = null;
+    _streamingTurnId = null;
+    _currentTurnId   = null;
+    _toolEls         = {};
+    clearConfirm();
+  }
+
+  /* =========================================================================
+     Render — message bubbles
+     RULE: every string that originates from the agent goes through textContent.
+  ========================================================================= */
+
+  function scrollSoon(sb) {
+    if (_autoScrollPaused) return;
+    requestAnimationFrame(function () { if (sb) sb.scrollTop = sb.scrollHeight; });
+  }
+
+  function addUserMsg(text, voice) {
+    hideMascot();
+    var sb = document.getElementById('scrollback');
+    if (!sb) return;
+
+    var msg  = mkEl('div', 'msg user');
+    var who  = mkEl('div', 'who', 'U');
+    var body = mkEl('div', 'body');
+    var meta = mkEl('div', 'meta');
+    meta.appendChild(mkEl('span', null, voice ? 'YOU · VOICE' : 'YOU'));
+    var p = mkEl('p', null, text);   // textContent via mkEl — safe
+    body.appendChild(meta);
+    body.appendChild(p);
+    msg.appendChild(who);
+    msg.appendChild(body);
+    sb.appendChild(msg);
+    scrollSoon(sb);
+  }
+
+  function makeAgentMsgEl(turnId) {
+    var sb = document.getElementById('scrollback');
+    if (!sb) return null;
+
+    var msg  = mkEl('div', 'msg');
+    if (turnId) msg.dataset.turnId = turnId;
+    var who  = mkEl('div', 'who', 'PZ');
+    var body = mkEl('div', 'body');
+    var meta = mkEl('div', 'meta');
+    meta.appendChild(mkEl('span', null, 'PROMPTZERO'));
+    var p    = mkEl('p');
+    var caret = mkEl('span', 'blink-cursor-text');
+    caret.setAttribute('aria-hidden', 'true');
+    p.appendChild(caret);
+    body.appendChild(meta);
+    body.appendChild(p);
+    msg.appendChild(who);
+    msg.appendChild(body);
+    sb.appendChild(msg);
+    scrollSoon(sb);
+    return msg;
+  }
+
+  function appendDelta(turnId, text) {
+    // Re-use existing streaming element if same turn, otherwise start new one
+    if (_streamingMsgEl && _streamingTurnId === turnId) {
+      var p = _streamingMsgEl.querySelector('.body > p');
+      if (p) {
+        var caret = p.querySelector('.blink-cursor-text');
+        var tn = document.createTextNode(text);  // safe: createTextNode
+        if (caret) p.insertBefore(tn, caret);
+        else p.appendChild(tn);
+      }
+    } else {
+      if (_streamingMsgEl) {
+        var oc = _streamingMsgEl.querySelector('.blink-cursor-text');
+        if (oc) oc.parentNode.removeChild(oc);
+      }
+      _streamingMsgEl  = makeAgentMsgEl(turnId);
+      _streamingTurnId = turnId;
+      if (_streamingMsgEl && text) {
+        var pp = _streamingMsgEl.querySelector('.body > p');
+        if (pp) {
+          var c2 = pp.querySelector('.blink-cursor-text');
+          var tn2 = document.createTextNode(text);
+          if (c2) pp.insertBefore(tn2, c2);
+          else pp.appendChild(tn2);
+        }
+      }
+    }
+    var sb = document.getElementById('scrollback');
+    if (sb) scrollSoon(sb);
+  }
+
+  function finalizeStreaming(turnId, text) {
+    if (_streamingMsgEl && (!turnId || _streamingTurnId === turnId)) {
+      var c = _streamingMsgEl.querySelector('.blink-cursor-text');
+      if (c) c.parentNode.removeChild(c);
+      // If we got a final response string but no delta was streamed, show it
+      if (text) {
+        var p = _streamingMsgEl.querySelector('.body > p');
+        if (p && p.textContent.trim() === '') p.textContent = text;
+      }
+    } else if (text) {
+      var el2 = makeAgentMsgEl(turnId);
+      if (el2) {
+        var p2 = el2.querySelector('.body > p');
+        if (p2) {
+          var c2 = p2.querySelector('.blink-cursor-text');
+          if (c2) p2.removeChild(c2);
+          p2.textContent = text;  // safe: textContent
+        }
+      }
+    }
+    _streamingMsgEl  = null;
+    _streamingTurnId = null;
+  }
+
+  function addSysMsg(text) {
+    var sb = document.getElementById('scrollback');
+    if (!sb) return;
+    var msg  = mkEl('div', 'msg sys');
+    var who  = mkEl('div', 'who', '!');
+    var body = mkEl('div', 'body');
+    var p    = mkEl('p', null, text);  // textContent — safe
+    body.appendChild(p);
+    msg.appendChild(who);
+    msg.appendChild(body);
+    sb.appendChild(msg);
+    scrollSoon(sb);
+  }
+
+  /* =========================================================================
+     Tool status
+  ========================================================================= */
+
+  function addToolStart(msg) {
+    var sb = document.getElementById('scrollback');
+    if (!sb) return;
+
+    var wrap = mkEl('div', 'msg sys');
+    var key  = (msg.turn_id || '') + '|' + (msg.name || '');
+    wrap.dataset.toolKey = key;
+
+    var who  = mkEl('div', 'who', '▶');
+    var body = mkEl('div', 'body');
+    var meta = mkEl('div', 'meta');
+
+    var nameSpan = mkEl('span', null, msg.name || 'tool');  // textContent — safe
+    meta.appendChild(nameSpan);
+
+    // Risk badge — only known enum strings flow through classList
+    var risk = String(msg.risk || 'low').toLowerCase();
+    if (risk === 'medium' || risk === 'high') {
+      var riskEl = mkEl('span', 'risk' + (risk === 'medium' ? ' med' : ' high'));
+      riskEl.textContent = risk.toUpperCase();
+      meta.appendChild(riskEl);
+    }
+
+    var statusSpan = mkEl('span', 'tool-status-txt', 'running…');
+    meta.appendChild(statusSpan);
+    body.appendChild(meta);
+
+    if (msg.input) {
+      var pre = mkEl('pre', null, fmtJSON(msg.input));  // textContent — safe
+      body.appendChild(pre);
+    }
+
+    wrap.appendChild(who);
+    wrap.appendChild(body);
+    sb.appendChild(wrap);
+    _toolEls[key] = wrap;
+    scrollSoon(sb);
+  }
+
+  function finishTool(msg) {
+    var key  = (msg.turn_id || '') + '|' + (msg.name || '');
+    var wrap = _toolEls[key];
+    delete _toolEls[key];
+    if (!wrap) return;
+
+    var indicator = wrap.querySelector('.tool-status-txt');
+    var suffix    = msg.duration_ms != null ? ' · ' + (msg.duration_ms / 1000).toFixed(2) + 's' : '';
+    if (indicator) indicator.textContent = (msg.err ? 'failed' : 'done') + suffix;
+
+    var body = wrap.querySelector('.body');
+    if (body && (msg.output || msg.err)) {
+      var tileDiv = mkEl('div', 'tool-result');
+      if (msg.output) {
+        tileDiv.appendChild(mkEl('span', 'k', 'output'));
+        tileDiv.appendChild(mkEl('span', 'v', fmtJSON(msg.output)));  // textContent — safe
+      }
+      if (msg.err) {
+        var ev = mkEl('span', 'v');
+        ev.textContent = msg.err;  // textContent — safe
+        ev.style.color = 'var(--led-red)';
+        tileDiv.appendChild(mkEl('span', 'k', 'error'));
+        tileDiv.appendChild(ev);
+      }
+      body.appendChild(tileDiv);
+    }
+    var sb = document.getElementById('scrollback');
+    if (sb) scrollSoon(sb);
+  }
+
+  /* =========================================================================
+     TX preview / confirm
+  ========================================================================= */
+
+  function showConfirm(msg) {
+    _confirmPending = msg;
+    clearTxPreview();
+
+    var sb = document.getElementById('scrollback');
+    if (!sb) return;
+
+    var wrap = mkEl('div', 'tx-preview');
+    wrap.id  = 'txPreviewWrap';
+
+    var h3    = mkEl('h3');
+    var blink = mkEl('span', 'blink');
+    h3.appendChild(blink);
+    h3.appendChild(document.createTextNode(' CONFIRM TOOL CALL'));
+    wrap.appendChild(h3);
+
+    var dl = mkEl('dl');
+    appendDlRow(dl, 'TOOL',  msg.tool  || '');   // textContent — safe
+    appendDlRow(dl, 'RISK',  (msg.risk || 'medium').toUpperCase());
+    if (msg.input) appendDlRow(dl, 'INPUT', fmtJSON(msg.input));  // textContent — safe
+    wrap.appendChild(dl);
+
+    var actions = mkEl('div', 'tx-actions');
+
+    var denyBtn = mkEl('button', 'revise', 'DENY [N]');
+    denyBtn.type = 'button';
+    denyBtn.setAttribute('data-pz-confirm-deny', '');
+    denyBtn.addEventListener('click', function () { respondConfirm('deny'); });
+
+    var appBtn = mkEl('button', null, 'APPROVE [A]');
+    appBtn.type = 'button';
+    appBtn.addEventListener('click', function () { respondConfirm('approve'); });
+
+    var allBtn = mkEl('button', null, 'APPROVE ALL [L]');
+    allBtn.type = 'button';
+    allBtn.addEventListener('click', function () { respondConfirm('approve_all'); });
+
+    var countdown = mkEl('span', 'countdown', '30s');
+    countdown.id = 'txCountdown';
+
+    actions.appendChild(denyBtn);
+    actions.appendChild(appBtn);
+    actions.appendChild(allBtn);
+    actions.appendChild(countdown);
+    wrap.appendChild(actions);
+    sb.appendChild(wrap);
+    scrollSoon(sb);
+
+    // Focus deny (safe default)
+    setTimeout(function () { denyBtn.focus(); }, 40);
+
+    // Auto-deny countdown
+    var left = 30;
+    if (_countdownTimer) clearInterval(_countdownTimer);
+    _countdownTimer = setInterval(function () {
+      left--;
+      countdown.textContent = left + 's';
+      if (left <= 0) { clearInterval(_countdownTimer); _countdownTimer = null; respondConfirm('deny'); }
+    }, 1000);
+
+    document.addEventListener('keydown', confirmKeyHandler);
+  }
+
+  function confirmKeyHandler(e) {
+    if (!_confirmPending) { document.removeEventListener('keydown', confirmKeyHandler); return; }
+    var tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    var k = e.key.toLowerCase();
+    if (k === 'a')                     { e.preventDefault(); respondConfirm('approve');     }
+    else if (k === 'l')                { e.preventDefault(); respondConfirm('approve_all'); }
+    else if (k === 'n' || k === 'escape') { e.preventDefault(); respondConfirm('deny');  }
+  }
+
+  function respondConfirm(decision) {
+    if (!_confirmPending) return;
+    sendWs({ type: 'confirm_response', confirm_id: _confirmPending.confirm_id, decision: decision });
+    clearConfirm();
+  }
+
+  function clearConfirm() {
+    _confirmPending = null;
+    if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+    document.removeEventListener('keydown', confirmKeyHandler);
+    clearTxPreview();
+  }
+
+  function clearTxPreview() {
+    var prev = document.getElementById('txPreviewWrap');
+    if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
+  }
+
+  function appendDlRow(dl, label, value) {
+    dl.appendChild(mkEl('dt', null, label));
+    dl.appendChild(mkEl('dd', null, value));  // textContent via mkEl — safe
+  }
+
+  /* =========================================================================
+     Status bar — /api/device + /api/debug polling
+  ========================================================================= */
+
+  function startDevicePoll() {
+    pollDevice();
+    _deviceTimer = setInterval(pollDevice, 30000);
+  }
+
+  function pollDevice() {
+    // Single poll: /api/device now carries all status-bar fields
+    // (flipper, marauder, ble, battery.percent, sd) added by backend-bridger (task #14).
+    apiFetch('api/device')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (body) { if (body) applyDeviceToStatusBar(body); })
+      .catch(function () {});
+  }
+
+  function applyDeviceToStatusBar(body) {
+    // ── Flipper LED + port label ────────────────────────────────────────────
+    var flipperData = body.flipper || {};
+    var flipperEl   = document.getElementById('statFlipper');
+    if (flipperEl) {
+      flipperEl.dataset.state = flipperData.connected ? 'on' : 'off';
+      var flipTxt = flipperEl.querySelector('span:last-child');
+      if (flipTxt) flipTxt.textContent = 'FLIPPER' + (flipperData.port ? ' · ' + flipperData.port : '');
+    }
+
+    // ── Marauder LED + port label ───────────────────────────────────────────
+    var marauderData = body.marauder || {};
+    var marauderEl   = document.getElementById('statMarauder');
+    if (marauderEl) {
+      marauderEl.dataset.state = marauderData.connected ? 'on' : 'off';
+      var marTxt = marauderEl.querySelector('span:last-child');
+      if (marTxt) marTxt.textContent = 'MARAUDER' + (marauderData.port ? ' · ' + marauderData.port : '');
+    }
+
+    // ── BLE LED ─────────────────────────────────────────────────────────────
+    var bleData = body.ble || {};
+    var bleEl   = document.getElementById('statBLE');
+    if (bleEl) bleEl.dataset.state = bleData.state || 'off';
+
+    // ── Battery ─────────────────────────────────────────────────────────────
+    var bat = body.battery || {};
+    // Prefer the new typed `percent` field; fall back to legacy charge_level string
+    var pct = (bat.percent !== undefined) ? Number(bat.percent) : parseInt(bat.charge_level, 10);
+    if (isFinite(pct) && pct > 0) {
+      pct = Math.max(0, Math.min(100, pct));
+      var fill  = document.getElementById('battFill');
+      var pctEl = document.getElementById('battPct');
+      if (fill)  fill.style.width  = pct + '%';
+      if (pctEl) pctEl.textContent = pct + '%';
+    }
+
+    // ── SD card bars + text ──────────────────────────────────────────────────
+    // Prefer new typed sd.{free_bytes,total_bytes}; fall back to storage strings.
+    var sdData     = body.sd || {};
+    var totalBytes = Number(sdData.total_bytes || (body.storage && body.storage.storage_sdcard_totalSpace) || 0);
+    var freeBytes  = Number(sdData.free_bytes  || (body.storage && body.storage.storage_sdcard_freeSpace)  || 0);
+    var sdText = document.getElementById('sdText');
+    if (sdText) sdText.textContent = totalBytes > 0 ? fmtBytes(freeBytes) + '/' + fmtBytes(totalBytes) : '—';
+    var freePct = totalBytes > 0 ? Math.round((freeBytes / totalBytes) * 100) : 100;
+    var barsLit = Math.min(4, Math.ceil(freePct / 25));
+    qAll('.sd .bars span').forEach(function (b, idx) { b.classList.toggle('off', idx >= barsLit); });
+  }
+
+  /* =========================================================================
+     Cost pill  — polled every 5 s, surfaced in status-meta when non-zero
+  ========================================================================= */
+
+  function startCostPoll() {
+    pollCost();
+    _costTimer = setInterval(pollCost, 5000);
+  }
+
+  function pollCost() {
+    apiFetch('api/cost')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (body) {
+        if (!body) return;
+        var total  = body.total || {};
+        var usd    = Number(total.usd || 0);
+        var tokens = Number(total.input_tokens || 0) + Number(total.output_tokens || 0);
+        var meta   = q('.status-meta');
+        if (!meta) return;
+        var pill = document.getElementById('costPill');
+        if (usd > 0 || tokens > 0) {
+          if (!pill) {
+            pill = mkEl('div', 'stat');
+            pill.id     = 'costPill';
+            pill.style.cursor = 'pointer';
+            pill.title  = 'session cost — click to open';
+            pill.setAttribute('role', 'button');
+            pill.setAttribute('tabindex', '0');
+            pill.addEventListener('click', function () {
+              showScreen('settings-cost');
+              setCrumbs('SETTINGS', 'COST');
+              loadCostScreen();
+            });
+            meta.appendChild(pill);
+          }
+          pill.textContent = fmtUSD(usd) + ' · ' + fmtTokens(tokens);
+        } else if (pill) {
+          meta.removeChild(pill);
+        }
+      })
+      .catch(function () {});
+  }
+
+  /* =========================================================================
+     Settings screens
+  ========================================================================= */
+
+  function loadSettingsMenu() {
+    var ss = ensureSubscreen();
+    if (!ss) return;
+    clearEl(ss);
+
+    var items = [
+      ['persona', 'PERSONA',    'Switch agent persona'],
+      ['rules',   'RULES',      'Reactive automation'],
+      ['cost',    'COST',       'Token usage & spend'],
+      ['watch',   'FILE WATCH', 'Filesystem triggers'],
+      ['debug',   'DEBUG',      'Runtime snapshot'],
+      ['about',   'ABOUT',      'Version & build'],
+    ];
+    items.forEach(function (item) {
+      var div = mkEl('div', 'rail-item');
+      div.tabIndex = 0;
+      div.setAttribute('role', 'button');
+      div.appendChild(mkEl('span', 'ic', '▸'));
+      div.appendChild(mkEl('span', 'label', item[1]));
+      div.appendChild(mkEl('span', 'badge', '▸'));
+      if (item[2]) div.title = item[2];
+      div.addEventListener('click', function () { openSettingsSubscreen(item[0]); });
+      div.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSettingsSubscreen(item[0]); }
+      });
+      ss.appendChild(div);
+    });
+  }
+
+  function openSettingsSubscreen(id) {
+    showScreen('settings-' + id);
+    var labels = { persona: 'PERSONA', rules: 'RULES', cost: 'COST', watch: 'WATCH', debug: 'DEBUG', about: 'ABOUT' };
+    setCrumbs('SETTINGS', labels[id] || id.toUpperCase());
+    var loaders = { persona: loadPersonaScreen, rules: loadRulesScreen, cost: loadCostScreen,
+                    watch: loadWatchScreen, debug: loadDebugScreen, about: loadAboutScreen };
+    if (loaders[id]) loaders[id]();
+  }
+
+  /* --- Persona --- */
+  function loadPersonaScreen() {
+    var ss = ensureSubscreen(); if (!ss) return;
+    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    apiFetch('api/personas')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        clearEl(ss);
+        if (!data) { ss.appendChild(mkEl('p', null, 'Personas not configured.')); return; }
+        _personas.current = data.current || '';
+        var list = Array.isArray(data.available) ? data.available : [];
+        if (!list.length) { ss.appendChild(mkEl('p', null, 'No personas available.')); return; }
+        list.forEach(function (p) {
+          var div = mkEl('div', 'rail-item' + (p.name === _personas.current ? ' active' : ''));
+          div.tabIndex = 0; div.setAttribute('role', 'button');
+          div.appendChild(mkEl('span', 'ic', '◆'));
+          div.appendChild(mkEl('span', 'label', p.name));          // textContent — safe
+          div.appendChild(mkEl('span', 'badge', p.unrestricted ? 'ALL' : (p.tools || 0) + 't'));
+          if (p.description) div.title = p.description;
+          div.addEventListener('click', function () { doSwitchPersona(p.name); });
+          div.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doSwitchPersona(p.name); }
+          });
+          ss.appendChild(div);
+        });
+      })
+      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Failed to load personas.')); });
+  }
+
+  function doSwitchPersona(name) {
+    apiFetch('api/personas/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name }),
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) { if (data) { _personas.current = data.current || name; loadPersonaScreen(); } })
+      .catch(function () {});
+  }
+
+  /* --- Rules --- */
+  function loadRulesScreen() {
+    var ss = ensureSubscreen(); if (!ss) return;
+    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    apiFetch('api/rules')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        clearEl(ss);
+        var list = Array.isArray(data) ? data : [];
+        if (!list.length) { ss.appendChild(mkEl('p', null, 'No rules loaded.')); return; }
+        list.forEach(function (rule) {
+          var div = mkEl('div');
+          div.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--lcd-pixel-soft);';
+          var head = mkEl('div');
+          head.style.cssText = 'display:flex;align-items:center;gap:10px;';
+          var nm = mkEl('span', null, rule.name);   // textContent — safe
+          nm.style.fontFamily = 'var(--mono)';
+          var st = mkEl('span', null, rule.enabled ? '● ACTIVE' : '○ PAUSED');
+          st.style.color = rule.enabled ? 'var(--led-green)' : 'var(--led-off)';
+          head.appendChild(nm); head.appendChild(st);
+          if (rule.fire_count) head.appendChild(mkEl('span', null, rule.fire_count + ' fires'));
+          div.appendChild(head);
+          if (rule.description) div.appendChild(mkEl('p', null, rule.description));  // textContent — safe
+          var acts = mkEl('div');
+          acts.style.cssText = 'display:flex;gap:8px;margin-top:4px;';
+          var togBtn = makeSmallBtn(rule.enabled ? 'PAUSE' : 'RESUME', function () { doToggleRule(rule.name, !rule.enabled); });
+          var tstBtn = makeSmallBtn('TEST', function () { doTestRule(rule.name, div); });
+          acts.appendChild(togBtn); acts.appendChild(tstBtn);
+          div.appendChild(acts);
+          ss.appendChild(div);
+        });
+      })
+      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Rules engine not configured.')); });
+  }
+
+  function doToggleRule(name, shouldEnable) {
+    apiFetch('api/rules/' + encodeURIComponent(name) + '/' + (shouldEnable ? 'resume' : 'pause'), { method: 'POST' })
+      .then(function () { loadRulesScreen(); }).catch(function () {});
+  }
+
+  function doTestRule(name, parentEl) {
+    apiFetch('api/rules/' + encodeURIComponent(name) + '/test', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (body) {
+        var old = parentEl.querySelector('.rule-test-out');
+        if (old) parentEl.removeChild(old);
+        var pre = mkEl('pre', 'rule-test-out');
+        pre.style.cssText = 'background:var(--lcd-pixel);color:var(--lcd-bg);padding:6px;font-family:var(--mono);font-size:12px;margin-top:4px;';
+        pre.textContent = Array.isArray(body.actions) ? body.actions.join('\n') : (body.error || 'no actions');
+        parentEl.appendChild(pre);
+      }).catch(function () {});
+  }
+
+  /* --- Cost --- */
+  function loadCostScreen() {
+    var ss = ensureSubscreen(); if (!ss) return;
+    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    apiFetch('api/cost')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (body) {
+        clearEl(ss);
+        if (!body) { ss.appendChild(mkEl('p', null, 'Cost tracker not configured.')); return; }
+        var total  = body.total || {};
+        var usd    = Number(total.usd || 0);
+        var inTok  = Number(total.input_tokens  || 0);
+        var outTok = Number(total.output_tokens || 0);
+        var big = mkEl('div', null, fmtUSD(usd));
+        big.style.cssText = 'font-family:var(--pixel);font-size:16px;color:var(--orange);margin-bottom:6px;';
+        ss.appendChild(big);
+        ss.appendChild(mkEl('div', null, fmtTokens(inTok + outTok) + ' tokens · ' + fmtTokens(inTok) + ' in · ' + fmtTokens(outTok) + ' out'));
+        if (body.offline) {
+          var ol = mkEl('div', null, 'OFFLINE ESTIMATE');
+          ol.style.color = 'var(--orange-hi)';
+          ss.appendChild(ol);
+        }
+        var byModel = Array.isArray(body.by_model) ? body.by_model : [];
+        if (byModel.length) {
+          ss.appendChild(mkEl('div', null, 'BY MODEL:'));
+          byModel.forEach(function (m) {
+            var row = mkEl('div');
+            row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--lcd-pixel-soft);font-family:var(--mono);font-size:14px;';
+            row.appendChild(mkEl('span', null, m.model || '(unknown)'));
+            row.appendChild(mkEl('span', null, fmtUSD(m.usd) + ' · ' + fmtTokens((m.input_tokens || 0) + (m.output_tokens || 0)) + ' tok'));
+            ss.appendChild(row);
+          });
+        }
+      })
+      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Failed to load cost.')); });
+  }
+
+  /* --- Watch --- */
+  function loadWatchScreen() {
+    var ss = ensureSubscreen(); if (!ss) return;
+    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    apiFetch('api/watch')
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        clearEl(ss);
+        if (!res.ok) {
+          var msg = (res.body && res.body.error) || 'watch unavailable';
+          if (msg === 'watcher not configured') msg = 'Watcher not enabled — launch with --watch';
+          ss.appendChild(mkEl('p', null, msg));
+          return;
+        }
+        var body = res.body;
+        var row = mkEl('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:12px;';
+        var pill = mkEl('span', null, body.paused ? 'PAUSED' : 'ACTIVE');
+        pill.style.cssText = 'font-family:var(--pixel);font-size:9px;padding:4px 8px;background:' + (body.paused ? 'var(--lcd-pixel-soft)' : 'var(--lcd-pixel)') + ';color:var(--lcd-bg);';
+        row.appendChild(pill);
+        var paths = Array.isArray(body.paths) ? body.paths : [];
+        row.appendChild(mkEl('span', null, paths.length + ' path' + (paths.length === 1 ? '' : 's')));
+        var togBtn = makeSmallBtn(body.paused ? 'RESUME' : 'PAUSE', function () {
+          apiFetch('api/watch/' + (body.paused ? 'resume' : 'pause'), { method: 'POST' })
+            .then(function () { loadWatchScreen(); }).catch(function () {});
+        });
+        togBtn.style.marginLeft = 'auto';
+        row.appendChild(togBtn);
+        ss.appendChild(row);
+
+        ss.appendChild(mkEl('div', null, 'RULES:'));
+        var rules = Array.isArray(body.rules) ? body.rules : [];
+        if (!rules.length) ss.appendChild(mkEl('p', null, 'No rules configured.'));
+        else rules.forEach(function (r) {
+          var d = mkEl('div');
+          d.style.cssText = 'padding:6px 0;border-bottom:1px solid var(--lcd-pixel-soft);';
+          var pat = mkEl('div', null, r.pattern || '');
+          pat.style.fontFamily = 'var(--mono)';
+          d.appendChild(pat);
+          d.appendChild(mkEl('div', null, r.prompt || ''));
+          ss.appendChild(d);
+        });
+
+        ss.appendChild(mkEl('div', null, 'RECENT EVENTS:'));
+        var evts = Array.isArray(body.recent_events) ? body.recent_events : [];
+        if (!evts.length) ss.appendChild(mkEl('p', null, 'No recent events.'));
+        else evts.forEach(function (ev) {
+          var d = mkEl('div');
+          d.style.cssText = 'padding:4px 0;border-bottom:1px solid var(--lcd-pixel-soft);font-size:14px;';
+          d.appendChild(mkEl('div', null, (ev.at ? new Date(ev.at).toLocaleTimeString() : '') + ' · ' + (ev.rule || '')));
+          d.appendChild(mkEl('div', null, ev.path || ''));
+          if (ev.error) { var ee = mkEl('div', null, ev.error); ee.style.color = 'var(--led-red)'; d.appendChild(ee); }
+          ss.appendChild(d);
+        });
+      })
+      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Failed to load watch state.')); });
+  }
+
+  /* --- Debug --- */
+  function loadDebugScreen() {
+    var ss = ensureSubscreen(); if (!ss) return;
+    clearEl(ss); ss.appendChild(mkEl('p', null, 'Loading…'));
+    apiFetch('api/debug')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (body) {
+        clearEl(ss);
+        if (!body) { ss.appendChild(mkEl('p', null, 'Debug unavailable.')); return; }
+        var sections = [
+          ['BUILD',   [ ['version', (body.build   && body.build.version)   || '—'],
+                        ['commit',  (body.build   && body.build.commit)    || '—'],
+                        ['date',    (body.build   && body.build.date)      || '—'] ]],
+          ['RUNTIME', [ ['goroutines', String((body.runtime && body.runtime.goroutines) || 0)],
+                        ['heap/sys',   ((body.runtime && body.runtime.heap_mb) || 0) + ' / ' + ((body.runtime && body.runtime.sys_mb) || 0) + ' MB'],
+                        ['uptime',     ((body.runtime && body.runtime.uptime_seconds) || 0) + 's'],
+                        ['go',         (body.runtime && body.runtime.go_version) || '—'] ]],
+          ['STATE',   [ ['persona',     (body.state && body.state.persona)            || 'default'],
+                        ['flipper',     (body.state && body.state.flipper_connected)  ? 'online' : 'offline'],
+                        ['marauder',    (body.state && body.state.marauder_connected) ? 'online' : 'offline'],
+                        ['connections', String((body.state && body.state.active_connections) || 0)] ]],
+        ];
+        sections.forEach(function (sec) {
+          ss.appendChild(mkEl('div', null, sec[0] + ':'));
+          var grid = mkEl('div');
+          grid.style.cssText = 'display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:6px 0 14px;font-family:var(--mono);font-size:14px;';
+          sec[1].forEach(function (kv) {
+            var k = mkEl('span', null, kv[0]); k.style.color = 'var(--lcd-pixel-soft)';
+            grid.appendChild(k);
+            grid.appendChild(mkEl('span', null, kv[1]));
+          });
+          ss.appendChild(grid);
+        });
+        var copyBtn = makeSmallBtn('COPY JSON', function () {
+          try {
+            navigator.clipboard.writeText(JSON.stringify(body, null, 2));
+            copyBtn.textContent = 'COPIED';
+            setTimeout(function () { copyBtn.textContent = 'COPY JSON'; }, 1500);
+          } catch (_) {}
+        });
+        copyBtn.style.marginTop = '8px';
+        ss.appendChild(copyBtn);
+      })
+      .catch(function () { clearEl(ss); ss.appendChild(mkEl('p', null, 'Debug unavailable.')); });
+  }
+
+  /* --- About --- */
+  function loadAboutScreen() {
+    var ss = ensureSubscreen(); if (!ss) return;
+    clearEl(ss);
+    apiFetch('api/debug')
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .catch(function () { return {}; })
+      .then(function (body) {
+        var build = (body && body.build) || {};
+        [['PROMPTZERO', build.version || 'v0.9'],
+         ['COMMIT',     build.commit  || '—'],
+         ['DATE',       build.date    || '—'],
+         ['MODULE',     'github.com/xunholy/promptzero'],
+         ['LICENSE',    'AGPL-3.0-or-later'],
+        ].forEach(function (kv) {
+          var row = mkEl('div');
+          row.style.cssText = 'display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--lcd-pixel-soft);font-size:15px;';
+          var k = mkEl('span', null, kv[0]); k.style.color = 'var(--lcd-pixel-soft)';
+          var v = mkEl('span', null, kv[1]); v.style.fontFamily = 'var(--mono)';
+          row.appendChild(k); row.appendChild(v);
+          ss.appendChild(row);
+        });
+      });
+  }
+
+  /* =========================================================================
+     Audit screen
+  ========================================================================= */
+
+  function loadAuditScreen() {
+    var ss = ensureSubscreen(); if (!ss) return;
+    clearEl(ss);
+    var notice = mkEl('p', null, 'Audit entries appear as tool calls are made during the session. Tool calls recorded this session:');
+    notice.style.cssText = 'color:var(--lcd-pixel-soft);font-size:15px;margin-bottom:10px;';
+    ss.appendChild(notice);
+
+    var sb      = document.getElementById('scrollback');
+    var toolMsgs = sb ? sb.querySelectorAll('[data-tool-key]') : [];
+    if (!toolMsgs.length) {
+      ss.appendChild(mkEl('p', null, 'No tool calls yet.'));
+      return;
+    }
+    Array.from(toolMsgs).forEach(function (tm) {
+      var key = (tm.dataset.toolKey || '').split('|');
+      var name = key[1] || '';
+      var d = mkEl('div', null, '▸ ' + name);  // textContent — safe
+      d.style.cssText = 'padding:4px 0;border-bottom:1px solid var(--lcd-pixel-soft);font-family:var(--mono);';
+      ss.appendChild(d);
+    });
+  }
+
+  /* =========================================================================
+     Report screen  (POST /api/validate)
+  ========================================================================= */
+
+  function loadReportScreen() {
+    var ss = ensureSubscreen(); if (!ss) return;
+    clearEl(ss);
+
+    ss.appendChild(mkEl('div', null, 'VALIDATE BADUSB SCRIPT:'));
+
+    var pathLbl = mkEl('label', null, 'Path (optional):');
+    pathLbl.htmlFor = 'reportPath';
+    pathLbl.style.cssText = 'display:block;margin-top:8px;font-family:var(--pixel);font-size:8px;letter-spacing:2px;';
+    ss.appendChild(pathLbl);
+
+    var pathInp = document.createElement('input');
+    pathInp.id   = 'reportPath';
+    pathInp.type = 'text';
+    pathInp.placeholder  = '/path/to/payload.txt';
+    pathInp.autocomplete = 'off';
+    pathInp.spellcheck   = false;
+    pathInp.style.cssText = 'width:100%;background:transparent;border:1px solid var(--lcd-pixel);' +
+      'color:var(--lcd-pixel);padding:6px;font-family:var(--mono);font-size:14px;margin-bottom:8px;outline:none;';
+    ss.appendChild(pathInp);
+
+    var contLbl = mkEl('label', null, 'Content:');
+    contLbl.htmlFor   = 'reportContent';
+    contLbl.style.cssText = pathLbl.style.cssText;
+    ss.appendChild(contLbl);
+
+    var contArea = document.createElement('textarea');
+    contArea.id          = 'reportContent';
+    contArea.rows        = 5;
+    contArea.placeholder = 'DELAY 500\nSTRING echo hello\nENTER';
+    contArea.spellcheck  = false;
+    contArea.style.cssText = 'width:100%;background:transparent;border:1px solid var(--lcd-pixel);' +
+      'color:var(--lcd-pixel);padding:6px;font-family:var(--mono);font-size:14px;resize:vertical;outline:none;';
+    ss.appendChild(contArea);
+
+    var resultDiv = mkEl('div');
+    resultDiv.style.marginTop = '12px';
+
+    var runBtn = makeSmallBtn('VALIDATE', function () {
+      var path    = pathInp.value.trim();
+      var content = contArea.value;
+      if (!path && !content) { clearEl(resultDiv); resultDiv.appendChild(mkEl('p', null, 'Enter a path or paste content.')); return; }
+      runBtn.textContent = 'VALIDATING…';
+      runBtn.disabled    = true;
+      clearEl(resultDiv);
+
+      apiFetch('api/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: path, content: content }),
+      })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+        .then(function (res) {
+          runBtn.textContent = 'VALIDATE';
+          runBtn.disabled    = false;
+          clearEl(resultDiv);
+          if (!res.ok) { resultDiv.appendChild(mkEl('p', null, 'Error: ' + ((res.body && res.body.error) || 'unknown'))); return; }
+          renderValidateReport(resultDiv, res.body);
+        })
+        .catch(function (e) {
+          runBtn.textContent = 'VALIDATE';
+          runBtn.disabled    = false;
+          clearEl(resultDiv);
+          resultDiv.appendChild(mkEl('p', null, 'Validate failed: ' + (e.message || e)));
+        });
+    });
+    runBtn.style.marginTop = '8px';
+    ss.appendChild(runBtn);
+    ss.appendChild(resultDiv);
+  }
+
+  function renderValidateReport(container, b) {
+    var sumRow = mkEl('div');
+    sumRow.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:10px;';
+
+    var risk = (b.overall_risk || 'low').toLowerCase();
+    var badge = mkEl('span', null, (b.overall_risk || '').toUpperCase());
+    badge.style.cssText = 'font-family:var(--pixel);font-size:8px;padding:3px 6px;background:' +
+      (risk === 'critical' || risk === 'high' ? '#8a0d0d' : 'var(--lcd-pixel)') + ';color:var(--lcd-bg);';
+    sumRow.appendChild(badge);
+
+    var nm = mkEl('span', null, b.name || '');  // textContent — safe
+    nm.style.fontFamily = 'var(--mono)';
+    sumRow.appendChild(nm);
+
+    var verdict = mkEl('span', null, b.approved ? 'APPROVED' : 'BLOCKED');
+    verdict.style.cssText = 'margin-left:auto;color:' + (b.approved ? 'var(--led-green)' : 'var(--led-red)') + ';font-family:var(--pixel);font-size:9px;';
+    sumRow.appendChild(verdict);
+    container.appendChild(sumRow);
+
+    var findings = Array.isArray(b.findings) ? b.findings : [];
+    if (!findings.length) { container.appendChild(mkEl('p', null, 'No findings — payload looks clean.')); return; }
+    findings.forEach(function (f) {
+      var d = mkEl('div');
+      d.style.cssText = 'padding:6px 0;border-bottom:1px solid var(--lcd-pixel-soft);';
+      var head = mkEl('div');
+      head.style.cssText = 'display:flex;gap:8px;align-items:center;';
+      var sev = mkEl('span', null, (f.severity || '').toUpperCase());
+      var sevRisk = (f.severity || '').toLowerCase();
+      sev.style.cssText = 'font-family:var(--pixel);font-size:7px;padding:2px 5px;background:' +
+        (sevRisk === 'critical' || sevRisk === 'high' ? '#8a0d0d' : 'var(--lcd-pixel)') + ';color:var(--lcd-bg);';
+      var ruleEl = mkEl('span', null, f.rule || '');  // textContent — safe
+      ruleEl.style.fontFamily = 'var(--mono)';
+      var lineEl = mkEl('span', null, 'L' + (f.line || 0));
+      lineEl.style.marginLeft = 'auto';
+      head.appendChild(sev); head.appendChild(ruleEl); head.appendChild(lineEl);
+      d.appendChild(head);
+      d.appendChild(mkEl('p', null, f.message || ''));  // textContent — safe
+      if (f.excerpt) {
+        var pre = mkEl('pre', null, f.excerpt);  // textContent — safe
+        pre.style.cssText = 'background:var(--lcd-pixel);color:var(--lcd-bg);padding:4px;font-family:var(--mono);font-size:11px;';
+        d.appendChild(pre);
+      }
+      container.appendChild(d);
+    });
+  }
+
+  /* =========================================================================
+     Utility helpers
+  ========================================================================= */
+
+  function makeSmallBtn(label, onclick) {
+    var btn = mkEl('button', null, label);
+    btn.type = 'button';
+    btn.style.cssText = 'font-family:var(--pixel);font-size:8px;letter-spacing:2px;padding:6px 10px;' +
+      'background:var(--lcd-pixel);color:var(--lcd-bg);border:none;cursor:pointer;';
+    btn.addEventListener('click', onclick);
+    return btn;
+  }
+
+  function fmtJSON(v) {
+    if (v == null || v === '') return '';
+    if (typeof v === 'string') {
+      var t = v.trim();
+      if (t.length && (t[0] === '{' || t[0] === '[')) {
+        try { return JSON.stringify(JSON.parse(t), null, 2); } catch (_) { return v; }
+      }
+      return v;
+    }
+    try { return JSON.stringify(v, null, 2); } catch (_) { return String(v); }
+  }
+
+  function fmtBytes(n) {
+    n = Number(n);
+    if (!isFinite(n) || n < 0) return '0B';
+    var units = ['B', 'K', 'M', 'G', 'T'];
+    var i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (n < 10 ? n.toFixed(1) : Math.round(n)) + units[i];
+  }
+
+  function fmtUSD(n) {
+    var v = Number(n || 0);
+    if (v >= 100) return '$' + v.toFixed(0);
+    if (v >= 1)   return '$' + v.toFixed(2);
+    return '$' + v.toFixed(v < 0.01 ? 4 : 2);
+  }
+
+  function fmtTokens(n) {
+    var v = Number(n || 0);
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + 'k';
+    return String(v);
+  }
+
+  function prefersReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  /* =========================================================================
+     Initialisation
+  ========================================================================= */
+
+  function init() {
+    buildMascot();
+    setupDrawer();
+    setupRailNav();
+    setupDpad();
+    setupHistory();
+    setupInputForm();
+
+    // Scroll-pause: when user scrolls up >40px from bottom, stop auto-scroll
+    var sb = document.getElementById('scrollback');
+    if (sb) {
+      sb.addEventListener('scroll', function () {
+        _autoScrollPaused = (sb.scrollHeight - sb.scrollTop - sb.clientHeight) > 40;
+      }, { passive: true });
+    }
+
+    setCrumbs('AGENT', 'SESSION');
+
+    runBoot()
+      .then(authBootstrap)
+      .then(function () {
+        connect();
+        startDevicePoll();
+        startCostPoll();
+        // Pre-load personas silently so Settings > Persona is snappy
+        apiFetch('api/personas')
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { if (d) { _personas.current = d.current || ''; _personas.list = Array.isArray(d.available) ? d.available : []; } })
+          .catch(function () {});
+      });
+
+    window.addEventListener('beforeunload', function () {
+      if (_ws) { try { _ws.close(); } catch (_) {} }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+
 })();

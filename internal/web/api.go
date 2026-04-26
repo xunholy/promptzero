@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -636,14 +637,37 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 		"system_debug", "system_lock", "system_log_level",
 	})
 
+	// batteryAny mirrors the existing battery map (string-typed Flipper
+	// CLI fields) AND adds a numeric `percent` (0–100) for the status
+	// bar's battery pill. Existing consumers reading `battery.charge_level`
+	// keep working — only new keys are added on top.
+	batteryAny := make(map[string]any, len(battery)+1)
+	for k, v := range battery {
+		batteryAny[k] = v
+	}
+	batteryAny["percent"] = parseBatteryPercent(devInfo)
+
+	// New flat status-bar sections. None of these collide with the
+	// existing `battery` / `storage` / `firmware` / `hardware` / `radio`
+	// / `system` / `raw` / `*_errors` keys above, so existing consumers
+	// of /api/device are unaffected.
+	flipperSection := s.flipperStatusSection(devInfo)
+	marauderSection := s.marauderStatusSection()
+	bleSection := s.bleStatusSection()
+	sdSection := parseSDSection(devInfo)
+
 	resp := map[string]any{
 		"firmware": firmware,
 		"hardware": hardware,
 		"radio":    radio,
-		"battery":  battery,
+		"battery":  batteryAny,
 		"storage":  storage,
 		"system":   system,
 		"raw":      devInfo,
+		"flipper":  flipperSection,
+		"marauder": marauderSection,
+		"ble":      bleSection,
+		"sd":       sdSection,
 	}
 	if len(powerInfoErrors) > 0 {
 		resp["power_info_errors"] = powerInfoErrors
@@ -666,6 +690,144 @@ func pickFields(src map[string]string, keys []string) map[string]string {
 	for _, k := range keys {
 		if v, ok := src[k]; ok {
 			out[k] = v
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Status-bar sections
+//
+// The redesigned web UI's status bar binds to a small number of fixed,
+// strongly-typed fields: `flipper.{connected,firmware,port}`,
+// `marauder.{connected,firmware,port}`, `ble.state`,
+// `battery.percent`, `sd.{free_bytes,total_bytes}`. The existing
+// `firmware` / `hardware` / `battery` / `storage` maps stay as-is for
+// the panel renderers that already consume them — these new fields sit
+// alongside.
+// ---------------------------------------------------------------------------
+
+// deviceFlipperStatus is the status-bar Flipper pill payload. `port` is
+// the transport identity ("/dev/ttyACM0" for serial, "ble://AA:BB:..."
+// for BLE) — the UI renders it as-is.
+type deviceFlipperStatus struct {
+	Connected bool   `json:"connected"`
+	Firmware  string `json:"firmware"`
+	Port      string `json:"port"`
+}
+
+// deviceMarauderStatus is the status-bar Marauder pill payload. `port`
+// and `firmware` are populated from setup-time info recorded via
+// SetMarauderInfo; both are empty when no Marauder was wired (matches
+// "don't fabricate values when hardware isn't present").
+type deviceMarauderStatus struct {
+	Connected bool   `json:"connected"`
+	Firmware  string `json:"firmware"`
+	Port      string `json:"port"`
+}
+
+// deviceBLEStatus reflects the Flipper-link BLE state — i.e., whether
+// PromptZero is talking to the Flipper over a BLE transport. There is
+// deliberately no probe of the OS-level Bluetooth adapter: that would
+// require platform-specific privileged access (BlueZ / CoreBluetooth)
+// that the project does not depend on. Status values:
+//
+//	"on"  — flipper transport kind == "ble"
+//	"off" — flipper transport kind != "ble" (typically serial USB)
+//	"err" — reserved for future use; never emitted today
+type deviceBLEStatus struct {
+	State string `json:"state"`
+}
+
+// deviceSDStatus is the status-bar SD-card pill payload. Bytes are
+// uint64 (parsed from the existing `storage_sdcard_freeSpace`/
+// `storage_sdcard_totalSpace` strings — both decimal byte counts).
+// Zero values surface as "—" in the UI rather than "0 B free".
+type deviceSDStatus struct {
+	Present    bool   `json:"present"`
+	FreeBytes  uint64 `json:"free_bytes"`
+	TotalBytes uint64 `json:"total_bytes"`
+}
+
+// flipperStatusSection builds the typed Flipper status pill. `connected`
+// uses the same atomic the /api/debug snapshot reads, so the UI sees a
+// consistent connectivity story across endpoints. `port` is sourced from
+// the live transport's Identity() — empty when the transport isn't yet
+// dialled (a transient state during reconnect).
+func (s *Server) flipperStatusSection(devInfo map[string]string) deviceFlipperStatus {
+	out := deviceFlipperStatus{
+		Connected: s.flipperOn.Load(),
+		Firmware:  devInfo["firmware_version"],
+	}
+	if s.flipper != nil {
+		if tx := s.flipper.Transport(); tx != nil {
+			out.Port = tx.Identity()
+		}
+	}
+	return out
+}
+
+// marauderStatusSection builds the typed Marauder status pill from the
+// values setup.go records via SetMarauderInfo. When no Marauder was
+// wired the section is `{connected:false, firmware:"", port:""}` — the
+// status-bar interprets empty strings as "unknown" and renders an em-dash.
+func (s *Server) marauderStatusSection() deviceMarauderStatus {
+	s.marauderInfoMu.Lock()
+	port := s.marauderPort
+	fw := s.marauderFirmware
+	s.marauderInfoMu.Unlock()
+	return deviceMarauderStatus{
+		Connected: s.marauderOn.Load(),
+		Firmware:  fw,
+		Port:      port,
+	}
+}
+
+// bleStatusSection derives the BLE state from the Flipper transport's
+// Kind() telemetry tag. See deviceBLEStatus for the semantics rationale.
+func (s *Server) bleStatusSection() deviceBLEStatus {
+	state := "off"
+	if s.flipper != nil {
+		if tx := s.flipper.Transport(); tx != nil && tx.Kind() == "ble" {
+			state = "on"
+		}
+	}
+	return deviceBLEStatus{State: state}
+}
+
+// parseBatteryPercent extracts a 0–100 integer from devInfo's
+// `charge_level` field (emitted by Flipper's power_info as the bare
+// percentage, e.g. "91"). Returns 0 when the field is absent or
+// unparseable — the status bar renders 0 as "—" rather than misleading
+// the operator.
+func parseBatteryPercent(devInfo map[string]string) int {
+	v, ok := devInfo["charge_level"]
+	if !ok {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 || n > 100 {
+		return 0
+	}
+	return n
+}
+
+// parseSDSection turns the Flipper's SD `storage_sdcard_*` string fields
+// into the typed SD pill. `present` follows the device's "true"/"false"
+// string convention; byte counts are decoded from the decimal strings
+// produced by parseKiBLine (see flipper.StorageFSInfoMap).
+func parseSDSection(devInfo map[string]string) deviceSDStatus {
+	out := deviceSDStatus{
+		Present: devInfo["storage_sdcard_present"] == "true",
+	}
+	if v, ok := devInfo["storage_sdcard_freeSpace"]; ok {
+		if n, err := strconv.ParseUint(strings.TrimSpace(v), 10, 64); err == nil {
+			out.FreeBytes = n
+		}
+	}
+	if v, ok := devInfo["storage_sdcard_totalSpace"]; ok {
+		if n, err := strconv.ParseUint(strings.TrimSpace(v), 10, 64); err == nil {
+			out.TotalBytes = n
 		}
 	}
 	return out
