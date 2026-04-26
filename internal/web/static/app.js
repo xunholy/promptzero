@@ -639,20 +639,12 @@
         var inp = document.getElementById('cmd');
         var sb  = document.getElementById('scrollback');
 
-        // One-line diagnostic so operators can confirm in DevTools that the
-        // click reached the handler and which branch fires. Cheap; useful.
-        try {
-          console.log('[dpad]', dir, 'isHolder=' + (_screenState && _screenState.isHolder),
-            'mode=' + _dpadMode, 'wsOpen=' + (_ws && _ws.readyState === WebSocket.OPEN));
-        } catch (_) {}
-
         // Mirror-mode takes priority: when this session holds the mirror,
         // the CLI input/send endpoint is locked, so route the press through
         // the held RPC session via the screen_input WS frame instead.
         if (_screenState && _screenState.isHolder) {
           beep(dir === 'ok' ? 880 : 660, 0.04);
-          var ok = sendWs({ type: 'screen_input', button: dir, event_type: 'short' });
-          try { console.log('[dpad] screen_input sent=' + ok); } catch (_) {}
+          sendWs({ type: 'screen_input', button: dir, event_type: 'short' });
           return;
         }
 
@@ -727,10 +719,11 @@
     var dpad = document.getElementById('dpad');
     var btn  = document.getElementById('dpadModeToggle');
     var holder = !!(_screenState && _screenState.isHolder);
-    var effective = holder ? 'mirror' : _dpadMode;
-    if (dpad) dpad.dataset.mode = effective;
-    // Hide the SCROLL/DEVICE toggle while mirror is held — the dpad is
-    // locked to the mirror's RPC input path, so the toggle is meaningless.
+    // Body attribute drives the .dpad show/hide rule in app.css. Outside
+    // mirror mode the dpad has no useful behaviour (it'd just 409 against
+    // the locked CLI input/send) so we hide it entirely.
+    document.body.dataset.mirrorHolder = holder ? '1' : '';
+    if (dpad) dpad.dataset.mode = holder ? 'mirror' : _dpadMode;
     if (btn) {
       btn.style.display = holder ? 'none' : '';
       btn.textContent = _dpadMode === 'device' ? 'DEVICE' : 'SCROLL';

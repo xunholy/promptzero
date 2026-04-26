@@ -148,9 +148,6 @@ func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 	cli := s.screenActiveRPC
 	isHolder := s.screenHolder == c
 	s.screenMu.Unlock()
-	slog.Info("screen_input received",
-		"session", c.id, "button", button, "event", event,
-		"is_holder", isHolder, "rpc_nil", cli == nil)
 	if !isHolder || cli == nil {
 		return
 	}
@@ -166,8 +163,6 @@ func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 			})
 			return false
 		}
-		slog.Info("screen_input dispatched",
-			"session", c.id, "button", button, "event", ev)
 		return true
 	}
 	switch event {
