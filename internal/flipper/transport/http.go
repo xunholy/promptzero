@@ -67,11 +67,11 @@ func init() { //nolint:gochecknoinits
 //
 // Recognised query parameters (all optional):
 //
-//   send_path    overrides /uart/send
-//   recv_path    overrides /uart/recv
-//   token        bearer token (Authorization: Bearer <token>)
-//   timeout_ms   per-recv long-poll window (default 500)
-//   batch        max bytes per recv (default 4096)
+//	send_path    overrides /uart/send
+//	recv_path    overrides /uart/recv
+//	token        bearer token (Authorization: Bearer <token>)
+//	timeout_ms   per-recv long-poll window (default 500)
+//	batch        max bytes per recv (default 4096)
 func httpDialer(rawURL string) (Transport, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -148,10 +148,10 @@ type httpTransport struct {
 
 	client *http.Client
 
-	mu       sync.Mutex
-	dialled  bool
-	closed   bool
-	pending  []byte // unread bytes from prior recv
+	mu      sync.Mutex
+	dialled bool
+	closed  bool
+	pending []byte // unread bytes from prior recv
 }
 
 // Dial probes the configured base URL by issuing a zero-byte recv. The

@@ -21,9 +21,9 @@ func encodePWMFrame(bits []byte, te, syncHigh, syncLow, oneHigh, oneLow, zeroHig
 	}
 	for _, b := range bits {
 		if b != 0 {
-			frame = append(frame, oneHigh*te, -(oneLow*te))
+			frame = append(frame, oneHigh*te, -(oneLow * te))
 		} else {
-			frame = append(frame, zeroHigh*te, -(zeroLow*te))
+			frame = append(frame, zeroHigh*te, -(zeroLow * te))
 		}
 	}
 	out := make([]int, 0, len(frame)*repeat)
@@ -39,9 +39,9 @@ func encodeSyncSpaceThenPDM(bits []byte, te, syncSpaceTE, oneSpaceTE, zeroSpaceT
 	out := []int{-(syncSpaceTE * te)}
 	for _, b := range bits {
 		if b != 0 {
-			out = append(out, te, -(oneSpaceTE*te))
+			out = append(out, te, -(oneSpaceTE * te))
 		} else {
-			out = append(out, te, -(zeroSpaceTE*te))
+			out = append(out, te, -(zeroSpaceTE * te))
 		}
 	}
 	return out

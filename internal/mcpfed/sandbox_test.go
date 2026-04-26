@@ -107,10 +107,10 @@ func contains(s []string, x string) bool {
 	return false
 }
 
-func endsWithEcho(s string) bool      { return endsWith(s, "echo") }
-func endsWithDocker(s string) bool    { return endsWith(s, "docker") }
-func endsWithBwrap(s string) bool     { return endsWith(s, "bwrap") }
-func endsWithFirejail(s string) bool  { return endsWith(s, "firejail") }
+func endsWithEcho(s string) bool     { return endsWith(s, "echo") }
+func endsWithDocker(s string) bool   { return endsWith(s, "docker") }
+func endsWithBwrap(s string) bool    { return endsWith(s, "bwrap") }
+func endsWithFirejail(s string) bool { return endsWith(s, "firejail") }
 
 func endsWith(s, suffix string) bool {
 	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix

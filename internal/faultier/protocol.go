@@ -85,11 +85,11 @@ const (
 type TriggerType byte
 
 const (
-	TriggerNone         TriggerType = 0x00 // immediate — no trigger wait
-	TriggerRisingEdge   TriggerType = 0x01 // TRIGGER_RISING_EDGE
-	TriggerFallingEdge  TriggerType = 0x02 // TRIGGER_FALLING_EDGE
-	TriggerHigh         TriggerType = 0x03 // TRIGGER_HIGH
-	TriggerLow          TriggerType = 0x04 // TRIGGER_LOW
+	TriggerNone        TriggerType = 0x00 // immediate — no trigger wait
+	TriggerRisingEdge  TriggerType = 0x01 // TRIGGER_RISING_EDGE
+	TriggerFallingEdge TriggerType = 0x02 // TRIGGER_FALLING_EDGE
+	TriggerHigh        TriggerType = 0x03 // TRIGGER_HIGH
+	TriggerLow         TriggerType = 0x04 // TRIGGER_LOW
 )
 
 // TriggerSource selects which physical input pin to watch.
@@ -129,10 +129,10 @@ const StatusBlockLen = 7
 
 // StatusBlock holds the parsed status response payload.
 type StatusBlock struct {
-	Armed        bool
-	LastDelayUS  uint32
-	LastOutcome  byte
-	Reserved     byte
+	Armed       bool
+	LastDelayUS uint32
+	LastOutcome byte
+	Reserved    byte
 }
 
 // OutcomeString returns a human-readable description of an Outcome constant.

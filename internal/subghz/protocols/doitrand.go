@@ -25,8 +25,8 @@ import "fmt"
 // Doitrand decodes Doitrand 12-bit OOK frames.
 type Doitrand struct{}
 
-func (p Doitrand) Name() string      { return "Doitrand" }
-func (p Doitrand) BitRate() float64  { return 1000.0 }
+func (p Doitrand) Name() string     { return "Doitrand" }
+func (p Doitrand) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a Doitrand frame.
 // Uses midpoint discrimination (2×TE threshold) to separate "1" (3×TE space)

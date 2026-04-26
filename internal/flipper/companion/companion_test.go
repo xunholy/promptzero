@@ -132,14 +132,6 @@ func (w *fakeIO) StorageRemove(path string) (string, error) {
 	return "", nil
 }
 
-func (w *fakeIO) removedSnapshot() []string {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	out := make([]string, len(w.removed))
-	copy(out, w.removed)
-	return out
-}
-
 func (w *fakeIO) snapshot() []writeCall {
 	w.mu.Lock()
 	defer w.mu.Unlock()

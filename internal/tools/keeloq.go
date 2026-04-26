@@ -33,7 +33,7 @@ func init() { //nolint:gochecknoinits
 }
 
 var keeloqDecryptSpec = Spec{
-	Name: "keeloq_decrypt",
+	Name:        "keeloq_decrypt",
 	Description: "Decrypt a 32-bit KeeLoq ciphertext block using a known 64-bit key. Returns the recovered plaintext, the decoded button bits and counter (HCS-format), and an HCS-validity flag. Use after keeloq_bruteforce or keeloq_dictionary recover the key, to confirm.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -51,7 +51,7 @@ var keeloqDecryptSpec = Spec{
 }
 
 var keeloqDictionarySpec = Spec{
-	Name: "keeloq_dictionary",
+	Name:        "keeloq_dictionary",
 	Description: "Test every public-literature KeeLoq manufacturer key against a (plaintext, ciphertext) pair. Returns the matching ManufacturerKey entry (vendor, description, source citation) when one fits; reports no-match otherwise. Sub-millisecond runtime — always run before keeloq_bruteforce.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -69,7 +69,7 @@ var keeloqDictionarySpec = Spec{
 }
 
 var keeloqBruteforceSpec = Spec{
-	Name: "keeloq_bruteforce",
+	Name:        "keeloq_bruteforce",
 	Description: "CPU brute-force search across a 64-bit KeeLoq keyspace for a key that satisfies a known (plaintext, ciphertext) pair. Sharded across all CPU cores. Practical for ~2^32 ranges in minutes; for full 2^64 use the federated CudaKeeloq MCP tool. Returns the recovered key when found, or no-match when the range exhausts.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -101,11 +101,11 @@ func keeloqDecryptHandler(_ context.Context, _ *Deps, args map[string]any) (stri
 	}
 	plain := keeloq.Decrypt(cipher, key)
 	out := map[string]any{
-		"ciphertext":      fmt.Sprintf("%08X", cipher),
-		"plaintext":       fmt.Sprintf("%08X", plain),
-		"plaintext_dec":   plain,
-		"key":             fmt.Sprintf("%016X", key),
-		"hcs_valid":       keeloq.IsValidHCS(plain),
+		"ciphertext":    fmt.Sprintf("%08X", cipher),
+		"plaintext":     fmt.Sprintf("%08X", plain),
+		"plaintext_dec": plain,
+		"key":           fmt.Sprintf("%016X", key),
+		"hcs_valid":     keeloq.IsValidHCS(plain),
 	}
 	body, _ := json.Marshal(out)
 	return string(body), nil
@@ -123,22 +123,22 @@ func keeloqDictionaryHandler(_ context.Context, _ *Deps, args map[string]any) (s
 	hit, ok := keeloq.TryDictionary(plain, cipher)
 	if !ok {
 		body, _ := json.Marshal(map[string]any{
-			"matched":     false,
-			"plaintext":   fmt.Sprintf("%08X", plain),
-			"ciphertext":  fmt.Sprintf("%08X", cipher),
-			"dict_size":   len(keeloq.Known),
-			"hint":        "no public manufacturer key fits — escalate to keeloq_bruteforce or the CudaKeeloq MCP",
+			"matched":    false,
+			"plaintext":  fmt.Sprintf("%08X", plain),
+			"ciphertext": fmt.Sprintf("%08X", cipher),
+			"dict_size":  len(keeloq.Known),
+			"hint":       "no public manufacturer key fits — escalate to keeloq_bruteforce or the CudaKeeloq MCP",
 		})
 		return string(body), nil
 	}
 	body, _ := json.Marshal(map[string]any{
-		"matched":         true,
-		"vendor":          hit.Vendor,
-		"description":     hit.Description,
-		"key":             fmt.Sprintf("%016X", hit.Key),
-		"source":          hit.Source,
-		"plaintext":       fmt.Sprintf("%08X", plain),
-		"ciphertext":      fmt.Sprintf("%08X", cipher),
+		"matched":     true,
+		"vendor":      hit.Vendor,
+		"description": hit.Description,
+		"key":         fmt.Sprintf("%016X", hit.Key),
+		"source":      hit.Source,
+		"plaintext":   fmt.Sprintf("%08X", plain),
+		"ciphertext":  fmt.Sprintf("%08X", cipher),
 	})
 	return string(body), nil
 }

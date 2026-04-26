@@ -29,8 +29,8 @@ import "fmt"
 // SecplusV1 decodes Security+ v1 40-bit rolling-code frames.
 type SecplusV1 struct{}
 
-func (p SecplusV1) Name() string      { return "Security+ v1" }
-func (p SecplusV1) BitRate() float64  { return 1000.0 }
+func (p SecplusV1) Name() string     { return "Security+ v1" }
+func (p SecplusV1) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a Security+ v1 frame.
 func (p SecplusV1) Decode(pulses []int) (Result, error) {

@@ -89,7 +89,9 @@ func TestIClassHandlerDumpFile(t *testing.T) {
 
 	spec := iclassSpec(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	// 300s gives ~2.5× headroom for race-overhead on CI; under -short the
+	// test is skipped entirely above.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
 	result, err := spec.Handler(ctx, nil, map[string]any{

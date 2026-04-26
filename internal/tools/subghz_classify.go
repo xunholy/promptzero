@@ -79,10 +79,10 @@ func subghzClassifyHandler(_ context.Context, _ *Deps, args map[string]any) (str
 	}
 	if len(sf.Pulses) == 0 {
 		out := map[string]any{
-			"matched":    false,
-			"reason":     "no pulse data in capture",
-			"frequency":  sf.Frequency,
-			"preset":     sf.Preset,
+			"matched":   false,
+			"reason":    "no pulse data in capture",
+			"frequency": sf.Frequency,
+			"preset":    sf.Preset,
 		}
 		b, _ := json.Marshal(out)
 		return string(b), nil
@@ -108,12 +108,12 @@ func subghzClassifyHandler(_ context.Context, _ *Deps, args map[string]any) (str
 	}
 
 	out := map[string]any{
-		"matched":    len(results) > 0,
-		"top_n":      topN,
-		"frequency":  sf.Frequency,
-		"preset":     sf.Preset,
+		"matched":     len(results) > 0,
+		"top_n":       topN,
+		"frequency":   sf.Frequency,
+		"preset":      sf.Preset,
 		"pulse_count": len(sf.Pulses),
-		"matches":    results,
+		"matches":     results,
 	}
 	if len(results) == 0 {
 		out["hint"] = "no built-in protocol matched — try urh_decode_sub for exotic protocols"

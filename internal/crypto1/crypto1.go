@@ -24,21 +24,21 @@
 // # API surface
 //
 //   - Init(key uint64)             — load the 48-bit sector key into
-//                                    LFSR positions 0..47.
+//     LFSR positions 0..47.
 //   - Crypt(input uint32) uint32   — clock LFSR 32 times, XOR
-//                                    keystream with input. NO external
-//                                    feedback. Symmetric.
+//     keystream with input. NO external
+//     feedback. Symmetric.
 //   - EncCrypt(input, nr uint32)   — like Crypt, but mixes input bits
-//                                    into LFSR feedback (used during
-//                                    the reader-nonce phase of MIFARE
-//                                    auth).
+//     into LFSR feedback (used during
+//     the reader-nonce phase of MIFARE
+//     auth).
 //   - CryptFeedback(in uint32)     — feeds external bits into LFSR
-//                                    feedback while running keystream
-//                                    (used during the tag-nonce nT
-//                                    phase of MIFARE auth).
+//     feedback while running keystream
+//     (used during the tag-nonce nT
+//     phase of MIFARE auth).
 //   - Prng(from uint32, n int)     — advance the tag PRNG (16-bit
-//                                    LFSR pair, x^16 + x^14 + x^13 +
-//                                    x^11 + 1) n cycles.
+//     LFSR pair, x^16 + x^14 + x^13 +
+//     x^11 + 1) n cycles.
 //
 // # Bit ordering
 //

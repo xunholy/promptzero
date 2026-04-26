@@ -28,8 +28,8 @@ import "fmt"
 // Aerolite decodes Aerolite/Nero Radio 24-bit OOK/PWM frames.
 type Aerolite struct{}
 
-func (p Aerolite) Name() string      { return "Aerolite (Nero Radio)" }
-func (p Aerolite) BitRate() float64  { return 1000.0 }
+func (p Aerolite) Name() string     { return "Aerolite (Nero Radio)" }
+func (p Aerolite) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode an Aerolite frame.
 func (p Aerolite) Decode(pulses []int) (Result, error) {

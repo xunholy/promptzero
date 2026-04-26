@@ -21,12 +21,14 @@ const radiotapPresentBitmap uint32 = 0x0000002E
 // for natural alignment of the Channel u16 field.
 //
 // Layout (all little-endian, offsets relative to start of radiotap):
-//  0: u8  it_version = 0
-//  1: u8  it_pad = 0
-//  2: u16 it_len = 16  (total radiotap header length)
-//  4: u32 it_present = 0x0000002E
-//  8: u8  Flags
-//  9: u8  Rate
+//
+//	0: u8  it_version = 0
+//	1: u8  it_pad = 0
+//	2: u16 it_len = 16  (total radiotap header length)
+//	4: u32 it_present = 0x0000002E
+//	8: u8  Flags
+//	9: u8  Rate
+//
 // 10: u16 Channel freq (MHz)
 // 12: u16 Channel flags
 // 14: i8  DBM_AntSignal
@@ -61,14 +63,14 @@ func (h RadiotapHeader) Bytes() []byte {
 	buf := make([]byte, radiotapHeaderLen)
 	le := binary.LittleEndian
 
-	buf[0] = 0 // it_version
-	buf[1] = 0 // it_pad
+	buf[0] = 0                                       // it_version
+	buf[1] = 0                                       // it_pad
 	le.PutUint16(buf[2:], uint16(radiotapHeaderLen)) // it_len
-	le.PutUint32(buf[4:], radiotapPresentBitmap)      // it_present
+	le.PutUint32(buf[4:], radiotapPresentBitmap)     // it_present
 
 	// Fields in present-bitmap order (bit 1 first):
-	buf[8] = h.Flags  // Flags  (bit 1)
-	buf[9] = h.Rate   // Rate   (bit 2)
+	buf[8] = h.Flags // Flags  (bit 1)
+	buf[9] = h.Rate  // Rate   (bit 2)
 
 	// Channel: 2 bytes freq + 2 bytes channel flags (bit 3).
 	// Channel flags: 0x0080 = 2 GHz spectrum; 0x0100 = 5 GHz spectrum.

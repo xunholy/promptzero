@@ -60,12 +60,12 @@ func encodeCMEFrame(bits []byte, te, syncHigh, syncLow, oneHigh, oneLow, zeroHig
 		repeat = 1
 	}
 	var frame []int
-	frame = append(frame, syncHigh*te, -(syncLow*te))
+	frame = append(frame, syncHigh*te, -(syncLow * te))
 	for _, b := range bits {
 		if b != 0 {
-			frame = append(frame, oneHigh*te, -(oneLow*te))
+			frame = append(frame, oneHigh*te, -(oneLow * te))
 		} else {
-			frame = append(frame, zeroHigh*te, -(zeroLow*te))
+			frame = append(frame, zeroHigh*te, -(zeroLow * te))
 		}
 	}
 	out := make([]int, 0, len(frame)*repeat)

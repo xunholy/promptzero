@@ -27,8 +27,8 @@ import "fmt"
 // Beninca decodes Beninca 12-bit fixed-code OOK frames.
 type Beninca struct{}
 
-func (p Beninca) Name() string      { return "Beninca" }
-func (p Beninca) BitRate() float64  { return 1200.0 }
+func (p Beninca) Name() string     { return "Beninca" }
+func (p Beninca) BitRate() float64 { return 1200.0 }
 
 // Decode attempts to decode a Beninca frame.
 // Timing is nearly identical to CAME; distinguished by the longer sync gap

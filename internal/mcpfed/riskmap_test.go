@@ -37,13 +37,13 @@ func TestClassify(t *testing.T) {
 
 func TestParseDefaultRisk(t *testing.T) {
 	cases := map[string]risk.Level{
-		"":         risk.High,
-		"low":      risk.Low,
-		"Medium":   risk.Medium,
-		"HIGH":     risk.High,
-		"critical": risk.Critical,
+		"":          risk.High,
+		"low":       risk.Low,
+		"Medium":    risk.Medium,
+		"HIGH":      risk.High,
+		"critical":  risk.Critical,
 		"   high  ": risk.High,
-		"unknown":  risk.High, // safe fallback
+		"unknown":   risk.High, // safe fallback
 	}
 	for in, want := range cases {
 		if got := parseDefaultRisk(in); got != want {

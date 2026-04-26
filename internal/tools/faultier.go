@@ -39,7 +39,7 @@ const GroupFaultier Group = "faultier"
 // d.Faultier method.
 func (d *Deps) RequireFaultier() error {
 	if d == nil || d.Faultier == nil {
-		return fmt.Errorf("Faultier not connected — start PromptZero with a faultier.port configured")
+		return fmt.Errorf("faultier not connected — start PromptZero with a faultier.port configured")
 	}
 	return nil
 }

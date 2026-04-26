@@ -23,8 +23,8 @@ import "fmt"
 // CAME decodes CAME 12-bit fixed-code OOK frames.
 type CAME struct{}
 
-func (p CAME) Name() string      { return "CAME" }
-func (p CAME) BitRate() float64  { return 1200.0 }
+func (p CAME) Name() string     { return "CAME" }
+func (p CAME) BitRate() float64 { return 1200.0 }
 
 // Decode attempts to decode a CAME frame from the pulse sequence.
 //
@@ -91,7 +91,7 @@ func (p CAME) Decode(pulses []int) (Result, error) {
 		Confidence: confidence,
 		Bits:       bits[:12],
 		Payload: map[string]any{
-			"code": code,
+			"code":  code,
 			"te_us": te,
 		},
 	}, nil

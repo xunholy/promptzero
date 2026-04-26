@@ -28,8 +28,8 @@ import "fmt"
 // HoneywellWS decodes Honeywell 5800-series wireless sensor frames.
 type HoneywellWS struct{}
 
-func (p HoneywellWS) Name() string      { return "Honeywell WS" }
-func (p HoneywellWS) BitRate() float64  { return 3000.0 }
+func (p HoneywellWS) Name() string     { return "Honeywell WS" }
+func (p HoneywellWS) BitRate() float64 { return 3000.0 }
 
 // Decode attempts to decode a Honeywell WS frame.
 func (p HoneywellWS) Decode(pulses []int) (Result, error) {

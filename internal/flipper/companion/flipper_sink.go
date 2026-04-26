@@ -70,10 +70,10 @@ type FlipperSink struct {
 	done   chan struct{}
 	errCnt atomic.Uint64
 
-	respCh    chan Response
-	pollOn    atomic.Bool
-	lastResp  atomic.Pointer[string]
-	respDone  chan struct{}
+	respCh   chan Response
+	pollOn   atomic.Bool
+	lastResp atomic.Pointer[string]
+	respDone chan struct{}
 
 	// TruncateEvery is the cadence (in writes) at which flush()
 	// removes the status file before the next write. Defaults to
@@ -107,10 +107,10 @@ func NewFlipperSink(io FlipperIO, statusPath string, log *slog.Logger) *FlipperS
 		log:           log,
 		TruncateEvery: DefaultTruncateEvery,
 		wake:          make(chan struct{}, 1),
-		quit:         make(chan struct{}),
-		done:         make(chan struct{}),
-		respCh:       make(chan Response, 4),
-		respDone:     make(chan struct{}),
+		quit:          make(chan struct{}),
+		done:          make(chan struct{}),
+		respCh:        make(chan Response, 4),
+		respDone:      make(chan struct{}),
 	}
 	go s.runWriter()
 	go s.runResponsePoller()

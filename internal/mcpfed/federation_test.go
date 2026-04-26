@@ -368,15 +368,15 @@ func TestFederation_BuilderError(t *testing.T) {
 
 func TestValidateName(t *testing.T) {
 	cases := map[string]bool{ // input -> wantValid
-		"":                                             false,
-		"ok":                                           true,
-		"with-dash":                                    true,
-		"with_underscore":                              true,
-		"prefix__remote":                               true,
-		"contains.dot":                                 false,
-		"contains space":                               false,
-		strings.Repeat("a", MaxNameLen):                true,
-		strings.Repeat("a", MaxNameLen+1):              false,
+		"":                                false,
+		"ok":                              true,
+		"with-dash":                       true,
+		"with_underscore":                 true,
+		"prefix__remote":                  true,
+		"contains.dot":                    false,
+		"contains space":                  false,
+		strings.Repeat("a", MaxNameLen):   true,
+		strings.Repeat("a", MaxNameLen+1): false,
 	}
 	for name, wantValid := range cases {
 		err := validateName(name)

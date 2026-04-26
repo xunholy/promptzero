@@ -31,7 +31,7 @@
 //   - ReadOnlyHint=true                       → Low
 //   - OpenWorldHint=true (and not read-only)  → +1 tier vs. baseline
 //   - no annotations                          → ClientConfig.RiskDefault
-//                                                (or High if unset)
+//     (or High if unset)
 //
 // The mapping is conservative: every federated tool gets at least High unless
 // the server explicitly declares it read-only.
@@ -44,9 +44,9 @@
 //
 //   - "none"     — bare exec, intended for trusted local tools.
 //   - "docker"   — `docker run --rm -i --network=none <image>`. The
-//                  ClientConfig.Command is rewritten so the original command
-//                  becomes the docker image; original args become the
-//                  containerised process args.
+//     ClientConfig.Command is rewritten so the original command
+//     becomes the docker image; original args become the
+//     containerised process args.
 //   - "bwrap"    — bubblewrap with read-only rootfs, tmpfs /tmp, no net.
 //   - "firejail" — firejail with --net=none --private (WSL-friendly fallback).
 //

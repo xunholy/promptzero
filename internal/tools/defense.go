@@ -34,7 +34,7 @@ func init() { //nolint:gochecknoinits
 }
 
 var defenseClassifyAdSpec = Spec{
-	Name: "defense_classify_advertisement",
+	Name:        "defense_classify_advertisement",
 	Description: "Classify one captured BLE advertisement against the Wall-of-Flippers heuristic ruleset (Apple Continuity spam, Microsoft Swift Pair malformed, Samsung sentinel model-id, Google Fast Pair repeated-byte, Flipper service UUID). Returns matched signatures with descriptions. Stateless — for cross-advertisement detection (high-frequency MAC rotation) call this from a loop and aggregate. Read-only, no I/O.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -61,10 +61,10 @@ func defenseClassifyAdHandler(_ context.Context, _ *Deps, args map[string]any) (
 	}
 	matches := defense.Classify(ad)
 	out := map[string]any{
-		"address":      ad.Address,
-		"matches":      formatMatches(matches),
-		"match_count":  len(matches),
-		"verdict":      verdictFor(matches),
+		"address":     ad.Address,
+		"matches":     formatMatches(matches),
+		"match_count": len(matches),
+		"verdict":     verdictFor(matches),
 	}
 	body, _ := json.Marshal(out)
 	return string(body), nil

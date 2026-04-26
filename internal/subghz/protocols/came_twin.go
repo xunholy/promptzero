@@ -27,8 +27,8 @@ import "fmt"
 // CAMETwin decodes CAME TWIN 12-bit OOK frames.
 type CAMETwin struct{}
 
-func (p CAMETwin) Name() string      { return "CAME TWIN" }
-func (p CAMETwin) BitRate() float64  { return 1200.0 }
+func (p CAMETwin) Name() string     { return "CAME TWIN" }
+func (p CAMETwin) BitRate() float64 { return 1200.0 }
 
 // Decode attempts to decode a CAME TWIN frame.
 // Distinguished from standard CAME by the 2×TE sync mark.

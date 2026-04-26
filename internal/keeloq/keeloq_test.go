@@ -178,12 +178,12 @@ func TestIsValidHCS(t *testing.T) {
 			want:      true,
 		},
 		{
-			name: "valid HCS block — button=0xF, counter=0xFFFF",
+			name:      "valid HCS block — button=0xF, counter=0xFFFF",
 			decrypted: 0xF000FFFF,
 			want:      true,
 		},
 		{
-			name: "invalid — button nibble is zero",
+			name:      "invalid — button nibble is zero",
 			decrypted: 0x00000042,
 			want:      false,
 		},
@@ -194,7 +194,7 @@ func TestIsValidHCS(t *testing.T) {
 			want:      false,
 		},
 		{
-			name: "all-zero block — button=0 and status=0",
+			name:      "all-zero block — button=0 and status=0",
 			decrypted: 0x00000000,
 			want:      false,
 		},

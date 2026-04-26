@@ -23,7 +23,7 @@ const GroupBruce Group = "bruce"
 // mirroring RequireMarauder (internal/tools/spec.go).
 func (d *Deps) RequireBruce() error {
 	if d == nil || d.Bruce == nil {
-		return fmt.Errorf("Bruce devboard not connected — configure bruce.port in config or use --bruce flag")
+		return fmt.Errorf("bruce devboard not connected — configure bruce.port in config or use --bruce flag")
 	}
 	return nil
 }

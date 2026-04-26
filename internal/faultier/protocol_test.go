@@ -157,7 +157,10 @@ func TestResponseCodeConstants(t *testing.T) {
 
 // TestOutcomeString ensures OutcomeString covers all defined outcome codes.
 func TestOutcomeString(t *testing.T) {
-	cases := []struct{ code byte; want string }{
+	cases := []struct {
+		code byte
+		want string
+	}{
 		{OutcomeNone, "none"},
 		{OutcomeSkip, "skip"},
 		{OutcomeCrash, "crash"},
@@ -174,7 +177,10 @@ func TestOutcomeString(t *testing.T) {
 
 // TestErrCodeString ensures ErrCodeString covers all defined error codes.
 func TestErrCodeString(t *testing.T) {
-	cases := []struct{ code byte; want string }{
+	cases := []struct {
+		code byte
+		want string
+	}{
 		{ErrNotArmed, "not armed"},
 		{ErrInvalidParam, "invalid param"},
 		{ErrBusy, "busy"},

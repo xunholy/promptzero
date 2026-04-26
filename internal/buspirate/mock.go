@@ -24,14 +24,14 @@ import (
 // All methods are goroutine-safe.
 type MockPort struct {
 	mu        sync.Mutex
-	inBuf     bytes.Buffer  // bytes written by the Client (commands)
-	outBuf    bytes.Buffer  // bytes to return on Read (responses)
+	inBuf     bytes.Buffer      // bytes written by the Client (commands)
+	outBuf    bytes.Buffer      // bytes to return on Read (responses)
 	responses map[string]string // command → response body
-	prompt    string        // current mode prompt, e.g. "HiZ>"
-	readWait  time.Duration // poll interval when outBuf is empty
-	timeout   time.Duration // simulated read timeout
+	prompt    string            // current mode prompt, e.g. "HiZ>"
+	readWait  time.Duration     // poll interval when outBuf is empty
+	timeout   time.Duration     // simulated read timeout
 	closed    bool
-	seen      []string      // ordered list of commands received
+	seen      []string // ordered list of commands received
 }
 
 // NewMockPort returns an initialised MockPort in HiZ mode with sane defaults.

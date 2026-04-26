@@ -25,8 +25,8 @@ import "fmt"
 // Smartgate decodes Smartgate 24-bit OOK frames.
 type Smartgate struct{}
 
-func (p Smartgate) Name() string      { return "Smartgate" }
-func (p Smartgate) BitRate() float64  { return 500.0 }
+func (p Smartgate) Name() string     { return "Smartgate" }
+func (p Smartgate) BitRate() float64 { return 500.0 }
 
 // Decode attempts to decode a Smartgate frame.
 // Uses the minimum-duration mark pulse as TE to avoid estimation bias

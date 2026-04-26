@@ -47,7 +47,7 @@ func init() { //nolint:gochecknoinits
 // --- ir_irdb_lookup ---------------------------------------------------------
 
 var irIRDBLookupSpec = Spec{
-	Name: "ir_irdb_lookup",
+	Name:        "ir_irdb_lookup",
 	Description: "Search an operator-supplied IRDB tree (Lucaslhm/Flipper-IRDB layout: <root>/<Manufacturer>/<Device>.ir). Returns a ranked list of matching .ir paths and their first-line metadata. The path comes from the dir argument, falls back to the PZ_IRDB_DIR env var. No I/O beyond the directory walk; safe to call freely.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -151,7 +151,7 @@ func irIRDBLookupHandler(_ context.Context, _ *Deps, args map[string]any) (strin
 // --- evil_portal_template_pick ----------------------------------------------
 
 var evilPortalTemplatePickSpec = Spec{
-	Name: "evil_portal_template_pick",
+	Name:        "evil_portal_template_pick",
 	Description: "List HTML/JS evil-portal templates under an operator-supplied directory and return matches by brand/language. Useful before generate_evil_portal so the agent can pick a known-good template instead of synthesizing one. Path from dir arg or PZ_EVIL_PORTAL_DIR env. Read-only.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -197,8 +197,8 @@ func evilPortalTemplatePickHandler(_ context.Context, _ *Deps, args map[string]a
 			return nil
 		}
 		lp := strings.ToLower(p)
-		if !(strings.HasSuffix(lp, ".html") || strings.HasSuffix(lp, ".htm") ||
-			strings.HasSuffix(lp, ".js") || strings.HasSuffix(lp, ".css")) {
+		if !strings.HasSuffix(lp, ".html") && !strings.HasSuffix(lp, ".htm") &&
+			!strings.HasSuffix(lp, ".js") && !strings.HasSuffix(lp, ".css") {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, p)
@@ -271,7 +271,7 @@ func guessLanguage(parts []string) string {
 func isLangCode(s string) bool {
 	if len(s) == 2 || len(s) == 5 {
 		for _, r := range s {
-			if !(r >= 'a' && r <= 'z') && r != '_' {
+			if (r < 'a' || r > 'z') && r != '_' {
 				return false
 			}
 		}
@@ -283,7 +283,7 @@ func isLangCode(s string) bool {
 // --- badusb_payload_search --------------------------------------------------
 
 var badusbPayloadSearchSpec = Spec{
-	Name: "badusb_payload_search",
+	Name:        "badusb_payload_search",
 	Description: "Search an operator-supplied BadUSB payload corpus (Ducky-script .txt files) for files matching a goal keyword. Returns ranked hits with the first ~6 lines of each hit so the agent can pick a template before generate_badusb. Path from dir arg or PZ_BADUSB_DIR env. Read-only.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -333,7 +333,7 @@ func badusbPayloadSearchHandler(_ context.Context, _ *Deps, args map[string]any)
 			return nil
 		}
 		lp := strings.ToLower(p)
-		if !(strings.HasSuffix(lp, ".txt") || strings.HasSuffix(lp, ".duck") || strings.HasSuffix(lp, ".duckyscript")) {
+		if !strings.HasSuffix(lp, ".txt") && !strings.HasSuffix(lp, ".duck") && !strings.HasSuffix(lp, ".duckyscript") {
 			return nil
 		}
 		if osFilter != "" && !strings.Contains(lp, osFilter) {

@@ -69,9 +69,9 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 	ufbtBin, err := exec.LookPath(ufbt)
 	if err != nil {
 		return "", fmt.Errorf(
-			"fap_build: ufbt not found on PATH (looked for %q): "+
-				"install with `pip install ufbt` or set UFBT_PATH to the binary location. "+
-				"Alternatively run `task fap:companion:build` to build via the Taskfile.",
+			"fap_build: ufbt not found on PATH (looked for %q) — "+
+				"install with `pip install ufbt` or set UFBT_PATH to the binary location, "+
+				"or run `task fap:companion:build` to build via the Taskfile",
 			ufbt,
 		)
 	}
@@ -119,11 +119,11 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 	buildErr := cmd.Run()
 
 	out := map[string]any{
-		"source_dir":  absSrc,
-		"output_dir":  absOut,
-		"stdout":      tail(stdout.Bytes(), 16384),
-		"stderr":      tail(stderr.Bytes(), 16384),
-		"exit_code":   exitCode(cmd),
+		"source_dir": absSrc,
+		"output_dir": absOut,
+		"stdout":     tail(stdout.Bytes(), 16384),
+		"stderr":     tail(stderr.Bytes(), 16384),
+		"exit_code":  exitCode(cmd),
 	}
 	if buildErr != nil {
 		body, _ := json.Marshal(out)

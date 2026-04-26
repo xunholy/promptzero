@@ -30,8 +30,8 @@ import "fmt"
 // NICEFlorS decodes NICE FloR-S 52-bit rolling-code frames.
 type NICEFlorS struct{}
 
-func (p NICEFlorS) Name() string      { return "NICE FloR-S" }
-func (p NICEFlorS) BitRate() float64  { return 1000.0 }
+func (p NICEFlorS) Name() string     { return "NICE FloR-S" }
+func (p NICEFlorS) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a NICE FloR-S frame.
 func (p NICEFlorS) Decode(pulses []int) (Result, error) {
@@ -95,10 +95,10 @@ func (p NICEFlorS) Decode(pulses []int) (Result, error) {
 		Confidence: confidence,
 		Bits:       bits[:52],
 		Payload: map[string]any{
-			"button":         button,
-			"hopping_code":   hopping,
-			"serial":         serial,
-			"te_us":          te,
+			"button":       button,
+			"hopping_code": hopping,
+			"serial":       serial,
+			"te_us":        te,
 		},
 	}, nil
 }

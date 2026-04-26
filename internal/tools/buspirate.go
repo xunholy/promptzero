@@ -23,7 +23,7 @@ import (
 // before invoking any d.BusPirate method, mirroring [Deps.RequireMarauder].
 func (d *Deps) RequireBusPirate() error {
 	if d == nil || d.BusPirate == nil {
-		return fmt.Errorf("Bus Pirate 5 not connected — set buspirate.port in config or pass --buspirate")
+		return fmt.Errorf("bus pirate 5 not connected — set buspirate.port in config or pass --buspirate")
 	}
 	return nil
 }
@@ -41,7 +41,7 @@ func init() { //nolint:gochecknoinits
 // --- buspirate_mode ----------------------------------------------------
 
 var buspirateModeSpec = Spec{
-	Name: "buspirate_mode",
+	Name:        "buspirate_mode",
 	Description: "Switch the Bus Pirate 5 to a specific bus mode. Valid modes: HiZ (idle / safe), I2C, SPI, UART, 1Wire. Required before mode-specific Specs (e.g. switch to I2C before buspirate_i2c_scan).",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -73,7 +73,7 @@ var buspirateModeSpec = Spec{
 // --- buspirate_i2c_scan ------------------------------------------------
 
 var buspirateI2CScanSpec = Spec{
-	Name: "buspirate_i2c_scan",
+	Name:        "buspirate_i2c_scan",
 	Description: "Scan the I2C bus for responding devices. Mode must be I2C (call buspirate_mode first). Returns the 7-bit addresses that ACK'd. Up to 500 kHz on Bus Pirate 5 PIO.",
 	Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
 	Required:    nil,
@@ -103,7 +103,7 @@ var buspirateI2CScanSpec = Spec{
 // --- buspirate_spi_dump ------------------------------------------------
 
 var buspirateSPIDumpSpec = Spec{
-	Name: "buspirate_spi_dump",
+	Name:        "buspirate_spi_dump",
 	Description: "Read N bytes from the SPI bus. Mode must be SPI (call buspirate_mode first). Returns hex-encoded payload. For SPI flash dumps, set up your CS/clock manually before this Spec — Bus Pirate 5 leaves chip-select control to the operator.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -139,7 +139,7 @@ var buspirateSPIDumpSpec = Spec{
 // --- buspirate_uart_bridge ---------------------------------------------
 
 var buspirateUARTBridgeSpec = Spec{
-	Name: "buspirate_uart_bridge",
+	Name:        "buspirate_uart_bridge",
 	Description: "Send bytes over UART (mode must be UART) and capture whatever the target echoes back within the read window. Useful for poking at debug consoles on a captured device.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -176,7 +176,7 @@ var buspirateUARTBridgeSpec = Spec{
 // --- buspirate_voltages ------------------------------------------------
 
 var buspirateVoltagesSpec = Spec{
-	Name: "buspirate_voltages",
+	Name:        "buspirate_voltages",
 	Description: "Read the voltage on every Bus Pirate 5 IO pin (8 channels). Read-only.",
 	Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
 	Required:    nil,
@@ -199,7 +199,7 @@ var buspirateVoltagesSpec = Spec{
 // --- buspirate_pin_set -------------------------------------------------
 
 var buspiratePinSetSpec = Spec{
-	Name: "buspirate_pin_set",
+	Name:        "buspirate_pin_set",
 	Description: "Set a Bus Pirate 5 IO pin's output. value can be a logic level (0/1) or an analog voltage (e.g. 1.5). High-risk because mis-driving an IO pin can damage the target circuit.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -233,7 +233,7 @@ var buspiratePinSetSpec = Spec{
 // --- buspirate_pin_read ------------------------------------------------
 
 var buspiratePinReadSpec = Spec{
-	Name: "buspirate_pin_read",
+	Name:        "buspirate_pin_read",
 	Description: "Read the analog voltage at a single Bus Pirate 5 IO pin. Read-only.",
 	Schema: json.RawMessage(`{
 		"type":"object",

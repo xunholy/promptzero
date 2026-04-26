@@ -25,8 +25,8 @@ import "fmt"
 // KeeLoqHCS decodes Microchip HCS-series KeeLoq rolling-code frames.
 type KeeLoqHCS struct{}
 
-func (p KeeLoqHCS) Name() string      { return "KeeLoq HCS200/300" }
-func (p KeeLoqHCS) BitRate() float64  { return 2500.0 }
+func (p KeeLoqHCS) Name() string     { return "KeeLoq HCS200/300" }
+func (p KeeLoqHCS) BitRate() float64 { return 2500.0 }
 
 // Decode attempts to decode a KeeLoq HCS frame.
 //

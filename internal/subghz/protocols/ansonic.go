@@ -26,8 +26,8 @@ import "fmt"
 // Ansonic decodes Ansonic 12-bit Manchester-encoded OOK frames.
 type Ansonic struct{}
 
-func (p Ansonic) Name() string      { return "Ansonic" }
-func (p Ansonic) BitRate() float64  { return 1200.0 }
+func (p Ansonic) Name() string     { return "Ansonic" }
+func (p Ansonic) BitRate() float64 { return 1200.0 }
 
 // Decode attempts to decode an Ansonic frame.
 func (p Ansonic) Decode(pulses []int) (Result, error) {

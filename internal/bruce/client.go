@@ -1,7 +1,6 @@
 package bruce
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -51,10 +50,10 @@ type AP struct {
 
 // ZigbeePeer is a device observed during an IEEE 802.15.4 passive scan.
 type ZigbeePeer struct {
-	PANID    string `json:"pan_id,omitempty"`
+	PANID     string `json:"pan_id,omitempty"`
 	ShortAddr string `json:"short_addr,omitempty"`
-	Channel  int    `json:"channel,omitempty"`
-	RawLine  string `json:"raw,omitempty"`
+	Channel   int    `json:"channel,omitempty"`
+	RawLine   string `json:"raw,omitempty"`
 }
 
 // Capture is the result of an IR receive operation.
@@ -66,9 +65,9 @@ type Capture struct {
 
 // NFCCard holds the data read from an NFC tag via PN532.
 type NFCCard struct {
-	UID      string `json:"uid,omitempty"`
-	ATQ      string `json:"atq,omitempty"`
-	SAK      string `json:"sak,omitempty"`
+	UID      string   `json:"uid,omitempty"`
+	ATQ      string   `json:"atq,omitempty"`
+	SAK      string   `json:"sak,omitempty"`
 	RawLines []string `json:"raw_lines,omitempty"`
 }
 
@@ -101,9 +100,9 @@ type Capabilities struct {
 // Client manages communication with Bruce firmware over a serial port.
 // Construct with Connect (production) or NewWithPort (testing).
 type Client struct {
-	port  Port
-	mu    sync.Mutex
-	caps  Capabilities
+	port Port
+	mu   sync.Mutex
+	caps Capabilities
 }
 
 // NewWithPort wires a Client around a caller-supplied Port. Used by tests that
@@ -372,16 +371,14 @@ func parseBruceResponse(b []byte) string {
 
 	// Bruce echoes the sent command as the first non-empty line.
 	// Strip it if present.
+	// First line is a blank or ">" prompt → skip; otherwise keep it. Callers
+	// (Parse*) are tolerant of stray header lines, so the conservative path
+	// is to retain anything that isn't an obvious prompt artefact.
 	start := 0
 	if len(lines) > 0 {
 		first := strings.TrimSpace(lines[0])
 		if first == "" || strings.HasPrefix(first, ">") {
 			start = 1
-		} else {
-			// Check if the first line looks like a pure command echo
-			// (no spaces in middle, or matches a known command prefix).
-			// We take a conservative approach and keep it — the callers
-			// (Parse*) are tolerant of stray header lines.
 		}
 	}
 
@@ -409,10 +406,4 @@ func (c *Client) drain() {
 			break
 		}
 	}
-}
-
-// brucePromptIndex returns the offset of the Bruce ">" prompt in b, or -1.
-// Bruce's prompt is a bare ">" or "> " with optional preceding newline.
-func brucePromptIndex(b []byte) int {
-	return bytes.LastIndex(b, []byte("> "))
 }

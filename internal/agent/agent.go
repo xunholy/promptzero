@@ -234,7 +234,7 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 	return a
 }
 
-func (a *Agent) SetMarauder(m *marauder.Marauder)        { a.marauder = m }
+func (a *Agent) SetMarauder(m *marauder.Marauder) { a.marauder = m }
 
 // Marauder returns the attached Marauder client, or nil when unconnected.
 // Read-only access for callers (e.g. setup.go probing firmware) that hold
@@ -251,7 +251,7 @@ func (a *Agent) SetFaultier(c *faultier.Client) { a.faultier = c }
 
 // SetBusPirate attaches a Bus Pirate 5 universal-bus probe client. Nil
 // disables buspirate_* Specs.
-func (a *Agent) SetBusPirate(c *buspirate.Client) { a.buspirate = c }
+func (a *Agent) SetBusPirate(c *buspirate.Client)        { a.buspirate = c }
 func (a *Agent) SetAuditLog(l *audit.Log)                { a.auditLog = l }
 func (a *Agent) SetGenerator(g *generate.Generator)      { a.generator = g }
 func (a *Agent) SetGenLLM(p provider.Provider)           { a.genLLM = p }

@@ -14,17 +14,17 @@
 // The package splits into:
 //
 //   - classifier.go        pure-Go advertisement parser + signature
-//                          matcher. No I/O, easy to unit-test against
-//                          fixture payloads.
+//     matcher. No I/O, easy to unit-test against
+//     fixture payloads.
 //   - scanner.go           !darwin build — bridges tinygo.org/x/bluetooth
-//                          BLE adapter to the classifier. Used on Linux
-//                          (incl. when paired BLE access is available;
-//                          WSL2 is excluded — see ble.go in
-//                          internal/flipper/transport for the same
-//                          rationale).
+//     BLE adapter to the classifier. Used on Linux
+//     (incl. when paired BLE access is available;
+//     WSL2 is excluded — see ble.go in
+//     internal/flipper/transport for the same
+//     rationale).
 //   - scanner_darwin.go    darwin stub returning a friendly error so
-//                          cross-build CI compiles cleanly. Real macOS
-//                          BLE requires CGO_ENABLED=1 + native build.
+//     cross-build CI compiles cleanly. Real macOS
+//     BLE requires CGO_ENABLED=1 + native build.
 //
 // # Why heuristics, not signatures
 //

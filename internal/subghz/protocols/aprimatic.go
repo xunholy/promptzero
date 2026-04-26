@@ -26,8 +26,8 @@ import "fmt"
 // Aprimatic decodes Aprimatic 24-bit OOK/PWM frames.
 type Aprimatic struct{}
 
-func (p Aprimatic) Name() string      { return "Aprimatic" }
-func (p Aprimatic) BitRate() float64  { return 1000.0 }
+func (p Aprimatic) Name() string     { return "Aprimatic" }
+func (p Aprimatic) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode an Aprimatic frame.
 func (p Aprimatic) Decode(pulses []int) (Result, error) {

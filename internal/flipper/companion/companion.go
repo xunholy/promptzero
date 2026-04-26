@@ -152,13 +152,13 @@ type Sink interface {
 // don't need nil-checks at every push site.
 type NopSink struct{}
 
-func (NopSink) Idle()                       {}
-func (NopSink) Busy(_, _, _ string)         {}
-func (NopSink) Done(_ string, _ bool)       {}
-func (NopSink) Confirm(_, _, _ string)      {}
-func (NopSink) Responses() <-chan Response  { return nopResponseCh }
-func (NopSink) PollResponses(_ bool)        {}
-func (NopSink) Close() error                { return nil }
+func (NopSink) Idle()                      {}
+func (NopSink) Busy(_, _, _ string)        {}
+func (NopSink) Done(_ string, _ bool)      {}
+func (NopSink) Confirm(_, _, _ string)     {}
+func (NopSink) Responses() <-chan Response { return nopResponseCh }
+func (NopSink) PollResponses(_ bool)       {}
+func (NopSink) Close() error               { return nil }
 
 // nopResponseCh is shared across NopSink instances because every
 // receive blocks forever — there is no value in handing each caller

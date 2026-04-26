@@ -30,8 +30,8 @@ import "fmt"
 // PrincetonHoltek decodes Princeton-Holtek clone OOK/PWM frames.
 type PrincetonHoltek struct{}
 
-func (p PrincetonHoltek) Name() string      { return "Princeton-Holtek" }
-func (p PrincetonHoltek) BitRate() float64  { return 1000.0 }
+func (p PrincetonHoltek) Name() string     { return "Princeton-Holtek" }
+func (p PrincetonHoltek) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a Princeton-Holtek clone frame.
 // Accepts a wider TE tolerance (75%) vs the genuine PT2262 decoder (60%)

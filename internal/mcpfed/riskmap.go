@@ -17,7 +17,7 @@ import (
 //  1. DestructiveHint=true               → Critical
 //  2. ReadOnlyHint=true                  → Low
 //  3. OpenWorldHint=true (else)          → bumped one tier above baseline,
-//                                          capped at Critical
+//     capped at Critical
 //  4. (no annotations / all nil)         → defaultLevel
 //
 // IdempotentHint is descriptive only; it does not influence the risk tier

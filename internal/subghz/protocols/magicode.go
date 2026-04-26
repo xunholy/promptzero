@@ -26,8 +26,8 @@ import "fmt"
 // Magicode decodes Magicode 28-bit OOK frames.
 type Magicode struct{}
 
-func (p Magicode) Name() string      { return "Magicode" }
-func (p Magicode) BitRate() float64  { return 1000.0 }
+func (p Magicode) Name() string     { return "Magicode" }
+func (p Magicode) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a Magicode frame.
 func (p Magicode) Decode(pulses []int) (Result, error) {

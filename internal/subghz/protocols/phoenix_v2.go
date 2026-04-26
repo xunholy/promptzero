@@ -26,8 +26,8 @@ import "fmt"
 // PhoenixV2 decodes Phoenix V2 12-bit OOK/PWM frames.
 type PhoenixV2 struct{}
 
-func (p PhoenixV2) Name() string      { return "Phoenix V2" }
-func (p PhoenixV2) BitRate() float64  { return 1000.0 }
+func (p PhoenixV2) Name() string     { return "Phoenix V2" }
+func (p PhoenixV2) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a Phoenix V2 frame.
 // Uses Princeton-style PWM decoding with TE range tuned to 300–700 µs.

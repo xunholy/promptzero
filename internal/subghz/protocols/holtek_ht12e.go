@@ -26,8 +26,8 @@ import "fmt"
 // HoltekHT12E decodes Holtek HT12E OOK/PWM frames.
 type HoltekHT12E struct{}
 
-func (p HoltekHT12E) Name() string      { return "Holtek HT12E" }
-func (p HoltekHT12E) BitRate() float64  { return 1000.0 }
+func (p HoltekHT12E) Name() string     { return "Holtek HT12E" }
+func (p HoltekHT12E) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a Holtek HT12E frame.
 // Frame structure: 12 bits (8-bit address | 4-bit data), PWM encoded.

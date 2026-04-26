@@ -52,10 +52,10 @@ var errNilData = errors.New("pcap: WritePacket called with nil data")
 //	w.WritePacket(time.Now(), frameBytes)
 //	// closing the underlying file is the caller's responsibility
 type Writer struct {
-	w        io.Writer
-	written  int64
-	packets  int
-	lastErr  error // sticky: if non-nil the next write is a no-op
+	w       io.Writer
+	written int64
+	packets int
+	lastErr error // sticky: if non-nil the next write is a no-op
 }
 
 // NewWriter writes the 24-byte global header to w and returns a Writer

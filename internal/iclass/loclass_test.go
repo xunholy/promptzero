@@ -310,7 +310,9 @@ func TestLoclassEndToEndDumpFile(t *testing.T) {
 	// "The 64-bit HS Custom Key Value = 5B7C62C491C11B39"
 	wantKcus := [8]byte{0x5B, 0x7C, 0x62, 0xC4, 0x91, 0xC1, 0x1B, 0x39}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	// 300s gives ~2.5× headroom for race-overhead on CI; under -short the
+	// test is skipped entirely above.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
 	recovered, hexKey, err := Recover(ctx, caps)

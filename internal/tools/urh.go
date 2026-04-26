@@ -33,7 +33,7 @@ func init() { //nolint:gochecknoinits
 }
 
 var urhDecodeSubSpec = Spec{
-	Name: "urh_decode_sub",
+	Name:        "urh_decode_sub",
 	Description: "Analyse a Flipper .sub capture with urh-ng (PentHertz fork of Universal Radio Hacker). Identifies the modulation scheme, demodulates to bits, and runs urh-ng's protocol-signature classifier against ~327 known SubGHz protocols (KeeLoq, Princeton, CAME, Holtek, Linear, etc.). Returns a JSON object with detected_protocol, confidence, demodulated_bits, and a hexdump of recovered payload bytes. Requires Docker on the operator host.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -100,11 +100,11 @@ func urhDecodeSubHandler(ctx context.Context, _ *Deps, args map[string]any) (str
 	}
 
 	out := map[string]any{
-		"raw_output":    string(res.Stdout),
-		"stderr":        string(res.Stderr),
-		"duration_ms":   res.Duration.Milliseconds(),
-		"image":         image,
-		"input_size":    len(subBytes),
+		"raw_output":  string(res.Stdout),
+		"stderr":      string(res.Stderr),
+		"duration_ms": res.Duration.Milliseconds(),
+		"image":       image,
+		"input_size":  len(subBytes),
 	}
 	// Try to surface urh-ng's structured output directly when it
 	// emitted JSON. Falls back to raw text when the parse fails so the

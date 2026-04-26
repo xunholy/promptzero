@@ -201,7 +201,7 @@ func classifyApple(data []byte) (Match, bool) {
 		}
 		if _, legit := legitAppleActionTypes[actionType]; !legit {
 			return Match{
-				Signature: SigAppleContinuitySpam,
+				Signature:   SigAppleContinuitySpam,
 				Description: fmt.Sprintf("Apple Continuity action type 0x%02X is not in the published set", actionType),
 			}, true
 		}
@@ -218,13 +218,13 @@ func classifyApple(data []byte) (Match, bool) {
 func classifySwiftPair(data []byte) (Match, bool) {
 	if len(data) < 6 {
 		return Match{
-			Signature: SigSwiftPairMalformed,
+			Signature:   SigSwiftPairMalformed,
 			Description: fmt.Sprintf("Microsoft (0x0006) advertisement length %d < 6 — Swift Pair requires ≥6", len(data)),
 		}, true
 	}
 	if data[0] >= 0x05 {
 		return Match{
-			Signature: SigSwiftPairMalformed,
+			Signature:   SigSwiftPairMalformed,
 			Description: fmt.Sprintf("Microsoft Swift Pair flags byte 0x%02X is reserved (legit values: 0x00-0x04)", data[0]),
 		}, true
 	}

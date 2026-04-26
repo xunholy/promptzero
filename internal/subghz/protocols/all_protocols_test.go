@@ -258,7 +258,7 @@ func encodeSyncSpaceThenSmartgate(bits []byte, te int) []int {
 		if b != 0 {
 			out = append(out, 2*te, -te)
 		} else {
-			out = append(out, te, -(2*te))
+			out = append(out, te, -(2 * te))
 		}
 	}
 	return out
@@ -343,7 +343,7 @@ func encodeSyncMarkThenBits(bits []byte, te int) []int {
 	out := []int{14 * te, -te}
 	for _, b := range bits {
 		if b != 0 {
-			out = append(out, te, -(2*te))
+			out = append(out, te, -(2 * te))
 		} else {
 			out = append(out, 2*te, -te)
 		}
@@ -412,7 +412,7 @@ func encodeSyncMarkThenBitsHoneywell(bits []byte, te int) []int {
 		if b != 0 {
 			out = append(out, 2*te, -te)
 		} else {
-			out = append(out, te, -(2*te))
+			out = append(out, te, -(2 * te))
 		}
 	}
 	return out

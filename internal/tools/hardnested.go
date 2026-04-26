@@ -31,7 +31,7 @@ func init() { //nolint:gochecknoinits
 }
 
 var mifareHardnestedHostSpec = Spec{
-	Name: "mifare_hardnested_host",
+	Name:        "mifare_hardnested_host",
 	Description: "Recover a hardened-nonce MIFARE Classic key (Plus, EV1) by running mfoc-hardnested in a sandboxed container. Inputs are the captured (uid, target_block, known_block, known_key, target_key_type) and the algorithm explores ~2^16 candidate nonces with bitslice optimisations (~minutes per sector on a multicore CPU). Requires Docker on the operator host. For pure-Go offline reimpl tracking, see v0.6.1 follow-up.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -171,7 +171,7 @@ func scanRecoveredKey(s string) string {
 
 func isHex(s string) bool {
 	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return false
 		}
 	}

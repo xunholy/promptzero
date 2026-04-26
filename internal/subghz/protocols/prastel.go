@@ -26,8 +26,8 @@ import "fmt"
 // Prastel decodes Prastel MRC12 OOK frames.
 type Prastel struct{}
 
-func (p Prastel) Name() string      { return "Prastel" }
-func (p Prastel) BitRate() float64  { return 1000.0 }
+func (p Prastel) Name() string     { return "Prastel" }
+func (p Prastel) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a Prastel frame.
 // Uses midpoint discrimination (1.5×TE threshold) to separate "1" (2×TE space)

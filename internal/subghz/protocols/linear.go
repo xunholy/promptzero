@@ -26,8 +26,8 @@ import "fmt"
 // Linear decodes Linear/Multi-Code 8-bit OOK frames.
 type Linear struct{}
 
-func (p Linear) Name() string      { return "Linear" }
-func (p Linear) BitRate() float64  { return 1000.0 }
+func (p Linear) Name() string     { return "Linear" }
+func (p Linear) BitRate() float64 { return 1000.0 }
 
 // Decode attempts to decode a Linear garage-door remote frame.
 func (p Linear) Decode(pulses []int) (Result, error) {

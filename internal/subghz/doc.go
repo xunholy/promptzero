@@ -39,13 +39,13 @@
 //  9. Prastel             — 12-bit OOK, Manchester-like timing.
 //     Ref: Prastel MRC12 protocol; DarkFlippers/unleashed-firmware.
 //
-// 10. Ansonic             — 12-bit OOK with Manchester modulation.
+//  10. Ansonic             — 12-bit OOK with Manchester modulation.
 //     Ref: Ansonic AS2260R datasheet; rtl_433 source.
 //
-// 11. Smartgate           — 24-bit OOK, proprietary rolling code.
+//  11. Smartgate           — 24-bit OOK, proprietary rolling code.
 //     Ref: Flipper firmware lib/subghz/protocols/smartgate.c.
 //
-// 12. Hormann HSM         — 44-bit BiSS/FSK, German garage doors.
+//  12. Hormann HSM         — 44-bit BiSS/FSK, German garage doors.
 //     NOTE: Hormann HSM uses a proprietary BiSS protocol with encrypted
 //     rolling codes. Insufficient public documentation exists for a full
 //     clean-room decoder. SUBSTITUTED with Aerolite (24-bit OOK), a
@@ -53,30 +53,30 @@
 //     rtl_433 catalogues.
 //     Ref: Flipper firmware lib/subghz/protocols/nero_radio.c (Aerolite).
 //
-// 13. Doitrand            — 12-bit OOK, French gate openers.
+//  13. Doitrand            — 12-bit OOK, French gate openers.
 //     Ref: Flipper firmware lib/subghz/protocols/doitrand.c.
 //
-// 14. Linkmaster          — 12-bit OOK.
+//  14. Linkmaster          — 12-bit OOK.
 //     NOTE: Linkmaster has no reliable public protocol documentation.
 //     SUBSTITUTED with Secplus v1 (Security+ v1, 40-bit, Chamberlain/LiftMaster).
 //     Ref: Weston Embedded "Security+ Protocol Analysis"; Flipper firmware.
 //
-// 15. Magicode            — 28-bit OOK, UK/EU remotes.
+//  15. Magicode            — 28-bit OOK, UK/EU remotes.
 //     Ref: Flipper firmware lib/subghz/protocols/magicode.c.
 //
-// 16. Honeywell WS        — 24-bit ASK, wireless sensors (5800 series).
+//  16. Honeywell WS        — 24-bit ASK, wireless sensors (5800 series).
 //     Ref: rtl_433 honeywell.c; Honeywell 5800 datasheet.
 //
-// 17. Princeton-Holtek    — composite clone of PT2262/HT12E, OOK.
+//  17. Princeton-Holtek    — composite clone of PT2262/HT12E, OOK.
 //     Ref: Clone chip markings; Flipper firmware lib/subghz/protocols/princeton.c.
 //
-// 18. CAME TWIN           — 12-bit + alternative timing variant, OOK.
+//  18. CAME TWIN           — 12-bit + alternative timing variant, OOK.
 //     Ref: CAME TWIN protocol; Flipper firmware lib/subghz/protocols/came_tw.c.
 //
-// 19. Aprimatic           — 24-bit OOK, Italian/Spanish gate openers.
+//  19. Aprimatic           — 24-bit OOK, Italian/Spanish gate openers.
 //     Ref: Flipper firmware lib/subghz/protocols/aprimatic.c.
 //
-// 20. Phoenix V2          — 12-bit OOK (Italy/EU), rolling-code variant.
+//  20. Phoenix V2          — 12-bit OOK (Italy/EU), rolling-code variant.
 //     Ref: Flipper firmware lib/subghz/protocols/phoenix_v2.c.
 //
 // # Architecture

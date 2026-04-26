@@ -2,8 +2,6 @@
 
 package subghz
 
-import "math"
-
 // DemodulateOOK decodes On-Off Keying (OOK) pulses to bits.
 //
 // OOK encodes a "1" as a long mark pulse and a "0" as a short mark pulse
@@ -214,21 +212,4 @@ func sortInts(s []int) {
 		}
 		s[j+1] = key
 	}
-}
-
-// abs32 returns the absolute value of v.
-func abs32(v int) int {
-	if v < 0 {
-		return -v
-	}
-	return v
-}
-
-// nearRatio returns true when actual is within pct% of expected.
-func nearRatio(actual, expected int, pct float64) bool {
-	if expected == 0 {
-		return actual == 0
-	}
-	ratio := math.Abs(float64(actual-expected)) / float64(expected)
-	return ratio <= pct/100.0
 }

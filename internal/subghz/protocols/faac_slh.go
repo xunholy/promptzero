@@ -29,8 +29,8 @@ import "fmt"
 // FaacSLH decodes FAAC SLH 64-bit rolling-code frames.
 type FaacSLH struct{}
 
-func (p FaacSLH) Name() string      { return "FAAC SLH" }
-func (p FaacSLH) BitRate() float64  { return 1200.0 }
+func (p FaacSLH) Name() string     { return "FAAC SLH" }
+func (p FaacSLH) BitRate() float64 { return 1200.0 }
 
 // Decode attempts to decode a FAAC SLH frame.
 func (p FaacSLH) Decode(pulses []int) (Result, error) {

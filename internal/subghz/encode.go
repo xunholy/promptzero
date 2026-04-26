@@ -32,9 +32,9 @@ func EncodePWMPulses(bits []byte, te, syncHigh, syncLow, oneHigh, oneLow, zeroHi
 	}
 	for _, b := range bits {
 		if b != 0 {
-			frame = append(frame, oneHigh*te, -(oneLow*te))
+			frame = append(frame, oneHigh*te, -(oneLow * te))
 		} else {
-			frame = append(frame, zeroHigh*te, -(zeroLow*te))
+			frame = append(frame, zeroHigh*te, -(zeroLow * te))
 		}
 	}
 
@@ -76,8 +76,8 @@ func SubFileString(frequency uint64, preset string, pulses []int) string {
 	var sb strings.Builder
 	sb.WriteString("Filetype: Flipper SubGhz Key File\n")
 	sb.WriteString("Version: 1\n")
-	sb.WriteString(fmt.Sprintf("Frequency: %d\n", frequency))
-	sb.WriteString(fmt.Sprintf("Preset: %s\n", preset))
+	fmt.Fprintf(&sb, "Frequency: %d\n", frequency)
+	fmt.Fprintf(&sb, "Preset: %s\n", preset)
 	sb.WriteString("Protocol: RAW\n")
 
 	// Write in chunks of 512 pulses per RAW_Data line (Flipper convention).
@@ -90,7 +90,7 @@ func SubFileString(frequency uint64, preset string, pulses []int) string {
 		chunk := pulses[i:end]
 		sb.WriteString("RAW_Data:")
 		for _, p := range chunk {
-			sb.WriteString(fmt.Sprintf(" %d", p))
+			fmt.Fprintf(&sb, " %d", p)
 		}
 		sb.WriteByte('\n')
 	}
