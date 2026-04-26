@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Dpad drives the live mirror via RPC** (`Gui.SendInputEventRequest`).
+  When the operator holds the screen mirror, dpad presses are routed
+  through the held RPC session as a new WS frame `screen_input
+  {button, event_type}` — the dpad is no longer locked out while
+  mirror owns the serial port. Visual: the dpad gets a `mirror`
+  data-mode tint with a "MIRROR" badge so the operator sees they're
+  driving the live device. The SCROLL/DEVICE toggle hides while
+  mirror is active (the dpad auto-locks to RPC input).
+
 - **Live LCD screen mirror in the web UI** (qFlipper-style). New
   **Device** rail item opens a panel that streams the Flipper's
   128×64 framebuffer to a Canvas at the device's native ~30 fps,

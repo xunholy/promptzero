@@ -201,6 +201,68 @@ func (c *Client) StopScreenStream(ctx context.Context) error {
 	return writeFramed(c.tx, req)
 }
 
+// SendInput dispatches a single button event to the firmware via
+// Gui.SendInputEventRequest. Used while a screen stream is active so the
+// operator can drive the device without yielding the RPC session back to
+// CLI. The button is one of: up, down, left, right, ok, back; the event
+// is one of: press, release, short, long, repeat.
+func (c *Client) SendInput(ctx context.Context, button, event string) error {
+	if !c.open.Load() {
+		return ErrSessionClosed
+	}
+	keyVal, ok := inputKeyOf(button)
+	if !ok {
+		return fmt.Errorf("rpc: unknown input button %q", button)
+	}
+	typVal, ok := inputTypeOf(event)
+	if !ok {
+		return fmt.Errorf("rpc: unknown input event type %q", event)
+	}
+	req := &pb.Main{
+		CommandId: c.commandID(),
+		Content: &pb.Main_GuiSendInputEventRequest{
+			GuiSendInputEventRequest: &pb.SendInputEventRequest{Key: keyVal, Type: typVal},
+		},
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return writeFramed(c.tx, req)
+}
+
+func inputKeyOf(s string) (pb.InputKey, bool) {
+	switch s {
+	case "up":
+		return pb.InputKey_UP, true
+	case "down":
+		return pb.InputKey_DOWN, true
+	case "left":
+		return pb.InputKey_LEFT, true
+	case "right":
+		return pb.InputKey_RIGHT, true
+	case "ok":
+		return pb.InputKey_OK, true
+	case "back":
+		return pb.InputKey_BACK, true
+	}
+	return 0, false
+}
+
+func inputTypeOf(s string) (pb.InputType, bool) {
+	switch s {
+	case "press":
+		return pb.InputType_PRESS, true
+	case "release":
+		return pb.InputType_RELEASE, true
+	case "short":
+		return pb.InputType_SHORT, true
+	case "long":
+		return pb.InputType_LONG, true
+	case "repeat":
+		return pb.InputType_REPEAT, true
+	}
+	return 0, false
+}
+
 func (c *Client) commandID() uint32 {
 	return c.nextID.Add(1)
 }

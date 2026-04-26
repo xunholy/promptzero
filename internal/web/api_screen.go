@@ -20,6 +20,7 @@ import (
 type screenClient interface {
 	StartScreenStream(ctx context.Context) (<-chan rpc.ScreenFrame, error)
 	StopScreenStream(ctx context.Context) error
+	SendInput(ctx context.Context, button, event string) error
 	Close() error
 }
 
@@ -80,8 +81,11 @@ func (s *Server) handleScreenAcquire(c *sessionConn) {
 		return
 	}
 
+	s.screenMu.Lock()
 	s.screenCancel = cancel
 	s.screenRelease = release
+	s.screenActiveRPC = rpcClient
+	s.screenMu.Unlock()
 	s.mirrorLastSeen.Store(time.Now().UnixNano())
 
 	frames, err := rpcClient.StartScreenStream(streamCtx)
@@ -123,6 +127,29 @@ func (s *Server) handleScreenKeepalive(c *sessionConn) {
 	}
 }
 
+// handleScreenInput dispatches a button event to the firmware via the active
+// RPC session. Only the screen holder may send input; non-holders are ignored
+// silently. Validation happens server-side in *rpc.Client.SendInput.
+func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
+	s.screenMu.Lock()
+	cli := s.screenActiveRPC
+	isHolder := s.screenHolder == c
+	s.screenMu.Unlock()
+	if !isHolder || cli == nil {
+		return
+	}
+	if event == "" {
+		event = "short"
+	}
+	if err := cli.SendInput(context.Background(), button, event); err != nil {
+		s.sendTo(c, map[string]any{
+			"type":    "screen_error",
+			"code":    "input_failed",
+			"message": err.Error(),
+		})
+	}
+}
+
 // releaseScreen is the single funnel for all release paths. It is idempotent:
 // if the mirror is not active it returns immediately.
 func (s *Server) releaseScreen(reason string) {
@@ -137,6 +164,7 @@ func (s *Server) releaseScreen(reason string) {
 	s.screenHolder = nil
 	s.screenCancel = nil
 	s.screenRelease = nil
+	s.screenActiveRPC = nil
 	s.screenMu.Unlock()
 
 	// Clear the fast-path guard before running the release closure so HTTP

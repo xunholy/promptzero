@@ -249,6 +249,31 @@ body::before {
 .dpad[data-mode="device"] [data-dir="ok"] { background: var(--orange); color: #1a0e00; }
 #dpadModeToggle[aria-pressed="true"] { background: var(--orange-lo); color: var(--orange-hi); border-style: solid; border-color: var(--orange-lo); }
 
+/* Mirror mode — dpad drives the live RPC session. Pulse + bright tint so it
+   reads as the live-control surface. */
+.dpad[data-mode="mirror"] button[data-dir] {
+  background: var(--orange);
+  color: #1a0e00;
+  box-shadow: inset 0 1px 0 #ffffff40, inset 0 -2px 0 #00000033, 0 0 8px var(--orange-lo);
+}
+.dpad[data-mode="mirror"] button[data-dir]:hover { background: var(--orange-hi); }
+.dpad[data-mode="mirror"] [data-dir="ok"]      { background: var(--orange-hi); }
+.dpad { position: relative; }
+.dpad[data-mode="mirror"]::before {
+  content: "MIRROR";
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  background: var(--orange);
+  color: #1a0e00;
+  font-family: var(--pixel);
+  font-size: 7px;
+  letter-spacing: 2px;
+  box-shadow: 1px 1px 0 #000;
+}
+
 /* Helpers */
 .blink-cursor-text { display: inline-block; width: 0.55em; height: 1em; background: var(--lcd-pixel); animation: blink 1s steps(2, start) infinite; vertical-align: -2px; margin-left: 2px; }
 

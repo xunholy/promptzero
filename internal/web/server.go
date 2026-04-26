@@ -131,11 +131,12 @@ type Server struct {
 	// flipperRPCProvider; overridable in tests via SetFlipperRPC.
 	flipperRPC flipperRPCProvider
 
-	// screenMu guards screenHolder, screenCancel, screenRelease.
-	screenMu      sync.Mutex
-	screenHolder  *sessionConn
-	screenCancel  context.CancelFunc
-	screenRelease func()
+	// screenMu guards screenHolder, screenCancel, screenRelease, screenActiveRPC.
+	screenMu        sync.Mutex
+	screenHolder    *sessionConn
+	screenCancel    context.CancelFunc
+	screenRelease   func()
+	screenActiveRPC screenClient
 	// mirrorActive is set before EnterRPC and cleared after release.
 	// Fast-path guard for fs / input / agent / device handlers.
 	mirrorActive atomic.Bool
@@ -245,6 +246,11 @@ type wsInbound struct {
 	// View and Path carry the current UI view and path in ui_context frames.
 	View   string `json:"view,omitempty"`
 	FSPath string `json:"path,omitempty"`
+	// Button and EventType carry input on screen_input frames; the holder of
+	// the screen mirror dispatches button presses through the active RPC
+	// session via Gui.SendInputEventRequest.
+	Button    string `json:"button,omitempty"`
+	EventType string `json:"event_type,omitempty"`
 }
 
 // NewServer creates a web server bound to addr. If the host portion of addr
@@ -770,6 +776,8 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			go s.handleScreenRelease(c)
 		case "screen_keepalive":
 			s.handleScreenKeepalive(c)
+		case "screen_input":
+			s.handleScreenInput(c, msg.Button, msg.EventType)
 		}
 	}
 }

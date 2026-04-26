@@ -83,8 +83,9 @@ func (c *fakeScreenClient) StartScreenStream(_ context.Context) (<-chan flipperr
 	return c.frames, nil
 }
 
-func (c *fakeScreenClient) StopScreenStream(_ context.Context) error { return nil }
-func (c *fakeScreenClient) Close() error                             { return nil }
+func (c *fakeScreenClient) StopScreenStream(_ context.Context) error       { return nil }
+func (c *fakeScreenClient) SendInput(_ context.Context, _, _ string) error { return nil }
+func (c *fakeScreenClient) Close() error                                   { return nil }
 
 // ---------------------------------------------------------------------------
 // Test helpers

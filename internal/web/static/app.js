@@ -639,14 +639,22 @@
         var inp = document.getElementById('cmd');
         var sb  = document.getElementById('scrollback');
 
+        // Mirror-mode takes priority: when this session holds the mirror,
+        // the CLI input/send endpoint is locked, so route the press through
+        // the held RPC session via the screen_input WS frame instead.
+        if (_screenState && _screenState.isHolder) {
+          beep(dir === 'ok' ? 880 : 660, 0.04);
+          sendWs({ type: 'screen_input', button: dir, event_type: 'short' });
+          return;
+        }
+
         if (_dpadMode === 'device') {
-          // In device mode, forward button presses to the Flipper.
-          var buttonName = dir; // up/down/left/right/ok/back
+          // In device mode (no mirror), forward via the CLI REST endpoint.
           beep(dir === 'ok' ? 880 : 660, 0.04);
           apiFetch('api/input/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ button: buttonName, event_type: 'short' }),
+            body: JSON.stringify({ button: dir, event_type: 'short' }),
           }).then(function (r) {
             if (r && r.status === 409) {
               showToast('Flipper is mirrored — stop the mirror first to use this.');
@@ -710,8 +718,13 @@
   function applyDpadMode() {
     var dpad = document.getElementById('dpad');
     var btn  = document.getElementById('dpadModeToggle');
-    if (dpad) dpad.dataset.mode = _dpadMode;
+    var holder = !!(_screenState && _screenState.isHolder);
+    var effective = holder ? 'mirror' : _dpadMode;
+    if (dpad) dpad.dataset.mode = effective;
+    // Hide the SCROLL/DEVICE toggle while mirror is held — the dpad is
+    // locked to the mirror's RPC input path, so the toggle is meaningless.
     if (btn) {
+      btn.style.display = holder ? 'none' : '';
       btn.textContent = _dpadMode === 'device' ? 'DEVICE' : 'SCROLL';
       btn.setAttribute('aria-pressed', _dpadMode === 'device' ? 'true' : 'false');
     }
@@ -2552,6 +2565,9 @@
 
     // Refresh Device panel if it is currently visible.
     if (_currentScreen === 'device') refreshDeviceScreen();
+
+    // Refresh dpad mode/badge — mirror-held dpad locks to RPC input.
+    applyDpadMode();
 
     // Show a toast when the mirror stops for a notable reason.
     if (wasActive && !_screenState.active && msg.reason) {
