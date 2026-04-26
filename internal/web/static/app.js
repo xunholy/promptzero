@@ -496,7 +496,7 @@
     if (!cat) return;
     var ss = resetSubscreen(cat.title, backToAgent); if (!ss) return;
 
-    var hint = mkEl('p', null, 'RUN ▶ dispatches immediately. Items with a risk badge load into the prompt so you can review/edit first.');
+    var hint = mkEl('p', null, 'RUN dispatches immediately. Items with a risk badge load into the prompt so you can review/edit first.');
     hint.style.cssText = 'color:var(--lcd-pixel-soft);font-size:15px;margin:0 0 10px;';
     ss.appendChild(hint);
 
@@ -512,7 +512,7 @@
 
       div.appendChild(mkEl('span', 'label', it.label));
 
-      var badge = mkEl('span', 'badge', direct ? 'RUN ▶' : risk.toUpperCase());
+      var badge = mkEl('span', 'badge', direct ? 'RUN' : risk.toUpperCase());
       if (!direct && risk === 'med')  badge.style.color = 'var(--orange-hi)';
       if (!direct && risk === 'high') badge.style.color = 'var(--led-red)';
       div.appendChild(badge);
