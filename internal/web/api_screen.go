@@ -132,12 +132,17 @@ func (s *Server) handleScreenKeepalive(c *sessionConn) {
 // RPC session. Only the screen holder may send input; non-holders are ignored
 // silently.
 //
-// A "tap" sends PRESS, waits, then RELEASE — the firmware synthesises the
-// SHORT event from that timing the same way it does for the physical
-// buttons. Three back-to-back events with no delay arrive in a single USB
-// transaction and the firmware's input pipeline does not register them as
-// distinct presses, which is why "press,short,release" without delays
-// produced no on-device reaction.
+// A "tap" sends PRESS → SHORT → RELEASE as three discrete framed messages.
+// Counter-intuitive, but: the firmware's RPC input handler in
+// applications/services/rpc/rpc_gui.c just publishes whatever InputType we
+// send — it does NOT synthesise SHORT from PRESS+RELEASE the way the
+// hardware path in applications/services/input/input.c does. UI menus
+// subscribe to InputTypeShort for "click", so a tap missing the SHORT
+// event fires no app handlers (which is why our earlier PRESS+RELEASE
+// dispatch landed on the wire but produced no on-device reaction).
+//
+// Mirrors qFlipper's screen-streamer queue: each event = one PB_Main, no
+// inter-event delay required.
 func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 	s.screenMu.Lock()
 	cli := s.screenActiveRPC
@@ -170,13 +175,17 @@ func (s *Server) handleScreenInput(c *sessionConn, button, event string) {
 		if !send("press") {
 			return
 		}
-		time.Sleep(60 * time.Millisecond)
+		if !send("short") {
+			return
+		}
 		send("release")
 	case "long":
 		if !send("press") {
 			return
 		}
-		time.Sleep(550 * time.Millisecond) // > INPUT_LONG_PRESS (~500ms)
+		if !send("long") {
+			return
+		}
 		send("release")
 	default:
 		send(event)
