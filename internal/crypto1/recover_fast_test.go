@@ -256,6 +256,7 @@ func TestRecoverFastMatchesRecover(t *testing.T) {
 			_, ar1 := AuthEncrypt(v.key, v.uid, v.cap1)
 
 			slow, err := RecoverWithRange(
+				context.Background(),
 				v.uid, v.cap0.NT, v.cap0.NR, ar0, v.cap1.NT, v.cap1.NR, ar1, 0, 1,
 			)
 			if err != nil {
@@ -364,7 +365,7 @@ func BenchmarkRecover16(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		got, err := RecoverWithRange(uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1)
+		got, err := RecoverWithRange(context.Background(), uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1)
 		if err != nil {
 			b.Fatalf("Recover failed: %v", err)
 		}
@@ -430,7 +431,7 @@ func BenchmarkRecoverFastVsRecover_16bit(b *testing.B) {
 	})
 	b.Run("Recover_bounded16", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			got, err := RecoverWithRange(uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1)
+			got, err := RecoverWithRange(context.Background(), uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1)
 			if err != nil || got != key {
 				b.Fatalf("RecoverWithRange failed err=%v key=0x%012X", err, got)
 			}

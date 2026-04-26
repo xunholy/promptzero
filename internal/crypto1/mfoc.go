@@ -2,6 +2,15 @@
 
 // mfoc.go — pure-Go offline nested-authentication key recovery.
 //
+// v0.6 status:
+//
+//   - mfoc/mfcuk handlers:  REAL — offline nested-authentication key recovery
+//     backed by internal/crypto1.RecoverNestedWithRange.
+//     Operator provides pre-captured nested-auth nonces
+//     (at least 2 NestedAttempts per NestedCapture).
+//     For live-NFC attacks requiring a real reader,
+//     federate mplogas/pm3-mcp.
+//
 // This implements the offline portion of the classical mfoc (MIFARE Classic
 // nested attack) from Garcia et al. ESORICS 2008.  The live-NFC phase (driving
 // a real reader) is handled by the Flipper / Proxmark3 integration layer; this
@@ -39,6 +48,7 @@
 package crypto1
 
 import (
+	"context"
 	"errors"
 )
 
@@ -126,12 +136,17 @@ type nestedDecrypted struct {
 // larger range (up to 1<<32 for full 48-bit coverage).
 func RecoverNested(c NestedCapture) (uint64, error) {
 	// Default: search keys where bits 47..16 == 0 (16-bit key space, ~70 ms).
-	return RecoverNestedWithRange(c, 0, 1)
+	return RecoverNestedWithRange(context.Background(), c, 0, 1)
 }
 
 // RecoverNestedWithRange is RecoverNested with an explicit high-32-bit search
 // range [loHi, hiHi).  See RecoverWithRange for range semantics.
-func RecoverNestedWithRange(c NestedCapture, loHi, hiHi uint64) (uint64, error) {
+//
+// ctx is forwarded to RecoverWithRange so that deadline cancellation propagates
+// into the inner key-search loop; the goroutine running this function will
+// terminate promptly when ctx is cancelled rather than leaking until the search
+// range is exhausted.
+func RecoverNestedWithRange(ctx context.Context, c NestedCapture, loHi, hiHi uint64) (uint64, error) {
 	if len(c.Attempts) < 2 {
 		return 0, errors.New("mfoc: at least 2 nested attempts are required for key recovery")
 	}
@@ -144,6 +159,7 @@ func RecoverNestedWithRange(c NestedCapture, loHi, hiHi uint64) (uint64, error) 
 	// Tuples[0] and tuples[1] are now (NT, NR, AR) pairs for the target sector.
 	t0, t1 := tuples[0], tuples[1]
 	return RecoverWithRange(
+		ctx,
 		c.UID,
 		t0.NT, t0.NR, t0.AR,
 		t1.NT, t1.NR, t1.AR,

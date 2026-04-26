@@ -1,6 +1,9 @@
 package crypto1
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // All tests pin the Crypto1 API contract: cipher correctness, PRNG
 // determinism, and reinit behaviour.  Test vectors are generated from
@@ -78,7 +81,7 @@ func TestMfkey32KnownAnswer(t *testing.T) {
 	_, ar1 := AuthEncrypt(key, uid, cap1)
 
 	// RecoverWithRange(…, 0, 1) searches only hi32 = 0 (2^16 key space).
-	got, err := RecoverWithRange(uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1)
+	got, err := RecoverWithRange(context.Background(), uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1)
 	if err != nil {
 		t.Fatalf("Recover failed: %v", err)
 	}

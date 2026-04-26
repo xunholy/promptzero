@@ -71,6 +71,7 @@
 package crypto1
 
 import (
+	"context"
 	"errors"
 )
 
@@ -125,12 +126,16 @@ type darksideConstraint struct {
 // It searches keys where bits 47..16 are zero (16-bit key space, sub-millisecond).
 // For larger key spaces, call RecoverDarksideWithRange.
 func RecoverDarkside(c DarksideCapture) (uint64, error) {
-	return RecoverDarksideWithRange(c, 0, 1)
+	return RecoverDarksideWithRange(context.Background(), c, 0, 1)
 }
 
 // RecoverDarksideWithRange is RecoverDarkside with an explicit high-32-bit
 // search range [loHi, hiHi).  See RecoverWithRange for range semantics.
-func RecoverDarksideWithRange(c DarksideCapture, loHi, hiHi uint64) (uint64, error) {
+//
+// ctx is checked once per hi32 outer-loop iteration; cancellation causes an
+// early return of ctx.Err() so the goroutine running this function terminates
+// promptly when the deadline fires rather than leaking until the range is done.
+func RecoverDarksideWithRange(ctx context.Context, c DarksideCapture, loHi, hiHi uint64) (uint64, error) {
 	if len(c.NRArs) == 0 {
 		return 0, errors.New("mfcuk: at least 1 DarksidePair is required")
 	}
@@ -145,6 +150,9 @@ func RecoverDarksideWithRange(c DarksideCapture, loHi, hiHi uint64) (uint64, err
 	}
 
 	for hi32 := loHi; hi32 < hiHi; hi32++ {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		for lo16 := uint64(0); lo16 < (1 << 16); lo16++ {
 			key := (hi32 << 16) | lo16
 			if darksideKeyMatches(key, c.UID, c.NT, constraints) {

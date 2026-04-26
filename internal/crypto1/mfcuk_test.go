@@ -2,6 +2,7 @@
 package crypto1
 
 import (
+	"context"
 	"testing"
 )
 
@@ -69,7 +70,7 @@ func TestMfcukClosedLoop(t *testing.T) {
 				NRArs: pairs,
 			}
 
-			got, err := RecoverDarksideWithRange(cap, 0, 1)
+			got, err := RecoverDarksideWithRange(context.Background(), cap, 0, 1)
 			if err != nil {
 				t.Fatalf("RecoverDarkside failed: %v", err)
 			}
@@ -137,7 +138,7 @@ func TestMfcukSinglePairConstraintValid(t *testing.T) {
 		},
 	}
 
-	got, err := RecoverDarksideWithRange(cap, 0, 1)
+	got, err := RecoverDarksideWithRange(context.Background(), cap, 0, 1)
 	if err != nil {
 		t.Fatalf("RecoverDarkside with single pair failed: %v", err)
 	}
@@ -146,5 +147,35 @@ func TestMfcukSinglePairConstraintValid(t *testing.T) {
 	}
 	if !darksideKeyMatches(got, uid, nt, cs) {
 		t.Errorf("returned key 0x%012X does not satisfy the constraint", got)
+	}
+}
+
+// TestRecoverDarksideWithRangeContextCancellation verifies that
+// RecoverDarksideWithRange returns a context error promptly when the context
+// is cancelled (regression for goroutine-leak fix in mfcuk_attack handler).
+func TestRecoverDarksideWithRangeContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	const (
+		uid = uint32(0xCAFEBABE)
+		nt  = uint32(0x01020304)
+		nr  = uint32(0xDEADBEEF)
+		key = uint64(0x1234)
+	)
+	parity := darksideSynthesizeParity(key, uid, nt, nr)
+	cap := DarksideCapture{
+		UID:   uid,
+		NT:    nt,
+		NRArs: []DarksidePair{{NR: nr, Parity: parity}},
+	}
+
+	// Use a large hi-range so the search would not complete without ctx.
+	_, err := RecoverDarksideWithRange(ctx, cap, 0, 1<<32)
+	if err == nil {
+		t.Fatal("RecoverDarksideWithRange: expected error on cancelled context, got nil")
+	}
+	if !isCtxError(err) {
+		t.Errorf("RecoverDarksideWithRange: want context error, got %v", err)
 	}
 }

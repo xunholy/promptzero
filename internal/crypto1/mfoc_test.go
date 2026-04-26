@@ -2,6 +2,7 @@
 package crypto1
 
 import (
+	"context"
 	"testing"
 )
 
@@ -117,7 +118,7 @@ func TestMfocClosedLoop(t *testing.T) {
 
 			cap := synthesizeNestedCapture(v.targetKey, v.knownKey, v.uid, attemptsCP)
 
-			got, err := RecoverNestedWithRange(cap, 0, 1)
+			got, err := RecoverNestedWithRange(context.Background(), cap, 0, 1)
 			if err != nil {
 				t.Fatalf("RecoverNested failed: %v", err)
 			}
@@ -174,5 +175,34 @@ func TestMfocTooFewAttempts(t *testing.T) {
 	_, err := RecoverNested(cap)
 	if err == nil {
 		t.Fatal("expected error for < 2 attempts")
+	}
+}
+
+// TestRecoverNestedWithRangeContextCancellation verifies that
+// RecoverNestedWithRange returns a context error promptly when the context
+// is cancelled (regression for goroutine-leak fix in mfoc_attack handler).
+func TestRecoverNestedWithRangeContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	// Build a valid 2-attempt capture for any key.
+	const (
+		targetKey = uint64(0x1234)
+		knownKey  = uint64(0xA0A1A2A3A4A5)
+		uid       = uint32(0xCAFEBABE)
+	)
+	attemptsCP := []NestedAttempt{
+		{KnownNT: 0x01020304, KnownNR: 0xDEADBEEF, NTEnc: 0xABCDABCD, NR: 0x11223344},
+		{KnownNT: 0xE93E12E4, KnownNR: 0x55667788, NTEnc: 0xDEAD1234, NR: 0x99AABBCC},
+	}
+	cap := synthesizeNestedCapture(targetKey, knownKey, uid, attemptsCP)
+
+	// Use a large hi-range so the search would not complete without ctx.
+	_, err := RecoverNestedWithRange(ctx, cap, 0, 1<<32)
+	if err == nil {
+		t.Fatal("RecoverNestedWithRange: expected error on cancelled context, got nil")
+	}
+	if !isCtxError(err) {
+		t.Errorf("RecoverNestedWithRange: want context error, got %v", err)
 	}
 }

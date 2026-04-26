@@ -1,6 +1,7 @@
 package crypto1
 
 import (
+	"context"
 	"testing"
 )
 
@@ -59,6 +60,7 @@ func TestMfkey32ClosedLoop(t *testing.T) {
 			_, ar1 := AuthEncrypt(v.key, v.uid, v.cap1)
 
 			got, err := RecoverWithRange(
+				context.Background(),
 				v.uid,
 				v.cap0.NT, v.cap0.NR, ar0,
 				v.cap1.NT, v.cap1.NR, ar1,
@@ -72,6 +74,33 @@ func TestMfkey32ClosedLoop(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRecoverWithRangeContextCancellation verifies that RecoverWithRange
+// returns a context error promptly when the context is cancelled before
+// the search range is exhausted (regression test for the goroutine-leak fix).
+func TestRecoverWithRangeContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	const uid = uint32(0xcafebabe)
+	cap0 := AuthCapture{NT: 0x01020304, NR: 0xdeadbeef}
+	cap1 := AuthCapture{NT: 0xe93e12e4, NR: 0x11223344}
+	_, ar0 := AuthEncrypt(0x1234, uid, cap0)
+	_, ar1 := AuthEncrypt(0x1234, uid, cap1)
+
+	// Use a large hi-range so the search would never finish without context.
+	_, err := RecoverWithRange(ctx, uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1<<32)
+	if err == nil {
+		t.Fatal("RecoverWithRange: expected error on cancelled context, got nil")
+	}
+	if !isCtxError(err) {
+		t.Errorf("RecoverWithRange: want context error, got %v", err)
+	}
+}
+
+func isCtxError(err error) bool {
+	return err == context.Canceled || err == context.DeadlineExceeded
 }
 
 // TestMfkey32AuthEncryptRoundTrip verifies that AuthEncrypt produces

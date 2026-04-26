@@ -2,6 +2,7 @@
 package crypto1
 
 import (
+	"context"
 	"errors"
 )
 
@@ -73,7 +74,7 @@ func AuthEncrypt(key uint64, uid uint32, cap AuthCapture) (nrEnc, arEnc uint32) 
 // state and uses the filter structure to derive remaining bits, reducing
 // the search to a feasible runtime for arbitrary 48-bit keys.
 func Recover(uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32) (uint64, error) {
-	return RecoverWithRange(uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
+	return RecoverWithRange(context.Background(), uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
 }
 
 // RecoverWithRange is Recover with an explicit search range over the
@@ -84,7 +85,10 @@ func Recover(uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32) (uint64, error) {
 // Use loHi=0, hiHi=1 to search only keys with bits 47..16 = 0
 // (i.e. keys fitting in 16 bits), which completes in ~70 ms.
 // Use loHi=0, hiHi=1<<32 to exhaustively search all 2^48 keys (hours).
-func RecoverWithRange(uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32, loHi, hiHi uint64) (uint64, error) {
+//
+// ctx is checked once per hi32 iteration; cancellation causes an early
+// return of ctx.Err() so the caller's goroutine does not leak.
+func RecoverWithRange(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32, loHi, hiHi uint64) (uint64, error) {
 	// Derive the keystream used during the aR phase for each capture.
 	// ks2 = {aR} XOR prng(nT, 64)  because the plain aR = prng(nT, 64).
 	ks2_0 := ar0 ^ Prng(nt0, 64)
@@ -94,6 +98,9 @@ func RecoverWithRange(uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32, loHi, hiHi uint6
 	cap1 := AuthCapture{NT: nt1, NR: nr1}
 
 	for hi32 := loHi; hi32 < hiHi; hi32++ {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		for lo16 := uint64(0); lo16 < (1 << 16); lo16++ {
 			key := (hi32 << 16) | lo16
 
@@ -178,9 +185,9 @@ func invertLFSRStep(sNew uint64, extBit uint64) uint64 {
 	// s_old = (s_new << 1) | lostBit; evaluate known taps at s_old via s_new.
 	// s_old[p] = s_new[p-1] for p = 1..47, so tap-p of s_old = bit (p-1) of s_new.
 	knownPart := uint64(
-		lfsr48bit(sNew, 4) ^  // tap 5:  s_old[5]  = s_new[4]
-			lfsr48bit(sNew, 8) ^  // tap 9:  s_old[9]  = s_new[8]
-			lfsr48bit(sNew, 9) ^  // tap 10: s_old[10] = s_new[9]
+		lfsr48bit(sNew, 4) ^ // tap 5:  s_old[5]  = s_new[4]
+			lfsr48bit(sNew, 8) ^ // tap 9:  s_old[9]  = s_new[8]
+			lfsr48bit(sNew, 9) ^ // tap 10: s_old[10] = s_new[9]
 			lfsr48bit(sNew, 11) ^ // tap 12: s_old[12] = s_new[11]
 			lfsr48bit(sNew, 13) ^ // tap 14: s_old[14] = s_new[13]
 			lfsr48bit(sNew, 14) ^ // tap 15: s_old[15] = s_new[14]
@@ -194,7 +201,7 @@ func invertLFSRStep(sNew uint64, extBit uint64) uint64 {
 			lfsr48bit(sNew, 38) ^ // tap 39: s_old[39] = s_new[38]
 			lfsr48bit(sNew, 40) ^ // tap 41: s_old[41] = s_new[40]
 			lfsr48bit(sNew, 41) ^ // tap 42: s_old[42] = s_new[41]
-			lfsr48bit(sNew, 42),  // tap 43: s_old[43] = s_new[42]
+			lfsr48bit(sNew, 42), // tap 43: s_old[43] = s_new[42]
 	)
 
 	lostBit := newHigh ^ knownPart ^ extBit

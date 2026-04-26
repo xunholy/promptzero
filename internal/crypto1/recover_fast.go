@@ -348,9 +348,10 @@ func RecoverFastTimeout(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 u
 		}
 	}()
 
-	// Start guaranteed fallback in background.
+	// Start guaranteed fallback in background.  Pass ctx so the fallback's
+	// inner hi32 loop also terminates promptly on cancellation.
 	go func() {
-		k, err := RecoverWithRange(uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
+		k, err := RecoverWithRange(ctx, uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
 		ch <- result{k, err}
 	}()
 
@@ -362,7 +363,6 @@ func RecoverFastTimeout(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 u
 		return res.key, res.err
 	}
 }
-
 
 // rollbackToKey rolls back the LFSR state through the nR and nT auth
 // phases to recover the candidate 48-bit key.
