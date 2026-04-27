@@ -197,8 +197,14 @@ type Agent struct {
 	// opMode is the active operation mode (Standard, Recon, Intel,
 	// Stealth, Assault). Default is mode.ModeStandard, which permits
 	// every tool group — preserving historical behaviour for builds /
-	// callers that never set a mode. Read+written under a.mu.
-	opMode mode.Mode
+	// callers that never set a mode.
+	//
+	// Stored in an atomic.Pointer instead of under a.mu because dispatch
+	// is invoked from Run with a.mu already held — taking it again in
+	// Mode() would deadlock (Go mutexes aren't re-entrant). Atomic read
+	// in dispatch's hot path also avoids contention with concurrent
+	// mu-protected field updates elsewhere in Agent.
+	opMode atomic.Pointer[mode.Mode]
 
 	// latestUIContext carries the navigation state forwarded from the web UI.
 	latestUIContext atomic.Pointer[agentUIContext]
@@ -269,8 +275,8 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 		model:            cfg.Model,
 		confirmThreshold: risk.High,
 		maxToolsPerTurn:  defaultMaxToolCallsPerTurn,
-		opMode:           mode.ModeStandard,
 	}
+	a.SetMode(mode.ModeStandard)
 
 	// Set up vision analyzer
 	a.vision = vision.New(client, cfg.Model)
@@ -283,24 +289,21 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 // per-mode allow-lists. An empty Mode resets to mode.ModeStandard
 // (the default, behaviour-preserving profile).
 func (a *Agent) SetMode(m mode.Mode) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	if m == "" {
-		a.opMode = mode.ModeStandard
-		return
+		m = mode.ModeStandard
 	}
-	a.opMode = m
+	a.opMode.Store(&m)
 }
 
 // Mode returns the currently-active operation mode. Returns
-// mode.ModeStandard when no mode has been explicitly set.
+// mode.ModeStandard when no mode has been explicitly set. Lock-free
+// because dispatch is called from Run with a.mu already held; this
+// getter would otherwise deadlock.
 func (a *Agent) Mode() mode.Mode {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.opMode == "" {
-		return mode.ModeStandard
+	if p := a.opMode.Load(); p != nil {
+		return *p
 	}
-	return a.opMode
+	return mode.ModeStandard
 }
 
 func (a *Agent) SetMarauder(m *marauder.Marauder) { a.marauder = m }
