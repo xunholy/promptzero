@@ -46,15 +46,15 @@ type stubTransport struct {
 	kind string
 }
 
-func (s *stubTransport) Read(_ []byte) (int, error)              { return 0, io.EOF }
-func (s *stubTransport) Write(p []byte) (int, error)             { return len(p), nil }
-func (s *stubTransport) Close() error                            { return nil }
-func (s *stubTransport) Dial(_ context.Context) error            { return nil }
-func (s *stubTransport) Reconnect(_ context.Context) error       { return nil }
-func (s *stubTransport) Identity() string                        { return "stub://" + s.kind }
-func (s *stubTransport) DrainTimeout() time.Duration             { return 100 * time.Millisecond }
-func (s *stubTransport) Kind() string                            { return s.kind }
-func (s *stubTransport) SetReadTimeout(_ time.Duration) error    { return nil }
+func (s *stubTransport) Read(_ []byte) (int, error)           { return 0, io.EOF }
+func (s *stubTransport) Write(p []byte) (int, error)          { return len(p), nil }
+func (s *stubTransport) Close() error                         { return nil }
+func (s *stubTransport) Dial(_ context.Context) error         { return nil }
+func (s *stubTransport) Reconnect(_ context.Context) error    { return nil }
+func (s *stubTransport) Identity() string                     { return "stub://" + s.kind }
+func (s *stubTransport) DrainTimeout() time.Duration          { return 100 * time.Millisecond }
+func (s *stubTransport) Kind() string                         { return s.kind }
+func (s *stubTransport) SetReadTimeout(_ time.Duration) error { return nil }
 
 // withConnectFn temporarily replaces the package-level connectFn used by
 // ConnectViaFlipper to reopen the port as a Marauder. Restored on Cleanup.
@@ -74,10 +74,10 @@ func makeFakeMarauder() *Marauder {
 // fastSettle / fastReopen keep the test budget low while still exercising
 // the post-launch sleep and the reopen retry loop.
 const (
-	fastSettle  = 5 * time.Millisecond
-	fastReopen  = 100 * time.Millisecond
-	tinyReopen  = 50 * time.Millisecond
-	scriptedOK  = "\n> "
+	fastSettle = 5 * time.Millisecond
+	fastReopen = 100 * time.Millisecond
+	tinyReopen = 50 * time.Millisecond
+	scriptedOK = "\n> "
 )
 
 func TestConnectViaFlipper_HappyPath(t *testing.T) {
