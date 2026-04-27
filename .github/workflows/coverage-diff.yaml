@@ -16,18 +16,17 @@ permissions:
   contents: read
   issues: write   # required only for the optional issue-comment step
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+# Actions pinned to Node 24-native major versions; no env override needed.
 
 jobs:
   coverage-diff:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25'
           cache: true
@@ -65,7 +64,7 @@ jobs:
 
       - name: Upload report artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: coverage-diff-${{ steps.report.outputs.report_date || 'latest' }}
           path: docs/coverage/weekly-*.md
@@ -92,7 +91,11 @@ jobs:
           github.event_name == 'schedule' &&
           steps.report.outcome != 'failure'
         continue-on-error: true
-        uses: actions/github-script@v7
+        # v8 keeps CommonJS-style require() in the inline script,
+        # whereas v9 is ESM-only and would force a rewrite of the
+        # `const fs = require('fs')` line below. v8 already runs on
+        # Node 24, which is what GitHub-hosted runners expect.
+        uses: actions/github-script@v8
         env:
           REPORT_FILE: ${{ steps.report.outputs.report_file }}
           REPORT_DATE: ${{ steps.report.outputs.report_date }}

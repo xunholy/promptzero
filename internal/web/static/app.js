@@ -890,10 +890,14 @@
     beep(660, 0.05);
     setActiveRailItem(route);
 
-    // Auto-release mirror if navigating away from device screen while holding.
-    if (_screenState.isHolder && _currentScreen === 'device' && route !== 'device') {
-      releaseScreen();
-    }
+    // Mirror persists across route changes by design. The keepalive timer
+    // is bound to _screenState.isHolder (set/cleared in onScreenStateMessage),
+    // not to whether the device screen is currently visible, so the holder
+    // stays alive across Files / Audit / Settings nav. When the user
+    // returns to /device, loadDeviceScreen rebinds _screenCanvas to the
+    // freshly-mounted canvas and refreshDeviceScreen reads the current
+    // state to repaint LIVE/HELD/OFFLINE without losing the underlying
+    // RPC stream.
 
     // Subsystem rail items show a category landing screen with tools/attacks
     if (CATEGORY_TOOLS[route]) {
@@ -1871,7 +1875,14 @@
 
   function startDevicePoll() {
     pollDevice();
-    _deviceTimer = setInterval(pollDevice, 30000);
+    // 5 s cadence: the status pills (FLIPPER, MARAUDER, BLE, SD, battery)
+    // need to reflect connect/disconnect events within a few seconds of
+    // the underlying setup steps completing. The previous 30 s interval
+    // meant the Marauder pill could stay grey for half a minute after
+    // a successful bridge launch. The endpoint is cached server-side
+    // for 5 s already (deviceCacheTTL), so polling at the cache TTL
+    // costs at most one extra Flipper round-trip per window.
+    _deviceTimer = setInterval(pollDevice, 5000);
   }
 
   function pollDevice() {
@@ -1884,6 +1895,15 @@
       .then(function (body) { if (body) applyDeviceToStatusBar(body); })
       .catch(function () {});
   }
+
+  // Re-poll the device status as soon as the tab becomes visible again
+  // — without this the user can switch tabs before the bridge attaches,
+  // come back, and stare at stale "off" pills until the next 5 s tick.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      pollDevice();
+    }
+  });
 
   function applyDeviceToStatusBar(body) {
     // ── Flipper LED + port label ────────────────────────────────────────────

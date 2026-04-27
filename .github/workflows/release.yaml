@@ -25,8 +25,7 @@ permissions:
   contents: write
   id-token: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+# Actions pinned to Node 24-native major versions; no env override needed.
 
 jobs:
   build:
@@ -42,12 +41,12 @@ jobs:
           - { goos: darwin,  goarch: arm64, runner: macos-latest,  cgo: 1 }
           - { goos: windows, goarch: amd64, runner: ubuntu-latest, cgo: 0 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.25'
           cache: true
@@ -90,7 +89,7 @@ jobs:
           ls -lh
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: build-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
@@ -102,12 +101,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: dist
           pattern: build-*
@@ -123,7 +122,7 @@ jobs:
           cat checksums.txt
 
       - name: Generate SBOM (CycloneDX)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@v0.24.0
         with:
           path: ./
           format: cyclonedx-json
@@ -131,7 +130,7 @@ jobs:
           output-file: dist/promptzero.cdx.json
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Sign checksums with cosign (keyless)
         run: |
@@ -175,7 +174,7 @@ jobs:
           fi
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body_path: ${{ steps.extract_notes.outputs.notes_file }}
           generate_release_notes: ${{ steps.extract_notes.outputs.notes_file == '' }}
