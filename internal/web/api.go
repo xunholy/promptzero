@@ -274,9 +274,12 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 	}
 	snap := s.costs.Snapshot()
 	total := map[string]any{
-		"input_tokens":  snap.InputTokens,
-		"output_tokens": snap.OutputTokens,
-		"usd":           round4(snap.TotalUSD),
+		"input_tokens":          snap.InputTokens,
+		"output_tokens":         snap.OutputTokens,
+		"cache_read_tokens":     snap.CacheReadTokens,
+		"cache_creation_tokens": snap.CacheCreationTokens,
+		"cache_hit_rate":        snap.CacheHitRate(),
+		"usd":                   round4(snap.TotalUSD),
 	}
 	// Tracker is bound to one model at a time; surface that single slice
 	// as a per-model breakdown so the frontend contract can stay uniform

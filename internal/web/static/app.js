@@ -1648,6 +1648,7 @@
         var total  = body.total || {};
         var usd    = Number(total.usd || 0);
         var tokens = Number(total.input_tokens || 0) + Number(total.output_tokens || 0);
+        updateSessionInfo(body, total);
         var meta   = q('.status-meta');
         if (!meta) return;
         var pill = document.getElementById('costPill');
@@ -1672,6 +1673,37 @@
         }
       })
       .catch(function () {});
+  }
+
+  function updateSessionInfo(body, total) {
+    var el = document.getElementById('sessionInfo');
+    if (!el) return;
+    var byModel = Array.isArray(body.by_model) ? body.by_model : [];
+    var rawModel = (byModel[0] && byModel[0].model) || '';
+    var parts = [];
+    var modelLabel = formatModelName(rawModel);
+    if (modelLabel) parts.push(modelLabel);
+    var cacheTotal = Number(total.cache_read_tokens || 0) + Number(total.cache_creation_tokens || 0);
+    if (cacheTotal > 0) {
+      var rate = Number(total.cache_hit_rate || 0);
+      parts.push('prompt-cache ' + Math.round(rate * 100) + '%');
+    }
+    if (parts.length === 0) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    el.hidden = false;
+    el.textContent = parts.join(' · ');
+  }
+
+  // Convert API model IDs ("claude-opus-4-7", "claude-sonnet-4-6-20251001")
+  // into a display form ("claude-opus 4.7"). Falls back to the raw ID.
+  function formatModelName(model) {
+    if (!model) return '';
+    var m = String(model).match(/^(claude-(?:opus|sonnet|haiku))-(\d+)-(\d+)/);
+    if (!m) return model;
+    return m[1] + ' ' + m[2] + '.' + m[3];
   }
 
   /* =========================================================================

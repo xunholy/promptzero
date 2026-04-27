@@ -281,7 +281,9 @@ body::before {
 .screen-title { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--lcd-pixel); padding-bottom: 6px; margin-bottom: 10px; font-family: var(--pixel); font-size: 9px; letter-spacing: 2px; color: var(--lcd-pixel); }
 .screen-title .crumbs { display: flex; gap: 8px; align-items: center; }
 .screen-title .crumbs span:not(:first-child)::before { content: "▸"; margin-right: 8px; color: var(--lcd-pixel-soft); }
-.screen-title .meta { color: var(--lcd-pixel-soft); }
+.screen-title .meta { display: flex; align-items: center; gap: 8px; color: var(--lcd-pixel-soft); }
+.screen-title .meta > * + *::before { content: "·"; margin-right: 8px; color: var(--lcd-pixel-soft); }
+.screen-title .meta .session-info[hidden] { display: none; }
 
 .scrollback { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-right: 6px; scrollbar-width: thin; scrollbar-color: var(--lcd-pixel) transparent; }
 .scrollback::-webkit-scrollbar { width: 8px; }
