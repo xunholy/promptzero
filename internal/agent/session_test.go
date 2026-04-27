@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -103,5 +104,280 @@ func TestAgentResumeRestoresHistory(t *testing.T) {
 	}
 	if len(list) != 2 {
 		t.Fatalf("expected 2 sessions, got %d", len(list))
+	}
+}
+
+func TestSessionTranscript_FlattensBlocks(t *testing.T) {
+	history := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock("hi there")),
+		anthropic.NewAssistantMessage(
+			anthropic.NewTextBlock("checking"),
+			anthropic.NewToolUseBlock("tu1", map[string]any{"k": "v"}, "list_files"),
+		),
+		anthropic.NewUserMessage(anthropic.NewToolResultBlock("tu1", "ok", false)),
+	}
+	msgs, err := toSessionMessages(history)
+	if err != nil {
+		t.Fatalf("toSessionMessages: %v", err)
+	}
+
+	events := SessionTranscript(&session.State{Messages: msgs})
+	got := make([]string, 0, len(events))
+	for _, e := range events {
+		got = append(got, e.Kind)
+	}
+	want := []string{"user_text", "assistant_text", "tool_use", "tool_result"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("kinds = %v, want %v", got, want)
+	}
+	if events[2].Name != "list_files" || events[2].ToolUseID != "tu1" {
+		t.Errorf("tool_use = %+v", events[2])
+	}
+	if events[3].Output != "ok" || events[3].IsError {
+		t.Errorf("tool_result = %+v", events[3])
+	}
+}
+
+func TestSessionTranscript_DropsHandoffSentinel(t *testing.T) {
+	msgs := []session.Message{
+		{Role: "user", Content: "real user"},
+		{Role: "user", Content: HandoffResumeSentinel + "\n{...}\n</handoff-resume>"},
+	}
+	events := SessionTranscript(&session.State{Messages: msgs})
+	if len(events) != 1 || events[0].Text != "real user" {
+		t.Fatalf("expected 1 event 'real user', got %+v", events)
+	}
+}
+
+func TestDeriveTitle_TruncatesAndSkipsHandoff(t *testing.T) {
+	long := "this is a very very very long opening message that should get clipped after sixty characters or so"
+	cases := []struct {
+		name string
+		hist []anthropic.MessageParam
+		want string
+	}{
+		{"empty", nil, ""},
+		{
+			"first user text",
+			[]anthropic.MessageParam{
+				anthropic.NewUserMessage(anthropic.NewTextBlock("scan WiFi networks")),
+			},
+			"scan WiFi networks",
+		},
+		{
+			"skips handoff prefix",
+			[]anthropic.MessageParam{
+				anthropic.NewUserMessage(anthropic.NewTextBlock(HandoffResumeSentinel + "\n{...}")),
+				anthropic.NewUserMessage(anthropic.NewTextBlock("real prompt")),
+			},
+			"real prompt",
+		},
+		{
+			"truncates long",
+			[]anthropic.MessageParam{
+				anthropic.NewUserMessage(anthropic.NewTextBlock(long)),
+			},
+			long[:titleMaxLen-1] + "…",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := deriveTitle(tc.hist)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNewSession_ClearsHistoryAndRotatesID(t *testing.T) {
+	a := &Agent{}
+	a.history = []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock("old")),
+	}
+	a.sessionID = "session-old"
+	id := a.NewSession()
+	if id == "" || id == "session-old" {
+		t.Errorf("expected fresh id, got %q", id)
+	}
+	if len(a.history) != 0 {
+		t.Errorf("history not cleared: %d", len(a.history))
+	}
+}
+
+// The agent prepends <ui-context .../> and <device-state>...</device-state>
+// blocks to user input as turn grounding. Title derivation must skip
+// these so the sidebar shows the operator's prompt, not the JSON dump.
+func TestDeriveTitle_StripsAgentInjectedPrefixes(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want string
+	}{
+		{
+			"device-state then prompt",
+			"<device-state>\n{\"connected\":true,\"fork\":\"Momentum\"}\n</device-state>\n\nlist every installed app (FAP) on the flipper SD card",
+			"list every installed app (FAP) on the flipper SD card",
+		},
+		{
+			"ui-context self-closing then prompt",
+			"<ui-context view=\"agent\" path=\"\"/>\nscan wifi",
+			"scan wifi",
+		},
+		{
+			"chained ui-context + device-state",
+			"<ui-context view=\"agent\" path=\"\"/>\n<device-state>\n{}\n</device-state>\n\nreal prompt",
+			"real prompt",
+		},
+		{
+			"prefixes only",
+			"<device-state>{}</device-state>",
+			"",
+		},
+		{
+			"user starts with non-allowlisted tag — preserved",
+			"<example>look at this</example>",
+			"<example>look at this</example>",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hist := []anthropic.MessageParam{
+				anthropic.NewUserMessage(anthropic.NewTextBlock(tc.text)),
+			}
+			got := deriveTitle(hist)
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDeriveTitleFromMessages_FallbackForLegacyState(t *testing.T) {
+	// Pre-existing session files saved before the Title field existed:
+	// no Title, but Raw round-trips a real user message. The API layer
+	// must surface the user's first prompt instead of "Untitled session".
+	history := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock("scan the wifi networks")),
+		anthropic.NewAssistantMessage(anthropic.NewTextBlock("on it")),
+	}
+	msgs, err := toSessionMessages(history)
+	if err != nil {
+		t.Fatalf("toSessionMessages: %v", err)
+	}
+	got := DeriveTitleFromMessages(msgs)
+	if got != "scan the wifi networks" {
+		t.Errorf("got %q, want 'scan the wifi networks'", got)
+	}
+
+	// Plain-text fallback path: legacy entries with Content but no Raw.
+	got = DeriveTitleFromMessages([]session.Message{
+		{Role: "user", Content: "  hello there\nworld  "},
+	})
+	if got != "hello there world" {
+		t.Errorf("plaintext fallback got %q", got)
+	}
+
+	// Empty / handoff-only sessions return empty so the frontend renders
+	// the "Untitled session" placeholder rather than internal context.
+	got = DeriveTitleFromMessages([]session.Message{
+		{Role: "user", Content: HandoffResumeSentinel + "\n{...}"},
+	})
+	if got != "" {
+		t.Errorf("handoff-only got %q, want empty", got)
+	}
+}
+
+func TestMaybeGenerateTitle_GatedOnFirstAssistantTurn(t *testing.T) {
+	dir := t.TempDir()
+	store, err := session.NewStore(filepath.Join(dir, "sessions"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	a := &Agent{}
+	a.SetSessionStore(store)
+	// No anthropic client → maybeGenerateTitleLocked must return without
+	// touching state (and certainly without panicking on a.client.Messages).
+	a.history = []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock("hi")),
+		anthropic.NewAssistantMessage(anthropic.NewTextBlock("hello")),
+	}
+	state := &session.State{ID: a.sessionID}
+	a.maybeGenerateTitleLocked(state) // must be a no-op without a client
+}
+
+func TestHasFirstAssistantTurn(t *testing.T) {
+	cases := []struct {
+		name string
+		hist []anthropic.MessageParam
+		want bool
+	}{
+		{"empty", nil, false},
+		{
+			"user-only",
+			[]anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock("hi"))},
+			false,
+		},
+		{
+			"assistant-then-user",
+			[]anthropic.MessageParam{
+				anthropic.NewAssistantMessage(anthropic.NewTextBlock("ready")),
+				anthropic.NewUserMessage(anthropic.NewTextBlock("hi")),
+			},
+			false,
+		},
+		{
+			"user-then-assistant",
+			[]anthropic.MessageParam{
+				anthropic.NewUserMessage(anthropic.NewTextBlock("hi")),
+				anthropic.NewAssistantMessage(anthropic.NewTextBlock("hello")),
+			},
+			true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasFirstAssistantTurn(tc.hist); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildTitlePrompt_DropsHandoffAndCaps(t *testing.T) {
+	hist := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock(HandoffResumeSentinel + "\n{...}")),
+		anthropic.NewUserMessage(anthropic.NewTextBlock("real prompt")),
+		anthropic.NewAssistantMessage(anthropic.NewTextBlock("real reply")),
+	}
+	got := buildTitlePrompt(hist)
+	if !strings.Contains(got, "user: real prompt") || !strings.Contains(got, "assistant: real reply") {
+		t.Errorf("missing real lines: %q", got)
+	}
+	if strings.Contains(got, HandoffResumeSentinel) {
+		t.Errorf("handoff leaked into prompt: %q", got)
+	}
+}
+
+func TestRenameSession_PersistsTitle(t *testing.T) {
+	dir := t.TempDir()
+	store, err := session.NewStore(filepath.Join(dir, "sessions"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(&session.State{ID: "x", Title: "before"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	a := &Agent{}
+	a.SetSessionStore(store)
+	if err := a.RenameSession("x", "after"); err != nil {
+		t.Fatalf("RenameSession: %v", err)
+	}
+	state, err := store.Load("x")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if state.Title != "after" {
+		t.Errorf("title = %q, want after", state.Title)
 	}
 }

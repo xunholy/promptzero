@@ -188,6 +188,12 @@ type Agent struct {
 
 	// latestUIContext carries the navigation state forwarded from the web UI.
 	latestUIContext atomic.Pointer[agentUIContext]
+
+	// titleGenInflight tracks session ids whose Haiku title generation
+	// is in flight (or done) so autoSaveLocked fires the call at most
+	// once per process. Cleared only on Agent destruction; the cost is
+	// trivially small (one map entry per session ever resumed).
+	titleGenInflight map[string]bool
 }
 
 // agentUIContext is the latest view+path the web UI reported.

@@ -77,10 +77,12 @@
           <span class="rail-group-title">SESSIONS</span>
         </button>
         <div class="rail-group-body" id="rg-sessions">
-          <div class="rail-item active" data-route="agent" tabindex="0" role="button">
-            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="12" height="9"/><path d="M5 12v2M11 12v2M2 7h12"/></svg>
-            <span class="label">Current session</span>
-            <span class="badge">&#9679;</span>
+          <button class="rail-item rail-action" id="newSessionBtn" type="button" aria-label="Start new session">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"/></svg>
+            <span class="label">New session</span>
+          </button>
+          <div class="rail-session-list" id="sessionList" role="list" aria-label="Saved sessions">
+            <div class="rail-session-empty" id="sessionListEmpty">No saved sessions yet</div>
           </div>
         </div>
       </div>

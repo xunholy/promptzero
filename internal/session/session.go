@@ -21,6 +21,7 @@ type Message struct {
 
 type State struct {
 	ID        string    `json:"id"`
+	Title     string    `json:"title,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Messages  []Message `json:"messages"`

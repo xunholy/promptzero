@@ -73,6 +73,13 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/fs/rename", s.requireAuth(s.handleFSRename))
 
 	mux.HandleFunc("POST /api/input/send", s.requireAuth(s.handleInputSend))
+
+	mux.HandleFunc("GET /api/sessions", s.requireAuth(s.handleSessionList))
+	mux.HandleFunc("POST /api/sessions", s.requireAuth(s.handleSessionNew))
+	mux.HandleFunc("GET /api/sessions/{id}", s.requireAuth(s.handleSessionGet))
+	mux.HandleFunc("POST /api/sessions/{id}/resume", s.requireAuth(s.handleSessionResume))
+	mux.HandleFunc("PATCH /api/sessions/{id}", s.requireAuth(s.handleSessionPatch))
+	mux.HandleFunc("DELETE /api/sessions/{id}", s.requireAuth(s.handleSessionDelete))
 }
 
 // handleAuthInfo reports whether the server requires a bearer token.

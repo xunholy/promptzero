@@ -253,6 +253,123 @@ body::before {
 .rail-section { display: none; }
 .rail-divider { display: none; }
 
+/* Session sidebar — list of saved sessions under the SESSIONS group.
+   Each row is a button with a title + meta (turn count · relative time)
+   and inline rename/delete actions that fade in on hover. The whole
+   group reuses the existing .rail-item shell so collapse/mobile
+   styling Just Works. */
+.rail-action {
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--rail-text-dim);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+.rail-action:hover { color: var(--rail-text); background: #150d04; }
+.rail-action .ic { color: var(--orange-hi); }
+
+.rail-session-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.rail-session-list::-webkit-scrollbar { width: 6px; }
+.rail-session-list::-webkit-scrollbar-thumb { background: var(--orange-lo); }
+
+.rail-session-empty {
+  padding: 14px;
+  font-family: var(--pixel);
+  font-size: 8px;
+  color: var(--rail-text-dim);
+  text-align: center;
+  letter-spacing: 1px;
+}
+
+.rail-session {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  font-size: 18px;
+  line-height: 1.1;
+  cursor: pointer;
+  user-select: none;
+  border-left: 3px solid transparent;
+  transition: background .08s, color .08s, border-color .08s;
+  position: relative;
+}
+.rail-session:hover { background: #150d04; }
+.rail-session.active {
+  background: var(--rail-active-bg);
+  color: var(--rail-active-fg);
+  border-left-color: var(--orange-hi);
+}
+.rail-session .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--orange-lo);
+  margin-left: 5px;
+  box-shadow: inset 0 0 4px #00000080;
+}
+.rail-session.active .dot { background: var(--orange-hi); box-shadow: 0 0 6px var(--orange-hi); }
+.rail-session .title-line {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rail-session .title {
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--term);
+}
+.rail-session .meta {
+  font-family: var(--pixel);
+  font-size: 8px;
+  color: var(--rail-text-dim);
+  letter-spacing: 1px;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rail-session.active .meta { color: #1a0e00aa; }
+
+.rail-session-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.rail-session:hover .rail-session-actions,
+.rail-session:focus-within .rail-session-actions { opacity: 1; }
+.rail-session-actions button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px;
+  font-family: var(--pixel);
+  font-size: 8px;
+  letter-spacing: 1px;
+  border-radius: 2px;
+}
+.rail-session-actions button:hover { background: #00000040; color: var(--orange-hi); }
+.rail-session.active .rail-session-actions button:hover { background: #ffffff20; color: #fff; }
+
+/* When the rail is collapsed to icons-only, the dynamic session list
+   is too detail-heavy to render meaningfully — hide everything except
+   the New action so the column stays clean. */
+.device.rail-collapsed .rail-session-list { display: none; }
+.device.rail-collapsed #newSessionBtn .label { display: none; }
+
 /* Icons-only collapsed state — desktop only. Scoped to .rail because
    .rail-item is also reused inside the LCD (category screens, file
    browser entries, persona list) and we must NOT hide their labels. */

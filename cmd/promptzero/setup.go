@@ -1070,6 +1070,10 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	if deps.Flipper != nil {
 		srv.SetFlipper(deps.Flipper)
 	}
+	// Always wire the session driver — *agent.Agent.SessionID returns an
+	// empty string until SetSessionStore runs, so the API layer simply
+	// reports an empty list when persistence is unavailable.
+	srv.SetSessionDriver(deps.Ai)
 	// Forward web UI navigation state into the agent so buildUIContextBlock
 	// can inject it as a turn prefix (same pipeline as device-state oracle).
 	srv.OnUIContext(func(view, path string) {

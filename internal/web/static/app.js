@@ -697,6 +697,195 @@
     });
   }
 
+  /* =========================================================================
+     Sessions sidebar — list of saved sessions, click to resume.
+
+     The persisted store lives at ~/.promptzero/sessions; the agent
+     auto-saves after every turn, so this list mirrors disk on each
+     refresh. Resume / new / delete go through HTTP and the server
+     broadcasts session_list_changed so peer tabs stay in sync.
+  ========================================================================= */
+
+  var _sessions = { active: '', list: [] };
+
+  function setupSessions() {
+    var newBtn = document.getElementById('newSessionBtn');
+    if (newBtn) {
+      newBtn.addEventListener('click', function () {
+        beep(660, 0.05);
+        apiFetch('api/sessions', { method: 'POST' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+            if (!d) return;
+            _sessions.active = d.id || '';
+            resetConversation();
+            showAgentScreen();
+            refreshSessions();
+          })
+          .catch(function () {});
+      });
+    }
+    refreshSessions();
+  }
+
+  function refreshSessions() {
+    return apiFetch('api/sessions')
+      .then(function (r) {
+        if (r.status === 503) { hideSessionList(); return null; }
+        return r.ok ? r.json() : null;
+      })
+      .then(function (d) {
+        if (!d) return;
+        _sessions.active = d.active || '';
+        _sessions.list = Array.isArray(d.sessions) ? d.sessions : [];
+        renderSessionList();
+      })
+      .catch(function () {});
+  }
+
+  function hideSessionList() {
+    var group = document.querySelector('.rail-group[data-group="sessions"]');
+    if (group) group.style.display = 'none';
+  }
+
+  function renderSessionList() {
+    var listEl  = document.getElementById('sessionList');
+    var emptyEl = document.getElementById('sessionListEmpty');
+    if (!listEl) return;
+
+    // Clear all rows except the empty-state hint (we re-show it below).
+    var children = Array.prototype.slice.call(listEl.children);
+    children.forEach(function (n) { if (n.id !== 'sessionListEmpty') listEl.removeChild(n); });
+
+    if (!_sessions.list.length) {
+      if (emptyEl) emptyEl.style.display = 'block';
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    _sessions.list.forEach(function (s) {
+      listEl.appendChild(makeSessionRow(s));
+    });
+  }
+
+  function makeSessionRow(s) {
+    var row = mkEl('div', 'rail-session');
+    row.setAttribute('role', 'button');
+    row.tabIndex = 0;
+    row.dataset.sessionId = s.id;
+    if (s.active) row.classList.add('active');
+
+    var dot = mkEl('span', 'dot');
+    row.appendChild(dot);
+
+    var titleLine = mkEl('div', 'title-line');
+    var title = mkEl('span', 'title', s.title || 'Untitled session');
+    titleLine.appendChild(title);
+    var meta = mkEl('span', 'meta', formatSessionMeta(s));
+    titleLine.appendChild(meta);
+    row.appendChild(titleLine);
+
+    var actions = mkEl('div', 'rail-session-actions');
+    var rename = mkEl('button', null, '✎');
+    rename.title = 'Rename';
+    rename.type  = 'button';
+    rename.addEventListener('click', function (e) { e.stopPropagation(); promptRename(s); });
+    actions.appendChild(rename);
+    var del = mkEl('button', null, '×');
+    del.title = 'Delete';
+    del.type  = 'button';
+    del.style.fontSize = '12px';
+    del.addEventListener('click', function (e) { e.stopPropagation(); promptDelete(s); });
+    actions.appendChild(del);
+    row.appendChild(actions);
+
+    function open() { resumeSession(s.id); }
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+    return row;
+  }
+
+  function formatSessionMeta(s) {
+    var n = (s.messages || 0);
+    var label = (n === 1) ? '1 turn' : n + ' turns';
+    var rel = relativeTime(s.updated_at);
+    return rel ? (label + ' · ' + rel) : label;
+  }
+
+  function relativeTime(iso) {
+    if (!iso) return '';
+    var t = new Date(iso).getTime();
+    if (!t) return '';
+    var diff = Math.max(0, Date.now() - t) / 1000;
+    if (diff < 60)        return Math.floor(diff) + 's ago';
+    if (diff < 3600)      return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400)     return Math.floor(diff / 3600) + 'h ago';
+    if (diff < 86400 * 7) return Math.floor(diff / 86400) + 'd ago';
+    return new Date(t).toISOString().slice(0, 10);
+  }
+
+  function resumeSession(id) {
+    if (!id || id === _sessions.active) return;
+    beep(660, 0.05);
+    apiFetch('api/sessions/' + encodeURIComponent(id) + '/resume', { method: 'POST' })
+      .then(function (r) {
+        if (!r.ok) { addSysMsg('ERROR: failed to resume session'); return null; }
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d) return;
+        // Server will also emit session_switched + session_list_changed
+        // on the websocket, but optimistically refresh now so the click
+        // feels snappy.
+        loadSessionTranscript(d.id);
+      })
+      .catch(function () {});
+  }
+
+  function loadSessionTranscript(id) {
+    if (!id) return;
+    return apiFetch('api/sessions/' + encodeURIComponent(id))
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        _sessions.active = d.id;
+        showAgentScreen();
+        renderTranscript(d.events || []);
+        var sid = document.getElementById('sessionId');
+        if (sid) sid.textContent = (d.id || '').slice(0, 8);
+        refreshSessions();
+      })
+      .catch(function () {});
+  }
+
+  function promptRename(s) {
+    var current = s.title || '';
+    var next;
+    try { next = window.prompt('Rename session', current); } catch (_) { return; }
+    if (next == null) return;
+    next = String(next).trim();
+    apiFetch('api/sessions/' + encodeURIComponent(s.id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: next }),
+    })
+      .then(function (r) { if (r.ok) refreshSessions(); })
+      .catch(function () {});
+  }
+
+  function promptDelete(s) {
+    var label = s.title || s.id.slice(0, 8);
+    var ok;
+    try { ok = window.confirm('Delete session "' + label + '"?\nThis cannot be undone.'); } catch (_) { return; }
+    if (!ok) return;
+    apiFetch('api/sessions/' + encodeURIComponent(s.id), { method: 'DELETE' })
+      .then(function (r) { if (r.ok) refreshSessions(); })
+      .catch(function () {});
+  }
+
+
   function activateRoute(route) {
     beep(660, 0.05);
     setActiveRailItem(route);
@@ -1156,6 +1345,25 @@
         addSysMsg('● persona switched to ' + (msg.name || 'default'));
         break;
 
+      case 'session_list_changed':
+        refreshSessions();
+        break;
+
+      case 'session_switched':
+        // The originating tab already pulled the transcript optimistically
+        // and updated _sessions.active; for it this is a no-op replay.
+        // Peer tabs reload the now-active conversation here.
+        if (msg.fresh) {
+          _sessions.active = msg.session_id || '';
+          resetConversation();
+          var sidEl = document.getElementById('sessionId');
+          if (sidEl) sidEl.textContent = (msg.session_id || '').slice(0, 8);
+          refreshSessions();
+        } else if (msg.session_id && msg.session_id !== _sessions.active) {
+          loadSessionTranscript(msg.session_id);
+        }
+        break;
+
       case 'screen_state':
         onScreenStateMessage(msg);
         break;
@@ -1201,6 +1409,100 @@
     _streamingMsgEl  = null;
     _streamingTurnId = null;
     clearConfirm();
+  }
+
+  /* =========================================================================
+     Transcript replay — given the persisted event stream, rebuild the
+     scrollback so a resumed session looks identical to the live one.
+     Uses the same helpers as streaming: addUserMsg / makeAgentMsgEl /
+     addToolStart / finishTool — the only difference is they fire
+     synchronously back-to-back instead of being driven by ws frames.
+  ========================================================================= */
+
+  function renderTranscript(events) {
+    resetConversation();
+    if (!events || !events.length) { setPhase('Idle'); return; }
+    hideMascot();
+    var sb = document.getElementById('scrollback');
+    var inFlightTool = {};   // tool_use_id -> wrap element
+
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      if (!ev || !ev.kind) continue;
+      switch (ev.kind) {
+        case 'user_text':
+          if (!ev.text) break;
+          if (sb) {
+            var m  = mkEl('div', 'msg user');
+            var w  = mkEl('div', 'who', 'U');
+            var b  = mkEl('div', 'body');
+            var mt = mkEl('div', 'meta'); mt.appendChild(mkEl('span', null, 'YOU'));
+            var p  = mkEl('p', null, ev.text);
+            b.appendChild(mt); b.appendChild(p);
+            m.appendChild(w); m.appendChild(b);
+            sb.appendChild(m);
+          }
+          break;
+
+        case 'assistant_text':
+          if (!ev.text) break;
+          if (sb) {
+            var am  = mkEl('div', 'msg');
+            var aw  = mkEl('div', 'who', 'PZ');
+            var ab  = mkEl('div', 'body');
+            var amt = mkEl('div', 'meta'); amt.appendChild(mkEl('span', null, 'PROMPTZERO'));
+            var ap  = mkEl('p', null, ev.text);
+            ab.appendChild(amt); ab.appendChild(ap);
+            am.appendChild(aw); am.appendChild(ab);
+            sb.appendChild(am);
+          }
+          break;
+
+        case 'tool_use':
+          // Synthesize a turn-id-less key so finishTool can pair the
+          // matching tool_result. We use the real tool_use_id since the
+          // SDK guarantees it's unique within a session.
+          var startMsg = {
+            turn_id: '',
+            name:    ev.name || 'tool',
+            input:   ev.input != null ? (typeof ev.input === 'string' ? ev.input : JSON.stringify(ev.input)) : '',
+          };
+          addToolStart(startMsg);
+          // _toolEls keyed under '|name'; remember the wrap by tool_use_id
+          // so the matching tool_result can find it without a turn id.
+          var key = '|' + (ev.name || 'tool');
+          if (_toolEls[key]) {
+            inFlightTool[ev.tool_use_id] = _toolEls[key];
+            delete _toolEls[key];
+          }
+          break;
+
+        case 'tool_result':
+          var wrap = inFlightTool[ev.tool_use_id];
+          delete inFlightTool[ev.tool_use_id];
+          if (!wrap) break;
+          var indicator = wrap.querySelector('.tool-status-txt');
+          if (indicator) indicator.textContent = ev.is_error ? 'failed' : 'done';
+          var content = wrap.querySelector('.tool-details-content');
+          if (content && (ev.output || ev.is_error)) {
+            var tile = mkEl('div', 'tool-result');
+            if (ev.output) {
+              tile.appendChild(mkEl('span', 'k', ev.is_error ? 'error' : 'output'));
+              var v = mkEl('span', 'v', ev.output);
+              if (ev.is_error) v.style.color = 'var(--led-red)';
+              tile.appendChild(v);
+            }
+            content.appendChild(tile);
+          }
+          if (ev.is_error) {
+            var d = wrap.querySelector('details.tool-details');
+            if (d) d.open = true;
+          }
+          break;
+      }
+    }
+    if (sb) sb.scrollTop = sb.scrollHeight;
+    setPhase('Idle');
   }
 
   function resetConversation() {
@@ -2984,6 +3286,7 @@
     setupRailNav();
     setupRailCollapse();
     setupRailGroups();
+    setupSessions();
     setupQuickActions();
     setupDpad();
     setupDpadModeToggle();

@@ -56,6 +56,7 @@ import (
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/rules"
+	"github.com/xunholy/promptzero/internal/session"
 	"github.com/xunholy/promptzero/internal/version"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
@@ -76,6 +77,18 @@ type agentDriver interface {
 	SetPersona(p *persona.Persona)
 	Persona() *persona.Persona
 	PersonaSnapshot() *persona.Persona
+}
+
+// sessionDriver is the optional surface Server needs to expose persisted
+// session history through /api/sessions. Wired via SetSessionDriver. When
+// unset every session endpoint 503s — the UI hides the sidebar.
+type sessionDriver interface {
+	SessionID() string
+	NewSession() string
+	ListSessions() ([]session.State, error)
+	ResumeSession(id string) error
+	RenameSession(id, title string) error
+	DeleteSession(id string) error
 }
 
 // outboundQueue bounds how many pending events a slow consumer may buffer.
@@ -127,6 +140,7 @@ type Server struct {
 	costs       *cost.Tracker
 	rulesEngine *rules.Engine
 	flipper     *flipper.Flipper
+	sessions    sessionDriver
 	// flipperRPC, when non-nil, is used for RPC screen-stream acquisition.
 	// Set automatically by SetFlipper when the concrete type satisfies
 	// flipperRPCProvider; overridable in tests via SetFlipperRPC.
@@ -309,6 +323,13 @@ func (s *Server) SetCostTracker(t *cost.Tracker) { s.costs = t }
 // SetRulesEngine wires the reactive-rules engine into the server so
 // /api/rules can list, pause, resume, and test rule fires.
 func (s *Server) SetRulesEngine(e *rules.Engine) { s.rulesEngine = e }
+
+// SetSessionDriver wires the persisted-session surface so /api/sessions
+// can list, resume, rename, and delete entries from the on-disk store.
+// Pass *agent.Agent (it satisfies sessionDriver). Nil unsets the driver
+// — every /api/sessions* endpoint then returns 503 and the sidebar
+// hides itself.
+func (s *Server) SetSessionDriver(d sessionDriver) { s.sessions = d }
 
 // SetFlipperConnected records the current Flipper serial state for the
 // /api/debug snapshot. Call on connect/disconnect transitions.
