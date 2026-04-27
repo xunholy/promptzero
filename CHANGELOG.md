@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-04-27
+
+### Fixed
+
+- **`gofmt` violation in `internal/marauder/bridge_test.go`.** The
+  initial v0.10.0 cut included hand-aligned method signatures that
+  `gofmt -d` flagged on its second pass; CI's lint job rejected the
+  commit. Functional behaviour is unchanged — release binaries
+  shipped from v0.10.0 work — but anyone cloning at the v0.10.0 tag
+  and running `task lint` would have hit a failure. v0.10.1
+  re-bundles the same feature with the formatting fix.
+
 ## [0.10.0] - 2026-04-27
 
 ### Added
