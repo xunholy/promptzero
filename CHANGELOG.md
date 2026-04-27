@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-04-27
+
+### Added
+
+- **Collapsible grouped sidebar.** The flat MAIN MENU rail is now
+  organised into three groups (SESSIONS / DEVICES / SYSTEM) with
+  per-group expand/collapse and a global icons-only collapse toggle.
+  Both states persist in `localStorage`
+  (`promptzero_rail_collapsed`, `promptzero_rg_<group>_collapsed`).
+- **Quick Actions popover.** New TX-line accessory (lightning button)
+  opens a categorised list of shortcut prompts. Selecting one loads
+  the prompt into the input for review/edit before transmit, rather
+  than firing it directly. Risk pill shows on each item.
+- **Full semver version on the web UI.** Boot splash and status-bar
+  brand now show the full version (e.g. `v0.9.4`) instead of a
+  hardcoded `v0.9` label. Rendered server-side via a tiny template
+  pass over `index.html` so the version is correct on first paint —
+  no JS round-trip, no flicker.
+- **Version line on the CLI banner.** `printBanner` now prints
+  `version.String()` (e.g. `v0.9.4 (abc1234 built 2026-04-27)`) below
+  the tagline so the running build is visible at startup, not just
+  via `--version`.
+
+### Changed
+
+- **Rail items reorganised.** Removed: Sub-GHz, RFID, NFC, IR,
+  iButton, GPIO, BadUSB, Apps (these are driven by the agent /
+  quick-actions, not standalone screens). Kept under DEVICES:
+  Flipper Zero, Marauder, Files. Kept under SYSTEM: Audit Log,
+  Report, Settings.
+
+### Fixed
+
+- **Persona banner no longer says "0 tools allowed" for the default
+  persona.** An empty allowlist means *unrestricted* (all tools
+  pass through `FilterTools`), not zero. Matches the wording already
+  used by the `/persona` switch handler in `commands.go` —
+  unrestricted personas show "all tools allowed", restricted ones
+  show the count.
+
 ## [0.9.3] - 2026-04-27
 
 ### Changed
