@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **BLE works in released macOS binaries.** The release workflow now
+  builds darwin targets on macOS runners with `CGO_ENABLED=1` instead
+  of cross-compiling from Linux. Previously every macOS user who
+  installed via the curl-piped `install.sh` got a binary where any
+  `ble://` transport hit `transport/ble: darwin BLE requires a macOS
+  build with CGO enabled` at runtime. The release pipeline is now a
+  matrix-split build → aggregate-and-sign release flow.
+- **Real BLE implementation now compiles on darwin.** `ble.go`'s build
+  constraint changed from `!darwin` to `!darwin || (darwin && cgo)`,
+  and `ble_darwin.go` is constrained to `darwin && !cgo`. A native
+  macOS build with CGO links the full `tinygo.org/x/bluetooth` stack;
+  CGO-disabled builds fall back to the existing stub. The transport
+  test file gained a matching constraint so `go test` works on darwin
+  with CGO enabled (it previously failed to build at all).
+
 ## [0.11.0] - 2026-04-27
 
 ### Added

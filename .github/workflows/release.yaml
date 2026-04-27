@@ -10,6 +10,11 @@ name: Release
 #     checksums.txt
 #
 # The CycloneDX SBOM (promptzero.cdx.json) is attached for dependency auditing.
+#
+# Build topology: darwin targets are built on macOS runners with CGO
+# enabled so tinygo.org/x/bluetooth's CoreBluetooth bindings link
+# correctly — cross-compiling darwin from Linux strips CGO and silently
+# disables BLE support at runtime. Linux and Windows are CGO-free.
 
 on:
   push:
@@ -24,8 +29,18 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64, runner: ubuntu-latest, cgo: 0 }
+          - { goos: linux,   goarch: arm64, runner: ubuntu-latest, cgo: 0 }
+          - { goos: darwin,  goarch: amd64, runner: macos-13,      cgo: 1 }
+          - { goos: darwin,  goarch: arm64, runner: macos-latest,  cgo: 1 }
+          - { goos: windows, goarch: amd64, runner: ubuntu-latest, cgo: 0 }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,10 +52,13 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      - name: Build all platforms
+      - name: Build
         env:
           TAG_NAME: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
         run: |
           BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           VERSION_PKG="github.com/xunholy/promptzero/internal/version"
@@ -48,34 +66,55 @@ jobs:
             -X ${VERSION_PKG}.Version=${TAG_NAME} \
             -X ${VERSION_PKG}.Commit=${COMMIT_SHA:0:7} \
             -X ${VERSION_PKG}.Date=${BUILD_DATE}"
+
+          BINARY="promptzero-${GOOS}-${GOARCH}"
+          if [ "${GOOS}" = "windows" ]; then
+            BINARY="${BINARY}.exe"
+          fi
+
           mkdir -p dist
+          go build \
+            -trimpath \
+            -ldflags "${LDFLAGS}" \
+            -o "dist/${BINARY}" \
+            ./cmd/promptzero
 
-          for pair in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            GOOS="${pair%/*}"
-            GOARCH="${pair#*/}"
-            BINARY="promptzero-${GOOS}-${GOARCH}"
+          cd dist
+          if [ "${GOOS}" = "windows" ]; then
+            zip "${BINARY%.exe}.zip" "${BINARY}"
+            rm "${BINARY}"
+          else
+            tar czf "${BINARY}.tar.gz" "${BINARY}"
+            rm "${BINARY}"
+          fi
+          ls -lh
 
-            if [ "${GOOS}" = "windows" ]; then
-              BINARY="${BINARY}.exe"
-            fi
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          retention-days: 1
+          if-no-files-found: error
 
-            echo "Building ${BINARY}..."
-            GOOS="${GOOS}" GOARCH="${GOARCH}" go build \
-              -trimpath \
-              -ldflags "${LDFLAGS}" \
-              -o "dist/${BINARY}" \
-              ./cmd/promptzero
+  release:
+    name: release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-            cd dist
-            if [ "${GOOS}" = "windows" ]; then
-              zip "${BINARY%.exe}.zip" "${BINARY}"
-            else
-              tar czf "${BINARY}.tar.gz" "${BINARY}"
-            fi
-            cd ..
-          done
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: build-*
+          merge-multiple: true
 
-          ls -lh dist/
+      - name: List collected artifacts
+        run: ls -lh dist/
 
       - name: Generate checksums
         run: |

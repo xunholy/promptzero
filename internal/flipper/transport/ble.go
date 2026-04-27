@@ -24,7 +24,7 @@
 // Bluetooth manager) is typically enough. The first-time setup is not
 // attempted by this transport.
 
-//go:build !darwin
+//go:build !darwin || (darwin && cgo)
 
 package transport
 

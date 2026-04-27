@@ -1,3 +1,10 @@
+// Mirrors the build constraint on ble.go so the test references to
+// bleTransport / bleDrainTimeout / etc. only compile when the real BLE
+// implementation is included. On darwin without CGO the stub in
+// ble_darwin.go is the only file built and these symbols don't exist.
+
+//go:build !darwin || (darwin && cgo)
+
 package transport
 
 import (
