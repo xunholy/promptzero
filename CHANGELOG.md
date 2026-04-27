@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-27
+
+### Added
+
+- **Marauder bridge mode (`--marauder-bridge`).** Drives the ESP32
+  Marauder over the Flipper Zero's USB-UART Bridge app when the
+  Marauder is physically stacked on the GPIO header — a single USB
+  cable to the Flipper now serves both devices. The bridge app is
+  launched via `loader open "USB-UART Bridge"` (override per
+  firmware fork via `--marauder-bridge-command` or the
+  `marauder.bridge_command` config field). While the bridge is
+  active, `flipper_*` tools return `flipper offline (UART bridge
+  active)` and the `/status` banner shows the suspension. Press
+  BACK on the Flipper to exit; PromptZero does not auto-recover
+  (manual restart).
+- **Hybrid bridge mode (BLE + USB).** With
+  `--transport "ble://AA:BB:CC:DD:EE:FF" --marauder-bridge
+  --marauder-port /dev/ttyACM0`, the USB-CDC interface drives the
+  Marauder while the BLE-side CLI stays alive — both devices
+  usable concurrently. Requires native Linux or macOS (WSL2 does
+  not expose Bluetooth).
+- **`flipper.Suspend(reason)` / `IsSuspended` / `SuspensionReason`.**
+  Public API for marking a Flipper handle inactive. Every CLI
+  method (`ExecCtx`, `ExecLongCtx`, `StreamCtx`, `WriteFileCtx`,
+  `Reconnect`) gates with `ErrFlipperSuspended` when set.
+- **`marauder.ConnectViaFlipper`.** Helper that orchestrates the
+  bridge launch, port reopen, and retry loop. Transport-aware:
+  `serial` → suspend, `ble` → keep CLI alive, `http`/`mock` → refuse.
+
+### Changed
+
+- **`MarauderConfig`** gains `bridge`, `bridge_command`,
+  `bridge_settle`, and `bridge_port_reopen_timeout` fields. Defaults
+  applied at use-site (750ms settle, 5s reopen timeout, default
+  bridge command for Momentum / Unleashed / RogueMaster / OFW 0.99+).
+- **`--transport` flag help** updated to reflect that BLE is real
+  and requires a native host (was "reserved; Phase-B").
+
 ## [0.9.4] - 2026-04-27
 
 ### Added
