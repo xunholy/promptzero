@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-27
+
+### Added
+
+- **Header session info pill.** The screen-title meta row now surfaces
+  the active model and a running prompt-cache hit rate alongside the
+  existing phase indicator — e.g.
+  `claude-opus 4.7 · prompt-cache 87% · ready`. Operators can see at a
+  glance which model is serving them and whether the cached prefix is
+  being reused. The row stays hidden until the cache counters move so
+  fresh sessions don't render an empty pill.
+- **`/api/cost` cache fields.** The `total` block gains
+  `cache_read_tokens`, `cache_creation_tokens`, and `cache_hit_rate`
+  (0..1). The snapshot already tracked these — only the JSON
+  projection was missing.
+
+### Changed
+
+- **Idle mascot redesigned as Gengar.** The 11×9 dolphin sprite is
+  replaced with a 56×52 Gengar derived from the canonical Gen 4 HGSS
+  sprite. Cells map to body / dim teeth / red eyes (a new "e" pixel
+  class), so the eye region animates independently from the
+  silhouette. Idle motion is layered: a continuous slow eye pulse
+  plus random-jitter bursts for blink, glow, float, and laugh
+  scheduled per-effect so motion never feels metronomic. Bursts
+  respect `prefers-reduced-motion`.
+- **Tool calls collapse by default.** Each tool entry in the agent
+  scroll now renders inside a `<details>` element: the meta row
+  (name + risk + status) is the always-visible `<summary>`, while
+  the JSON input/output and any error bodies live inside a hidden
+  content block that toggles on click. Native `<details>` handles
+  a11y (keyboard + screen-reader) for free.
+
+### Fixed
+
+- **Stale streaming bubbles.** A new user message and the start of a
+  tool call now both tear down any lingering blink-cursor bubble
+  before proceeding. Previously, if the server didn't emit a clean
+  `response`/`error` for the prior turn, the next `text_delta` would
+  visually merge into the old bubble even though a tool had executed
+  between them.
+
 ## [0.10.1] - 2026-04-27
 
 ### Fixed
