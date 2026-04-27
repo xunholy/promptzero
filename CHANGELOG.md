@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hybrid mode is fully functional: BLE Flipper + USB-bridged Marauder
+  active simultaneously.** `LaunchBridge` on BLE drives the firmware into
+  USB-UART bridge mode the canonical way: opens the GPIO app via
+  `app_start_request`, then sends a single `gui_send_input_event(OK)`
+  which selects the default-highlighted "USB-UART Bridge" menu item. The
+  scene's `on_enter` calls `usb_uart_enable()` with default config
+  (`gpio_scene_usb_uart.c:38`), flipping the Flipper's USB CDC into a
+  UART passthrough to the Marauder. BLE keeps the Flipper CLI alive in
+  parallel — `promptzero_flipper_connected=1` and
+  `promptzero_marauder_connected=1` together. Replaces the never-working
+  legacy `loader open "USB-UART Bridge"` shortcut on Momentum (that name
+  is a menu label, not a registered launchable).
+- **All 17 FAP launcher shortcuts now work over BLE.** `LoaderNFCMagic`,
+  `LoaderMFKey`, `LoaderMifareNested`, `LoaderPicopass`, `LoaderSeader`,
+  `LoaderT5577MultiWriter`, `LoaderSubGHzBruteforcer`,
+  `LoaderSubGHzPlaylist`, `LoaderProtoView`, `LoaderSpectrumAnalyzer`,
+  `LoaderSignalGenerator`, `LoaderNRF24Mousejacker`, `LoaderNRF24Sniffer`,
+  `LoaderUARTTerminal`, `LoaderSPIMemManager`, `LoaderUnitemp`, plus the
+  I2C scanner fallback — refactored to delegate to `LoaderOpen()` so the
+  BLE-RPC dispatcher fires. Previously they called `f.Exec("loader open
+  ...")` directly which would hit `ErrCommandRequiresUSB` on BLE.
+
+### Fixed
+
+- **`classifyBridgeRejection` recognises Momentum's "Application X not
+  found" response.** The legacy substring matchers ("app not found",
+  etc.) missed the firmware's actual response shape, which let the
+  bridge launcher false-success on Momentum and report a phantom
+  Marauder connection. Added markers for the `Application "..." not
+  found` shape so the failure surfaces as `ErrBridgeRejected` instead.
+
 - **BLE-to-Flipper now works end-to-end via Protobuf RPC.** Flipper
   firmware exposes RPC, not text CLI, on its BLE Serial endpoint
   (`applications/services/bt/bt_service/bt.c` pipes inbound bytes

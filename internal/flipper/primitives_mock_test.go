@@ -82,8 +82,11 @@ func TestStorageCopySanitises(t *testing.T) {
 	}
 }
 
-// TestLoaderMFKey verifies the quoting-free loader FAP shortcut issues the
-// exact `loader open MFKey32` line the firmware expects.
+// TestLoaderMFKey verifies the loader FAP shortcut issues a
+// loader-open command for MFKey32. Routed through LoaderOpen, so the
+// app name is always quoted (the firmware's args parser accepts both
+// quoted and unquoted single-word names — quoted is the canonical
+// shape and matches every other FAP wrapper).
 func TestLoaderMFKey(t *testing.T) {
 	m := mock.Spawn(t,
 		mock.WithHandler("loader", func(args []string) string { return "" }),
@@ -94,7 +97,7 @@ func TestLoaderMFKey(t *testing.T) {
 		t.Fatalf("LoaderMFKey: %v", err)
 	}
 	lines := m.Lines()
-	wantSuffix := "loader open MFKey32"
+	wantSuffix := `loader open "MFKey32"`
 	found := false
 	for _, l := range lines {
 		if strings.TrimSpace(l) == wantSuffix {

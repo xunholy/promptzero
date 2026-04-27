@@ -181,64 +181,75 @@ func (f *Flipper) accumCap() int {
 // command-layer mutex.
 func (f *Flipper) Transport() transport.Transport { return f.transport }
 
-// LaunchBridge launches the Flipper's USB-UART Bridge (or any other
-// loader-app launch verb) and returns the firmware's response text.
-// On USB it sends the literal command string verbatim, preserving the
-// existing CLI text contract that classifyBridgeRejection relies on.
-// On BLE it parses the `loader open "App Name" [args...]` shape into
-// (name, args) and dispatches via LoaderOpen → app_start_request RPC,
-// which is the only viable path since BLE has no text CLI surface
-// (see internal/flipper/transport/ble.go).
+// LaunchBridge launches the Flipper's USB-UART Bridge and returns the
+// firmware's response text (empty on BLE).
 //
-// command is whatever the operator configured (default
-// `loader open "USB-UART Bridge"`); the only requirement on BLE is
-// that the first quoted token is the app name. On parse failure on
-// BLE we fall through to ExecCtx, which will surface a clean
-// usbOnlyError so the operator sees what went wrong.
+// USB transport: sends the literal command string (default
+// `loader open "USB-UART Bridge"`) — preserved for older Flipper
+// firmware builds where that name was a registered launchable. On
+// modern Momentum the bridge cannot be entered while USB CDC is
+// locked for CLI/RPC anyway (gpio_scene_start.c:109), so this path
+// will surface "Application not found" via classifyBridgeRejection.
+//
+// BLE transport: ignores the command string and runs the canonical
+// Momentum-compatible sequence directly:
+//
+//  1. app_start_request(name="GPIO") — opens the GPIO app (the
+//     ContainingApp for the USB-UART Bridge scene per
+//     applications/main/gpio/gpio_scene_start.c).
+//  2. brief settle so the scene-manager renders GpioSceneStart with
+//     "USB-UART Bridge" highlighted at index 0 (the default menu item).
+//  3. gui_send_input_event(OK, SHORT) — fires GpioStartEventUsbUart;
+//     because USB CDC isn't locked on a BLE-only session, the firmware
+//     navigates to GpioSceneUsbUart whose on_enter unconditionally
+//     calls usb_uart_enable() with the default config (vcp_ch=0,
+//     uart_ch=0, baudrate default — Marauder's 115200 baud).
+//
+// This path is the only one that actually starts the bridge on
+// Momentum: the loader-open shortcut "USB-UART Bridge" was never a
+// registered application, only a menu label. The firmware's
+// gpio_scene_usb_uart.c on_enter is what actually flips USB CDC
+// into UART pass-through mode.
 func (f *Flipper) LaunchBridge(ctx context.Context, command string) (string, error) {
 	if !f.IsBLE() {
 		return f.ExecCtx(ctx, command)
 	}
-	name, args, ok := parseLoaderOpenCommand(command)
-	if !ok {
-		// Unparseable on BLE; ExecCtx will return usbOnlyError with
-		// the full command text so the operator sees the literal
-		// string that didn't match the loader-open shape.
-		return f.ExecCtx(ctx, command)
-	}
-	return f.LoaderOpen(name, args)
+	return f.launchBridgeViaGPIORPC(ctx)
 }
 
-// parseLoaderOpenCommand extracts the (name, args) pair from a
-// `loader open "App Name" extra args` style verb. Returns ok=false if
-// the command isn't loader-open or the app name isn't quoted.
-func parseLoaderOpenCommand(command string) (name, args string, ok bool) {
-	const prefix = "loader open "
-	rest := strings.TrimSpace(command)
-	if !strings.HasPrefix(rest, prefix) {
-		return "", "", false
+// launchBridgeViaGPIORPC drives the BLE-only "open GPIO + select
+// USB-UART Bridge" sequence. See LaunchBridge for context.
+//
+// Settle delays are conservative: the scene manager runs on a
+// dedicated GUI thread and the input-event handler dispatches via a
+// FuriEventLoop, so on a quiet BT link the round-trip is well under
+// 100 ms. 250 ms gives headroom for slow links / busy CPU; the bridge
+// is a one-shot setup so the extra latency is invisible to the user.
+func (f *Flipper) launchBridgeViaGPIORPC(ctx context.Context) (string, error) {
+	if _, err := f.LoaderOpen("GPIO", ""); err != nil {
+		return "", fmt.Errorf("launching GPIO app: %w", err)
 	}
-	rest = strings.TrimSpace(rest[len(prefix):])
-	if !strings.HasPrefix(rest, `"`) {
-		// Some firmware accepts unquoted single-token names — split on space.
-		parts := strings.SplitN(rest, " ", 2)
-		if len(parts) == 0 || parts[0] == "" {
-			return "", "", false
-		}
-		if len(parts) == 1 {
-			return parts[0], "", true
-		}
-		return parts[0], strings.TrimSpace(parts[1]), true
+	select {
+	case <-time.After(250 * time.Millisecond):
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	// Quoted name — find the matching closing quote.
-	rest = rest[1:]
-	idx := strings.Index(rest, `"`)
-	if idx < 0 {
-		return "", "", false
+	// "USB-UART Bridge" is the first item in GpioSceneStart's variable
+	// list (gpio_scene_start.c:62) and the start scene's selected item
+	// state defaults to 0, so a single OK press selects it.
+	if _, err := f.InputSend("ok", "short"); err != nil {
+		return "", fmt.Errorf("selecting USB-UART Bridge: %w", err)
 	}
-	name = rest[:idx]
-	args = strings.TrimSpace(rest[idx+1:])
-	return name, args, true
+	// One more settle so the firmware finishes the scene transition
+	// before the caller tries to reopen the USB CDC port — without
+	// this the reopen race-conditions against usb_uart_enable's
+	// furi_hal_usb_set_config call (~50 ms on the device).
+	select {
+	case <-time.After(150 * time.Millisecond):
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	return "", nil
 }
 
 // rpcModeError selects the right error when a CLI dispatch attempt

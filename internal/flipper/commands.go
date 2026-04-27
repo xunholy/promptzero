@@ -1780,7 +1780,7 @@ func (f *Flipper) I2CScan() (string, error) {
 		if err == nil && !looksLikeUnknownCommand(out) {
 			return out, nil
 		}
-		return f.Exec(`loader open "I2C Scanner"`)
+		return f.LoaderOpen("I2C Scanner", "")
 	})
 }
 
@@ -1963,48 +1963,57 @@ func joinStoragePath(dir, name string) string {
 // argument. If the FAP is not installed the Flipper surfaces a "Not
 // found" error through the returned string.
 
+// FAP shortcut wrappers below all delegate to LoaderOpen so they pick
+// up its transport-aware dispatcher: USB sends `loader open "Name"`
+// CLI text; BLE sends an app_start_request RPC. Without going through
+// LoaderOpen, BLE callers would hit the rpcMode guard in Exec and get
+// ErrCommandRequiresUSB even though app_start is a perfectly valid
+// RPC verb. The CLI text shape stays `loader open "<name>"` (quotes
+// always — the firmware accepts them on both single and multi-word
+// names) so each wrapper is a single LoaderOpen call.
+
 // LoaderNFCMagic launches the "NFC Magic" FAP used to write MIFARE magic tags.
-func (f *Flipper) LoaderNFCMagic() (string, error) { return f.Exec(`loader open "NFC Magic"`) }
+func (f *Flipper) LoaderNFCMagic() (string, error) { return f.LoaderOpen("NFC Magic", "") }
 
 // LoaderMFKey launches the "MFKey32" FAP for MIFARE Classic key recovery.
-func (f *Flipper) LoaderMFKey() (string, error) { return f.Exec(`loader open MFKey32`) }
+func (f *Flipper) LoaderMFKey() (string, error) { return f.LoaderOpen("MFKey32", "") }
 
 // LoaderMifareNested launches the "Mifare Nested" FAP (nested attack recovery).
-func (f *Flipper) LoaderMifareNested() (string, error) { return f.Exec(`loader open "Mifare Nested"`) }
+func (f *Flipper) LoaderMifareNested() (string, error) { return f.LoaderOpen("Mifare Nested", "") }
 
 // LoaderPicopass launches the "PicoPass" FAP (HID iClass/Picopass tooling).
-func (f *Flipper) LoaderPicopass() (string, error) { return f.Exec(`loader open PicoPass`) }
+func (f *Flipper) LoaderPicopass() (string, error) { return f.LoaderOpen("PicoPass", "") }
 
 // LoaderSeader launches the "SEADER" FAP (HID iClass SE advanced tooling).
-func (f *Flipper) LoaderSeader() (string, error) { return f.Exec(`loader open SEADER`) }
+func (f *Flipper) LoaderSeader() (string, error) { return f.LoaderOpen("SEADER", "") }
 
 // LoaderT5577MultiWriter launches the "T5577 Multiwriter" FAP for batch
 // writing of 125 kHz T5577 tags.
 func (f *Flipper) LoaderT5577MultiWriter() (string, error) {
-	return f.Exec(`loader open "T5577 Multiwriter"`)
+	return f.LoaderOpen("T5577 Multiwriter", "")
 }
 
 // LoaderSubGHzBruteforcer launches the "Sub-GHz BF" brute-force FAP.
 // Destructive by design — runs enormous code sweeps.
 func (f *Flipper) LoaderSubGHzBruteforcer() (string, error) {
-	return f.Exec(`loader open "Sub-GHz BF"`)
+	return f.LoaderOpen("Sub-GHz BF", "")
 }
 
 // LoaderSubGHzPlaylist launches the "Playlist" FAP that replays a sequence of
 // .sub captures.
-func (f *Flipper) LoaderSubGHzPlaylist() (string, error) { return f.Exec(`loader open Playlist`) }
+func (f *Flipper) LoaderSubGHzPlaylist() (string, error) { return f.LoaderOpen("Playlist", "") }
 
 // LoaderProtoView launches the "ProtoView" FAP for raw Sub-GHz signal visualisation.
-func (f *Flipper) LoaderProtoView() (string, error) { return f.Exec(`loader open ProtoView`) }
+func (f *Flipper) LoaderProtoView() (string, error) { return f.LoaderOpen("ProtoView", "") }
 
 // LoaderSpectrumAnalyzer launches the "Spectrum Analyzer" FAP.
 func (f *Flipper) LoaderSpectrumAnalyzer() (string, error) {
-	return f.Exec(`loader open "Spectrum Analyzer"`)
+	return f.LoaderOpen("Spectrum Analyzer", "")
 }
 
 // LoaderSignalGenerator launches the "Signal Generator" FAP.
 func (f *Flipper) LoaderSignalGenerator() (string, error) {
-	return f.Exec(`loader open "Signal Generator"`)
+	return f.LoaderOpen("Signal Generator", "")
 }
 
 // LoaderNRF24Mousejacker launches the "NRF24 Mousejacker" FAP. Requires an
@@ -2015,7 +2024,7 @@ func (f *Flipper) LoaderSignalGenerator() (string, error) {
 // run-time interaction happens through the FAP UI (navigate via
 // input_send; back-button to exit).
 func (f *Flipper) LoaderNRF24Mousejacker() (string, error) {
-	return f.Exec(`loader open "NRF24 Mousejacker"`)
+	return f.LoaderOpen("NRF24 Mousejacker", "")
 }
 
 // LoaderNRF24Sniffer launches the companion "NRF24 Sniffer" FAP. The FAP
@@ -2024,24 +2033,24 @@ func (f *Flipper) LoaderNRF24Mousejacker() (string, error) {
 // address,rate lines). Prerequisite for any Mousejack flow — the FAP UI
 // is operator-driven; there is no CLI equivalent.
 func (f *Flipper) LoaderNRF24Sniffer() (string, error) {
-	return f.Exec(`loader open "NRF24 Sniffer"`)
+	return f.LoaderOpen("NRF24 Sniffer", "")
 }
 
 // LoaderUARTTerminal launches the "UART Terminal" FAP for serial comms on the
 // Flipper's GPIO header.
 func (f *Flipper) LoaderUARTTerminal() (string, error) {
-	return f.Exec(`loader open "UART Terminal"`)
+	return f.LoaderOpen("UART Terminal", "")
 }
 
 // LoaderSPIMemManager launches the "SPI Mem Manager" FAP for reading and
 // writing SPI flash chips via the GPIO header.
 func (f *Flipper) LoaderSPIMemManager() (string, error) {
-	return f.Exec(`loader open "SPI Mem Manager"`)
+	return f.LoaderOpen("SPI Mem Manager", "")
 }
 
 // LoaderUnitemp launches the "Unitemp" FAP for reading external temperature
 // sensors over the GPIO header.
-func (f *Flipper) LoaderUnitemp() (string, error) { return f.Exec(`loader open Unitemp`) }
+func (f *Flipper) LoaderUnitemp() (string, error) { return f.LoaderOpen("Unitemp", "") }
 
 // --- System (capability-gap primitives) ---
 

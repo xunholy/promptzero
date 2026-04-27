@@ -52,8 +52,16 @@ var connectFn = Connect
 // classify a CLI response as "the firmware did not run the bridge app".
 // Each phrase is sourced from a real firmware response in either OFW,
 // Momentum, Unleashed, or RogueMaster — see SPEC §4.2 step 2.
+//
+// The "application" markers (case-insensitive) catch Momentum's actual
+// response shape — e.g. `Application "USB-UART Bridge" not found` —
+// which the older "app not found" prefix-style matchers missed; without
+// these the launcher used to false-success on Momentum and downstream
+// code would think the bridge was active when it wasn't.
 var bridgeRejectionMarkers = []string{
 	"app not found",
+	"application not found",
+	"application \"",
 	"app is not installed",
 	"could not find command",
 	"unknown command",
