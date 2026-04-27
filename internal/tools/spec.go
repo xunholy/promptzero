@@ -143,6 +143,20 @@ type Spec struct {
 	// dispatch switch into this function, substituting `a.flipper` →
 	// `d.Flipper`, `a.marauder` → `d.Marauder`, etc.
 	Handler Handler
+
+	// WriteIntent, when non-nil, is invoked by the confirmation flow
+	// to extract the (path, content) the tool would write. The flow
+	// uses these to fetch the existing file and show a unified diff
+	// in the confirmation prompt before the operator approves a
+	// medium-risk overwrite. nil means "this tool isn't a file write"
+	// — the vast majority of Specs.
+	//
+	// The function MUST be cheap and side-effect-free: it runs at
+	// confirmation time, on the args the model proposed, before any
+	// risk gate has cleared. Returning ok=false signals "args don't
+	// describe a write right now" and the framework skips the diff
+	// preview without erroring (e.g. a deploy=false flag).
+	WriteIntent func(args map[string]any) (path string, content string, ok bool)
 }
 
 // Deps is the dependency bag both host modes inject when invoking a

@@ -452,6 +452,17 @@ body::before {
 .tx-actions button.revise { background: transparent; color: var(--lcd-pixel); border: 2px solid var(--lcd-pixel); }
 .tx-actions .countdown { margin-left: auto; font-family: var(--pixel); font-size: 9px; letter-spacing: 2px; align-self: center; color: var(--lcd-pixel-soft); }
 
+/* Unified-diff preview rendered above .tx-actions. Each line is its own
+   <div> so the per-line class can drive background colour without any
+   innerHTML / parsed-HTML path. Colours are tinted toward git's
+   conventional red/green so the eye can scan additions vs deletions. */
+.tx-diff { margin: 0 0 10px; padding: 8px 10px; max-height: 320px; overflow: auto; background: rgba(0,0,0,0.18); border: 2px solid var(--lcd-pixel-soft); font-family: var(--mono); font-size: 12px; line-height: 1.35; white-space: pre; }
+.tx-diff-line { padding: 0 4px; }
+.tx-diff-file { color: var(--lcd-pixel-soft); }
+.tx-diff-hunk { color: #6aa9ff; }
+.tx-diff-del  { background: rgba(180, 30, 30, 0.28); color: #ffd6d6; }
+.tx-diff-add  { background: rgba(30, 140, 60, 0.28); color: #d8ffd6; }
+
 /* Idle mascot — 56x52 Gengar derived from the canonical Gen 4 HGSS sprite,
    3px cells (~168x156). Layered animation:
      - mascot-idle:  8-state combined bob+sway, continuous (~2 fps feel)

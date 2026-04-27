@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Diff preview for medium-risk file writes.** When the agent is about
+  to call a tool that writes a file (e.g. `storage_write`), the
+  confirmation flow fetches the existing content via `Storage Read`,
+  computes a unified line-diff (Myers algorithm, no new dep), and
+  renders it in the confirmation modal (web UI: red/green styled
+  `<pre>` block) and the REPL prompt (color-coded inline output).
+  Tools opt in via the new optional `tools.Spec.WriteIntent
+  func(args)(path, content string, ok bool)` field. Diff fetch is
+  lazy — runs only when the confirmation gate is about to fire — so
+  there's no extra Storage Read on every dispatch. Failure to read
+  the existing file degrades gracefully: missing-file → empty old
+  side; other errors → polite warning embedded in the Diff field.
+  500-line / 64KB cap with a truncation marker keeps modal
+  rendering bounded.
+- **Direct BLE-to-Marauder transport (`--marauder-ble`).** Promptzero
+  now supports standalone ESP32-Marauder devboards over BLE,
+  bypassing the Flipper UART bridge entirely. Mirrors the proven
+  Flipper BLE transport pattern: full 4-file build-tag dance
+  (`!darwin || (darwin && cgo)` real impl, `darwin && !cgo` stub,
+  plus darwin/other direct-connect helpers). Service UUID
+  `4fafc201-1fb5-459e-8fcc-c5c9c331914b`, no flow-control credit
+  characteristic (ESP32-Marauder firmware doesn't expose one —
+  writes bounded by ATT MTU only). Mutually exclusive with
+  `--marauder-bridge` (clear error if both are set). Reuses the
+  existing `--ble-discover` for address resolution. New
+  `marauder.transport: "ble"` config key.
+
+### Changed
+
+- **Phase B compat-layer migration.** 15 additional Flipper command
+  methods migrated from inline `if f.IsBLE() {...}` branches to the
+  `f.dispatch()` helper from Phase A: GPIOSet, GPIORead, LoaderOpen,
+  LoaderClose, InputSend, the 9 storage CLI commands
+  (List/Read/Remove/Mkdir/Stat/FSInfo/Rename/MD5/Tree), and
+  PowerRebootDFU. The 9 sites that don't fit dispatch's
+  `(string, error)` signature (USB-only methods returning
+  bool/slice/error-only — DesktopIsLocked, StorageWriteCtx,
+  LoaderList, etc.) stay on inline branches. Behavior preserved
+  byte-for-byte; existing tests pass without modification.
+
 ## [0.12.0] - 2026-04-27
 
 ### Added

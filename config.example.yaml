@@ -33,8 +33,18 @@ serial:
 # --- ESP32 Marauder (WiFi + BLE devboard) --------------------------------
 marauder:
   enabled: false                     # flip to true when the devboard is plugged in
-  port: "/dev/ttyUSB0"               # used when bridge=false (separate USB cable)
+  port: "/dev/ttyUSB0"               # used when bridge=false and transport!="ble" (separate USB cable)
   baud_rate: 115200
+
+  # transport: "ble"                 # uncomment to drive a standalone ESP32-Marauder
+  #                                  # devboard directly over BLE. When set, `port`
+  #                                  # is reinterpreted as the BLE address — a
+  #                                  # hardware MAC on Linux/Windows, a CoreBluetooth
+  #                                  # UUID on macOS (run `--ble-discover`), or a
+  #                                  # device LocalName like "Marauder". This path
+  #                                  # bypasses the Flipper UART bridge entirely;
+  #                                  # mutually exclusive with bridge: true. Override
+  #                                  # per-launch with --marauder-ble <addr>.
 
   # Marauder stacked on Flipper GPIO header (single USB cable to Flipper).
   # When bridge=true, PromptZero launches the Flipper's USB-UART Bridge app

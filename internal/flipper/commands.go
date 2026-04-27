@@ -688,10 +688,14 @@ func (f *Flipper) IButtonWrite(hexData string) (string, error) {
 // string to match.
 // CLI: gpio set <pin> <value>
 func (f *Flipper) GPIOSet(pin string, value int) (string, error) {
-	if f.IsBLE() {
-		return f.gpioSetViaRPC(context.Background(), pin, value)
-	}
-	return f.Exec(fmt.Sprintf("gpio set %s %d", sanitizeArg(pin), value))
+	return f.dispatch(
+		"gpio_set",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("gpio set %s %d", sanitizeArg(pin), value))
+		},
+		func() (string, error) { return f.gpioSetViaRPC(context.Background(), pin, value) },
+	)
 }
 
 // gpioSetViaRPC drives the BLE-only RPC dispatch for GPIOSet.
@@ -735,10 +739,14 @@ func (f *Flipper) gpioSetViaRPC(ctx context.Context, pin string, value int) (str
 // produced the output.
 // CLI: gpio read <pin>
 func (f *Flipper) GPIORead(pin string) (string, error) {
-	if f.IsBLE() {
-		return f.gpioReadViaRPC(context.Background(), pin)
-	}
-	return f.Exec(fmt.Sprintf("gpio read %s", sanitizeArg(pin)))
+	return f.dispatch(
+		"gpio_read",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("gpio read %s", sanitizeArg(pin)))
+		},
+		func() (string, error) { return f.gpioReadViaRPC(context.Background(), pin) },
+	)
 }
 
 // gpioReadViaRPC drives the BLE-only RPC dispatch for GPIORead.
@@ -801,14 +809,18 @@ func (f *Flipper) BadUSBRun(scriptPath string) (string, error) {
 //
 // CLI: loader open "<app_name>" [args]
 func (f *Flipper) LoaderOpen(appName string, args string) (string, error) {
-	if f.IsBLE() {
-		return f.loaderOpenViaRPC(context.Background(), appName, args)
-	}
-	cmd := fmt.Sprintf(`loader open "%s"`, sanitizeArg(appName))
-	if args != "" {
-		cmd += " " + sanitizeArg(args)
-	}
-	return f.Exec(cmd)
+	return f.dispatch(
+		"loader_open",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			cmd := fmt.Sprintf(`loader open "%s"`, sanitizeArg(appName))
+			if args != "" {
+				cmd += " " + sanitizeArg(args)
+			}
+			return f.Exec(cmd)
+		},
+		func() (string, error) { return f.loaderOpenViaRPC(context.Background(), appName, args) },
+	)
 }
 
 // loaderOpenViaRPC drives the BLE-only RPC dispatch for LoaderOpen. The
@@ -835,10 +847,12 @@ func (f *Flipper) loaderOpenViaRPC(ctx context.Context, appName, args string) (s
 //
 // CLI: loader close
 func (f *Flipper) LoaderClose() (string, error) {
-	if f.IsBLE() {
-		return f.loaderCloseViaRPC(context.Background())
-	}
-	return f.Exec("loader close")
+	return f.dispatch(
+		"loader_close",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) { return f.Exec("loader close") },
+		func() (string, error) { return f.loaderCloseViaRPC(context.Background()) },
+	)
 }
 
 // loaderCloseViaRPC drives the BLE-only RPC dispatch for LoaderClose.
@@ -937,10 +951,14 @@ func (f *Flipper) InputSend(button string, eventType string) (string, error) {
 	if _, ok := validInputEventTypes[eventType]; !ok {
 		return "", fmt.Errorf("invalid input eventType %q: must be one of press, release, short, long", eventType)
 	}
-	if f.IsBLE() {
-		return f.inputSendViaRPC(context.Background(), button, eventType)
-	}
-	return f.Exec(fmt.Sprintf("input send %s %s", sanitizeArg(button), sanitizeArg(eventType)))
+	return f.dispatch(
+		"input_send",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("input send %s %s", sanitizeArg(button), sanitizeArg(eventType)))
+		},
+		func() (string, error) { return f.inputSendViaRPC(context.Background(), button, eventType) },
+	)
 }
 
 // inputSendViaRPC drives the BLE-only RPC dispatch for InputSend. The
@@ -968,10 +986,14 @@ func (f *Flipper) inputSendViaRPC(ctx context.Context, button, eventType string)
 // downstream parsers (parseStorageList in internal/web) work without
 // knowing which transport produced it.
 func (f *Flipper) StorageList(path string) (string, error) {
-	if f.IsBLE() {
-		return f.storageListViaRPC(context.Background(), path)
-	}
-	return f.Exec(fmt.Sprintf("storage list %s", sanitizeArg(path)))
+	return f.dispatch(
+		"storage_list",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage list %s", sanitizeArg(path)))
+		},
+		func() (string, error) { return f.storageListViaRPC(context.Background(), path) },
+	)
 }
 
 // storageListViaRPC drives the BLE-only RPC dispatch for StorageList.
@@ -1014,10 +1036,14 @@ func (f *Flipper) storageListViaRPC(ctx context.Context, path string) (string, e
 // stripStorageReadHeader and similar callers parse that shape. On BLE
 // the RPC verb returns just the bytes; we reformat to match.
 func (f *Flipper) StorageRead(path string) (string, error) {
-	if f.IsBLE() {
-		return f.storageReadViaRPC(context.Background(), path)
-	}
-	return f.Exec(fmt.Sprintf("storage read %s", sanitizeArg(path)))
+	return f.dispatch(
+		"storage_read",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage read %s", sanitizeArg(path)))
+		},
+		func() (string, error) { return f.storageReadViaRPC(context.Background(), path) },
+	)
 }
 
 // storageReadViaRPC mirrors the CLI's "Size: N\n<bytes>" output shape.
@@ -1071,10 +1097,14 @@ func (f *Flipper) storageWriteViaRPC(ctx context.Context, path string, data []by
 // StorageRemove removes a file or directory.
 // CLI: storage remove <path>
 func (f *Flipper) StorageRemove(path string) (string, error) {
-	if f.IsBLE() {
-		return f.storageRemoveViaRPC(context.Background(), path)
-	}
-	return f.Exec(fmt.Sprintf("storage remove %s", sanitizeArg(path)))
+	return f.dispatch(
+		"storage_remove",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage remove %s", sanitizeArg(path)))
+		},
+		func() (string, error) { return f.storageRemoveViaRPC(context.Background(), path) },
+	)
 }
 
 // storageRemoveViaRPC drives the BLE-only RPC dispatch for StorageRemove.
@@ -1097,10 +1127,14 @@ func (f *Flipper) storageRemoveViaRPC(ctx context.Context, path string) (string,
 // StorageMkdir creates a directory.
 // CLI: storage mkdir <path>
 func (f *Flipper) StorageMkdir(path string) (string, error) {
-	if f.IsBLE() {
-		return f.storageMkdirViaRPC(context.Background(), path)
-	}
-	return f.Exec(fmt.Sprintf("storage mkdir %s", sanitizeArg(path)))
+	return f.dispatch(
+		"storage_mkdir",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage mkdir %s", sanitizeArg(path)))
+		},
+		func() (string, error) { return f.storageMkdirViaRPC(context.Background(), path) },
+	)
 }
 
 // storageMkdirViaRPC drives the BLE-only RPC dispatch for StorageMkdir.
@@ -1127,10 +1161,14 @@ func (f *Flipper) storageMkdirViaRPC(ctx context.Context, path string) (string, 
 // Storage errors map to "Storage error: <msg>" so the parser's error
 // branch fires.
 func (f *Flipper) StorageStat(path string) (string, error) {
-	if f.IsBLE() {
-		return f.storageStatViaRPC(context.Background(), path)
-	}
-	return f.Exec(fmt.Sprintf("storage stat %s", sanitizeArg(path)))
+	return f.dispatch(
+		"storage_stat",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage stat %s", sanitizeArg(path)))
+		},
+		func() (string, error) { return f.storageStatViaRPC(context.Background(), path) },
+	)
 }
 
 // storageStatViaRPC drives the BLE-only RPC dispatch for StorageStat.
@@ -1172,10 +1210,14 @@ func (f *Flipper) storageStatViaRPC(ctx context.Context, path string) (string, e
 //
 //	Storage error: not ready
 func (f *Flipper) StorageFSInfo(path string) (string, error) {
-	if f.IsBLE() {
-		return f.storageFSInfoViaRPC(context.Background(), path)
-	}
-	return f.Exec(fmt.Sprintf("storage info %s", sanitizeArg(path)))
+	return f.dispatch(
+		"storage_info",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage info %s", sanitizeArg(path)))
+		},
+		func() (string, error) { return f.storageFSInfoViaRPC(context.Background(), path) },
+	)
 }
 
 // storageFSInfoViaRPC drives the BLE-only RPC dispatch for StorageFSInfo.
@@ -1841,10 +1883,14 @@ func (f *Flipper) StorageCopy(src, dst string) (string, error) {
 // StorageRename renames/moves a file or directory on the SD card.
 // CLI: storage rename <src> <dst>
 func (f *Flipper) StorageRename(src, dst string) (string, error) {
-	if f.IsBLE() {
-		return f.storageRenameViaRPC(context.Background(), src, dst)
-	}
-	return f.Exec(fmt.Sprintf("storage rename %s %s", sanitizeArg(src), sanitizeArg(dst)))
+	return f.dispatch(
+		"storage_rename",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage rename %s %s", sanitizeArg(src), sanitizeArg(dst)))
+		},
+		func() (string, error) { return f.storageRenameViaRPC(context.Background(), src, dst) },
+	)
 }
 
 // storageRenameViaRPC drives the BLE-only RPC dispatch for StorageRename.
@@ -1866,10 +1912,14 @@ func (f *Flipper) storageRenameViaRPC(ctx context.Context, src, dst string) (str
 // the RPC variant returns the same string and we append the newline so
 // downstream parsers (which trim whitespace) see identical output.
 func (f *Flipper) StorageMD5(path string) (string, error) {
-	if f.IsBLE() {
-		return f.storageMD5ViaRPC(context.Background(), path)
-	}
-	return f.Exec(fmt.Sprintf("storage md5 %s", sanitizeArg(path)))
+	return f.dispatch(
+		"storage_md5",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage md5 %s", sanitizeArg(path)))
+		},
+		func() (string, error) { return f.storageMD5ViaRPC(context.Background(), path) },
+	)
 }
 
 // storageMD5ViaRPC drives the BLE-only RPC dispatch for StorageMD5.
@@ -1894,10 +1944,14 @@ func (f *Flipper) storageMD5ViaRPC(ctx context.Context, path string) (string, er
 // we, joining the directory path with the entry name and emitting one
 // `\t[D|F] <path> [<size>b]` line per entry.
 func (f *Flipper) StorageTree(path string) (string, error) {
-	if f.IsBLE() {
-		return f.storageTreeViaRPC(context.Background(), path)
-	}
-	return f.Exec(fmt.Sprintf("storage tree %s", sanitizeArg(path)))
+	return f.dispatch(
+		"storage_tree",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			return f.Exec(fmt.Sprintf("storage tree %s", sanitizeArg(path)))
+		},
+		func() (string, error) { return f.storageTreeViaRPC(context.Background(), path) },
+	)
 }
 
 // storageTreeViaRPC walks the directory tree rooted at path using
@@ -2131,10 +2185,12 @@ func (f *Flipper) LogStream(duration time.Duration, level string) (string, error
 // success.
 // CLI: power reboot2dfu
 func (f *Flipper) PowerRebootDFU() (string, error) {
-	if f.IsBLE() {
-		return f.rebootViaRPC(context.Background(), pb.RebootRequest_DFU)
-	}
-	return f.Exec("power reboot2dfu")
+	return f.dispatch(
+		"power reboot2dfu",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) { return f.Exec("power reboot2dfu") },
+		func() (string, error) { return f.rebootViaRPC(context.Background(), pb.RebootRequest_DFU) },
+	)
 }
 
 // UpdateInstall applies a firmware update from an already-staged manifest on

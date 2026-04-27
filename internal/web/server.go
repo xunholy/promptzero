@@ -653,6 +653,7 @@ func (s *Server) attachAgentCallbacks() {
 			"tool":       req.Tool,
 			"input":      rawOrEmpty(req.Input),
 			"risk":       req.Risk.String(),
+			"diff":       req.Diff,
 			"confirm_id": id,
 			"turn_id":    ts.id,
 		})

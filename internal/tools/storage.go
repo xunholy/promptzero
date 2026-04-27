@@ -26,6 +26,14 @@ func init() {
 			}
 			return "ok", nil
 		},
+		WriteIntent: func(args map[string]any) (string, string, bool) {
+			path, _ := args["path"].(string)
+			content, _ := args["content"].(string)
+			if path == "" {
+				return "", "", false
+			}
+			return path, content, true
+		},
 	})
 
 	Register(Spec{

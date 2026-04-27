@@ -42,7 +42,7 @@ func TestGenFixtures(t *testing.T) {
 			bits[i] = byte((code >> uint(11-i)) & 1)
 		}
 		var camePulses []int
-		camePulses = append(camePulses, 320, -(36*320))
+		camePulses = append(camePulses, 320, -(36 * 320))
 		for _, b := range bits {
 			if b != 0 {
 				camePulses = append(camePulses, 320, -320)

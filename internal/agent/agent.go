@@ -18,6 +18,7 @@ import (
 	"github.com/xunholy/promptzero/internal/buspirate"
 	"github.com/xunholy/promptzero/internal/confidence"
 	"github.com/xunholy/promptzero/internal/config"
+	"github.com/xunholy/promptzero/internal/diff"
 	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
@@ -77,6 +78,16 @@ type ConfirmRequest struct {
 	Tool  string
 	Input json.RawMessage
 	Risk  risk.Level
+
+	// Diff is an optional unified-diff preview of the file the tool is
+	// about to write. Populated by the confirmation flow for
+	// medium-risk file-write tools whose Spec advertises a non-nil
+	// WriteIntent (see internal/tools.Spec.WriteIntent). Empty when
+	// the tool isn't a file write, the flow couldn't fetch the
+	// existing content, or the new content is identical to the old.
+	// UIs render it as a `<pre>` / colored block above the action
+	// buttons.
+	Diff string
 }
 
 // Decision is the user's reply to a ConfirmRequest.
@@ -777,7 +788,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 				// PersonaSnapshot, the observability status panel)
 				// can now proceed during the idle window.
 				a.mu.Unlock()
-				resp := a.confirmWithIdleTimeout(ctx, ConfirmRequest{Tool: tc.Name, Input: input, Risk: toolRisk})
+				resp := a.confirmWithIdleTimeout(ctx, a.buildConfirmRequest(tc.Name, input, toolRisk))
 				a.mu.Lock()
 				switch resp.Decision {
 				case DecisionDeny:
@@ -1193,13 +1204,97 @@ func (a *Agent) workflowConfirmHook(ctx context.Context, tool string, input inte
 	// confirm prompt and keeps the UX consistent across layers.
 	rawInput, _ := json.Marshal(input)
 	a.mu.Unlock()
-	resp := a.confirmWithIdleTimeout(ctx, ConfirmRequest{
-		Tool:  tool,
-		Input: rawInput,
-		Risk:  level,
-	})
+	resp := a.confirmWithIdleTimeout(ctx, a.buildConfirmRequest(tool, rawInput, level))
 	a.mu.Lock()
 	return resp.Decision == DecisionApprove || resp.Decision == DecisionApproveAll
+}
+
+// buildConfirmRequest assembles the ConfirmRequest the operator UI sees.
+// For medium-risk file-write tools (those whose Spec advertises a
+// non-nil WriteIntent), it lazily reads the existing file and computes
+// a unified diff against the proposed content. The fetch is gated
+// behind risk.WantsDiff so it only fires when the prompt is actually
+// about to render — there is no Storage Read on every dispatch.
+//
+// Failures are non-fatal by design: a missing file is treated as an
+// empty old side (fresh write), and any other read error is surfaced
+// in the Diff field as a one-line warning so the operator can still
+// approve. Blocking the confirmation flow on a flaky storage probe
+// would be worse UX than letting the operator decide without a
+// preview.
+func (a *Agent) buildConfirmRequest(tool string, input json.RawMessage, level risk.Level) ConfirmRequest {
+	req := ConfirmRequest{Tool: tool, Input: input, Risk: level}
+
+	if !risk.WantsDiff(level) {
+		return req
+	}
+	spec, ok := toolsreg.Get(tool)
+	if !ok || spec.WriteIntent == nil {
+		return req
+	}
+
+	var args map[string]any
+	if err := json.Unmarshal(input, &args); err != nil {
+		return req
+	}
+	path, content, want := spec.WriteIntent(args)
+	if !want || path == "" {
+		return req
+	}
+
+	if a.flipper == nil {
+		return req
+	}
+
+	existing, err := a.flipper.StorageRead(path)
+	switch {
+	case err == nil:
+		req.Diff = diff.Unified(path, stripStorageReadHeader(existing), content)
+	case isMissingFileErr(err):
+		req.Diff = diff.Unified(path, "", content)
+	default:
+		req.Diff = unableToFetchMsg(path, err)
+	}
+	return req
+}
+
+// stripStorageReadHeader removes the "Size: N\n" prefix the Flipper's
+// storage_read prepends. Without it the diff would show the size
+// header as an old line, which is misleading — the operator is
+// comparing file bodies, not transport metadata.
+func stripStorageReadHeader(out string) string {
+	out = strings.TrimLeft(out, "\r\n")
+	if idx := strings.Index(out, "\n"); idx >= 0 {
+		if strings.HasPrefix(strings.TrimSpace(out[:idx]), "Size:") {
+			return out[idx+1:]
+		}
+	}
+	return out
+}
+
+// unableToFetchMsg renders the warning the confirmation flow surfaces
+// when the existing file couldn't be fetched (and the error wasn't a
+// "file does not exist" report). Extracted so a test can pin the exact
+// template — the web UI parses this prefix to style the line as a
+// warning.
+func unableToFetchMsg(path string, err error) string {
+	return fmt.Sprintf("(unable to fetch existing file %s: %v)", path, err)
+}
+
+// isMissingFileErr returns true when err looks like a "file does not
+// exist" report from the Flipper storage transport. The transport
+// surfaces this as a plain error string ("File does not exist", "no
+// such file"), so we have to string-match — there is no sentinel error
+// to unwrap. A false negative just yields the generic warning path,
+// which is the safe fallback.
+func isMissingFileErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "no such file") ||
+		strings.Contains(msg, "not found")
 }
 
 // resolveRunPayloadRisk inspects the path argument of a run_payload call and

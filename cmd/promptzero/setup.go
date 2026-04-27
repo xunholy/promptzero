@@ -93,8 +93,13 @@ serial:
 # ESP32 Marauder WiFi devboard (optional)
 marauder:
   enabled: false
-  port: "/dev/ttyUSB0"    # Used when bridge=false (separate USB cable)
+  port: "/dev/ttyUSB0"    # Used when bridge=false and transport!="ble" (separate USB cable)
   baud_rate: 115200
+
+  # transport: "ble"      # Drive a standalone ESP32-Marauder devboard directly
+  #                       # over BLE — bypasses the Flipper UART bridge.
+  #                       # When set, "port" is reinterpreted as the BLE address
+  #                       # (MAC/UUID/LocalName). Override with --marauder-ble.
 
   # Marauder stacked on Flipper GPIO header (single USB cable to Flipper).
   # When bridge=true, PromptZero launches the Flipper's USB-UART Bridge app
@@ -205,6 +210,7 @@ type runFlags struct {
 	portOverride         string
 	transportOverride    string
 	marauderPortOverride string
+	marauderBLEAddr      string // --marauder-ble
 	marauderBridge       bool   // --marauder-bridge
 	marauderBridgeCmd    string // --marauder-bridge-command
 	webMode              bool
@@ -242,6 +248,8 @@ func parseFlags() *runFlags {
 	flag.BoolVar(&f.voiceMode, "voice", false, "Enable voice input (requires sox + OPENAI_API_KEY)")
 	flag.BoolVar(&f.wifiEnabled, "wifi", false, "Connect to ESP32 Marauder WiFi devboard")
 	flag.StringVar(&f.marauderPortOverride, "marauder-port", "", "Marauder serial port (overrides config; e.g. /dev/ttyUSB0 for CP210x-bridged Marauders, /dev/ttyACM1 for ESP32-S2 native USB)")
+	flag.StringVar(&f.marauderBLEAddr, "marauder-ble", "",
+		"Connect directly to a standalone ESP32-Marauder devboard over BLE (skips the Flipper UART bridge entirely). Address is a hardware MAC on Linux/Windows, a CoreBluetooth UUID on macOS (run --ble-discover to find it), or a device LocalName like \"Marauder\". Mutually exclusive with --marauder-bridge. Not supported in WSL2.")
 	flag.BoolVar(&f.marauderBridge, "marauder-bridge", false,
 		"Drive the Marauder via the Flipper's USB-UART bridge (Marauder stacked on GPIO header — single USB cable). Disables flipper_* tools while active.")
 	flag.StringVar(&f.marauderBridgeCmd, "marauder-bridge-command", "",
@@ -287,6 +295,15 @@ func applyConfigOverrides(cfg *config.Config, f *runFlags) {
 	}
 	if f.marauderPortOverride != "" {
 		cfg.Marauder.Port = f.marauderPortOverride
+	}
+	if f.marauderBLEAddr != "" {
+		// --marauder-ble overrides both the transport mode and the address.
+		// The BLE address rides in cfg.Marauder.Port for the connect path
+		// to consume (same field repurposed; serial paths don't fire when
+		// Transport=="ble").
+		cfg.Marauder.Transport = "ble"
+		cfg.Marauder.Port = f.marauderBLEAddr
+		cfg.Marauder.Enabled = true
 	}
 	if f.marauderBridge {
 		cfg.Marauder.Bridge = true
@@ -862,6 +879,19 @@ func setupGenerator(cfg *config.Config, ai *agent.Agent, flip *flipper.Flipper, 
 	return genLLM
 }
 
+// validateMarauderFlags catches mutually-exclusive Marauder transport flags.
+// --marauder-ble and --marauder-bridge cannot both be set: the first asks for
+// a direct BLE link to a standalone devboard, the second asks for the Flipper
+// to bridge USB-UART traffic to a stacked Marauder. Picking one means
+// rejecting the other; surfacing the conflict at startup beats discovering
+// halfway through the connect sequence that one path silently won.
+func validateMarauderFlags(f *runFlags) error {
+	if f.marauderBLEAddr != "" && f.marauderBridge {
+		return fmt.Errorf("--marauder-ble and --marauder-bridge are mutually exclusive: pick one (BLE goes direct to a standalone devboard; bridge routes through the Flipper UART)")
+	}
+	return nil
+}
+
 // setupMarauder attempts to connect the ESP32 Marauder WiFi devboard
 // when enabled. Returns (hasMarauder, cleanup). A failed connection is
 // non-fatal — the operator can still drive the Flipper alone. When
@@ -875,6 +905,9 @@ func setupMarauder(ctx context.Context, cfg *config.Config, ai *agent.Agent, rec
 	if cfg.Marauder.Bridge {
 		return setupMarauderViaBridge(ctx, cfg, ai, flip, rec)
 	}
+	if strings.EqualFold(cfg.Marauder.Transport, "ble") {
+		return setupMarauderViaBLE(ctx, cfg, ai, rec)
+	}
 	statusInfo(fmt.Sprintf("Connecting to Marauder on %s%s%s...", bold, cfg.Marauder.Port, reset))
 	m, err := marauder.Connect(cfg.Marauder.Port, cfg.Marauder.BaudRate)
 	if err != nil {
@@ -886,6 +919,33 @@ func setupMarauder(ctx context.Context, cfg *config.Config, ai *agent.Agent, rec
 		rec.SetMarauderConnected(true)
 	}
 	statusOK("Marauder WiFi devboard connected")
+	return true, func() { m.Close() }
+}
+
+// setupMarauderViaBLE connects directly to a standalone ESP32-Marauder devboard
+// over its native BLE serial GATT layout. This path bypasses the Flipper UART
+// bridge entirely; no Flipper handle is touched, so the Flipper CLI (when
+// connected over its own transport) keeps working unchanged.
+//
+// The connect ctx applies to the scan + GATT discovery phase only — once
+// dialled, the BLE notifications drive Read independently of ctx.
+func setupMarauderViaBLE(ctx context.Context, cfg *config.Config, ai *agent.Agent, rec *obs.Recorder) (bool, func()) {
+	addr := cfg.Marauder.Port
+	if addr == "" {
+		statusWarn("Marauder BLE: address required (set marauder.port to a MAC/UUID/name or pass --marauder-ble <addr>)")
+		return false, func() {}
+	}
+	statusInfo(fmt.Sprintf("Connecting to Marauder over BLE at %sble://%s%s...", bold, addr, reset))
+	m, err := marauder.ConnectBLE(ctx, addr)
+	if err != nil {
+		statusWarn(fmt.Sprintf("Marauder BLE unavailable: %v", err))
+		return false, func() {}
+	}
+	ai.SetMarauder(m)
+	if rec != nil {
+		rec.SetMarauderConnected(true)
+	}
+	statusOK(fmt.Sprintf("Marauder devboard connected over BLE at %sble://%s%s", bold, addr, reset))
 	return true, func() { m.Close() }
 }
 

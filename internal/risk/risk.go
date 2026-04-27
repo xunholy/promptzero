@@ -334,3 +334,14 @@ func ClassifyExplicit(tool string) (Level, bool) {
 func AutoApprove(threshold Level, toolRisk Level) bool {
 	return toolRisk <= threshold
 }
+
+// WantsDiff reports whether tools at the given level should have a
+// unified-diff preview attached to their confirmation request. Today
+// only Medium qualifies: High/Critical already require explicit
+// approval and the operator usually wants to read the params box, not
+// scroll a diff. Medium is the tier where the previous prompt asked
+// "approve this write?" with no insight into what would change — the
+// diff plugs that gap.
+func WantsDiff(level Level) bool {
+	return level == Medium
+}

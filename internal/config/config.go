@@ -252,8 +252,20 @@ type SerialConfig struct {
 
 type MarauderConfig struct {
 	Enabled  bool   `yaml:"enabled"`
-	Port     string `yaml:"port"` // ignored when Bridge=true
+	Port     string `yaml:"port"` // ignored when Bridge=true or Transport=="ble"
 	BaudRate int    `yaml:"baud_rate"`
+
+	// Transport selects the wire-level backend.
+	//   - "" or "serial" — open Port at BaudRate (default; today's behaviour)
+	//   - "ble"          — connect directly to a standalone ESP32-Marauder
+	//                      devboard over BLE. Port is reinterpreted as the
+	//                      BLE address (MAC on Linux/Windows, CoreBluetooth
+	//                      UUID on macOS, or device LocalName).
+	//
+	// Mutually exclusive with Bridge: when Transport=="ble" the Marauder
+	// reaches us directly via Bluetooth, so the Flipper UART bridge is not
+	// involved. Configurable per-launch via --marauder-ble.
+	Transport string `yaml:"transport,omitempty"`
 
 	// --- bridge mode (Marauder stacked on Flipper GPIO header) ---
 

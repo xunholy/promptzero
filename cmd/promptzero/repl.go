@@ -115,6 +115,9 @@ func renderConfirmPrompt(req agent.ConfirmRequest, cols int) {
 	if preview := agent.FormatConfirmPreview(req); preview != "" {
 		fmt.Fprintf(os.Stderr, "\r\033[K\n%s%s%s", yellow, preview, reset)
 	}
+	if req.Diff != "" {
+		renderConfirmDiff(req.Diff)
+	}
 	pad := strings.Repeat(" ", boxPad)
 	// Size the args budget to the terminal width so a long JSON blob can't
 	// overflow into a right-border-munging mess.
@@ -150,6 +153,34 @@ func renderConfirmPrompt(req agent.ConfirmRequest, cols int) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "%s · %s  %s  %s\n", riskStr, approve, deny, approveAll)
+}
+
+// renderConfirmDiff paints the unified-diff preview attached to a
+// medium-risk file-write confirmation. Lines are coloured per git
+// convention: green for additions, red for deletions, dim for the
+// file/hunk headers, default for context lines.
+func renderConfirmDiff(d string) {
+	pad := strings.Repeat(" ", boxPad)
+	fmt.Fprintf(os.Stderr, "\r\033[K\n")
+	for _, line := range strings.Split(d, "\n") {
+		if line == "" {
+			continue
+		}
+		var colored string
+		switch {
+		case strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "):
+			colored = dim + line + reset
+		case strings.HasPrefix(line, "@@"):
+			colored = bold + line + reset
+		case strings.HasPrefix(line, "+"):
+			colored = green + line + reset
+		case strings.HasPrefix(line, "-"):
+			colored = red + line + reset
+		default:
+			colored = line
+		}
+		fmt.Fprintf(os.Stderr, "%s%s\n", pad, colored)
+	}
 }
 
 // resolveConfirmKey interprets one keystroke as a confirmation answer.

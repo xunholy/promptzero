@@ -1795,6 +1795,12 @@
     if (msg.input) appendDlRow(dl, 'INPUT', fmtJSON(msg.input));  // textContent — safe
     wrap.appendChild(dl);
 
+    // Diff preview: medium-risk file-write tools attach a unified diff
+    // so the operator can see what bytes change before approving.
+    // Render line-by-line via textContent + per-line classes so we
+    // never feed raw markup into innerHTML.
+    if (msg.diff) wrap.appendChild(buildDiffBlock(msg.diff));
+
     var actions = mkEl('div', 'tx-actions');
 
     var denyBtn = mkEl('button', 'revise', 'DENY [N]');
@@ -1867,6 +1873,31 @@
   function appendDlRow(dl, label, value) {
     dl.appendChild(mkEl('dt', null, label));
     dl.appendChild(mkEl('dd', null, value));  // textContent via mkEl — safe
+  }
+
+  /** Render a unified-diff string into a <pre> with per-line styling.
+   *  Each line goes through textContent only — colour comes from CSS
+   *  classes keyed off the first character (-, +, @, space). */
+  function buildDiffBlock(diffText) {
+    var pre = mkEl('pre', 'tx-diff');
+    var lines = String(diffText).split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var cls = 'tx-diff-line';
+      if (line.indexOf('--- ') === 0 || line.indexOf('+++ ') === 0) {
+        cls += ' tx-diff-file';
+      } else if (line.charAt(0) === '@') {
+        cls += ' tx-diff-hunk';
+      } else if (line.charAt(0) === '-') {
+        cls += ' tx-diff-del';
+      } else if (line.charAt(0) === '+') {
+        cls += ' tx-diff-add';
+      }
+      // mkEl uses textContent — no XSS path even if the diff body
+      // contains HTML, script tags, or stray angle brackets.
+      pre.appendChild(mkEl('div', cls, line));
+    }
+    return pre;
   }
 
   /* =========================================================================

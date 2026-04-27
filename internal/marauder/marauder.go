@@ -83,6 +83,34 @@ func Connect(portName string, baudRate int) (*Marauder, error) {
 	return m, nil
 }
 
+// ConnectBLE establishes a direct BLE serial link to a standalone ESP32-Marauder
+// devboard exposing the standard Nordic-UART-style serial GATT layout
+// (service 4fafc201-1fb5-459e-8fcc-c5c9c331914b, TX/RX beb5483e-…). This path
+// bypasses the Flipper UART bridge entirely — wire it up when the Marauder
+// devboard is reachable directly over Bluetooth and the operator wants both
+// devices on independent transports.
+//
+// addr accepts the same forms as the Flipper BLE transport: a hardware MAC
+// (Linux/Windows), a CoreBluetooth peripheral UUID (macOS), or a bare
+// LocalName matched at scan time. May be passed with or without the ble://
+// scheme prefix.
+//
+// The returned *Marauder shares all post-connect machinery (Exec / Stream /
+// drain / readUntilPrompt) with the serial path; the underlying transport is
+// the only thing that differs. Honours ctx for the scan + connect phase only
+// — once dialled, BLE notifications drive Read independently of ctx.
+func ConnectBLE(ctx context.Context, addr string) (*Marauder, error) {
+	port, err := dialMarauderBLE(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	m := NewWithPort(port)
+	// Drain any startup banner the firmware emitted between subscribing to
+	// notifications and the first Exec. Mirrors the serial path.
+	m.drain()
+	return m, nil
+}
+
 func (m *Marauder) Close() error {
 	return m.port.Close()
 }
