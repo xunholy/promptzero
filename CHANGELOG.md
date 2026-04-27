@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-04-27
+
 ### Added
 
 - **Hybrid mode is fully functional: BLE Flipper + USB-bridged Marauder
@@ -33,6 +35,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **MARAUDER status pill in the web UI updates within seconds of the
+  bridge attaching.** `/api/device` was polled every 30 s, so the pill
+  could stay grey for half a minute after a successful Marauder bridge
+  launch (which completes ~5 s into startup). Drop the cadence to 5 s
+  to match the server-side `deviceCacheTTL`, and re-poll on
+  `visibilitychange` so a user returning to the tab sees a fresh state
+  immediately instead of one stale frame.
+- **Screen mirror survives navigation away from `/device`.** The
+  auto-release in `activateRoute` was tearing down the holder whenever
+  the user clicked Files / Audit / Settings. The keepalive timer is
+  bound to `_screenState.isHolder`, not to the visible route, so the
+  mirror's RPC stream can live across nav. Returning to `/device`
+  rebinds the canvas and refreshes LIVE/HELD/OFFLINE without
+  re-establishing the stream.
 - **`classifyBridgeRejection` recognises Momentum's "Application X not
   found" response.** The legacy substring matchers ("app not found",
   etc.) missed the firmware's actual response shape, which let the
@@ -119,6 +135,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`bleTransport.mac` field renamed to `addr`** (with a sibling
   `addrKind` enum) to stop lying about what's stored — on darwin the
   value has always been a UUID, the type just claimed otherwise.
+- **GitHub Actions bumped to Node 24-native majors across all four
+  workflows.** GitHub-hosted runners no longer ship Node 20, so every
+  affected action ran under the `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`
+  override with a deprecation warning. Bumps: `actions/checkout` v4→v5,
+  `actions/setup-go` v5→v6, `actions/upload-artifact` and
+  `actions/download-artifact` v4→v5, `actions/github-script` v7→v8
+  (kept on v8 because v9 is ESM-only and would break the inline
+  `require()` in coverage-diff), `golangci/golangci-lint-action` v7→v9
+  (matches the pinned golangci-lint v2.11.4),
+  `github/codeql-action/*` v3→v4, `anchore/sbom-action` v0→v0.24.0,
+  `sigstore/cosign-installer` v3→v4 (cosign v3+ support),
+  `softprops/action-gh-release` v2→v3. The redundant Node-24
+  force-override env var was dropped from all four workflows.
 
 ### Fixed
 
