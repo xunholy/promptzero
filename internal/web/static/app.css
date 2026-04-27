@@ -321,11 +321,78 @@ body::before {
 .tx-actions button.revise { background: transparent; color: var(--lcd-pixel); border: 2px solid var(--lcd-pixel); }
 .tx-actions .countdown { margin-left: auto; font-family: var(--pixel); font-size: 9px; letter-spacing: 2px; align-self: center; color: var(--lcd-pixel-soft); }
 
-/* Idle mascot */
-.idle-mascot { margin: 18px auto; display: grid; grid-template-columns: repeat(11, 8px); grid-auto-rows: 8px; gap: 0; image-rendering: pixelated; }
+/* Idle mascot — 56x52 Gengar derived from the canonical Gen 4 HGSS sprite,
+   3px cells (~168x156). Layered animation:
+     - mascot-idle:  8-state combined bob+sway, continuous (~2 fps feel)
+     - eye-pulse:    always-on slow red breathing for the eyes
+     - eye-flare:    burst — eyes flash bright red with halo (.glowing)
+     - eye-blink:    burst — eyes snap to body color (.blinking)
+     - mascot-float: hover-up burst (ghost-type) (.floating)
+     - mascot-shake: laugh shimmy (.laughing)
+   Reduced-motion media query later in this file disables animations. */
+.idle-mascot {
+  margin: 18px auto;
+  display: grid;
+  grid-template-columns: repeat(56, 3px);
+  grid-auto-rows: 3px;
+  gap: 0;
+  image-rendering: pixelated;
+  animation: mascot-idle 4s steps(1, end) infinite;
+  transform-origin: 50% 100%;
+}
 .idle-mascot i { background: transparent; }
 .idle-mascot i.on { background: var(--lcd-pixel); }
 .idle-mascot i.dim { background: var(--lcd-pixel-soft); }
+/* Eye cells always glow red with a continuous slow pulse — Gengar's
+   trademark menace. Specific bursts (.glowing / .blinking) override this. */
+.idle-mascot i.eye {
+  background: #8a0000;
+  box-shadow: 0 0 2px #ff202066;
+  animation: eye-pulse 2.4s ease-in-out infinite;
+}
+.idle-mascot.blinking i.eye { animation: eye-blink .28s steps(1, end) 1; }
+.idle-mascot.glowing  i.eye { animation: eye-flare 1s   ease-in-out 1; }
+.idle-mascot.floating { animation: mascot-float 1.6s ease-in-out 1; }
+.idle-mascot.laughing { animation: mascot-shake .55s linear 1; }
+
+@keyframes mascot-idle {
+  0%,  12%  { transform: translate(0,    0); }
+  13%, 24%  { transform: translate(1px,  0); }
+  25%, 37%  { transform: translate(1px,  1px); }
+  38%, 49%  { transform: translate(0,    1px); }
+  50%, 62%  { transform: translate(0,    0); }
+  63%, 74%  { transform: translate(-1px, 0); }
+  75%, 87%  { transform: translate(-1px, 1px); }
+  88%, 100% { transform: translate(0,    1px); }
+}
+@keyframes mascot-float {
+  0%, 100% { transform: translateY(0); }
+  35%, 65% { transform: translateY(-4px); }
+}
+@keyframes mascot-shake {
+  0%,   14% { transform: translate(0,    0); }
+  15%,  28% { transform: translate(-1px, 0); }
+  29%,  42% { transform: translate(1px, -1px); }
+  43%,  56% { transform: translate(-1px, 0); }
+  57%,  70% { transform: translate(1px, -1px); }
+  71%,  84% { transform: translate(-1px, 0); }
+  85%, 100% { transform: translate(0,    0); }
+}
+/* Always-on slow red pulse — eyes feel alive even when no burst is firing. */
+@keyframes eye-pulse {
+  0%, 100% { background: #8a0000; box-shadow: 0 0 2px #ff202066; }
+  50%      { background: #c40000; box-shadow: 0 0 4px #ff404088; }
+}
+/* Burst flare — eyes flash bright red with a wide halo. */
+@keyframes eye-flare {
+  0%, 100% { background: #8a0000; box-shadow: 0 0 2px #ff202066; }
+  35%, 65% { background: #ff2020; box-shadow: 0 0 10px #ff3030, 0 0 5px #ff5050; }
+}
+/* Blink — eyes snap to body color so they "close" against the silhouette. */
+@keyframes eye-blink {
+  0%, 100% { background: #8a0000; box-shadow: 0 0 2px #ff202066; }
+  20%, 80% { background: var(--lcd-pixel); box-shadow: none; }
+}
 .idle-line { text-align: center; font-family: var(--pixel); font-size: 10px; letter-spacing: 3px; color: var(--lcd-pixel); margin-top: 4px; }
 .idle-line .blink-cursor { display: inline-block; width: 8px; height: 12px; background: var(--lcd-pixel); margin-left: 3px; animation: blink 1s steps(2, start) infinite; vertical-align: -1px; }
 
