@@ -453,6 +453,152 @@
     });
   }
 
+  /* =========================================================================
+     Rail collapse (icons-only) and per-group toggles
+  ========================================================================= */
+
+  function setupRailCollapse() {
+    var btn    = document.getElementById('railCollapse');
+    var device = document.querySelector('.device');
+    var rail   = document.getElementById('rail');
+    if (!btn || !device || !rail) return;
+
+    function isMobile() { return window.innerWidth <= 900; }
+
+    function applyCollapsed(collapsed) {
+      device.classList.toggle('rail-collapsed', !!collapsed);
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    }
+
+    var stored = '0';
+    try { stored = localStorage.getItem('promptzero_rail_collapsed') || '0'; } catch (_) {}
+    applyCollapsed(stored === '1');
+
+    btn.addEventListener('click', function () {
+      // On mobile this button is hidden, but guard anyway: close drawer.
+      if (isMobile()) {
+        rail.classList.remove('open');
+        var bd = document.getElementById('railBackdrop');
+        if (bd) bd.classList.remove('open');
+        var mt = document.getElementById('menuToggle');
+        if (mt) mt.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      var nowCollapsed = !device.classList.contains('rail-collapsed');
+      applyCollapsed(nowCollapsed);
+      try { localStorage.setItem('promptzero_rail_collapsed', nowCollapsed ? '1' : '0'); } catch (_) {}
+    });
+  }
+
+  /* =========================================================================
+     Quick Actions popover — shortcut prompts grouped by subsystem.
+     Every item loads its prompt into the input for review/edit before
+     the user dispatches it.
+  ========================================================================= */
+
+  function setupQuickActions() {
+    var btn      = document.getElementById('qaToggle');
+    var popover  = document.getElementById('qaPopover');
+    var inputEl  = document.getElementById('cmd');
+    if (!btn || !popover) return;
+
+    var rendered = false;
+
+    function open() {
+      if (!rendered) { renderQuickActions(popover, close); rendered = true; }
+      popover.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      var firstItem = popover.querySelector('.qa-item');
+      if (firstItem) setTimeout(function () { firstItem.focus(); }, 0);
+    }
+    function close() {
+      popover.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+    }
+    function toggle() { popover.hidden ? open() : close(); }
+
+    btn.addEventListener('click', function (e) { e.stopPropagation(); toggle(); });
+    document.addEventListener('click', function (e) {
+      if (popover.hidden) return;
+      if (popover.contains(e.target) || btn.contains(e.target)) return;
+      close();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !popover.hidden) {
+        close();
+        if (inputEl) inputEl.focus();
+      }
+    });
+  }
+
+  function renderQuickActions(popover, closeFn) {
+    clearEl(popover);
+
+    var header = mkEl('div', 'qa-popover-header');
+    header.appendChild(mkEl('span', null, 'QUICK ACTIONS'));
+    header.appendChild(mkEl('span', null, 'ESC'));
+    popover.appendChild(header);
+
+    var hint = mkEl('div', 'qa-popover-hint',
+      'Selecting an item loads the prompt for review — edit and TX when ready.');
+    popover.appendChild(hint);
+
+    var list = mkEl('div', 'qa-popover-list');
+    Object.keys(CATEGORY_TOOLS).forEach(function (key) {
+      var cat = CATEGORY_TOOLS[key];
+      list.appendChild(mkEl('div', 'qa-cat-title', cat.title));
+      cat.items.forEach(function (it) {
+        var risk = String(it.risk || 'low').toLowerCase();
+
+        var btn = mkEl('button', 'qa-item');
+        btn.type = 'button';
+        btn.setAttribute('role', 'menuitem');
+        btn.title = it.prompt;
+        btn.appendChild(mkEl('span', 'qa-item-label', it.label));
+
+        var pill = mkEl('span', 'qa-item-pill', risk.toUpperCase());
+        pill.dataset.risk = risk;
+        btn.appendChild(pill);
+
+        btn.addEventListener('click', function () {
+          closeFn();
+          var inp = document.getElementById('cmd');
+          if (inp) { inp.value = it.prompt; }
+          showAgentScreen();
+          if (inp) { inp.focus(); inp.select(); }
+        });
+        list.appendChild(btn);
+      });
+    });
+    popover.appendChild(list);
+  }
+
+  function setupRailGroups() {
+    qAll('.rail-group').forEach(function (group) {
+      var header = group.querySelector('.rail-group-header');
+      var name   = group.dataset.group || '';
+      if (!header || !name) return;
+
+      var key = 'promptzero_rg_' + name + '_collapsed';
+      var initial = group.classList.contains('collapsed') ? '1' : '0';
+      var stored = initial;
+      try { stored = localStorage.getItem(key); } catch (_) {}
+      if (stored === null || stored === undefined) stored = initial;
+      var collapsed = stored === '1';
+      group.classList.toggle('collapsed', collapsed);
+      header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+
+      header.addEventListener('click', function () {
+        var nowCollapsed = !group.classList.contains('collapsed');
+        group.classList.toggle('collapsed', nowCollapsed);
+        header.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+        try { localStorage.setItem(key, nowCollapsed ? '1' : '0'); } catch (_) {}
+      });
+    });
+  }
+
   function setActiveRailItem(route) {
     qAll('.rail-item[data-route]').forEach(function (i) {
       i.classList.toggle('active', i.dataset.route === route);
@@ -1686,7 +1832,7 @@
       .catch(function () { return {}; })
       .then(function (body) {
         var build = (body && body.build) || {};
-        [['PROMPTZERO', build.version || 'v0.9'],
+        [['PROMPTZERO', build.version || '—'],
          ['COMMIT',     build.commit  || '—'],
          ['DATE',       build.date    || '—'],
          ['MODULE',     'github.com/xunholy/promptzero'],
@@ -2581,9 +2727,6 @@
       if (txt) showToast(txt);
     }
 
-    // Update rail badge
-    var badge = document.getElementById('deviceBadge');
-    if (badge) badge.textContent = _screenState.active ? '▶' : '▶';
   }
 
   function onScreenErrorMessage(msg) {
@@ -2667,6 +2810,9 @@
     buildMascot();
     setupDrawer();
     setupRailNav();
+    setupRailCollapse();
+    setupRailGroups();
+    setupQuickActions();
     setupDpad();
     setupDpadModeToggle();
     setupHistory();

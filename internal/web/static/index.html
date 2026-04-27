@@ -17,7 +17,7 @@
 <!-- Boot overlay -->
 <div id="boot" role="status" aria-live="polite">
   <div class="boot-card">
-    <h1>PROMPTZERO v0.9</h1>
+    <h1>PROMPTZERO {{.Version}}</h1>
     <div class="tag">AI · OPERATED · FLIPPER · ZERO</div>
     <div class="boot-log" id="bootLog"></div>
     <div class="boot-bar"><span id="bootBar"></span></div>
@@ -30,7 +30,7 @@
   <header class="status-bar">
     <button class="menu-toggle" id="menuToggle" aria-label="Open subsystem menu" aria-controls="rail" aria-expanded="false" type="button">&#9776;</button>
     <div class="brand">
-      <div>PROMPTZERO <small>&#183; v0.9</small></div>
+      <div>PROMPTZERO <small>&#183; {{.Version}}</small></div>
     </div>
 
     <div class="status-meta">
@@ -61,127 +61,115 @@
     </div>
   </header>
 
-  <div class="body">
-    <div class="rail-backdrop" id="railBackdrop" aria-hidden="true"></div>
-    <nav class="rail" id="rail" aria-label="Subsystems">
-      <div class="rail-section">MAIN MENU</div>
+  <div class="rail-backdrop" id="railBackdrop" aria-hidden="true"></div>
+  <nav class="rail" id="rail" aria-label="Sidebar">
+    <div class="rail-header">
+      <span class="rail-title">Main Menu</span>
+      <button class="rail-collapse" id="railCollapse" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4l-4 4 4 4"/></svg>
+      </button>
+    </div>
+    <div class="rail-groups">
 
-      <div class="rail-item active" data-route="agent" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="12" height="9"/><path d="M5 12v2M11 12v2M2 7h12"/></svg>
-        <span class="label">Agent</span>
-        <span class="badge">&#9679;</span>
-      </div>
-      <div class="rail-item" data-route="subghz" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 14V6M5 9c0-2 1.5-3 3-3s3 1 3 3M2 11c0-4 2.5-6 6-6s6 2 6 6"/></svg>
-        <span class="label">Sub-GHz</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="rfid" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="12" height="8"/><path d="M5 8h6M5 10h4"/></svg>
-        <span class="label">125 kHz RFID</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="nfc" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="8" r="5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>
-        <span class="label">NFC</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="ir" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2"/><path d="M3 4l2 2M13 4l-2 2M3 12l2-2M13 12l-2-2"/></svg>
-        <span class="label">Infrared</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="ibutton" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></svg>
-        <span class="label">iButton</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="gpio" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4h12M2 8h12M2 12h12M5 2v12M11 2v12"/></svg>
-        <span class="label">GPIO</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="badusb" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="10" height="6"/><path d="M7 6V3h2v3M5 9h6"/></svg>
-        <span class="label">Bad USB</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="apps" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg>
-        <span class="label">Apps</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="device" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="3" width="12" height="9" rx="1"/>
-          <path d="M5 14h6M8 12v2"/>
-        </svg>
-        <span class="label">Device</span>
-        <span class="badge" id="deviceBadge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="files" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h5l2 2h5v8H2z"/><path d="M2 7h12"/></svg>
-        <span class="label">Files</span>
-        <span class="badge">&#9658;</span>
-      </div>
-
-      <div class="rail-divider"></div>
-      <div class="rail-section">DEVBOARDS</div>
-
-      <div class="rail-item" data-route="marauder" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 11c2-3 4-3 6 0s4 3 6 0M2 7c2-3 4-3 6 0s4 3 6 0"/></svg>
-        <span class="label">Marauder</span>
-        <span class="badge">&#9658;</span>
-      </div>
-
-      <div class="rail-divider"></div>
-      <div class="rail-section">SYSTEM</div>
-
-      <div class="rail-item" data-route="audit" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2h8l3 3v9H3z"/><path d="M6 8h6M6 11h4"/></svg>
-        <span class="label">Audit Log</span>
-        <span class="badge" id="auditBadge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="report" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 14V2h9l3 3v9z"/><path d="M5 9l2 2 4-4"/></svg>
-        <span class="label">Report</span>
-        <span class="badge">&#9658;</span>
-      </div>
-      <div class="rail-item" data-route="settings" tabindex="0" role="button">
-        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8.5 1h-1l-.3 1.6a5 5 0 0 0-1.5.6L4.4 2.3l-.7.7 1 1.3a5 5 0 0 0-.6 1.5L2.5 6.2v1l1.6.3a5 5 0 0 0 .6 1.5l-1 1.3.7.7 1.3-1a5 5 0 0 0 1.5.6l.3 1.6h1l.3-1.6a5 5 0 0 0 1.5-.6l1.3 1 .7-.7-1-1.3a5 5 0 0 0 .6-1.5l1.6-.3v-1l-1.6-.3a5 5 0 0 0-.6-1.5l1-1.3-.7-.7-1.3 1a5 5 0 0 0-1.5-.6L8.5 1z"/></svg>
-        <span class="label">Settings</span>
-        <span class="badge">&#9658;</span>
-      </div>
-    </nav>
-
-    <main class="lcd" aria-label="Console">
-      <div class="lcd-inner">
-        <div class="screen-title">
-          <div class="crumbs">
-            <span id="crumb1">AGENT</span>
-            <span id="crumb2">SESSION</span>
-            <span id="sessionId">&#8212;</span>
-          </div>
-          <div class="meta">
-            <span id="modelTag">connecting&#8230;</span>
+      <div class="rail-group" data-group="sessions">
+        <button class="rail-group-header" type="button" aria-expanded="true" aria-controls="rg-sessions">
+          <svg class="ic chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+          <span class="rail-group-title">SESSIONS</span>
+        </button>
+        <div class="rail-group-body" id="rg-sessions">
+          <div class="rail-item active" data-route="agent" tabindex="0" role="button">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="12" height="9"/><path d="M5 12v2M11 12v2M2 7h12"/></svg>
+            <span class="label">Current session</span>
+            <span class="badge">&#9679;</span>
           </div>
         </div>
+      </div>
 
-        <div class="scrollback" id="scrollback" aria-live="polite" aria-relevant="additions">
-          <div class="idle-mascot" id="mascot" aria-hidden="true"></div>
-          <div class="idle-line" id="idleLine">READY &#183; TYPE A COMMAND</div>
+      <div class="rail-group" data-group="devices">
+        <button class="rail-group-header" type="button" aria-expanded="true" aria-controls="rg-devices">
+          <svg class="ic chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+          <span class="rail-group-title">DEVICES</span>
+        </button>
+        <div class="rail-group-body" id="rg-devices">
+          <div class="rail-item" data-route="device" tabindex="0" role="button">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="12" height="9" rx="1"/>
+              <path d="M5 14h6M8 12v2"/>
+            </svg>
+            <span class="label">Flipper Zero</span>
+            <span class="badge"></span>
+          </div>
+          <div class="rail-item" data-route="marauder" tabindex="0" role="button">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 11c2-3 4-3 6 0s4 3 6 0M2 7c2-3 4-3 6 0s4 3 6 0"/></svg>
+            <span class="label">Marauder</span>
+            <span class="badge"></span>
+          </div>
+          <div class="rail-item" data-route="files" tabindex="0" role="button">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h5l2 2h5v8H2z"/><path d="M2 7h12"/></svg>
+            <span class="label">Files</span>
+            <span class="badge"></span>
+          </div>
         </div>
       </div>
-      <a class="credit" href="https://github.com/xunholy" target="_blank" rel="noopener noreferrer">BUILT BY XUNHOLY</a>
-    </main>
-  </div>
+
+      <div class="rail-group" data-group="system">
+        <button class="rail-group-header" type="button" aria-expanded="true" aria-controls="rg-system">
+          <svg class="ic chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+          <span class="rail-group-title">SYSTEM</span>
+        </button>
+        <div class="rail-group-body" id="rg-system">
+          <div class="rail-item" data-route="audit" tabindex="0" role="button">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2h8l3 3v9H3z"/><path d="M6 8h6M6 11h4"/></svg>
+            <span class="label">Audit Log</span>
+            <span class="badge"></span>
+          </div>
+          <div class="rail-item" data-route="report" tabindex="0" role="button">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 14V2h9l3 3v9z"/><path d="M5 9l2 2 4-4"/></svg>
+            <span class="label">Report</span>
+            <span class="badge"></span>
+          </div>
+          <div class="rail-item" data-route="settings" tabindex="0" role="button">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><circle cx="8" cy="8" r="2"/><path d="M8.5 1h-1l-.3 1.6a5 5 0 0 0-1.5.6L4.4 2.3l-.7.7 1 1.3a5 5 0 0 0-.6 1.5L2.5 6.2v1l1.6.3a5 5 0 0 0 .6 1.5l-1 1.3.7.7 1.3-1a5 5 0 0 0 1.5.6l.3 1.6h1l.3-1.6a5 5 0 0 0 1.5-.6l1.3 1 .7-.7-1-1.3a5 5 0 0 0 .6-1.5l1.6-.3v-1l-1.6-.3a5 5 0 0 0-.6-1.5l1-1.3-.7-.7-1.3 1a5 5 0 0 0-1.5-.6L8.5 1z"/></svg>
+            <span class="label">Settings</span>
+            <span class="badge"></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </nav>
+
+  <main class="lcd" aria-label="Console">
+    <div class="lcd-inner">
+      <div class="screen-title">
+        <div class="crumbs">
+          <span id="crumb1">AGENT</span>
+          <span id="crumb2">SESSION</span>
+          <span id="sessionId">&#8212;</span>
+        </div>
+        <div class="meta">
+          <span id="modelTag">connecting&#8230;</span>
+        </div>
+      </div>
+
+      <div class="scrollback" id="scrollback" aria-live="polite" aria-relevant="additions">
+        <div class="idle-mascot" id="mascot" aria-hidden="true"></div>
+        <div class="idle-line" id="idleLine">READY &#183; TYPE A COMMAND</div>
+      </div>
+    </div>
+    <a class="credit" href="https://github.com/xunholy" target="_blank" rel="noopener noreferrer">BUILT BY XUNHOLY</a>
+  </main>
 
   <footer class="controls">
     <form class="input-line" id="inputForm" autocomplete="off">
+      <button class="qa-btn" type="button" id="qaToggle" aria-label="Quick actions" aria-expanded="false" aria-controls="qaPopover" title="Quick actions">
+        <svg class="ic" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9 1L2 9h4l-1 6 7-8H8z"/></svg>
+      </button>
       <span class="prompt">&gt;</span>
       <label class="sr" for="cmd">Command</label>
       <input id="cmd" name="cmd" placeholder="describe what you want the flipper to do&#8230;" autocomplete="off" spellcheck="false" />
       <button class="ok-btn" type="submit" aria-label="Transmit">TX &#9658;</button>
+      <div class="qa-popover" id="qaPopover" role="menu" aria-label="Quick actions" hidden></div>
     </form>
 
     <div class="dpad" id="dpad" role="toolbar" aria-label="Navigation">

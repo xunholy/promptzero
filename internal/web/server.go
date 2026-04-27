@@ -56,6 +56,7 @@ import (
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/rules"
+	"github.com/xunholy/promptzero/internal/version"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
 )
@@ -495,6 +496,12 @@ func (s *Server) Start(ctx context.Context) error {
 		return fmt.Errorf("static files: %w", err)
 	}
 
+	indexBytes, err := fs.ReadFile(staticFS, "index.html")
+	if err != nil {
+		return fmt.Errorf("read index.html: %w", err)
+	}
+	indexHTML := []byte(strings.ReplaceAll(string(indexBytes), "{{.Version}}", version.Version))
+
 	if s.metrics != nil {
 		path := s.metricsPath
 		if path == "" {
@@ -505,7 +512,16 @@ func (s *Server) Start(ctx context.Context) error {
 		mux.Handle(path, s.requireAuth(s.metrics.Handler().ServeHTTP))
 	}
 	s.registerAPIRoutes(mux)
-	mux.Handle("/", http.FileServer(http.FS(staticFS)))
+	fileServer := http.FileServer(http.FS(staticFS))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache")
+			_, _ = w.Write(indexHTML)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
 	if s.token == "" && !isLoopback(hostOf(s.addr)) {
