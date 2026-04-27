@@ -136,7 +136,12 @@ jobs:
           output-file: dist/promptzero.cdx.json
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4
+        # sigstore/cosign-installer doesn't publish a moving major-version
+        # tag ("v4" doesn't resolve), only full release tags. Pin to a
+        # specific patch version; bump explicitly when upstream releases
+        # a fix worth picking up. v4.x supports cosign v3+ (the v3
+        # installer line couldn't install cosign v3).
+        uses: sigstore/cosign-installer@v4.1.1
 
       - name: Sign checksums with cosign (keyless)
         run: |
