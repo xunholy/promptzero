@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-04-28
+
 ### Added
 
 - **Diff preview for medium-risk file writes.** When the agent is about
@@ -48,6 +50,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bool/slice/error-only — DesktopIsLocked, StorageWriteCtx,
   LoaderList, etc.) stay on inline branches. Behavior preserved
   byte-for-byte; existing tests pass without modification.
+
+### Fixed
+
+- **Release workflow's darwin/amd64 build was pinned to the retired
+  `macos-13` runner.** GitHub Actions removed `macos-13` from the
+  hosted runner pool in late 2025; the matrix job sat in `queued`
+  indefinitely, the gated release job never started, and v0.12.0's
+  binaries never published. Switched to `macos-15-intel`, the
+  current x86_64 macOS label. Also pinned `macos-latest` to the
+  explicit `macos-15` (Apple Silicon) so a future runner-pool bump
+  to macos-26 can't silently retarget the darwin/arm64 build.
 
 ## [0.12.0] - 2026-04-27
 
