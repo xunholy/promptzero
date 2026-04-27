@@ -562,31 +562,6 @@ func (t *bleTransport) establish(ctx context.Context) error {
 // keep credit current after that.
 const bleDefaultStartCredit = 486
 
-// waitForCredit blocks until the first FlowCtrl notification populates
-// t.credit (firmware tells us "you may send N bytes") or until ctx /
-// the timeout elapses. Returns nil when creditReady is true; an error
-// otherwise. Used at the tail of establish() to gate Dial completion
-// on a working flow-control link.
-func (t *bleTransport) waitForCredit(ctx context.Context, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	for !t.creditReady {
-		if t.closed {
-			return os.ErrClosed
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return fmt.Errorf("no flow-control credit received within %s — is the BLE Serial service alive on the Flipper?", timeout)
-		}
-		waitCondTimeout(t.creditCond, remaining)
-	}
-	return nil
-}
-
 // onRPCStatus is the RPC-status characteristic notification callback.
 // The firmware publishes a uint32 (LE on the wire here per the
 // existing ble_glue handlers — different from FlowCtrl's BE) where
