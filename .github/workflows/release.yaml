@@ -37,9 +37,15 @@ jobs:
         include:
           - { goos: linux,   goarch: amd64, runner: ubuntu-latest, cgo: 0 }
           - { goos: linux,   goarch: arm64, runner: ubuntu-latest, cgo: 0 }
-          - { goos: darwin,  goarch: amd64, runner: macos-13,      cgo: 1 }
-          - { goos: darwin,  goarch: arm64, runner: macos-latest,  cgo: 1 }
-          - { goos: windows, goarch: amd64, runner: ubuntu-latest, cgo: 0 }
+          # macos-13 was retired from the GitHub-hosted runner pool
+          # (macOS 13 image removed). The current x86_64 macOS label
+          # is macos-15-intel; macos-latest is Apple Silicon (arm64).
+          # Symptom of using a retired label: the matrix job sits in
+          # "queued" indefinitely waiting for a runner that doesn't
+          # exist, and the gated release job never starts.
+          - { goos: darwin,  goarch: amd64, runner: macos-15-intel, cgo: 1 }
+          - { goos: darwin,  goarch: arm64, runner: macos-15,       cgo: 1 }
+          - { goos: windows, goarch: amd64, runner: ubuntu-latest,  cgo: 0 }
     steps:
       - uses: actions/checkout@v5
         with:
