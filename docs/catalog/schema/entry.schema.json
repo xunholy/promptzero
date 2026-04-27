@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/xunholy/promptzero/docs/catalog/schema/entry.schema.json",
+  "title": "Flipper Zero Catalog Entry",
+  "description": "Canonical schema for every entry in the PromptZero Flipper Zero ecosystem catalog",
+  "type": "object",
+  "required": ["id", "name", "url", "author", "category", "subcategory", "status", "verified"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Slug identifier, e.g. unleashed-firmware",
+      "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+      "minLength": 3,
+      "maxLength": 100
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "url": {
+      "type": "string",
+      "description": "Canonical URL",
+      "format": "uri"
+    },
+    "author": {
+      "type": "string",
+      "description": "GitHub org or person",
+      "minLength": 1
+    },
+    "category": {
+      "type": "string",
+      "description": "Top-level category",
+      "enum": ["firmware", "fap", "payload", "tool", "hardware", "community", "research", "educational", "integration", "mod", "adversarial"]
+    },
+    "subcategory": {
+      "type": "string",
+      "description": "Protocol family or section, e.g. nfc, subghz, ble, badusb",
+      "minLength": 1
+    },
+    "language": {
+      "type": "string",
+      "description": "Primary programming language or N/A",
+      "default": "N/A"
+    },
+    "stars": {
+      "oneOf": [
+        {"type": "integer", "minimum": 0},
+        {"type": "null"}
+      ],
+      "description": "GitHub stars at snapshot date (null if not applicable)"
+    },
+    "last_commit": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+        {"type": "null"}
+      ],
+      "description": "Last repo activity in YYYY-MM format"
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier or N/A or proprietary",
+      "examples": ["MIT", "GPL-3.0", "Apache-2.0", "AGPL-3.0", "ISC", "N/A", "proprietary"]
+    },
+    "status": {
+      "type": "string",
+      "description": "Lifecycle status",
+      "enum": ["active", "stale", "archived", "adversarial"]
+    },
+    "primitives": {
+      "type": "array",
+      "description": "Security/hardware primitives this entry supports",
+      "items": {
+        "type": "string",
+        "enum": ["read", "emulate", "fuzz", "sniff", "replay", "brute", "synth", "glitch", "exfil", "jam", "decode", "bridge"]
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "firmware_compat": {
+      "type": "array",
+      "description": "Compatible Flipper firmware variants",
+      "items": {
+        "type": "string",
+        "enum": ["OFW", "Unleashed", "Momentum", "RogueMaster", "any"]
+      },
+      "uniqueItems": true,
+      "default": ["any"]
+    },
+    "promptzero_spec": {
+      "type": "string",
+      "description": "Corresponding PromptZero Spec name, or ❌ if unimplemented",
+      "default": "❌"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text annotation",
+      "default": ""
+    },
+    "verified": {
+      "type": "string",
+      "description": "ISO date when this row was last link-checked (YYYY-MM-DD)",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+    }
+  }
+}

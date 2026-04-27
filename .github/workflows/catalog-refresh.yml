@@ -1,0 +1,201 @@
+name: Catalog Refresh & Validation
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # nightly at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      run_link_check:
+        description: 'Run live link checking (slow)'
+        required: false
+        default: 'false'
+        type: boolean
+  pull_request:
+    paths:
+      - 'docs/catalog/**'
+      - 'scripts/catalog_validate.py'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Validate catalog tables
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run catalog validator
+        run: python scripts/catalog_validate.py docs/catalog/
+
+  link-check:
+    name: Link check (scheduled/manual only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_link_check == 'true')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install link checker dependencies
+        run: pip install requests
+
+      - name: Check all URLs in catalog
+        run: |
+          python - <<'EOF'
+          import re
+          import sys
+          import time
+          from pathlib import Path
+
+          import requests
+
+          TIMEOUT = 10
+          catalog_dir = Path("docs/catalog")
+          dead = []
+          checked = 0
+
+          url_pattern = re.compile(r'https?://[^\s|)\]>]+')
+
+          for md_file in sorted(catalog_dir.rglob("*.md")):
+              content = md_file.read_text(encoding="utf-8")
+              urls = set(url_pattern.findall(content))
+              for url in urls:
+                  # Strip trailing punctuation that is not part of the URL
+                  url = url.rstrip(".,)]>")
+                  if not url:
+                      continue
+                  try:
+                      resp = requests.head(
+                          url,
+                          timeout=TIMEOUT,
+                          allow_redirects=True,
+                          headers={"User-Agent": "Mozilla/5.0 (catalog-refresh)"},
+                      )
+                      if resp.status_code >= 400:
+                          dead.append(f"{md_file}:{url} -> HTTP {resp.status_code}")
+                      checked += 1
+                      time.sleep(0.1)  # be polite
+                  except Exception as exc:
+                      dead.append(f"{md_file}:{url} -> ERROR: {exc}")
+                      checked += 1
+
+          print(f"Checked {checked} URLs, {len(dead)} dead")
+          if dead:
+              for d in dead[:50]:  # cap output to avoid log flooding
+                  print(f"  DEAD: {d}")
+          EOF
+
+  discover:
+    name: Discover new repos via GitHub topics
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install discovery dependencies
+        run: pip install requests
+
+      - name: Search GitHub topics for new Flipper repos
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'EOF'
+          import os
+          import re
+          import time
+          from pathlib import Path
+
+          import requests
+
+          TOKEN = os.environ.get("GITHUB_TOKEN", "")
+          HEADERS = {
+              "Authorization": f"token {TOKEN}",
+              "Accept": "application/vnd.github.v3+json",
+          }
+          TOPICS = [
+              "flipper-zero",
+              "flipperzero",
+              "flipper0",
+              "flipperzero-app",
+              "flipperzero-firmware",
+          ]
+          THRESHOLD = 10  # minimum stars to include in report
+
+          catalog_dir = Path("docs/catalog")
+          existing: set[str] = set()
+          url_pat = re.compile(r'https://github\.com/[^\s|)\]>]+')
+          for f in catalog_dir.rglob("*.md"):
+              for m in url_pat.findall(f.read_text(errors="ignore")):
+                  existing.add(m.rstrip(".,)]").lower())
+
+          new_repos: list[dict] = []
+          for topic in TOPICS:
+              url = (
+                  f"https://api.github.com/search/repositories"
+                  f"?q=topic:{topic}&sort=stars&per_page=50"
+              )
+              resp = requests.get(url, headers=HEADERS, timeout=15)
+              if resp.status_code != 200:
+                  print(f"WARNING: GitHub API returned {resp.status_code} for topic {topic}")
+                  continue
+              for repo in resp.json().get("items", []):
+                  if repo["stargazers_count"] < THRESHOLD:
+                      continue
+                  html_url = repo["html_url"].lower()
+                  if html_url not in existing:
+                      new_repos.append(
+                          {
+                              "name": repo["full_name"],
+                              "url": repo["html_url"],
+                              "stars": repo["stargazers_count"],
+                              "description": repo.get("description") or "",
+                              "topics": repo.get("topics", []),
+                          }
+                      )
+              time.sleep(1)  # respect secondary rate limits
+
+          new_repos.sort(key=lambda r: r["stars"], reverse=True)
+          # Deduplicate across topics
+          seen: set[str] = set()
+          deduped = []
+          for r in new_repos:
+              if r["url"] not in seen:
+                  seen.add(r["url"])
+                  deduped.append(r)
+          new_repos = deduped
+
+          print(f"Found {len(new_repos)} new repos not yet in catalog:")
+          for r in new_repos[:20]:
+              desc = r["description"][:60]
+              print(f"  ★{r['stars']:>5}  {r['url']}  — {desc}")
+
+          # Write discovery report as workflow step summary
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
+          with open(summary_path, "w") as fh:
+              fh.write("## Catalog Discovery Report\n\n")
+              fh.write(
+                  f"**{len(new_repos)} new repos** found with topics `{TOPICS}`\n\n"
+              )
+              if new_repos:
+                  fh.write("| Stars | Repo | Description |\n|---|---|---|\n")
+                  for r in new_repos[:30]:
+                      desc = r["description"][:80].replace("|", "\\|")
+                      fh.write(
+                          f"| {r['stars']} | [{r['name']}]({r['url']}) | {desc} |\n"
+                      )
+          EOF
