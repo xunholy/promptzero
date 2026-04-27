@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/xunholy/promptzero/internal/version"
 	"golang.org/x/term"
 )
 
@@ -65,6 +66,7 @@ func printBanner() {
 	if !hasColor() {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "  promptzero — AI operator for Flipper Zero")
+		fmt.Fprintf(os.Stderr, "  %s\n", version.String())
 		fmt.Fprintln(os.Stderr)
 		return
 	}
@@ -85,7 +87,8 @@ func printBanner() {
 	fmt.Fprintf(os.Stderr, "  ╚══════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ \n")
 	fmt.Fprintf(os.Stderr, "%s\n", reset)
 	fmt.Fprintf(os.Stderr, "  %s%sAI-Powered Flipper Zero Operator%s\n", dim, white, reset)
-	fmt.Fprintf(os.Stderr, "  %s%sno limits // no filters%s\n\n", dim, gray, reset)
+	fmt.Fprintf(os.Stderr, "  %s%sno limits // no filters%s\n", dim, gray, reset)
+	fmt.Fprintf(os.Stderr, "  %s%s%s%s\n\n", dim, gray, version.String(), reset)
 }
 
 // status writes a coloured bullet followed by msg to stderr.

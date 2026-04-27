@@ -412,9 +412,13 @@ func setupPersona(cfg *config.Config, personaName string, ai *agent.Agent) (*per
 		return nil, nil, fmt.Errorf("unknown persona %q; available: %s", choice, strings.Join(personas.Names(), ", "))
 	}
 	ai.SetPersona(active)
-	statusOK(fmt.Sprintf("Persona %s%s%s %s· %d tools allowed%s",
+	scope := fmt.Sprintf("%d tools allowed", len(active.Tools))
+	if active.IsUnrestricted() {
+		scope = "all tools allowed"
+	}
+	statusOK(fmt.Sprintf("Persona %s%s%s %s· %s%s",
 		bold, active.Name, reset,
-		dim, len(active.Tools), reset))
+		dim, scope, reset))
 	return active, personas, nil
 }
 
