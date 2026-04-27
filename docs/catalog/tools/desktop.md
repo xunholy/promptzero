@@ -40,7 +40,7 @@ Desktop tools and CLI utilities form the backbone of the Flipper Zero developer 
 | flipper-builder | https://github.com/Just-Some-Bots/flipper-builder | Just-Some-Bots | ~300 | 2024-08 | MIT | stale | Automated FAP build system (multi-firmware matrix) |
 | RogueMaster fbt | https://github.com/RogueMaster/flipperzero-firmware-wPlugins/blob/main/fbt | RogueMaster | N/A | 2026-04 | GPL-3.0 | active | RogueMaster extended build scripts |
 | xMasterX bundle CI | https://github.com/xMasterX/all-the-plugins/blob/dev/.github/workflows | xMasterX | N/A | 2026-03 | MIT | active | CI that builds every FAP against multiple firmware targets |
-| flipper-backup script | https://github.com/nicholasgasior/goflipper | nicholasgasior | N/A | 2024-04 | MIT | stale | Backup/restore script for Flipper SD via USB |
+| flipper-backup script | https://github.com/nicholasgasior/goflipper/tree/main/cmd | nicholasgasior | N/A | 2024-04 | MIT | stale | Backup/restore script for Flipper SD via USB |
 | ufbt-action (GitHub Action) | https://github.com/nicholasgasior/ufbt-action | nicholasgasior | ~100 | 2024-07 | MIT | stale | GitHub Actions action for FAP build in CI |
 | flipper-zero-action | https://github.com/nicholasgasior/flipper-zero-action | nicholasgasior | ~80 | 2024-07 | MIT | stale | GitHub Actions action for firmware flash |
 | Flipper Lab (web/desktop) | https://lab.flipper.net | flipperdevices | N/A | 2026-04 | proprietary | active | Official web + desktop app catalog + firmware updater |

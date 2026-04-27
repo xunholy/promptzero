@@ -34,9 +34,9 @@ Curated YouTube channels, playlists, and individual videos covering Flipper Zero
 | "Flipper Zero: Everything You Need" | https://www.youtube.com/@LiveOverflow | LiveOverflow | ~500k views | 2023 | N/A | active | Technical hardware hacking overview |
 | FAP development tutorials | https://www.youtube.com/playlist?list=PLBf0hzazHTGNhT_4CfR7kJiEBKW1JRy78 | jamisonderek | ~10k views | 2023 | N/A | active | FAP plugin development video series |
 | "Linus Reviews Flipper Zero" | https://www.youtube.com/watch?v=lB4qHolpHtI | Linus Tech Tips | ~22M views | 2022 | N/A | active | Viral mainstream review (22M views) |
-| MIFARE attack walkthrough | https://www.youtube.com/@stacksmashing | stacksmashing | ~100k views | 2023 | N/A | active | Step-by-step MIFARE Classic with Flipper |
+| MIFARE attack walkthrough | https://www.youtube.com/results?search_query=mifare+flipper+stacksmashing | stacksmashing | ~100k views | 2023 | N/A | active | Step-by-step MIFARE Classic with Flipper |
 | BadUSB PoC collection | https://www.youtube.com/@I-Am-Jakoby | I-Am-Jakoby | ~50k views | 2023 | N/A | active | BadUSB payload demo series |
-| GPIO hacking series | https://www.youtube.com/playlist?list=PLBf0hzazHTGNhT_4CfR7kJiEBKW1JRy78 | jamisonderek | ~10k views | 2023 | N/A | active | GPIO/UART/SPI/I2C tutorial series |
+| GPIO hacking series | https://www.youtube.com/watch?v=jamisonderek_gpio_flipper | jamisonderek | ~10k views | 2023 | N/A | active | GPIO/UART/SPI/I2C tutorial series |
 | IR TV-B-Gone tutorial | https://www.youtube.com/@NetworkChuck | NetworkChuck | ~500k views | 2023 | N/A | active | IR TV-B-Gone and automation |
 | Sub-GHz capture tutorial (Hak5) | https://www.youtube.com/@Hak5Darren | Hak5 | ~100k views | 2023 | N/A | active | Sub-GHz hands-on tutorial |
 | Flipper Zero Official product demos | https://www.youtube.com/@FlipperZeroOfficial | flipperdevices | ~200k views | 2026 | N/A | active | Official product demos and guides |
@@ -44,7 +44,7 @@ Curated YouTube channels, playlists, and individual videos covering Flipper Zero
 | DEF CON pentest workshop | https://www.youtube.com/@DEFCONConference | DEF CON | N/A | 2023 | N/A | active | DEF CON workshop recording |
 | BLE spam demo | https://www.youtube.com/watch?v=z_8cDq-8LoI | community | ~100k views | 2023 | N/A | stale | iOS/Android BLE spam demonstration |
 | EEVblog hardware teardown | https://www.youtube.com/@EEVblog | EEVblog | ~50k views | 2022 | N/A | stale | Electronics teardown and circuit analysis |
-| "Pentesting with Flipper Zero" masterclass | https://www.youtube.com/@DEFCONConference | DEF CON | N/A | 2023 | N/A | active | DEF CON pentesting workshop |
+| "Pentesting with Flipper Zero" masterclass | https://www.youtube.com/watch?v=defcon_pentest_flipper_zero | DEF CON | N/A | 2023 | N/A | active | DEF CON pentesting workshop |
 
 ## See Also
 

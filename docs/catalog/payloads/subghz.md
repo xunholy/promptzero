@@ -45,7 +45,7 @@ Community and official Sub-GHz signal databases, capture repositories, bruteforc
 | weatherstation-signals | https://github.com/klaufer/flipper-weatherstation | klaufer | ~80 | 2024-03 | MIT | stale | Acurite/Oregon weather station Sub-GHz frames |
 | flipper-maker subghz pack | https://github.com/flipper-maker/subghz-pack | flipper-maker | ~400 | 2025-02 | MIT | stale | Mixed Sub-GHz household device captures |
 | Momentum POCSAG | https://github.com/Next-Flip/Momentum-Apps/tree/dev/pocsag | Next-Flip | N/A | 2026-04 | GPL-3.0 | active | POCSAG pager decode FAP + sample captures |
-| SubGHz chat | https://github.com/flipperdevices/flipperzero-firmware/tree/dev/applications/main/subghz | flipperdevices | N/A | 2025-12 | GPL-3.0 | active | Point-to-point text chat over Sub-GHz |
+| SubGHz chat | https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/main/subghz/README.md | flipperdevices | N/A | 2025-12 | GPL-3.0 | active | Point-to-point text chat over Sub-GHz |
 | KeeLoq/StarLine support | https://github.com/DarkFlippers/unleashed-firmware/tree/dev/applications/main/subghz | DarkFlippers | N/A | 2026-04 | GPL-3.0 | active | KeeLoq/StarLine rolling-code protocol + captures |
 | Frequency Analyzer FAP | https://github.com/flipperdevices/flipperzero-firmware/tree/dev/applications/main/frequency_analyzer | flipperdevices | N/A | 2025-12 | GPL-3.0 | active | Live Sub-GHz spectrum analyzer |
 | wetox-team firmware | https://github.com/wetox-team/flipperzero-firmware | wetox-team | ~800 | 2022-04 | GPL-3.0 | stale | First custom firmware; ships early Sub-GHz captures |

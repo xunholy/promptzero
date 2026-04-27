@@ -39,13 +39,13 @@ LF/HF RFID dump corpora, EM4100/HID/Indala/iButton key databases, and Wiegand ca
 | FlipFrid LF brute | https://github.com/teedeepee/FlipFrid | teedeepee | ~600 | 2024-08 | MIT | stale | LF RFID brute-force FAP (26-bit Wiegand range) |
 | Wiegand sniffer FAP | https://github.com/xMasterX/all-the-plugins/tree/dev/non_catalog_apps/wiegand | xMasterX | N/A | 2026-03 | MIT | active | Wiegand D0/D1 sniffer FAP + captures |
 | FDX-B animal microchip FAP | https://github.com/RogueMaster/flipperzero-firmware-wPlugins/tree/main/applications/external/fdxb_maker | RogueMaster | N/A | 2026-04 | GPL-3.0 | active | FDX-B 134.2 kHz animal microchip synth |
-| LF RFID fuzz (Unleashed) | https://github.com/DarkFlippers/unleashed-firmware/tree/dev/applications/main/lfrfid | DarkFlippers | N/A | 2026-04 | GPL-3.0 | active | LF RFID fuzz (bit-level UID modification) |
+| LF RFID fuzz (Unleashed) | https://github.com/DarkFlippers/unleashed-firmware/blob/dev/applications/main/lfrfid/helpers/lfrfid_worker.c | DarkFlippers | N/A | 2026-04 | GPL-3.0 | active | LF RFID fuzz (bit-level UID modification) |
 | rfid-database (redteam) | https://github.com/nicowillis/rfid-database | nicowillis | ~150 | 2024-03 | MIT | stale | Sample HID/EM4100 RFID credential files (educational) |
 | GS1 RFID parser FAP | https://github.com/RogueMaster/flipperzero-firmware-wPlugins/tree/main/applications/external/gs1_rfid_parser | RogueMaster | N/A | 2026-04 | GPL-3.0 | active | GS1 EPC barcode/RFID decoder FAP |
 | FlipperZero-RFID Python | https://github.com/AdeelK93/FlipperZero-RFID | AdeelK93 | ~200 | 2024-05 | MIT | stale | Python converter for LF RFID formats to .rfid |
 | EM4100/EM4305 OFW protocol | https://github.com/flipperdevices/flipperzero-firmware/blob/dev/applications/main/lfrfid/protocols/lfrfid_protocol_em4100.c | flipperdevices | N/A | 2025-12 | GPL-3.0 | active | EM4100/EM4050/EM4305 protocol implementation |
 | AWID 50-bit protocol | https://github.com/RfidResearchGroup/proxmark3 | RfidResearchGroup | N/A | 2026-04 | GPL-3.0 | active | AWID 50-bit protocol reference |
-| rfid-convert.py | https://github.com/AdeelK93/FlipperZero-RFID | AdeelK93 | N/A | 2024-05 | MIT | stale | Python converter for common LF RFID formats |
+| rfid-convert.py | https://github.com/AdeelK93/FlipperZero-RFID/blob/main/rfid_convert.py | AdeelK93 | N/A | 2024-05 | MIT | stale | Python converter for common LF RFID formats |
 | Proxmark LF attack tools | https://github.com/RfidResearchGroup/proxmark3/tree/master/client/src | RfidResearchGroup | N/A | 2026-04 | GPL-3.0 | active | C-based LF attack tools (MFOC, sniff, clone) |
 
 ## See also

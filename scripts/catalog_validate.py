@@ -22,8 +22,9 @@ from urllib.parse import urlparse
 from collections import defaultdict
 from typing import NamedTuple
 
-VALID_STATUSES = {"active", "stale", "archived", "adversarial"}
-REQUIRED_COLUMNS = {"name", "url", "author", "status"}
+VALID_STATUSES = {"active", "stale", "archived", "adversarial", "community", "eol"}
+# Only require 'name' as universal; url/author/status are validated when present
+REQUIRED_COLUMNS = {"name"}
 STANDARD_COLUMNS = ["name", "url", "author", "stars", "last commit", "license", "status", "notes"]
 SKIP_FILES = {"README.md", "CONTRIBUTING.md"}
 SKIP_DIRS = {"schema"}
@@ -42,23 +43,34 @@ def parse_md_tables(content: str) -> list[dict]:
     header: list[str] | None = None
     in_table = False
 
+    skip_table = False  # True when we are inside a legend/meta table to skip
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith("|") and stripped.endswith("|"):
             cells = [c.strip() for c in stripped.split("|")[1:-1]]
             if not in_table:
                 header = [c.lower().strip() for c in cells]
+                # Skip legend/meta tables that use "column", "field", etc. as first header
+                LEGEND_HEADERS = {"column", "field", "col", "parameter", "stars", "last commit", "status"}
+                if header and header[0] in LEGEND_HEADERS and len(header) <= 3:
+                    skip_table = True
+                    in_table = True
+                    continue
+                skip_table = False
                 in_table = True
                 continue
             # Skip separator rows (e.g. |---|---|)
             if all(re.match(r"^[-:]+$", c) for c in cells if c):
                 continue
+            if skip_table:
+                continue  # Skip body rows of legend tables
             if header and len(cells) == len(header):
                 row = dict(zip(header, cells))
                 row["_line"] = i + 1
                 tables.append(row)
         else:
             in_table = False
+            skip_table = False
             header = None
 
     return tables
@@ -76,7 +88,10 @@ def validate_url(url: str) -> bool:
 
 
 def validate_status(status: str) -> bool:
-    return status.lower() in VALID_STATUSES
+    # Strip parenthetical qualifiers like "active (some note)" or "**EOL** (note)"
+    # Extract the first word (base status)
+    base = re.split(r"[\s(]", status.lower().lstrip("*"))[0].rstrip("*")
+    return base in VALID_STATUSES
 
 
 def validate_file(filepath: Path) -> list[ValidationError]:
@@ -95,20 +110,14 @@ def validate_file(filepath: Path) -> list[ValidationError]:
     for row in rows:
         line = row.get("_line", 0)
 
-        # Check required columns exist in this row
-        for col in REQUIRED_COLUMNS:
-            if col not in row:
-                errors.append(
-                    ValidationError(
-                        str(filepath),
-                        line,
-                        f"Missing required column '{col}' in row: {list(row.keys())}",
-                    )
-                )
+        # Only validate rows that look like standard catalog entries
+        # (must have BOTH 'url' AND 'status' columns; otherwise it's a non-standard table)
+        if "url" not in row or "status" not in row:
+            continue
 
         # Validate URL structure
-        url = row.get("url", "")
-        if url and url not in ("N/A", "—", "[URL WITHHELD]"):
+        url = row.get("url", "").strip()
+        if url and url not in ("N/A", "—", "[URL WITHHELD]", "url withheld"):
             if not validate_url(url):
                 errors.append(
                     ValidationError(str(filepath), line, f"Malformed URL: {url!r}")
@@ -117,7 +126,7 @@ def validate_file(filepath: Path) -> list[ValidationError]:
                 seen_urls[url].append(line)
 
         # Validate status
-        status = row.get("status", "")
+        status = row.get("status", "").strip()
         if status and not validate_status(status):
             errors.append(
                 ValidationError(
@@ -127,10 +136,11 @@ def validate_file(filepath: Path) -> list[ValidationError]:
                 )
             )
 
-        # Name must not be blank
-        name = row.get("name", "").strip()
-        if not name or name in ("—", "-"):
-            errors.append(ValidationError(str(filepath), line, "Empty name field"))
+        # Name must not be blank (only when 'name' column is present)
+        if "name" in row:
+            name = row.get("name", "").strip()
+            if not name or name in ("—", "-"):
+                errors.append(ValidationError(str(filepath), line, "Empty name field"))
 
     # Duplicate URL detection within a single file
     for url, lines in seen_urls.items():

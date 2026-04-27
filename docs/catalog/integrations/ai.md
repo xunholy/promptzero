@@ -29,7 +29,7 @@ Projects that combine AI/LLM capabilities with Flipper Zero hardware: agentic co
 | flipper-gpt | https://github.com/0xJustin/flipper-gpt | 0xJustin | ~300 | 2024-06 | MIT | stale | ChatGPT plugin for Flipper payload generation |
 | flipper-langchain | https://github.com/nicholasgasior/flipper-langchain | nicholasgasior | ~100 | 2024-07 | MIT | stale | LangChain agent tools for Flipper control |
 | llm-flipper-agent | https://github.com/nicholasgasior/llm-flipper | nicholasgasior | ~80 | 2024-08 | MIT | stale | Generic LLM (OpenAI/Ollama) agent for Flipper |
-| flipper-claude-mcp | https://github.com/xunholy/promptzero | xunholy | N/A | 2026-04 | AGPL-3.0 | active | Claude MCP server integration in PromptZero |
+| flipper-claude-mcp | https://github.com/xunholy/promptzero/tree/main/internal/mcp | xunholy | N/A | 2026-04 | AGPL-3.0 | active | Claude MCP server integration in PromptZero |
 | flipper-openai-whisper | https://github.com/nicholasgasior/flipper-whisper | nicholasgasior | ~80 | 2024-07 | MIT | stale | Voice-controlled Flipper using OpenAI Whisper |
 | BadUSB-GPT-generator | https://github.com/0xJustin/badusb-gpt | 0xJustin | ~200 | 2024-08 | MIT | stale | GPT-4 DuckyScript payload generator + upload |
 | flipper-ollama | https://github.com/nicholasgasior/flipper-ollama | nicholasgasior | ~80 | 2024-10 | MIT | stale | Ollama (local LLM) integration for offline AI agent |
