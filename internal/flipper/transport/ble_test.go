@@ -333,7 +333,7 @@ func TestBLEKindAndDrainTimeoutConstants(t *testing.T) {
 
 // newBLEForTest returns an un-dialled *bleTransport suitable for
 // unit-testing the buffer/cond/timeout logic. Bypasses Open to get a
-// typed value so tests can call onNotify directly.
+// typed value so tests can call onNotify / onFlowControl directly.
 func newBLEForTest(t *testing.T) *bleTransport {
 	t.Helper()
 	tx := &bleTransport{
@@ -342,6 +342,7 @@ func newBLEForTest(t *testing.T) *bleTransport {
 		mtu:      bleDefaultMTU - attHeaderOverhead,
 	}
 	tx.readCond = sync.NewCond(&tx.mu)
+	tx.creditCond = sync.NewCond(&tx.mu)
 	return tx
 }
 

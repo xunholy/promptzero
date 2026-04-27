@@ -31,6 +31,14 @@ func (f *fakeBridgeFlipper) ExecCtx(_ context.Context, cmd string) (string, erro
 	return f.execResp, f.execErr
 }
 
+// LaunchBridge mirrors ExecCtx for tests — the production code routes
+// the bridge launch through this method to support BLE/USB transport
+// asymmetry, but on USB it's the same call so the fake records it
+// under the same execCmds slice.
+func (f *fakeBridgeFlipper) LaunchBridge(ctx context.Context, cmd string) (string, error) {
+	return f.ExecCtx(ctx, cmd)
+}
+
 func (f *fakeBridgeFlipper) Suspend(reason string) error {
 	f.suspendCalls++
 	f.suspendReason = reason

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/xunholy/promptzero/internal/flipper/rpc"
 	"github.com/xunholy/promptzero/internal/flipper/transport"
 )
 
@@ -89,6 +90,17 @@ type Flipper struct {
 	// without blocking on a mutex that may be held for the entire mirror
 	// session.
 	rpcMode atomic.Bool
+
+	// bleClient holds a permanent rpc.Client when the underlying
+	// transport is BLE — Flipper firmware exposes only RPC over BLE
+	// Serial (applications/services/bt/bt_service/bt.c pipes inbound
+	// bytes straight into rpc_session_feed; no text CLI handler is
+	// wired). On BLE the client is opened at ConnectURL time and lives
+	// for the entire Flipper lifetime; rpcMode is permanently true and
+	// EnterRPC short-circuits to return this client. On USB the
+	// existing on-demand EnterRPC pattern is preserved verbatim and
+	// bleClient is nil.
+	bleClient *rpc.Client
 
 	// bridgeMode is set true when Suspend has been called — typically
 	// because the firmware has been switched into USB-UART bridge mode
@@ -168,6 +180,98 @@ func (f *Flipper) accumCap() int {
 // /status output and telemetry can read Identity/Kind without the
 // command-layer mutex.
 func (f *Flipper) Transport() transport.Transport { return f.transport }
+
+// LaunchBridge launches the Flipper's USB-UART Bridge (or any other
+// loader-app launch verb) and returns the firmware's response text.
+// On USB it sends the literal command string verbatim, preserving the
+// existing CLI text contract that classifyBridgeRejection relies on.
+// On BLE it parses the `loader open "App Name" [args...]` shape into
+// (name, args) and dispatches via LoaderOpen → app_start_request RPC,
+// which is the only viable path since BLE has no text CLI surface
+// (see internal/flipper/transport/ble.go).
+//
+// command is whatever the operator configured (default
+// `loader open "USB-UART Bridge"`); the only requirement on BLE is
+// that the first quoted token is the app name. On parse failure on
+// BLE we fall through to ExecCtx, which will surface a clean
+// usbOnlyError so the operator sees what went wrong.
+func (f *Flipper) LaunchBridge(ctx context.Context, command string) (string, error) {
+	if !f.IsBLE() {
+		return f.ExecCtx(ctx, command)
+	}
+	name, args, ok := parseLoaderOpenCommand(command)
+	if !ok {
+		// Unparseable on BLE; ExecCtx will return usbOnlyError with
+		// the full command text so the operator sees the literal
+		// string that didn't match the loader-open shape.
+		return f.ExecCtx(ctx, command)
+	}
+	return f.LoaderOpen(name, args)
+}
+
+// parseLoaderOpenCommand extracts the (name, args) pair from a
+// `loader open "App Name" extra args` style verb. Returns ok=false if
+// the command isn't loader-open or the app name isn't quoted.
+func parseLoaderOpenCommand(command string) (name, args string, ok bool) {
+	const prefix = "loader open "
+	rest := strings.TrimSpace(command)
+	if !strings.HasPrefix(rest, prefix) {
+		return "", "", false
+	}
+	rest = strings.TrimSpace(rest[len(prefix):])
+	if !strings.HasPrefix(rest, `"`) {
+		// Some firmware accepts unquoted single-token names — split on space.
+		parts := strings.SplitN(rest, " ", 2)
+		if len(parts) == 0 || parts[0] == "" {
+			return "", "", false
+		}
+		if len(parts) == 1 {
+			return parts[0], "", true
+		}
+		return parts[0], strings.TrimSpace(parts[1]), true
+	}
+	// Quoted name — find the matching closing quote.
+	rest = rest[1:]
+	idx := strings.Index(rest, `"`)
+	if idx < 0 {
+		return "", "", false
+	}
+	name = rest[:idx]
+	args = strings.TrimSpace(rest[idx+1:])
+	return name, args, true
+}
+
+// rpcModeError selects the right error when a CLI dispatch attempt
+// finds rpcMode=true. On USB, rpcMode is a temporary "mirror session"
+// state — the operator just needs to release the mirror before
+// retrying — and the existing ErrInRPCMode message captures that.
+// On BLE, rpcMode is permanent (the firmware exposes only RPC over
+// BLE Serial; see internal/flipper/transport/ble.go for context), so
+// the operator-visible meaning of "you tried a CLI command" is
+// "this command has no RPC equivalent in firmware — connect via USB
+// instead". usbOnlyError carries that nuance plus the offending
+// operation name through errors.Is wrapping.
+func (f *Flipper) rpcModeError(operation string) error {
+	if f.IsBLE() {
+		return usbOnlyError(operation)
+	}
+	return ErrInRPCMode
+}
+
+// IsBLE reports whether the underlying transport is BLE. BLE transports
+// can only speak Protobuf RPC (not text CLI), so command dispatchers
+// branch on this to either route through the persistent RPC client
+// (f.bleClient) or — for commands without an RPC equivalent — return
+// ErrCommandRequiresUSB.
+func (f *Flipper) IsBLE() bool {
+	return f.transport != nil && f.transport.Kind() == "ble"
+}
+
+// BLEClient returns the persistent RPC client opened at connect time
+// when the transport is BLE, or nil otherwise. Callers must check
+// IsBLE first; on USB the client is constructed on demand via
+// EnterRPC and is not held on the Flipper handle.
+func (f *Flipper) BLEClient() *rpc.Client { return f.bleClient }
 
 // Reconnect forces a fresh reconnect cycle: closes the current transport,
 // asks the transport to rescan + reopen, re-handshakes, and re-detects
@@ -403,6 +507,31 @@ func ConnectURL(ctx context.Context, rawURL string, timeout time.Duration) (*Fli
 		connectTimeout: timeout,
 	}
 
+	// BLE bypasses the text-CLI handshake entirely. The Flipper firmware
+	// has no text CLI on its BLE Serial endpoint — bytes flow straight
+	// into the protobuf RPC decoder — so waiting for ">: " would always
+	// time out. Open a persistent rpc.Client with WithSkipStartRPCSession
+	// (the firmware is already in RPC mode at connection time, no text
+	// preamble needed), latch rpcMode=true for the lifetime of the handle,
+	// and return. All subsequent commands route through bleClient via
+	// the dispatchers in commands.go; commands without an RPC verb in
+	// the firmware (Sub-GHz, NFC, IR, RFID, iButton, BadUSB) return
+	// ErrCommandRequiresUSB on this transport.
+	if tx.Kind() == "ble" {
+		dbg("ConnectURL: BLE transport detected; entering permanent RPC mode")
+		client := rpc.NewClient(tx)
+		openCtx, openCancel := context.WithTimeout(ctx, timeout)
+		defer openCancel()
+		if err := client.Open(openCtx, rpc.WithSkipStartRPCSession()); err != nil {
+			_ = tx.Close()
+			return nil, fmt.Errorf("opening RPC session over BLE: %w", err)
+		}
+		f.bleClient = client
+		f.rpcMode.Store(true)
+		dbg("ConnectURL: BLE RPC session ready (Identity=%s)", tx.Identity())
+		return f, nil
+	}
+
 	handshakeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -479,6 +608,15 @@ func (f *Flipper) handshake(ctx context.Context) error {
 }
 
 func (f *Flipper) Close() error {
+	// On BLE the persistent RPC client owns the wire-level lifecycle —
+	// closing it sends StopSession + a Ctrl+C tail and clears the
+	// session flag — so we let it tear down before closing the
+	// transport. On USB bleClient is nil and we skip straight to the
+	// transport close as before.
+	if f.bleClient != nil {
+		_ = f.bleClient.Close()
+		f.bleClient = nil
+	}
 	return f.transport.Close()
 }
 
@@ -496,7 +634,7 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 		return "", ErrFlipperSuspended
 	}
 	if f.rpcMode.Load() {
-		return "", ErrInRPCMode
+		return "", f.rpcModeError(command)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -606,7 +744,7 @@ func (f *Flipper) ExecLongCtx(ctx context.Context, command string, timeout time.
 		return "", ErrFlipperSuspended
 	}
 	if f.rpcMode.Load() {
-		return "", ErrInRPCMode
+		return "", f.rpcModeError(command)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -657,7 +795,7 @@ func (f *Flipper) StreamCtx(ctx context.Context, command string, onLine func(lin
 		return ErrFlipperSuspended
 	}
 	if f.rpcMode.Load() {
-		return ErrInRPCMode
+		return f.rpcModeError(command)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -750,7 +888,7 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 		return ErrFlipperSuspended
 	}
 	if f.rpcMode.Load() {
-		return ErrInRPCMode
+		return f.rpcModeError("write_file " + path)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()

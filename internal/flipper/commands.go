@@ -10,7 +10,47 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/clisafe"
+	pb "github.com/xunholy/promptzero/internal/flipper/rpc/pb"
 )
+
+// pbStorageDirType is a local alias for the pb.File DIR type so the
+// dispatch helpers in this file can compare GetType() without taking a
+// dependency on the pb constant from every call site. Mirrors the
+// firmware enum (FILE=0, DIR=1).
+const pbStorageDirType = pb.File_DIR
+
+// storageErrorBanner formats a wrapped rpc-storage error into the CLI's
+// "Storage error: <msg>" shape so ParseStorageStat (parse.go) and
+// downstream string parsers see the same banner regardless of transport.
+// The wrapped error message includes the firmware status name; map the
+// common ERROR_STORAGE_NOT_EXIST case to the human-readable "not found"
+// the CLI emits, and pass everything else through verbatim.
+func storageErrorBanner(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "ERROR_STORAGE_NOT_EXIST"):
+		return "Storage error: not exist\n"
+	case strings.Contains(msg, "ERROR_STORAGE_NOT_READY"):
+		return "Storage error: not ready\n"
+	case strings.Contains(msg, "ERROR_STORAGE_DENIED"):
+		return "Storage error: denied\n"
+	case strings.Contains(msg, "ERROR_STORAGE_INVALID_NAME"):
+		return "Storage error: invalid name\n"
+	case strings.Contains(msg, "ERROR_STORAGE_INVALID_PARAMETER"):
+		return "Storage error: invalid parameter\n"
+	case strings.Contains(msg, "ERROR_STORAGE_EXIST"):
+		return "Storage error: already exist\n"
+	case strings.Contains(msg, "ERROR_STORAGE_INTERNAL"):
+		return "Storage error: internal\n"
+	case strings.Contains(msg, "ERROR_STORAGE_NOT_IMPLEMENTED"):
+		return "Storage error: not implemented\n"
+	case strings.Contains(msg, "ERROR_STORAGE_ALREADY_OPEN"):
+		return "Storage error: already open\n"
+	case strings.Contains(msg, "ERROR_STORAGE_DIR_NOT_EMPTY"):
+		return "Storage error: dir not empty\n"
+	}
+	return "Storage error: " + msg + "\n"
+}
 
 // ansiRE strips ANSI CSI sequences used by Flipper firmware to colour CLI
 // output (e.g. `\x1b[31mError: …\x1b[0m`). Applied when pattern-matching
@@ -633,15 +673,109 @@ func (f *Flipper) IButtonWrite(hexData string) (string, error) {
 // --- GPIO ---
 
 // GPIOSet sets a GPIO pin to a value.
+//
+// CLI transport: `gpio set <pin> <value>` text command.
+// RPC transport (BLE — text CLI is not available there): selected on
+// the value:
+//   - 0 or 1: gpio_write_pin (output mode + drive level).
+//   - anything else: gpio_set_pin_mode with mode=INPUT, treated as
+//     "switch this pin to read mode before a subsequent gpio_read".
+//     The CLI has no in-band equivalent for this — it's a transport-
+//     specific hook for callers who need to flip a pin to input via
+//     RPC before reading.
+//
+// CLI emits no output on success, so the RPC branch returns an empty
+// string to match.
 // CLI: gpio set <pin> <value>
 func (f *Flipper) GPIOSet(pin string, value int) (string, error) {
+	if f.IsBLE() {
+		return f.gpioSetViaRPC(context.Background(), pin, value)
+	}
 	return f.Exec(fmt.Sprintf("gpio set %s %d", sanitizeArg(pin), value))
 }
 
+// gpioSetViaRPC drives the BLE-only RPC dispatch for GPIOSet.
+// Maps value 0/1 → gpio_set_pin_mode OUTPUT followed by gpio_write_pin
+// (the CLI does both atomically on the firmware side; over RPC the two
+// verbs are explicit). Any other value → gpio_set_pin_mode INPUT
+// (read-mode prep, used by callers about to GPIORead the pin). Output
+// format matches the CLI: empty string on success.
+func (f *Flipper) gpioSetViaRPC(ctx context.Context, pin string, value int) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	pinEnum, ok := gpioPinByName(pin)
+	if !ok {
+		return "", fmt.Errorf("rpc gpio set: unknown pin %q", pin)
+	}
+	switch value {
+	case 0, 1:
+		if err := f.bleClient.GPIOSetPinMode(ctx, pinEnum, pb.GpioPinMode_OUTPUT); err != nil {
+			return "", fmt.Errorf("rpc gpio_set_pin_mode: %w", err)
+		}
+		if err := f.bleClient.GPIOWritePin(ctx, pinEnum, uint32(value)); err != nil {
+			return "", fmt.Errorf("rpc gpio_write_pin: %w", err)
+		}
+	default:
+		if err := f.bleClient.GPIOSetPinMode(ctx, pinEnum, pb.GpioPinMode_INPUT); err != nil {
+			return "", fmt.Errorf("rpc gpio_set_pin_mode: %w", err)
+		}
+	}
+	return "", nil
+}
+
 // GPIORead reads the current value of a GPIO pin.
+//
+// CLI transport: `gpio read <pin>` text command. Output format from
+// firmware is "Pin <name> = <0|1>" (with mild fork-to-fork variation).
+// RPC transport (BLE): gpio_read_pin streamed via the persistent
+// rpc.Client. The numeric value is reformatted as the same single-line
+// "Pin <name> = <0|1>\n" string the CLI emits so downstream parsers
+// (workflows.gpioValueFromOutput) work without knowing which transport
+// produced the output.
 // CLI: gpio read <pin>
 func (f *Flipper) GPIORead(pin string) (string, error) {
+	if f.IsBLE() {
+		return f.gpioReadViaRPC(context.Background(), pin)
+	}
 	return f.Exec(fmt.Sprintf("gpio read %s", sanitizeArg(pin)))
+}
+
+// gpioReadViaRPC drives the BLE-only RPC dispatch for GPIORead.
+// Switches the pin to INPUT mode first (matching what the CLI's
+// `gpio read` does implicitly on the firmware side), then issues
+// gpio_read_pin and re-emits the value as the single-line CLI shape so
+// transport-agnostic parsers continue to work.
+func (f *Flipper) gpioReadViaRPC(ctx context.Context, pin string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	pinEnum, ok := gpioPinByName(pin)
+	if !ok {
+		return "", fmt.Errorf("rpc gpio read: unknown pin %q", pin)
+	}
+	if err := f.bleClient.GPIOSetPinMode(ctx, pinEnum, pb.GpioPinMode_INPUT); err != nil {
+		return "", fmt.Errorf("rpc gpio_set_pin_mode: %w", err)
+	}
+	v, err := f.bleClient.GPIOReadPin(ctx, pinEnum)
+	if err != nil {
+		return "", fmt.Errorf("rpc gpio_read_pin: %w", err)
+	}
+	// Match the firmware CLI's "Pin <name> = <0|1>" output. Use the
+	// canonical pin name (uppercased) so case-insensitive callers see
+	// the same string regardless of input casing.
+	return fmt.Sprintf("Pin %s = %d\n", strings.ToUpper(pin), v), nil
+}
+
+// gpioPinByName resolves a pin name (PA7, pa7, PC0, …) to the protobuf
+// enum. Case-insensitive. Returns the enum and true on a match,
+// otherwise the zero value and false.
+func gpioPinByName(name string) (pb.GpioPin, bool) {
+	v, ok := pb.GpioPin_value[strings.ToUpper(strings.TrimSpace(name))]
+	if !ok {
+		return 0, false
+	}
+	return pb.GpioPin(v), true
 }
 
 // --- BadUSB ---
@@ -658,8 +792,18 @@ func (f *Flipper) BadUSBRun(scriptPath string) (string, error) {
 // The app name is always double-quoted so multi-word names (e.g. "Bad USB",
 // "Sub-GHz BF") are parsed as a single token by the firmware's
 // args_read_probably_quoted_string_and_trim.
+//
+// CLI transport: `loader open "<app_name>" [args]`. RPC transport (BLE):
+// an AppStartRequest dispatched via the persistent rpc.Client. Both paths
+// return an empty success string on success — `loader open` produces no
+// CLI output when the launch succeeds, and the RPC ack carries no body
+// either, so the (string, error) contract is identical across transports.
+//
 // CLI: loader open "<app_name>" [args]
 func (f *Flipper) LoaderOpen(appName string, args string) (string, error) {
+	if f.IsBLE() {
+		return f.loaderOpenViaRPC(context.Background(), appName, args)
+	}
 	cmd := fmt.Sprintf(`loader open "%s"`, sanitizeArg(appName))
 	if args != "" {
 		cmd += " " + sanitizeArg(args)
@@ -667,15 +811,58 @@ func (f *Flipper) LoaderOpen(appName string, args string) (string, error) {
 	return f.Exec(cmd)
 }
 
+// loaderOpenViaRPC drives the BLE-only RPC dispatch for LoaderOpen. The
+// firmware's app_start_request takes a single args string — multi-token
+// CLI argument lists are joined by the caller before invocation; the
+// RPC verb forwards the string verbatim into the app's args hook.
+func (f *Flipper) loaderOpenViaRPC(ctx context.Context, appName, args string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	if err := f.bleClient.AppStart(ctx, appName, args); err != nil {
+		return "", fmt.Errorf("rpc loader open: %w", err)
+	}
+	return "", nil
+}
+
 // LoaderClose closes the currently running application.
+//
+// CLI transport: `loader close`. RPC transport (BLE): an AppExitRequest
+// dispatched via the persistent rpc.Client. Both paths return an empty
+// success string on the happy path; non-OK firmware status (e.g.
+// ERROR_APP_NOT_RUNNING when no app is open) surfaces via the wrapped
+// error.
+//
 // CLI: loader close
 func (f *Flipper) LoaderClose() (string, error) {
+	if f.IsBLE() {
+		return f.loaderCloseViaRPC(context.Background())
+	}
 	return f.Exec("loader close")
+}
+
+// loaderCloseViaRPC drives the BLE-only RPC dispatch for LoaderClose.
+func (f *Flipper) loaderCloseViaRPC(ctx context.Context) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	if err := f.bleClient.AppExit(ctx); err != nil {
+		return "", fmt.Errorf("rpc loader close: %w", err)
+	}
+	return "", nil
 }
 
 // LoaderList lists all available applications.
 // CLI: loader list
+//
+// USB-only: the Flipper firmware exposes no RPC verb for enumerating the
+// FAP registry. On BLE this returns ErrCommandRequiresUSB so callers can
+// surface a clear "connect via USB" message instead of an opaque
+// transport-mode error from Exec.
 func (f *Flipper) LoaderList() (string, error) {
+	if f.IsBLE() {
+		return "", usbOnlyError("loader_list")
+	}
 	return f.Exec("loader list")
 }
 
@@ -690,7 +877,14 @@ type LoaderApps struct {
 // agent can decide whether a target app is installed before calling
 // loader_open. Returned fields are empty slices (not nil) when a section is
 // missing from the output.
+//
+// USB-only: depends on `loader list`, which has no firmware RPC verb. On
+// BLE this returns ErrCommandRequiresUSB directly so callers see a
+// clear error from the parser layer rather than a transport-level one.
 func (f *Flipper) LoaderListParsed() (LoaderApps, error) {
+	if f.IsBLE() {
+		return LoaderApps{}, usbOnlyError("loader_list_parsed")
+	}
 	raw, err := f.LoaderList()
 	if err != nil {
 		return LoaderApps{}, err
@@ -730,6 +924,12 @@ var validInputEventTypes = map[string]struct{}{
 }
 
 // InputSend sends a synthetic button input event.
+//
+// CLI transport: `input send <button> <type>`. RPC transport (BLE): a
+// gui_send_input_event_request dispatched via the persistent rpc.Client.
+// The RPC produces no response body, so on success both transports return
+// an empty string — preserving the (string, error) contract.
+//
 // CLI: input send <button> <type>
 // button: up, down, left, right, ok, back
 // eventType: press, release, short, long
@@ -737,21 +937,107 @@ func (f *Flipper) InputSend(button string, eventType string) (string, error) {
 	if _, ok := validInputEventTypes[eventType]; !ok {
 		return "", fmt.Errorf("invalid input eventType %q: must be one of press, release, short, long", eventType)
 	}
+	if f.IsBLE() {
+		return f.inputSendViaRPC(context.Background(), button, eventType)
+	}
 	return f.Exec(fmt.Sprintf("input send %s %s", sanitizeArg(button), sanitizeArg(eventType)))
+}
+
+// inputSendViaRPC drives the BLE-only RPC dispatch for InputSend. The
+// firmware ack carries no body; on the happy path we return an empty
+// string to mirror the CLI's silent success.
+func (f *Flipper) inputSendViaRPC(ctx context.Context, button, eventType string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	if err := f.bleClient.SendInput(ctx, button, eventType); err != nil {
+		return "", fmt.Errorf("rpc input send: %w", err)
+	}
+	return "", nil
 }
 
 // --- Storage / File Operations ---
 
 // StorageList lists files and directories at the given path.
 // CLI: storage list <path>
+//
+// On BLE the CLI is unavailable and the equivalent RPC verb
+// (storage_list_request) is dispatched via the persistent rpc.Client;
+// the response is reformatted into the same `\t[D] name\n` /
+// `\t[F] name <size>b\n` block the firmware emits over USB so
+// downstream parsers (parseStorageList in internal/web) work without
+// knowing which transport produced it.
 func (f *Flipper) StorageList(path string) (string, error) {
+	if f.IsBLE() {
+		return f.storageListViaRPC(context.Background(), path)
+	}
 	return f.Exec(fmt.Sprintf("storage list %s", sanitizeArg(path)))
+}
+
+// storageListViaRPC drives the BLE-only RPC dispatch for StorageList.
+// Output format mirrors the CLI block exactly: each entry is
+// "\t[D] <name>" for directories or "\t[F] <name> <size>b" for files.
+// Empty directories produce an empty string, matching the CLI.
+func (f *Flipper) storageListViaRPC(ctx context.Context, path string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	files, err := f.bleClient.StorageList(ctx, path, false)
+	if err != nil {
+		return "", fmt.Errorf("rpc storage list: %w", err)
+	}
+	var sb strings.Builder
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		sb.WriteByte('\t')
+		if file.GetType() == pbStorageDirType {
+			sb.WriteString("[D] ")
+			sb.WriteString(file.GetName())
+		} else {
+			sb.WriteString("[F] ")
+			sb.WriteString(file.GetName())
+			sb.WriteByte(' ')
+			sb.WriteString(strconv.FormatUint(uint64(file.GetSize()), 10))
+			sb.WriteByte('b')
+		}
+		sb.WriteByte('\n')
+	}
+	return sb.String(), nil
 }
 
 // StorageRead reads the contents of a file.
 // CLI: storage read <path>
+//
+// Over USB the firmware emits "Size: <N>\n" then the raw bytes.
+// stripStorageReadHeader and similar callers parse that shape. On BLE
+// the RPC verb returns just the bytes; we reformat to match.
 func (f *Flipper) StorageRead(path string) (string, error) {
+	if f.IsBLE() {
+		return f.storageReadViaRPC(context.Background(), path)
+	}
 	return f.Exec(fmt.Sprintf("storage read %s", sanitizeArg(path)))
+}
+
+// storageReadViaRPC mirrors the CLI's "Size: N\n<bytes>" output shape.
+// Tools downstream (cmd/mifaretest's stripStorageReadHeader) strip the
+// header line if present, so emitting it preserves transport-agnostic
+// parsing.
+func (f *Flipper) storageReadViaRPC(ctx context.Context, path string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	data, err := f.bleClient.StorageRead(ctx, path)
+	if err != nil {
+		return "", fmt.Errorf("rpc storage read: %w", err)
+	}
+	var sb strings.Builder
+	sb.WriteString("Size: ")
+	sb.WriteString(strconv.Itoa(len(data)))
+	sb.WriteByte('\n')
+	sb.Write(data)
+	return sb.String(), nil
 }
 
 // StorageWrite writes data to a file using the write_chunk protocol.
@@ -759,27 +1045,117 @@ func (f *Flipper) StorageWrite(path string, data string) error {
 	return f.StorageWriteCtx(context.Background(), path, data)
 }
 
-// StorageWriteCtx is the context-aware variant of StorageWrite.
+// StorageWriteCtx is the context-aware variant of StorageWrite. On BLE
+// the firmware exposes only RPC, so we dispatch via the persistent
+// rpc.Client (storage_write_request, multi-Main with has_next) instead
+// of the USB-only write_chunk text protocol that WriteFileCtx uses.
 func (f *Flipper) StorageWriteCtx(ctx context.Context, path string, data string) error {
+	if f.IsBLE() {
+		return f.storageWriteViaRPC(ctx, path, []byte(data))
+	}
 	return f.WriteFileCtx(ctx, path, []byte(data))
+}
+
+// storageWriteViaRPC drives the BLE-only RPC dispatch for StorageWrite.
+// Returns a wrapped error on transport failure or non-OK CommandStatus.
+func (f *Flipper) storageWriteViaRPC(ctx context.Context, path string, data []byte) error {
+	if f.bleClient == nil {
+		return ErrCommandRequiresUSB
+	}
+	if err := f.bleClient.StorageWrite(ctx, path, data); err != nil {
+		return fmt.Errorf("rpc storage write: %w", err)
+	}
+	return nil
 }
 
 // StorageRemove removes a file or directory.
 // CLI: storage remove <path>
 func (f *Flipper) StorageRemove(path string) (string, error) {
+	if f.IsBLE() {
+		return f.storageRemoveViaRPC(context.Background(), path)
+	}
 	return f.Exec(fmt.Sprintf("storage remove %s", sanitizeArg(path)))
+}
+
+// storageRemoveViaRPC drives the BLE-only RPC dispatch for StorageRemove.
+// The CLI's `storage remove` succeeds silently and emits an empty body;
+// we return "" on success to match. Non-OK CommandStatus surfaces as an
+// error so callers don't silently treat a missing file as removed.
+func (f *Flipper) storageRemoveViaRPC(ctx context.Context, path string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	// Default to non-recursive: the CLI's `storage remove` is non-
+	// recursive on every firmware fork. Callers wanting recursive
+	// semantics use a higher-level workflow that walks first.
+	if err := f.bleClient.StorageDelete(ctx, path, false); err != nil {
+		return "", fmt.Errorf("rpc storage remove: %w", err)
+	}
+	return "", nil
 }
 
 // StorageMkdir creates a directory.
 // CLI: storage mkdir <path>
 func (f *Flipper) StorageMkdir(path string) (string, error) {
+	if f.IsBLE() {
+		return f.storageMkdirViaRPC(context.Background(), path)
+	}
 	return f.Exec(fmt.Sprintf("storage mkdir %s", sanitizeArg(path)))
+}
+
+// storageMkdirViaRPC drives the BLE-only RPC dispatch for StorageMkdir.
+// CLI emits an empty body on success; we return "" to match.
+func (f *Flipper) storageMkdirViaRPC(ctx context.Context, path string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	if err := f.bleClient.StorageMkdir(ctx, path); err != nil {
+		return "", fmt.Errorf("rpc storage mkdir: %w", err)
+	}
+	return "", nil
 }
 
 // StorageStat returns metadata about a file or directory.
 // CLI: storage stat <path>
+//
+// On BLE the RPC response is reformatted to match the CLI's two
+// canonical shapes that ParseStorageStat recognises:
+//
+//	Directory
+//	File, size: <N>
+//
+// Storage errors map to "Storage error: <msg>" so the parser's error
+// branch fires.
 func (f *Flipper) StorageStat(path string) (string, error) {
+	if f.IsBLE() {
+		return f.storageStatViaRPC(context.Background(), path)
+	}
 	return f.Exec(fmt.Sprintf("storage stat %s", sanitizeArg(path)))
+}
+
+// storageStatViaRPC drives the BLE-only RPC dispatch for StorageStat.
+// Output mirrors the CLI exactly so ParseStorageStat (parse.go) works
+// without conditional branches.
+func (f *Flipper) storageStatViaRPC(ctx context.Context, path string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	file, err := f.bleClient.StorageStat(ctx, path)
+	if err != nil {
+		// Surface storage errors in the CLI's "Storage error: <msg>"
+		// shape so ParseStorageStat lights up the error path. The
+		// rpc.Client wraps the firmware status name into the error
+		// (e.g. "ERROR_STORAGE_NOT_EXIST"); humanise the common case.
+		msg := storageErrorBanner(err)
+		return msg, nil
+	}
+	if file == nil {
+		return "Storage error: empty response", nil
+	}
+	if file.GetType() == pbStorageDirType {
+		return "Directory\n", nil
+	}
+	return fmt.Sprintf("File, size: %d\n", file.GetSize()), nil
 }
 
 // StorageFSInfo returns filesystem info for a storage root.
@@ -796,7 +1172,41 @@ func (f *Flipper) StorageStat(path string) (string, error) {
 //
 //	Storage error: not ready
 func (f *Flipper) StorageFSInfo(path string) (string, error) {
+	if f.IsBLE() {
+		return f.storageFSInfoViaRPC(context.Background(), path)
+	}
 	return f.Exec(fmt.Sprintf("storage info %s", sanitizeArg(path)))
+}
+
+// storageFSInfoViaRPC drives the BLE-only RPC dispatch for StorageFSInfo.
+// The RPC verb returns total/free uint64 byte counts; the CLI block
+// emits "<KiB> total" / "<KiB> free" lines that StorageFSInfoMap
+// (parseKiBLine) decodes back to bytes. Reformat to match.
+//
+// Label/Type are NOT carried in the InfoResponse; the firmware's CLI
+// reads those from the storage subsystem in a separate path. We omit
+// them here, matching the firmware's behaviour when the underlying
+// storage_cli build doesn't print them. parseKiBLine is the only
+// canonical consumer downstream of this output.
+func (f *Flipper) storageFSInfoViaRPC(ctx context.Context, path string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	total, free, err := f.bleClient.StorageInfo(ctx, path)
+	if err != nil {
+		// Surface a "Storage error: not ready" banner so StorageFSInfoMap's
+		// present=false branch lights up — the parser keys off the
+		// "Storage error:" prefix exactly.
+		return storageErrorBanner(err), nil
+	}
+	// Round to KiB the same way the CLI does ("%lluKiB total"), so
+	// parseKiBLine recovers the byte count by multiplying by 1024.
+	totalKiB := total / 1024
+	freeKiB := free / 1024
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%dKiB total\n", totalKiB)
+	fmt.Fprintf(&sb, "%dKiB free\n", freeKiB)
+	return sb.String(), nil
 }
 
 // StorageFSInfoMap runs `storage info <path>` and parses it into a flat
@@ -917,9 +1327,39 @@ func parseKiBLine(line string) (bytes, kind string, ok bool) {
 // --- System ---
 
 // DeviceInfo returns device information.
-// CLI: device_info
+//
+// CLI transport: `device_info` text command, response parsed by the
+// caller. RPC transport (BLE — text CLI is not available there): a
+// SystemDeviceInfoRequest streamed via the persistent rpc.Client; the
+// (key, value) pairs are reformatted as the same `key: value\n` block
+// the CLI emits so downstream parsing in DeviceInfoMap / parseKVBlock
+// is transport-agnostic.
 func (f *Flipper) DeviceInfo() (string, error) {
+	if f.IsBLE() {
+		return f.deviceInfoViaRPC(context.Background())
+	}
 	return f.Exec("device_info")
+}
+
+// deviceInfoViaRPC drives the BLE-only RPC dispatch for DeviceInfo.
+// Output format mirrors the CLI block exactly so callers (DeviceInfoMap,
+// detectCapabilities) work without knowing which transport produced it.
+func (f *Flipper) deviceInfoViaRPC(ctx context.Context) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	pairs, err := f.bleClient.DeviceInfo(ctx)
+	if err != nil {
+		return "", fmt.Errorf("rpc device_info: %w", err)
+	}
+	var sb strings.Builder
+	for _, p := range pairs {
+		sb.WriteString(p.Key)
+		sb.WriteString(": ")
+		sb.WriteString(p.Value)
+		sb.WriteByte('\n')
+	}
+	return sb.String(), nil
 }
 
 // DeviceInfoMap runs device_info and parses the output into a flat
@@ -995,10 +1435,17 @@ func (f *Flipper) RawCLI(command string) (string, error) {
 	return f.ExecLong(command, 30*time.Second)
 }
 
-// PowerInfo returns power/battery information. The CLI spelling differs by
-// fork: Xtreme uses `info power`; stock/Unleashed/RogueMaster use
-// `power_info`. The capability map stores the right verb at connect time.
+// PowerInfo returns power/battery information. The CLI spelling differs
+// by fork: Xtreme uses `info power`; stock/Unleashed/RogueMaster use
+// `power_info`. The capability map stores the right verb at connect
+// time. On BLE the firmware exposes a single SystemPowerInfoRequest
+// regardless of fork — fork-specific CLI spelling is not relevant —
+// and the (key, value) pairs are reformatted to the same `key: value`
+// block the CLI emits.
 func (f *Flipper) PowerInfo() (string, error) {
+	if f.IsBLE() {
+		return f.powerInfoViaRPC(context.Background())
+	}
 	cmd := f.Capabilities().PowerInfoCmd
 	if cmd == "" {
 		cmd = "power_info" // conservative default
@@ -1006,10 +1453,57 @@ func (f *Flipper) PowerInfo() (string, error) {
 	return f.Exec(cmd)
 }
 
+// powerInfoViaRPC drives the BLE-only RPC dispatch for PowerInfo.
+// Same shape and contract as deviceInfoViaRPC.
+func (f *Flipper) powerInfoViaRPC(ctx context.Context) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	pairs, err := f.bleClient.PowerInfo(ctx)
+	if err != nil {
+		return "", fmt.Errorf("rpc power_info: %w", err)
+	}
+	var sb strings.Builder
+	for _, p := range pairs {
+		sb.WriteString(p.Key)
+		sb.WriteString(": ")
+		sb.WriteString(p.Value)
+		sb.WriteByte('\n')
+	}
+	return sb.String(), nil
+}
+
 // Reboot reboots the Flipper Zero.
+//
+// CLI transport: `power reboot` text command. The firmware reboots
+// immediately so Exec returns whatever bytes (if any) the CLI emitted
+// before the device dropped off the bus. RPC transport (BLE — text CLI
+// is not available there): SystemRebootRequest with mode=OS streamed
+// via the persistent rpc.Client. The firmware does not emit a response
+// for reboot requests; the BLE link drops as soon as the bytes are
+// flushed. Both branches return an empty string on success to match
+// the CLI's typical short/empty output.
 // CLI: power reboot
 func (f *Flipper) Reboot() (string, error) {
+	if f.IsBLE() {
+		return f.rebootViaRPC(context.Background(), pb.RebootRequest_OS)
+	}
 	return f.Exec("power reboot")
+}
+
+// rebootViaRPC drives the BLE-only RPC dispatch for Reboot /
+// PowerRebootDFU. The firmware does not respond to a reboot request —
+// the link drops as soon as the request is processed — so we only
+// need to write the request and return. The empty-string return mirrors
+// the CLI's effectively-empty output before the device disconnects.
+func (f *Flipper) rebootViaRPC(ctx context.Context, mode pb.RebootRequest_RebootMode) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	if err := f.bleClient.Reboot(ctx, mode); err != nil {
+		return "", fmt.Errorf("rpc system_reboot: %w", err)
+	}
+	return "", nil
 }
 
 // Vibro turns the vibration motor on (true) or off (false).
@@ -1312,26 +1806,154 @@ func (f *Flipper) JSRun(path string, duration time.Duration) (string, error) {
 
 // StorageCopy copies a file or directory on the Flipper SD card.
 // CLI: storage copy <src> <dst>
+//
+// USB-only: there is no storage_copy_request RPC verb on any firmware
+// fork (the protobuf surface lacks it — see flipperdevices/flipperzero-
+// protobuf storage.proto). On BLE we surface a descriptive error rather
+// than hang; agent callers gate on errors.Is(err, ErrCommandRequiresUSB)
+// to suggest the operator attach the Flipper via USB.
 func (f *Flipper) StorageCopy(src, dst string) (string, error) {
+	if f.IsBLE() {
+		return "", usbOnlyError("storage_copy")
+	}
 	return f.Exec(fmt.Sprintf("storage copy %s %s", sanitizeArg(src), sanitizeArg(dst)))
 }
 
 // StorageRename renames/moves a file or directory on the SD card.
 // CLI: storage rename <src> <dst>
 func (f *Flipper) StorageRename(src, dst string) (string, error) {
+	if f.IsBLE() {
+		return f.storageRenameViaRPC(context.Background(), src, dst)
+	}
 	return f.Exec(fmt.Sprintf("storage rename %s %s", sanitizeArg(src), sanitizeArg(dst)))
+}
+
+// storageRenameViaRPC drives the BLE-only RPC dispatch for StorageRename.
+// CLI emits an empty body on success.
+func (f *Flipper) storageRenameViaRPC(ctx context.Context, src, dst string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	if err := f.bleClient.StorageRename(ctx, src, dst); err != nil {
+		return "", fmt.Errorf("rpc storage rename: %w", err)
+	}
+	return "", nil
 }
 
 // StorageMD5 returns the MD5 hash of a file on the SD card.
 // CLI: storage md5 <path>
+//
+// CLI emits the 32-character lowercase-hex digest followed by a newline;
+// the RPC variant returns the same string and we append the newline so
+// downstream parsers (which trim whitespace) see identical output.
 func (f *Flipper) StorageMD5(path string) (string, error) {
+	if f.IsBLE() {
+		return f.storageMD5ViaRPC(context.Background(), path)
+	}
 	return f.Exec(fmt.Sprintf("storage md5 %s", sanitizeArg(path)))
+}
+
+// storageMD5ViaRPC drives the BLE-only RPC dispatch for StorageMD5.
+func (f *Flipper) storageMD5ViaRPC(ctx context.Context, path string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	digest, err := f.bleClient.StorageMD5(ctx, path)
+	if err != nil {
+		return "", fmt.Errorf("rpc storage md5: %w", err)
+	}
+	return digest + "\n", nil
 }
 
 // StorageTree walks a directory recursively and returns its tree listing.
 // CLI: storage tree <path>
+//
+// On BLE the firmware exposes no `tree` RPC verb; we recreate the CLI's
+// recursive `storage list` walk by issuing storage_list_request once
+// per directory, depth-first. The CLI emits paths absolute to root
+// (e.g. "\t[D] /ext/subghz/Tesla\n") rather than relative names — so do
+// we, joining the directory path with the entry name and emitting one
+// `\t[D|F] <path> [<size>b]` line per entry.
 func (f *Flipper) StorageTree(path string) (string, error) {
+	if f.IsBLE() {
+		return f.storageTreeViaRPC(context.Background(), path)
+	}
 	return f.Exec(fmt.Sprintf("storage tree %s", sanitizeArg(path)))
+}
+
+// storageTreeViaRPC walks the directory tree rooted at path using
+// storage_list_request, emitting one CLI-shaped line per entry.
+//
+// Recursion is iterative against an explicit stack so a deeply nested
+// directory tree doesn't blow the goroutine stack. The walk is depth-
+// first to match the CLI's emission order: each directory is printed,
+// then its descendants, then the next sibling.
+//
+// Errors on a single sub-directory list are NOT fatal — the CLI's
+// `storage tree` continues past unreadable directories. We mirror that
+// behaviour by appending a "Storage error: …" banner under the offending
+// directory and continuing the walk.
+func (f *Flipper) storageTreeViaRPC(ctx context.Context, path string) (string, error) {
+	if f.bleClient == nil {
+		return "", ErrCommandRequiresUSB
+	}
+	var sb strings.Builder
+	// Stack of directories pending visit. Pop from the back; push
+	// children in reverse so emission order matches a left-to-right walk.
+	stack := []string{path}
+	for len(stack) > 0 {
+		dir := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		entries, err := f.bleClient.StorageList(ctx, dir, false)
+		if err != nil {
+			// Surface the error inline (matches the CLI's tolerant walk)
+			// and continue with siblings. Wrapping in "Storage error:"
+			// keeps downstream parsers consistent.
+			sb.WriteString(storageErrorBanner(err))
+			continue
+		}
+		// Walk entries in firmware order. Collect sub-directories and
+		// push them in reverse so the next pop is the first child.
+		dirs := make([]string, 0, len(entries))
+		for _, file := range entries {
+			if file == nil {
+				continue
+			}
+			full := joinStoragePath(dir, file.GetName())
+			sb.WriteByte('\t')
+			if file.GetType() == pbStorageDirType {
+				sb.WriteString("[D] ")
+				sb.WriteString(full)
+				sb.WriteByte('\n')
+				dirs = append(dirs, full)
+			} else {
+				sb.WriteString("[F] ")
+				sb.WriteString(full)
+				sb.WriteByte(' ')
+				sb.WriteString(strconv.FormatUint(uint64(file.GetSize()), 10))
+				sb.WriteString("b\n")
+			}
+		}
+		// Push children in reverse for depth-first, left-to-right.
+		for i := len(dirs) - 1; i >= 0; i-- {
+			stack = append(stack, dirs[i])
+		}
+	}
+	return sb.String(), nil
+}
+
+// joinStoragePath concatenates a directory path and an entry name with a
+// single forward slash, collapsing duplicate slashes when the directory
+// already ends in one (e.g. root "/").
+func joinStoragePath(dir, name string) string {
+	if dir == "" {
+		return name
+	}
+	if strings.HasSuffix(dir, "/") {
+		return dir + name
+	}
+	return dir + "/" + name
 }
 
 // --- Loader FAP shortcuts ---
@@ -1425,7 +2047,14 @@ func (f *Flipper) LoaderUnitemp() (string, error) { return f.Exec(`loader open U
 
 // LoaderInfo returns metadata about the currently running app (name, flags).
 // CLI: loader info
+//
+// USB-only: the Flipper firmware exposes no RPC verb that returns the
+// currently-running app's metadata. (app_lock_status_request only reports
+// a boolean lock state.) On BLE this returns ErrCommandRequiresUSB.
 func (f *Flipper) LoaderInfo() (string, error) {
+	if f.IsBLE() {
+		return "", usbOnlyError("loader_info")
+	}
 	return f.Exec("loader info")
 }
 
@@ -1433,7 +2062,15 @@ func (f *Flipper) LoaderInfo() (string, error) {
 // optional hex argument (many apps document custom opcodes that consume
 // argHex). Pass "" to omit the argument.
 // CLI: loader signal <n> [<hex>]
+//
+// USB-only: the firmware exposes app_button_press / app_button_release /
+// app_data_exchange RPC verbs but no generic "send numeric signal"
+// equivalent that matches the CLI's free-form (signal, hex) shape, so
+// this remains CLI-only. On BLE returns ErrCommandRequiresUSB.
 func (f *Flipper) LoaderSignal(signal int, argHex string) (string, error) {
+	if f.IsBLE() {
+		return "", usbOnlyError("loader_signal")
+	}
 	cmd := fmt.Sprintf("loader signal %d", signal)
 	if argHex != "" {
 		cmd += " " + sanitizeArg(argHex)
@@ -1458,8 +2095,17 @@ func (f *Flipper) LogStream(duration time.Duration, level string) (string, error
 // PowerRebootDFU reboots the Flipper into the STM32 DFU bootloader. Leaves
 // the device without a running firmware until a host reflashes or the user
 // power-cycles — recovery is physical. Guarded as Critical at the risk layer.
+//
+// CLI transport: `power reboot2dfu` text command. RPC transport (BLE):
+// SystemRebootRequest with mode=DFU streamed via the persistent
+// rpc.Client. As with Reboot, the firmware does not emit a response —
+// the link drops immediately. Both branches return an empty string on
+// success.
 // CLI: power reboot2dfu
 func (f *Flipper) PowerRebootDFU() (string, error) {
+	if f.IsBLE() {
+		return f.rebootViaRPC(context.Background(), pb.RebootRequest_DFU)
+	}
 	return f.Exec("power reboot2dfu")
 }
 
@@ -1485,4 +2131,84 @@ func (f *Flipper) CryptoStoreKey(slot int, keyType string, keySize int, keyHex s
 // CLI: bt hci_info
 func (f *Flipper) BTHCIInfo() (string, error) {
 	return f.Exec("bt hci_info")
+}
+
+// --- Desktop (BLE-only) ---
+//
+// The Flipper firmware does NOT expose the Desktop subsystem on its
+// text CLI on any current fork (stock, Momentum, Unleashed, Xtreme,
+// RogueMaster). It is reachable only via Protobuf RPC — applications/
+// services/desktop only registers RPC handlers. The methods below
+// therefore route through f.bleClient on BLE and surface a clear
+// USB-not-supported error otherwise.
+
+// DesktopIsLocked reports whether the device's home screen is currently
+// pin-locked. Returns (true, nil) when locked, (false, nil) when
+// unlocked. Errors are reserved for transport / protocol failures —
+// "unlocked" is a legitimate state the firmware signals via
+// CommandStatus_ERROR on the response Empty, which DesktopIsLocked
+// translates to (false, nil).
+//
+// USB transports: returns ErrCommandRequiresUSB-wrapped error. The
+// firmware exposes no equivalent CLI verb, so this is structurally a
+// BLE-only operation today.
+func (f *Flipper) DesktopIsLocked() (bool, error) {
+	if !f.IsBLE() {
+		return false, usbOnlyError("desktop_is_locked")
+	}
+	if f.bleClient == nil {
+		return false, ErrCommandRequiresUSB
+	}
+	locked, err := f.bleClient.DesktopIsLocked(context.Background())
+	if err != nil {
+		return false, fmt.Errorf("rpc desktop_is_locked: %w", err)
+	}
+	return locked, nil
+}
+
+// DesktopUnlock dismisses the pin-lock screen if one is active. Safe
+// to call when the device is already unlocked — the firmware returns
+// success either way.
+//
+// USB transports: returns ErrCommandRequiresUSB-wrapped error (no
+// equivalent CLI verb on any current firmware fork).
+func (f *Flipper) DesktopUnlock() error {
+	if !f.IsBLE() {
+		return usbOnlyError("desktop_unlock")
+	}
+	if f.bleClient == nil {
+		return ErrCommandRequiresUSB
+	}
+	if err := f.bleClient.DesktopUnlock(context.Background()); err != nil {
+		return fmt.Errorf("rpc desktop_unlock: %w", err)
+	}
+	return nil
+}
+
+// --- Property (BLE-only) ---
+//
+// Like Desktop, the Property subsystem is RPC-only on the firmware
+// (applications/services/property registers no CLI commands on any
+// current fork). PropertyGet routes through f.bleClient on BLE and
+// surfaces a clear USB-not-supported error otherwise.
+
+// PropertyGet retrieves the (key, value) pairs the firmware exposes
+// under the supplied key prefix. An empty prefix returns every
+// exposed property. The returned slice preserves the firmware's
+// emission order — useful for callers that want to keep keys grouped
+// by namespace (e.g. "devinfo.").
+//
+// USB transports: returns ErrCommandRequiresUSB-wrapped error.
+func (f *Flipper) PropertyGet(key string) ([]struct{ Key, Value string }, error) {
+	if !f.IsBLE() {
+		return nil, usbOnlyError("property_get")
+	}
+	if f.bleClient == nil {
+		return nil, ErrCommandRequiresUSB
+	}
+	pairs, err := f.bleClient.PropertyGet(context.Background(), key)
+	if err != nil {
+		return nil, fmt.Errorf("rpc property_get: %w", err)
+	}
+	return pairs, nil
 }

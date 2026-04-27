@@ -56,24 +56,109 @@ import (
 // expected value; the slog-Debug scan log also records every service
 // UUID observed on every advertised peripheral so the new value can
 // be read out of operational logs without hardware in hand.
+//
+// On darwin (CoreBluetooth via cbgo) custom UUIDs come back in
+// little-endian byte order — the Flipper's canonical serial UUID
+// 0000fe60-cc7a-482a-984a-7f2ed5b3e58f is reported as
+// 8fe5b3d5-2e7f-4a98-2a48-7acc60fe0000. uuidsMatch handles both
+// endiannesses so the same hardcoded canonical form works on every
+// platform. Standard 16-bit-derived UUIDs (Battery, Device Info)
+// are handled correctly by the OS layer and don't need this dance.
 var flipperBLEServiceUUID = mustParseUUID("0000fe60-cc7a-482a-984a-7f2ed5b3e58f")
 
-// flipperBLETXCharUUID and flipperBLERXCharUUID are hints used to
-// pick out the TX (host→flipper writes) and RX (flipper→host
-// notifications) characteristics among those enumerated on the
-// Flipper service. tinygo.org/x/bluetooth only exposes characteristic
-// property flags (Write / Notify / Indicate) on its Windows backend,
-// not on Linux or Darwin, so we cannot do property-based matching in
-// a single cross-platform code path. These UUID hints are the primary
-// match; if neither is found on the discovered characteristic list we
-// fall back to positional ordering (the Nordic UART Service convention
-// where the first characteristic is the write/TX and the second is
-// notify/RX — the Flipper service mimics NUS). The fallback is logged
-// at Warn level rather than Debug so that UUID drift shows up in
-// normal operator-facing logs and can be patched forward.
+// reverseUUID returns the byte-reversed form of a 128-bit UUID. Used
+// to normalise comparison against darwin's little-endian form of
+// custom service / characteristic UUIDs without introducing per-OS
+// branches at every match site.
+//
+// Implemented via the canonical hex string rather than UUID.Bytes()
+// because tinygo.org/x/bluetooth's UUID is a [4]uint32 whose Bytes()
+// + NewUUID round-trip doesn't surface the on-the-wire byte order
+// the same way per-platform — the string form is the only stable
+// 16-byte projection across Linux/Windows/Darwin.
+func reverseUUID(u bluetooth.UUID) bluetooth.UUID {
+	hex := strings.ReplaceAll(u.String(), "-", "")
+	if len(hex) != 32 {
+		return u
+	}
+	rev := make([]byte, 32)
+	for i := 0; i < 16; i++ {
+		rev[(15-i)*2] = hex[i*2]
+		rev[(15-i)*2+1] = hex[i*2+1]
+	}
+	canonical := fmt.Sprintf("%s-%s-%s-%s-%s",
+		rev[0:8], rev[8:12], rev[12:16], rev[16:20], rev[20:32])
+	parsed, err := bluetooth.ParseUUID(canonical)
+	if err != nil {
+		return u
+	}
+	return parsed
+}
+
+// uuidsMatch reports whether two 128-bit UUIDs are equal in either
+// canonical or byte-reversed form. The reversed form is the
+// little-endian-on-the-wire representation that cbgo surfaces on
+// darwin for custom UUIDs; comparing both forms keeps every call
+// site OS-agnostic.
+func uuidsMatch(got, want bluetooth.UUID) bool {
+	if got == want {
+		return true
+	}
+	return got == reverseUUID(want)
+}
+
+// Flipper BLE Serial GATT layout. Names match the firmware enum in
+// flipperdevices/flipperzero-firmware
+// targets/f7/ble_glue/services/serial_service.c (lines 14-62) — RX is
+// the host-writes-to-flipper characteristic, TX is the flipper-writes-
+// back-to-host characteristic, both from the Flipper's perspective.
+// Earlier revisions of this file had RX/TX swapped (they were named
+// from the host's perspective), which made every Write go to a
+// characteristic with Indicate-only properties and every Read wait on
+// a characteristic with Write-only properties — the firmware silently
+// dropped traffic and Ping handshakes timed out. The two-byte CCCDs
+// are written by EnableNotifications/EnableIndications via the
+// underlying tinygo bluetooth library.
+//
+// FlowControl publishes a uint32 buffer credit (big-endian, see
+// serial_service.c:188-208) every time the firmware drains its inbound
+// fifo. The host MUST subscribe and MUST NOT send more than the most
+// recently advertised credit's worth of bytes between updates. Skipping
+// this step is what made the early skip-RPC handshake hang.
+//
+// RPCStatus is informational: 0 = inactive, 1 = active. We don't
+// touch it; observation only.
 var (
-	flipperBLETXCharUUID = mustParseUUID("19ed82ae-ed21-4c9d-4145-228e62fe0000")
-	flipperBLERXCharUUID = mustParseUUID("19ed82ae-ed21-4c9d-4145-228e61fe0000")
+	// flipperBLERXCharUUID is the host→flipper write characteristic
+	// (serial_service.c:[SerialSvcGattCharacteristicRx],
+	// serial_service_uuid.inc:BLE_SVC_SERIAL_RX_CHAR_UUID = ...fe62...).
+	// Properties: Write, WriteWithoutResponse, Read. Names are from
+	// the FLIPPER's perspective: "RX" means flipper-receives-here, so
+	// this is where the host writes RPC bytes.
+	flipperBLERXCharUUID = mustParseUUID("19ed82ae-ed21-4c9d-4145-228e62fe0000")
+
+	// flipperBLETXCharUUID is the flipper→host indicate characteristic
+	// (serial_service.c:[SerialSvcGattCharacteristicTx],
+	// serial_service_uuid.inc:BLE_SVC_SERIAL_TX_CHAR_UUID = ...fe61...).
+	// Properties: Read, Indicate. "TX" means flipper-transmits-here, so
+	// the host subscribes to receive RPC responses. Despite the spec
+	// distinguishing notify vs indicate, tinygo's EnableNotifications
+	// writes the appropriate CCCD bit based on the characteristic's
+	// properties — it works for either.
+	flipperBLETXCharUUID = mustParseUUID("19ed82ae-ed21-4c9d-4145-228e61fe0000")
+
+	// flipperBLEFlowControlCharUUID publishes uint32 BE buffer credits
+	// (serial_service.c:43-52: SerialSvcGattCharacteristicFlowCtrl).
+	// Properties: Read, Notify. Subscription is mandatory for RPC
+	// traffic to flow.
+	flipperBLEFlowControlCharUUID = mustParseUUID("19ed82ae-ed21-4c9d-4145-228e63fe0000")
+
+	// flipperBLERPCStatusCharUUID is informational
+	// (serial_service.c:53-62: SerialSvcGattCharacteristicStatus).
+	// Properties: Read, Write, Notify. Read returns 0=NotActive,
+	// 1=Active. Writing 0 triggers an internal BleResetRequest
+	// (serial_service.c:117-128) — we never write here.
+	flipperBLERPCStatusCharUUID = mustParseUUID("19ed82ae-ed21-4c9d-4145-228e64fe0000")
 )
 
 // bleScanTimeout bounds the Dial scan phase. A paired Flipper
@@ -207,6 +292,7 @@ func bleDialer(rawURL string) (Transport, error) {
 		mtu:      bleDefaultMTU,
 	}
 	t.readCond = sync.NewCond(&t.mu)
+	t.creditCond = sync.NewCond(&t.mu)
 	return t, nil
 }
 
@@ -228,14 +314,22 @@ type bleTransport struct {
 	// whether the darwin direct-connect fast path is available.
 	addrKind addrKind
 
-	// adapter, device, txChar, rxChar are set exclusively within
-	// Dial (or Reconnect) under mu, and read from every other method.
-	// They are only meaningful when closed is false and Dial has
-	// returned nil at least once.
-	adapter *bluetooth.Adapter
-	device  *bluetooth.Device
-	txChar  bluetooth.DeviceCharacteristic
-	rxChar  bluetooth.DeviceCharacteristic
+	// adapter, device, and the four serial characteristics are set
+	// exclusively within Dial (or Reconnect) under mu, and read from
+	// every other method. They are only meaningful when closed is false
+	// and Dial has returned nil at least once.
+	//
+	// rxChar is the host-writes-here characteristic (firmware name:
+	// SerialSvcGattCharacteristicRx). txChar is the
+	// flipper-indicates-back-here characteristic (firmware name:
+	// SerialSvcGattCharacteristicTx). flowChar publishes uint32 BE
+	// buffer-credit notifications (firmware name:
+	// SerialSvcGattCharacteristicFlowCtrl).
+	adapter  *bluetooth.Adapter
+	device   *bluetooth.Device
+	rxChar   bluetooth.DeviceCharacteristic
+	txChar   bluetooth.DeviceCharacteristic
+	flowChar bluetooth.DeviceCharacteristic
 
 	// mtu is the per-write payload size (negotiated ATT MTU minus the
 	// 3-byte ATT header). Set at Dial time; used in Write to chunk
@@ -269,6 +363,27 @@ type bleTransport struct {
 	// mirroring the serial.Port.Read convention the flipper layer's
 	// drain loop relies on.
 	readTimeout time.Duration
+
+	// credit is the most recent flow-control credit advertised by the
+	// firmware via the FlowCtrl characteristic — the maximum number of
+	// bytes the host may have outstanding before pausing. Each Write
+	// decrements credit by the number of bytes successfully sent;
+	// every flow-control notification overwrites credit with the new
+	// per-update value (firmware refreshes its inbound fifo
+	// periodically). Guarded by mu; creditCond signals waiters when
+	// the value increases or close flips.
+	credit uint32
+
+	// creditReady is true once the firmware has delivered the initial
+	// flow-control credit notification. Dial waits for this before
+	// returning to ensure the upper layer doesn't try to write before
+	// we know how big the firmware buffer is. Cleared on Reconnect.
+	creditReady bool
+
+	// creditCond signals goroutines parked in Write that credit has
+	// increased (a fresh flow-control notification arrived) or that
+	// the transport is closing.
+	creditCond *sync.Cond
 }
 
 // Dial enables the adapter and runs the scan → connect → discover →
@@ -334,14 +449,30 @@ func (t *bleTransport) establish(ctx context.Context) error {
 		return ctxErr
 	}
 
-	services, err := device.DiscoverServices([]bluetooth.UUID{flipperBLEServiceUUID})
+	// DiscoverServices(nil) — enumerate every advertised service rather
+	// than asking for one specific UUID. CoreBluetooth on darwin
+	// occasionally fails the filtered form when the GATT cache hasn't
+	// been primed (post-reconnect via retrievePeripherals), and the
+	// unfiltered call also gives a useful diagnostic when the firmware
+	// has rev'd the service UUID — we log what was actually discovered.
+	allServices, err := device.DiscoverServices(nil)
 	if err != nil {
 		_ = device.Disconnect()
 		return fmt.Errorf("transport: BLE service discovery on %s: %w — is BLE enabled in Flipper Settings > Bluetooth?", t.addr, err)
 	}
+	services := make([]bluetooth.DeviceService, 0, 1)
+	advertised := make([]string, 0, len(allServices))
+	for _, s := range allServices {
+		uuid := s.UUID()
+		advertised = append(advertised, uuid.String())
+		if uuidsMatch(uuid, flipperBLEServiceUUID) {
+			services = append(services, s)
+		}
+	}
+	slog.Debug("transport/ble: discovered services", "addr", t.addr, "services", advertised)
 	if len(services) == 0 {
 		_ = device.Disconnect()
-		return fmt.Errorf("transport: flipper BLE service %s not found on %s — firmware rev may have changed the service UUID", flipperBLEServiceUUID.String(), t.addr)
+		return fmt.Errorf("transport: flipper BLE service %s not found on %s; advertised services were %v — firmware rev may have changed the service UUID", flipperBLEServiceUUID.String(), t.addr, advertised)
 	}
 
 	chars, err := services[0].DiscoverCharacteristics(nil)
@@ -349,33 +480,155 @@ func (t *bleTransport) establish(ctx context.Context) error {
 		_ = device.Disconnect()
 		return fmt.Errorf("transport: BLE characteristic discovery on %s: %w", t.addr, err)
 	}
-	txChar, rxChar, err := selectFlipperCharacteristics(chars)
+	set, err := selectFlipperCharacteristics(chars)
 	if err != nil {
 		_ = device.Disconnect()
 		return err
 	}
 
-	if err := rxChar.EnableNotifications(t.onNotify); err != nil {
+	// Subscribe to FlowCtrl so future credit updates land on
+	// onFlowControl. The firmware's buffer-empty publisher
+	// (serial_service.c:195-211) refreshes the credit each time it
+	// drains its inbound fifo — that's the steady-state signal we
+	// honour. The boot-time credit notification fires once during
+	// ble_svc_serial_set_callbacks (line 188-192) before our
+	// subscription completes, so we cannot count on it as a handshake
+	// gate. Reading the characteristic instead would require an
+	// authenticated GATT read, which CoreBluetooth on darwin
+	// occasionally times out on freshly-connected peripherals; we
+	// don't depend on it.
+	//
+	// Pragmatic fallback: prime credit to BLE_SVC_SERIAL_DATA_LEN_MAX
+	// (486, per serial_service.h), the firmware's hardcoded inbound
+	// fifo size. The Write throttler will then meter outbound chunks
+	// against this until a real notification updates it. The firmware
+	// only LOGS a warning if we overrun before draining — it does not
+	// reject the bytes — so being a bit optimistic is safe.
+	if err := set.flow.EnableNotifications(t.onFlowControl); err != nil {
 		_ = device.Disconnect()
-		return fmt.Errorf("transport: enabling RX notifications on %s: %w", t.addr, err)
+		return fmt.Errorf("transport: enabling flow-control notifications on %s: %w", t.addr, err)
 	}
 
-	mtu := negotiateMTU(txChar)
+	// Subscribe to RPCStatus (informational — uint32 0=NotActive,
+	// 1=Active). Some firmware revisions gate the flow-control
+	// publisher behind an "all required subscriptions present" check;
+	// subscribing here is cheap and matches what the official Flipper
+	// Mobile app does. We only observe — never write 0, which would
+	// trigger an internal BleResetRequest (serial_service.c:117-128).
+	if set.status != (bluetooth.DeviceCharacteristic{}) {
+		if err := set.status.EnableNotifications(t.onRPCStatus); err != nil {
+			slog.Debug("transport/ble: enabling RPC status notifications failed (continuing)",
+				"addr", t.addr, "err", err)
+		}
+	}
+
+	// Subscribe to TX (flipper→host indications carry RPC responses).
+	// tinygo's EnableNotifications writes the appropriate CCCD bit
+	// based on the characteristic's properties — works for both
+	// Notify-only and Indicate-only chars per upstream docs.
+	if err := set.tx.EnableNotifications(t.onNotify); err != nil {
+		_ = device.Disconnect()
+		return fmt.Errorf("transport: enabling TX indications on %s: %w", t.addr, err)
+	}
+
+	mtu := negotiateMTU(set.tx)
 
 	t.mu.Lock()
 	t.adapter = adapter
 	t.device = &device
-	t.txChar = txChar
-	t.rxChar = rxChar
+	t.rxChar = set.rx
+	t.txChar = set.tx
+	t.flowChar = set.flow
 	t.mtu = mtu
-	// Wake any Read already parked before Reconnect — onNotify for
-	// the new connection will refill readBuf, but a Read blocked
-	// with a stale readErr latch should re-evaluate.
 	t.readErr = nil
+	// Prime credit optimistically (see comment above). Real updates
+	// from the firmware's buffer-empty publisher will overwrite this
+	// the first time the firmware drains its fifo.
+	t.credit = bleDefaultStartCredit
+	t.creditReady = true
 	t.readCond.Broadcast()
+	t.creditCond.Broadcast()
 	t.mu.Unlock()
 
 	return nil
+}
+
+// bleDefaultStartCredit matches the firmware's BLE_SVC_SERIAL_DATA_LEN_MAX
+// (serial_service.h:14 — value 486). Used as the initial credit when
+// the boot-time FlowCtrl notification arrives before our subscription
+// completes (it nearly always does on darwin). Lets the first Write
+// proceed; subsequent FlowCtrl notifications from
+// ble_svc_serial_notify_buffer_is_empty (serial_service.c:195-211)
+// keep credit current after that.
+const bleDefaultStartCredit = 486
+
+// waitForCredit blocks until the first FlowCtrl notification populates
+// t.credit (firmware tells us "you may send N bytes") or until ctx /
+// the timeout elapses. Returns nil when creditReady is true; an error
+// otherwise. Used at the tail of establish() to gate Dial completion
+// on a working flow-control link.
+func (t *bleTransport) waitForCredit(ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for !t.creditReady {
+		if t.closed {
+			return os.ErrClosed
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("no flow-control credit received within %s — is the BLE Serial service alive on the Flipper?", timeout)
+		}
+		waitCondTimeout(t.creditCond, remaining)
+	}
+	return nil
+}
+
+// onRPCStatus is the RPC-status characteristic notification callback.
+// The firmware publishes a uint32 (LE on the wire here per the
+// existing ble_glue handlers — different from FlowCtrl's BE) where
+// 0 means "RPC not active" and 1 means "RPC active". We only log; the
+// firmware drives this autonomously and never expects the host to
+// react. Body shorter than 4 bytes is ignored as malformed.
+func (t *bleTransport) onRPCStatus(buf []byte) {
+	if len(buf) < 4 {
+		slog.Debug("transport/ble: RPC status notification too short", "len", len(buf))
+		return
+	}
+	status := uint32(buf[0]) | uint32(buf[1])<<8 | uint32(buf[2])<<16 | uint32(buf[3])<<24
+	slog.Debug("transport/ble: RPC status", "status", status)
+}
+
+// onFlowControl is the FlowCtrl characteristic notification callback.
+// Firmware sends a 4-byte big-endian uint32 indicating the *new*
+// available credit (max bytes the host may have outstanding before
+// the firmware drains again). serial_service.c:188-208 confirms the
+// big-endian encoding via REVERSE_BYTES_U32 on the LE Cortex-M side.
+//
+// We replace t.credit with the new value (rather than adding) because
+// the firmware publishes an absolute window, not a delta. Wakes any
+// Write parked in creditCond.Wait so it can re-check the budget.
+func (t *bleTransport) onFlowControl(buf []byte) {
+	if len(buf) < 4 {
+		slog.Warn("transport/ble: flow-control notification too short", "len", len(buf))
+		return
+	}
+	credit := uint32(buf[0])<<24 | uint32(buf[1])<<16 | uint32(buf[2])<<8 | uint32(buf[3])
+
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return
+	}
+	t.credit = credit
+	t.creditReady = true
+	t.creditCond.Broadcast()
+	t.mu.Unlock()
+
+	slog.Debug("transport/ble: flow-control credit", "credit", credit)
 }
 
 // negotiateMTU queries the negotiated ATT MTU via GetMTU on the TX
@@ -417,6 +670,7 @@ func (t *bleTransport) onNotify(buf []byte) {
 	if len(buf) == 0 {
 		return
 	}
+	slog.Debug("transport/ble: TX indication received", "len", len(buf), "head", hexHead(buf, 16))
 	t.mu.Lock()
 	if t.closed {
 		t.mu.Unlock()
@@ -609,6 +863,27 @@ func Discover(ctx context.Context, timeout time.Duration) ([]DiscoveredDevice, e
 	return out, nil
 }
 
+// hexHead renders up to maxBytes bytes of buf as space-separated hex,
+// for debug logs of incoming BLE data. Used to make notification
+// payloads readable in slog without blowing up the line length when
+// the buffer is large.
+func hexHead(buf []byte, maxBytes int) string {
+	if len(buf) > maxBytes {
+		buf = buf[:maxBytes]
+	}
+	const digits = "0123456789abcdef"
+	var sb strings.Builder
+	sb.Grow(len(buf) * 3)
+	for i, b := range buf {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteByte(digits[b>>4])
+		sb.WriteByte(digits[b&0xf])
+	}
+	return sb.String()
+}
+
 func sortDiscovered(d []DiscoveredDevice) {
 	for i := 1; i < len(d); i++ {
 		for j := i; j > 0; j-- {
@@ -631,59 +906,76 @@ func discoveredLess(a, b DiscoveredDevice) bool {
 	return a.Address < b.Address
 }
 
-// selectFlipperCharacteristics resolves the TX and RX characteristics
-// from the list returned by DiscoverCharacteristics on the Flipper
-// service, using hint-first matching with a positional fallback.
+// flipperBLECharSet is the resolved bundle of Serial-service
+// characteristics needed for an RPC session: where to write outbound
+// bytes, where to receive indications, and where to track the
+// firmware's flow-control credit. The status characteristic is held for
+// completeness but no traffic flows on it; we keep a zero-valued copy
+// when the firmware doesn't publish it (older builds).
+type flipperBLECharSet struct {
+	rx     bluetooth.DeviceCharacteristic // host → flipper writes
+	tx     bluetooth.DeviceCharacteristic // flipper → host indicates
+	flow   bluetooth.DeviceCharacteristic // flipper → host: uint32 BE credit
+	status bluetooth.DeviceCharacteristic // optional, observation only
+}
+
+// selectFlipperCharacteristics resolves the four Flipper Serial-service
+// characteristics from the list returned by DiscoverCharacteristics.
+// Hint-UUID matching is mandatory for RX, TX, and FlowCtrl — without
+// any one of those the firmware silently drops RPC traffic, so guessing
+// is worse than failing loudly. RPCStatus is optional; older firmware
+// builds may omit it.
 //
-// Primary path: both flipperBLETXCharUUID and flipperBLERXCharUUID are
-// present in the discovered set. Used directly.
-//
-// Fallback path: at least two characteristics were discovered but the
-// hint UUIDs didn't match. Assumes the Nordic UART Service convention
-// (first = TX/write, second = RX/notify) and logs at Warn so the UUID
-// drift is visible to operators running the CLI rather than buried in
-// a debug-only stream nobody looks at.
-//
-// Error path: fewer than two characteristics were discovered — we
-// can't possibly pair TX and RX. The error names both hinted UUIDs
-// and every UUID actually seen so the next debugging session starts
-// on the right foot (per team-lead's review comment during phase B).
-func selectFlipperCharacteristics(chars []bluetooth.DeviceCharacteristic) (tx, rx bluetooth.DeviceCharacteristic, err error) {
+// Returns an error if any required characteristic is missing, naming
+// every discovered UUID so the next debugging session starts informed.
+func selectFlipperCharacteristics(chars []bluetooth.DeviceCharacteristic) (flipperBLECharSet, error) {
 	discovered := make([]string, 0, len(chars))
-	var txByHint, rxByHint *bluetooth.DeviceCharacteristic
+	var (
+		rxHit, txHit, flowHit, statusHit *bluetooth.DeviceCharacteristic
+	)
 	for i := range chars {
 		u := chars[i].UUID()
 		discovered = append(discovered, u.String())
-		if u == flipperBLETXCharUUID {
-			txByHint = &chars[i]
-		}
-		if u == flipperBLERXCharUUID {
-			rxByHint = &chars[i]
+		switch {
+		case uuidsMatch(u, flipperBLERXCharUUID):
+			rxHit = &chars[i]
+		case uuidsMatch(u, flipperBLETXCharUUID):
+			txHit = &chars[i]
+		case uuidsMatch(u, flipperBLEFlowControlCharUUID):
+			flowHit = &chars[i]
+		case uuidsMatch(u, flipperBLERPCStatusCharUUID):
+			statusHit = &chars[i]
 		}
 	}
 	slog.Debug("transport/ble: discovered characteristics",
 		"uuids", discovered,
+		"expectedRX", flipperBLERXCharUUID.String(),
 		"expectedTX", flipperBLETXCharUUID.String(),
-		"expectedRX", flipperBLERXCharUUID.String())
+		"expectedFlow", flipperBLEFlowControlCharUUID.String(),
+		"expectedStatus", flipperBLERPCStatusCharUUID.String())
 
-	if txByHint != nil && rxByHint != nil {
-		return *txByHint, *rxByHint, nil
+	missing := make([]string, 0, 3)
+	if rxHit == nil {
+		missing = append(missing, "RX/"+flipperBLERXCharUUID.String())
 	}
-
-	if len(chars) < 2 {
-		return tx, rx, fmt.Errorf(
-			"transport: flipper BLE service found but expected TX=%s, RX=%s; discovered %v — firmware rev may have changed characteristic layout",
-			flipperBLETXCharUUID.String(), flipperBLERXCharUUID.String(), discovered,
+	if txHit == nil {
+		missing = append(missing, "TX/"+flipperBLETXCharUUID.String())
+	}
+	if flowHit == nil {
+		missing = append(missing, "FlowCtrl/"+flipperBLEFlowControlCharUUID.String())
+	}
+	if len(missing) > 0 {
+		return flipperBLECharSet{}, fmt.Errorf(
+			"transport: missing required Flipper BLE Serial characteristic(s) %v; discovered %v — firmware rev may have changed characteristic layout",
+			missing, discovered,
 		)
 	}
 
-	slog.Warn(
-		"transport/ble: TX/RX characteristics not matched by hint UUID; falling back to positional ordering (first=TX, second=RX, NUS convention)",
-		"expectedTX", flipperBLETXCharUUID.String(),
-		"expectedRX", flipperBLERXCharUUID.String(),
-		"discovered", discovered,
-	)
-	return chars[0], chars[1], nil
+	set := flipperBLECharSet{rx: *rxHit, tx: *txHit, flow: *flowHit}
+	if statusHit != nil {
+		set.status = *statusHit
+	}
+	return set, nil
 }
 
 // Read drains up to len(p) bytes from the internal read buffer
@@ -757,15 +1049,25 @@ func waitCondTimeout(cond *sync.Cond, d time.Duration) {
 }
 
 // Write sends p to the Flipper via the TX characteristic. BLE ATT
-// payloads are bounded by the negotiated MTU minus the 3-byte header,
-// so writes larger than t.mtu are chunked into consecutive
-// WriteWithoutResponse calls. WriteWithoutResponse is preferred over
-// Write because the Flipper's BLE serial service does not ACK
-// individual writes at the GATT layer — the application-level prompt
-// response (read back via notifications) is what confirms delivery.
+// payloads are bounded by both the negotiated MTU minus the 3-byte
+// header AND the firmware's flow-control credit budget. Writes larger
+// than the per-chunk minimum are split into consecutive
+// WriteWithoutResponse calls; each chunk waits until the firmware has
+// advertised at least chunkSize bytes of credit (via FlowCtrl
+// notifications) before going on the wire. Skipping the credit check
+// is what made earlier revisions of this transport silently lose
+// outbound traffic on real Flipper hardware — see
+// flipperdevices/flipperzero-firmware
+// targets/f7/ble_glue/services/serial_service.c lines 188–208 for the
+// publishing side.
+//
+// WriteWithoutResponse is preferred over Write because the Flipper's
+// BLE serial service does not ACK individual writes at the GATT layer
+// — the application-level RPC response (read back via TX indications)
+// is what confirms delivery.
 //
 // The characteristic handle is snapshot under mu before the chunk
-// loop so a concurrent Close or Reconnect doesn't mutate txChar
+// loop so a concurrent Close or Reconnect doesn't mutate rxChar
 // mid-write, but the actual library call is made outside the lock so
 // a stalled write cannot block readers in onNotify. A Close or error
 // mid-loop returns the bytes successfully sent so far, matching
@@ -784,20 +1086,29 @@ func (t *bleTransport) Write(p []byte) (int, error) {
 		t.mu.Unlock()
 		return 0, fmt.Errorf("transport: ble write before Dial on %s", t.addr)
 	}
-	txChar := t.txChar
-	chunkSize := t.mtu
-	if chunkSize <= 0 {
-		chunkSize = bleDefaultMTU - attHeaderOverhead
+	rxChar := t.rxChar
+	maxChunk := t.mtu
+	if maxChunk <= 0 {
+		maxChunk = bleDefaultMTU - attHeaderOverhead
 	}
 	t.mu.Unlock()
 
 	total := 0
 	for total < len(p) {
-		end := total + chunkSize
-		if end > len(p) {
-			end = len(p)
+		remaining := len(p) - total
+		chunkSize := maxChunk
+		if remaining < chunkSize {
+			chunkSize = remaining
 		}
-		n, err := txChar.WriteWithoutResponse(p[total:end])
+
+		// Wait for enough flow-control credit. Each chunk needs
+		// chunkSize bytes of headroom before the firmware will accept
+		// it; running ahead of the credit would cause silent drops.
+		if err := t.consumeCredit(uint32(chunkSize)); err != nil {
+			return total, err
+		}
+
+		n, err := rxChar.WriteWithoutResponse(p[total : total+chunkSize])
 		total += n
 		if err != nil {
 			return total, fmt.Errorf("transport: BLE write to %s: %w", t.addr, err)
@@ -807,6 +1118,31 @@ func (t *bleTransport) Write(p []byte) (int, error) {
 		}
 	}
 	return total, nil
+}
+
+// consumeCredit blocks until at least n bytes of flow-control credit
+// are available, then deducts n. Returns os.ErrClosed if Close fires
+// while waiting. Per serial_service.c:188-208 the firmware publishes
+// the absolute window (not a delta) so we only deduct on confirmed
+// successful chunks; new notifications overwrite t.credit wholesale,
+// so a stalled writer naturally re-syncs after the next refresh.
+func (t *bleTransport) consumeCredit(n uint32) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for {
+		if t.closed {
+			return os.ErrClosed
+		}
+		if t.credit >= n {
+			t.credit -= n
+			return nil
+		}
+		// Credit insufficient — wait for the next FlowCtrl notification
+		// (or Close). No deadline here; the firmware refreshes credit
+		// every time it drains its inbound fifo, which happens at the
+		// scheduling tick of the BT service.
+		t.creditCond.Wait()
+	}
 }
 
 // SetReadTimeout reconfigures how long the next Read will block
@@ -846,9 +1182,13 @@ func (t *bleTransport) Reconnect(ctx context.Context) error {
 	oldDevice := t.device
 	t.device = nil
 	t.adapter = nil
-	t.txChar = bluetooth.DeviceCharacteristic{}
 	t.rxChar = bluetooth.DeviceCharacteristic{}
+	t.txChar = bluetooth.DeviceCharacteristic{}
+	t.flowChar = bluetooth.DeviceCharacteristic{}
 	t.readBuf.Reset()
+	t.credit = 0
+	t.creditReady = false
+	t.creditCond.Broadcast()
 	t.mu.Unlock()
 
 	if oldDevice != nil {
@@ -874,6 +1214,7 @@ func (t *bleTransport) Close() error {
 	device := t.device
 	t.device = nil
 	t.readCond.Broadcast()
+	t.creditCond.Broadcast()
 	t.mu.Unlock()
 
 	if device == nil {

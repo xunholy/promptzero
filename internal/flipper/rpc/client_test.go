@@ -392,5 +392,151 @@ func TestClientLongStreamFrames(t *testing.T) {
 	}
 }
 
+// awaitClientFrame collects bytes from the client and returns the first
+// fully-decoded Main message it can parse. Blocks up to timeout. Used by
+// the AppStart/AppExit/SendInput tests below to inspect the framed
+// request the client emitted.
+func awaitClientFrame(t *testing.T, srv *chanTransport, timeout time.Duration) *pb.Main {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var buf []byte
+	for time.Now().Before(deadline) {
+		more := drainClientWrite(srv, 200*time.Millisecond)
+		buf = append(buf, more...)
+		msgLen, n := protowire.ConsumeVarint(buf)
+		if n <= 0 || len(buf) < n+int(msgLen) {
+			continue
+		}
+		var m pb.Main
+		if err := proto.Unmarshal(buf[n:n+int(msgLen)], &m); err != nil {
+			t.Fatalf("awaitClientFrame: unmarshal: %v", err)
+		}
+		return &m
+	}
+	t.Fatalf("awaitClientFrame: no frame within %s", timeout)
+	return nil
+}
+
+// TestClientAppStart drives one AppStart round-trip end to end: it asserts
+// the request the client emits carries the supplied (name, args) on the
+// wire, then feeds an OK ack and confirms the call returns nil.
+func TestClientAppStart(t *testing.T) {
+	clientTx, srv := newChanTransportPair()
+	c := NewClient(clientTx)
+	ctx := context.Background()
+
+	openClient(t, c, srv)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- c.AppStart(ctx, "MFKey32", "/ext/key") }()
+
+	req := awaitClientFrame(t, srv, 2*time.Second)
+	start, ok := req.Content.(*pb.Main_AppStartRequest)
+	if !ok {
+		t.Fatalf("unexpected content type %T", req.Content)
+	}
+	if start.AppStartRequest.GetName() != "MFKey32" {
+		t.Errorf("name = %q, want %q", start.AppStartRequest.GetName(), "MFKey32")
+	}
+	if start.AppStartRequest.GetArgs() != "/ext/key" {
+		t.Errorf("args = %q, want %q", start.AppStartRequest.GetArgs(), "/ext/key")
+	}
+
+	writeFramedTo(srv, &pb.Main{
+		CommandId:     req.CommandId,
+		CommandStatus: pb.CommandStatus_OK,
+		Content:       &pb.Main_Empty{Empty: &pb.Empty{}},
+	})
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("AppStart returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("AppStart timed out")
+	}
+}
+
+// TestClientAppStartError verifies a non-OK CommandStatus surfaces as a
+// non-nil error containing the firmware status name (mirroring the
+// behaviour of the storage-class RPCs already in the package).
+func TestClientAppStartError(t *testing.T) {
+	clientTx, srv := newChanTransportPair()
+	c := NewClient(clientTx)
+	ctx := context.Background()
+
+	openClient(t, c, srv)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- c.AppStart(ctx, "Bogus", "") }()
+
+	req := awaitClientFrame(t, srv, 2*time.Second)
+	writeFramedTo(srv, &pb.Main{
+		CommandId:     req.CommandId,
+		CommandStatus: pb.CommandStatus_ERROR_APP_CANT_START,
+		Content:       &pb.Main_Empty{Empty: &pb.Empty{}},
+	})
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("AppStart should have returned an error for ERROR_APP_CANT_START")
+		}
+		if !strings.Contains(err.Error(), "ERROR_APP_CANT_START") {
+			t.Errorf("error %q should mention ERROR_APP_CANT_START", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("AppStart error path timed out")
+	}
+}
+
+// TestClientAppExit asserts AppExit emits an AppExitRequest and returns
+// nil on an OK ack.
+func TestClientAppExit(t *testing.T) {
+	clientTx, srv := newChanTransportPair()
+	c := NewClient(clientTx)
+	ctx := context.Background()
+
+	openClient(t, c, srv)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- c.AppExit(ctx) }()
+
+	req := awaitClientFrame(t, srv, 2*time.Second)
+	if _, ok := req.Content.(*pb.Main_AppExitRequest); !ok {
+		t.Fatalf("unexpected content type %T", req.Content)
+	}
+	writeFramedTo(srv, &pb.Main{
+		CommandId:     req.CommandId,
+		CommandStatus: pb.CommandStatus_OK,
+		Content:       &pb.Main_Empty{Empty: &pb.Empty{}},
+	})
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("AppExit returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("AppExit timed out")
+	}
+}
+
+// TestClientAppStartClosed confirms AppStart and AppExit return
+// ErrSessionClosed when invoked on a never-opened client, matching the
+// closed-session contract every other RPC in this package follows.
+func TestClientAppStartClosed(t *testing.T) {
+	clientTx, _ := newChanTransportPair()
+	c := NewClient(clientTx)
+
+	if err := c.AppStart(context.Background(), "X", ""); err != ErrSessionClosed {
+		t.Errorf("AppStart before Open: got %v, want ErrSessionClosed", err)
+	}
+	if err := c.AppExit(context.Background()); err != ErrSessionClosed {
+		t.Errorf("AppExit before Open: got %v, want ErrSessionClosed", err)
+	}
+}
+
 // Compile-time assertion: chanTransport satisfies io.ReadWriteCloser.
 var _ io.ReadWriteCloser = (*chanTransport)(nil)

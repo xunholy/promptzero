@@ -21,7 +21,7 @@ require (
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.48.2
-	tinygo.org/x/bluetooth v0.14.0
+	tinygo.org/x/bluetooth v0.15.0
 )
 
 require (
@@ -44,9 +44,10 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/saltosystems/winrt-go v0.0.0-20240509164145-4f7860a3bd2b // indirect
+	github.com/saltosystems/winrt-go v0.0.0-20260317170058-9c2fec580d96 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/soypat/cyw43439 v0.0.0-20250505012923-830110c8f4af // indirect
+	github.com/soypat/cyw43439 v0.1.0 // indirect
+	github.com/soypat/lneto v0.1.0 // indirect
 	github.com/soypat/seqs v0.0.0-20250124201400-0d65bc7c1710 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
@@ -54,7 +55,7 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tinygo-org/cbgo v0.0.4 // indirect
-	github.com/tinygo-org/pio v0.2.0 // indirect
+	github.com/tinygo-org/pio v0.3.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.43.0 // indirect

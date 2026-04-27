@@ -33,6 +33,11 @@ var ErrBridgeRejected = errors.New("flipper rejected bridge launch command")
 // the import does not introduce a cycle.
 type bridgeFlipper interface {
 	ExecCtx(ctx context.Context, cmd string) (string, error)
+	// LaunchBridge invokes the configured bridge-launch verb. On USB
+	// CDC this is identical to ExecCtx; on BLE the bridge command's
+	// `loader open "App Name"` shape is parsed and dispatched as an
+	// RPC app_start request because text CLI is not available on BLE.
+	LaunchBridge(ctx context.Context, cmd string) (string, error)
 	Suspend(reason string) error
 	IsSuspended() bool
 	Transport() transport.Transport
@@ -125,8 +130,10 @@ func ConnectViaFlipper(
 
 	// Step 1: launch. If the CLI errors or rejects the verb, flip is
 	// still alive — leave it unsuspended so the caller can keep using
-	// flipper_* tools.
-	out, err := flip.ExecCtx(ctx, bridgeCmd)
+	// flipper_* tools. LaunchBridge handles transport routing: text
+	// CLI on USB, RPC app_start on BLE (parsed from the configured
+	// loader-open command shape).
+	out, err := flip.LaunchBridge(ctx, bridgeCmd)
 	if err != nil {
 		return nil, fmt.Errorf("launching bridge app: %w", err)
 	}

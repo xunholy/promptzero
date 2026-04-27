@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **BLE-to-Flipper now works end-to-end via Protobuf RPC.** Flipper
+  firmware exposes RPC, not text CLI, on its BLE Serial endpoint
+  (`applications/services/bt/bt_service/bt.c` pipes inbound bytes
+  straight into `rpc_session_feed`; no text CLI handler is wired).
+  PromptZero now detects BLE transport at connect time, opens a
+  persistent `rpc.Client` against the link with `WithSkipStartRPCSession`
+  (no text preamble — the firmware is already in RPC mode), and routes
+  every BLE-feasible operation through that client instead of through
+  text-CLI `Exec`. Connect time is ~5 s on darwin (down from a 25 s
+  timeout pre-fix). Verified end-to-end with `Unholy · Momentum mntm-dev`
+  identification during capability detection.
+- **30+ Flipper commands now route via RPC on BLE.** Domain coverage:
+  - System: DeviceInfo, PowerInfo, Reboot, PowerRebootDFU.
+  - Storage: List, Read, Write, Remove, Mkdir, Stat, FSInfo, FSInfoMap,
+    Rename, MD5, Tree (StorageCopy is USB-only — no RPC verb).
+  - GPIO: Set, Read.
+  - Application: LoaderOpen, LoaderClose, NFCEmulate (transitively).
+  - GUI: InputSend.
+  - New BLE-only commands: `DesktopIsLocked`, `DesktopUnlock`,
+    `PropertyGet`. These have no CLI equivalent on this firmware and
+    return `ErrCommandRequiresUSB` on USB transports.
+- **Clear `ErrCommandRequiresUSB` for non-RPC commands on BLE.** The
+  56 commands without RPC verbs in firmware (sub-GHz, NFC, IR, RFID,
+  iButton, BadUSB, Loader{List,Info,Signal}, etc.) return a wrapped
+  error naming the operation and instructing the operator to attach
+  the Flipper via USB instead of a generic "release the mirror"
+  message. `errors.Is(err, ErrCommandRequiresUSB)` works for callers
+  that need to distinguish.
+- **`Flipper.LaunchBridge(ctx, command)` method.** Replaces the
+  hard-coded `Exec("loader open ...")` in the Marauder bridge launcher
+  with a transport-aware verb: USB sends the literal CLI text; BLE
+  parses the `loader open "App Name" args...` shape and dispatches via
+  `LoaderOpen` → `app_start_request` RPC.
 - **`--ble-discover` flag.** Scans for nearby BLE peripherals and prints
   a table of name + address + RSSI, plus a copy-pasteable `ble://`
   command for the strongest-signal Flipper. Replaces the prior workflow
@@ -23,6 +56,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`tinygo.org/x/bluetooth` upgraded v0.14.0 → v0.15.0.** v0.15.0's
+  darwin notification + service-discovery fixes are what unblocked
+  ATT-layer encryption negotiation on macOS — previously CoreBluetooth
+  silently refused to deliver indications/notifications on Flipper's
+  authenticated-read characteristics. With v0.14.0 the Ping handshake
+  timed out after BLE link establishment; v0.15.0 round-trips it.
+- **BLE Serial GATT layout corrected against firmware ground truth**
+  (`flipperzero-firmware/targets/f7/ble_glue/services/serial_service.c`).
+  Promptzero now resolves all four characteristics: `RX` (`...fe62`,
+  host-writes, also exposed via the new `flipperBLERXCharUUID`),
+  `TX` (`...fe61`, host-reads-via-indications), `FlowCtrl` (`...fe63`,
+  host subscribes for uint32 BE buffer-credit updates from the
+  firmware's `ble_svc_serial_notify_buffer_is_empty` publisher), and
+  `Status` (`...fe64`, observation-only). Earlier code only knew
+  about TX+RX and didn't subscribe to FlowCtrl, which caused the
+  firmware's flow-control loop to silently throttle traffic.
+- **CoreBluetooth UUID byte-order helper.** `cbgo` reflects custom
+  service/characteristic UUIDs in their on-the-wire little-endian
+  byte order on darwin (Linux/BlueZ presents them in canonical
+  big-endian). The new `uuidsMatch` helper compares UUIDs in either
+  endianness so the same hardcoded constants work cross-platform.
 - **macOS BLE now uses the canonical CoreBluetooth pattern.** When
   given a UUID-form address, `bleTransport.establish` skips the scan
   entirely and calls `Adapter.Connect` with the stored identifier —
