@@ -242,7 +242,7 @@ Select a transport by setting `serial.transport_url` in your config, or the `--t
 | Scheme                         | Example                                         | When to use                                                     |
 |--------------------------------|-------------------------------------------------|-----------------------------------------------------------------|
 | `serial://`                    | `serial:///dev/ttyACM0?baud=230400`             | Default. USB CDC-ACM. Fastest + most reliable.                  |
-| `ble://`                       | `ble://AA:BB:CC:DD:EE:FF`                       | Wireless. No cable. Slower (~2–8 kB/s) but fine for most verbs. |
+| `ble://`                       | `ble://AA:BB:CC:DD:EE:FF` (Linux/Windows) <br> `ble://e127efc1-05ec-...` (macOS) | Wireless. No cable. Slower (~2–8 kB/s) but fine for most verbs. |
 | `mock://`                      | `mock:///dev/pts/5`                             | Test harness pty slave. Used by `internal/flipper/mock`.        |
 
 > [!NOTE]
@@ -250,18 +250,19 @@ Select a transport by setting `serial.transport_url` in your config, or the `--t
 
 #### BLE over Flipper Zero
 
-Find your Flipper's BLE MAC on the device: **Settings → Bluetooth → scroll down → BLE MAC**. Then:
+The `ble://` URL accepts three forms, picked automatically by shape:
 
+| Form | Example | Where it works |
+|---|---|---|
+| Hardware MAC | `ble://80:E1:26:69:6E:55` | Linux, Windows |
+| CoreBluetooth UUID | `ble://e127efc1-05ec-ce53-014e-b79fee9117fa` | macOS only — UUID is per-Mac |
+| Device LocalName | `ble://Unholy` | Any platform; fallback when the above are inconvenient |
+
+To find the right identifier, run:
 ```bash
-promptzero --transport ble://AA:BB:CC:DD:EE:FF --web
+promptzero --ble-discover
 ```
-
-Or wire it into your config and omit the flag:
-
-```yaml
-serial:
-  transport_url: ble://AA:BB:CC:DD:EE:FF
-```
+This scans for ~8 s and prints visible peripherals with name, address, and RSSI, then suggests the strongest-signal Flipper as a copy-pasteable URL.
 
 **Pairing prerequisite (Linux / BlueZ):** the adapter needs to know the device before PromptZero can connect.
 ```bash
@@ -269,9 +270,12 @@ bluetoothctl scan on        # until you see your Flipper
 bluetoothctl pair AA:BB:CC:DD:EE:FF
 bluetoothctl trust AA:BB:CC:DD:EE:FF
 ```
-Once paired, PromptZero will reconnect automatically on restart; you won't need to repeat this.
 
-**macOS:** BLE is supported but the upstream `tinygo.org/x/bluetooth` package needs CGO on macOS. Build on the Mac directly:
+**Pairing prerequisite (macOS):** pair the Flipper once via **System Settings → Bluetooth** so CoreBluetooth caches its identifier UUID. After that PromptZero takes the direct-connect fast path on every reconnect — no scan, no MAC lookup, just `retrievePeripherals(withIdentifiers:)` under the hood (the same pattern Apple recommends and tools like `bleak` and `swift-bluetooth-cli` use).
+
+> macOS hides hardware BLE MACs from apps for privacy, so the address PromptZero uses is the per-Mac CoreBluetooth identifier UUID — stable on this Mac for the life of the pairing, but **different on every other Mac**. Re-run `--ble-discover` if you move the config to another machine.
+
+**macOS build:** the upstream `tinygo.org/x/bluetooth` package needs CGO. The release pipeline builds darwin/amd64 + darwin/arm64 binaries on macOS runners with `CGO_ENABLED=1`, so the standard `install.sh` does the right thing. If you're building from source, do it on the Mac:
 ```bash
 CGO_ENABLED=1 GOOS=darwin go build ./cmd/promptzero
 ```

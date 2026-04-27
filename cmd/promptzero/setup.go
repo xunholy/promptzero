@@ -223,6 +223,8 @@ type runFlags struct {
 	confirmRisk          string
 	personaName          string
 	watchPaths           stringSlice
+	bleDiscover          bool          // --ble-discover
+	bleDiscoverDuration  time.Duration // --ble-discover-duration
 }
 
 // parseFlags binds all CLI flags and calls flag.Parse. Returns the
@@ -231,7 +233,7 @@ func parseFlags() *runFlags {
 	f := &runFlags{}
 	flag.StringVar(&f.cfgPath, "config", "config.yaml", "Path to config file")
 	flag.StringVar(&f.portOverride, "port", "", "Flipper serial port (overrides config; e.g. /dev/ttyACM0 (Linux), /dev/tty.usbmodemflip_* (macOS), COM3 (Windows))")
-	flag.StringVar(&f.transportOverride, "transport", "", "Flipper transport URL (overrides --port + config). Schemes: serial:// (USB), mock:// (tests), ble://AA:BB:CC:DD:EE:FF (requires native Linux or macOS; not WSL2)")
+	flag.StringVar(&f.transportOverride, "transport", "", "Flipper transport URL (overrides --port + config). Schemes: serial:// (USB), mock:// (tests), ble://<addr> where <addr> is a hardware MAC on Linux/Windows, a CoreBluetooth UUID on macOS (run --ble-discover to find it), or a device LocalName like \"Unholy\". Not supported in WSL2.")
 	flag.BoolVar(&f.webMode, "web", false, "Start web UI mode")
 	flag.IntVar(&f.webPort, "web-port", 0, "Web server port (overrides config)")
 	flag.BoolVar(&f.voiceMode, "voice", false, "Enable voice input (requires sox + OPENAI_API_KEY)")
@@ -254,6 +256,8 @@ func parseFlags() *runFlags {
 	flag.StringVar(&f.personaName, "persona", "", "Operator persona (default: value from config or 'default')")
 	flag.Var(&f.watchPaths, "watch", "Watch a directory for FS events; repeat to watch several")
 	flag.BoolVar(&f.showVersion, "version", false, "Show version")
+	flag.BoolVar(&f.bleDiscover, "ble-discover", false, "Scan for nearby BLE peripherals and print their addresses + names + RSSI (use this to find the right ble:// identifier on macOS where hardware MACs are hidden), then exit.")
+	flag.DurationVar(&f.bleDiscoverDuration, "ble-discover-duration", 8*time.Second, "Length of the --ble-discover scan (default 8s).")
 	flag.Parse()
 	return f
 }

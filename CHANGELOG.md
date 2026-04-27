@@ -7,7 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`--ble-discover` flag.** Scans for nearby BLE peripherals and prints
+  a table of name + address + RSSI, plus a copy-pasteable `ble://`
+  command for the strongest-signal Flipper. Replaces the prior workflow
+  of "run with `PROMPTZERO_LOG_LEVEL=debug` and grep the scan log" —
+  the equivalent of `bleak --scan` or `core-bluetooth-tool devices`.
+- **`ble://` URL accepts UUIDs and device names.** In addition to the
+  existing hardware-MAC form (`ble://80:E1:26:69:6E:55`), the dialer
+  now recognises CoreBluetooth identifier UUIDs
+  (`ble://e127efc1-05ec-ce53-014e-b79fee9117fa`) and bare device
+  LocalNames (`ble://Unholy`). Forms are picked by shape and route to
+  different scan-match logic at runtime.
+
+### Changed
+
+- **macOS BLE now uses the canonical CoreBluetooth pattern.** When
+  given a UUID-form address, `bleTransport.establish` skips the scan
+  entirely and calls `Adapter.Connect` with the stored identifier —
+  which wraps `retrievePeripherals(withIdentifiers:)` per Apple's
+  "Best Practices for Interacting with a Remote Peripheral Device"
+  guide. Saves up to 30 s on every reconnect for paired Flippers.
+  Falls back to a full scan if the CoreBluetooth peripheral cache no
+  longer has the identifier (BT stack restart, etc.).
+- **`bleTransport.mac` field renamed to `addr`** (with a sibling
+  `addrKind` enum) to stop lying about what's stored — on darwin the
+  value has always been a UUID, the type just claimed otherwise.
+
 ### Fixed
+
+- **`ble://<MAC>` URLs no longer hang on macOS.** macOS CoreBluetooth
+  hides hardware MACs from apps for privacy and substitutes a per-Mac
+  peripheral identifier UUID; `tinygo.org/x/bluetooth` reflects that
+  on darwin. Before this change the dialer required `net.ParseMAC`
+  format and the scan match did literal MAC-string comparison, so
+  every `ble://<MAC>` URL on macOS scanned for 30 s and timed out
+  with "no flipper found". Diagnosed via `PROMPTZERO_LOG_LEVEL=debug`
+  scan results that returned UUIDs instead of MACs.
 
 - **BLE works in released macOS binaries.** The release workflow now
   builds darwin targets on macOS runners with `CGO_ENABLED=1` instead

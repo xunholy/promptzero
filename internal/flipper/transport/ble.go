@@ -36,6 +36,8 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -115,38 +117,116 @@ func mustParseUUID(s string) bluetooth.UUID {
 	return u
 }
 
-// bleDialer parses a ble://<MAC> URL and returns an undialled
-// bleTransport. The MAC must be in the standard colon-delimited
-// 11:22:33:AA:BB:CC form; case does not matter (the MAC is stored in
-// canonical uppercase so Identity output is stable).
+// addrKind classifies the form of a BLE address supplied via ble:// URLs.
+// The form determines how scanForAddress matches against advertisements
+// and whether establish can take the darwin direct-connect fast path.
+type addrKind int
+
+const (
+	// addrKindMAC is a 6-octet hardware MAC (80:E1:26:69:6E:55). The
+	// canonical form on Linux and Windows where the OS exposes the
+	// peer's BLE hardware address. Rejected by CoreBluetooth on darwin.
+	addrKindMAC addrKind = iota
+
+	// addrKindUUID is the canonical 8-4-4-4-12 CoreBluetooth peripheral
+	// identifier (e127efc1-05ec-ce53-014e-b79fee9117fa). darwin-only,
+	// per-Mac-stable but never portable across machines. Use
+	// `promptzero --ble-discover` to enumerate identifiers visible to
+	// the local CoreBluetooth daemon.
+	addrKindUUID
+
+	// addrKindName matches against the BLE advertising LocalName, e.g.
+	// "Unholy". Convenient cross-platform fallback when the user
+	// doesn't want to deal with MACs/UUIDs, but not authoritative —
+	// names are user-set on the Flipper and not unique.
+	addrKindName
+)
+
+func (k addrKind) String() string {
+	switch k {
+	case addrKindMAC:
+		return "MAC"
+	case addrKindUUID:
+		return "UUID"
+	case addrKindName:
+		return "name"
+	}
+	return "address"
+}
+
+// bleAddrUUIDPattern is the canonical 8-4-4-4-12 hex form of a
+// CoreBluetooth peripheral identifier. Used by parseBLEAddress to
+// distinguish UUID-form ble:// URLs from MACs (which use colons, not
+// hyphens) and bare device names (no separators of either kind).
+var bleAddrUUIDPattern = regexp.MustCompile(
+	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
+)
+
+// parseBLEAddress recognises three URL forms by shape:
+//
+//   - MAC  ("80:E1:26:69:6E:55") — 6 octets via net.ParseMAC. Linux/Windows.
+//   - UUID ("e127efc1-05ec-...")  — CoreBluetooth identifier. darwin only.
+//   - Name ("Unholy")             — anything else, matched against
+//     advertising LocalName at scan time.
+//
+// The forms are unambiguous: MACs contain colons (or hyphens with
+// 6-octet length), UUIDs contain hyphens at fixed offsets, names
+// contain neither. MAC normalises to uppercase canonical form; UUID
+// to lowercase; names round-trip verbatim (case-insensitive matching
+// happens at scan time).
+func parseBLEAddress(s string) (addrKind, string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, "", fmt.Errorf("empty BLE address")
+	}
+	if mac, err := net.ParseMAC(s); err == nil && len(mac) == 6 {
+		return addrKindMAC, strings.ToUpper(mac.String()), nil
+	}
+	if bleAddrUUIDPattern.MatchString(s) {
+		return addrKindUUID, strings.ToLower(s), nil
+	}
+	return addrKindName, s, nil
+}
+
+// bleDialer parses a ble://<addr> URL and returns an undialled
+// bleTransport. The address may be a hardware MAC (Linux/Windows),
+// a CoreBluetooth identifier UUID (darwin), or a device LocalName
+// (any platform — fallback). See parseBLEAddress for the shape rules.
 func bleDialer(rawURL string) (Transport, error) {
 	path, _, err := parseURL(rawURL)
 	if err != nil {
 		return nil, err
 	}
-	mac := strings.TrimSpace(path)
-	if _, err := net.ParseMAC(mac); err != nil {
-		return nil, fmt.Errorf("transport: invalid MAC %q in URL %q: %w", mac, rawURL, err)
+	kind, addr, err := parseBLEAddress(path)
+	if err != nil {
+		return nil, fmt.Errorf("transport: in URL %q: %w", rawURL, err)
 	}
 	t := &bleTransport{
-		mac: strings.ToUpper(mac),
-		mtu: bleDefaultMTU,
+		addr:     addr,
+		addrKind: kind,
+		mtu:      bleDefaultMTU,
 	}
 	t.readCond = sync.NewCond(&t.mu)
 	return t, nil
 }
 
 // bleTransport is the BLE implementation of Transport. It owns a
-// connection to one Flipper Zero peripheral identified by MAC. TX and
-// RX characteristics are resolved at Dial time; Read consumes bytes
+// connection to one Flipper Zero peripheral identified by an address
+// whose form depends on the host OS — see addrKind. TX and RX
+// characteristics are resolved at Dial time; Read consumes bytes
 // from an internal buffer that the RX characteristic's notification
 // callback appends to from the library's notify goroutine.
 type bleTransport struct {
-	// mac is the stable identifier used by the scan filter at Dial
-	// time and by Reconnect when the physical link drops. Stored in
-	// canonical uppercase "11:22:33:AA:BB:CC" form so Identity output
-	// round-trips cleanly.
-	mac string
+	// addr is the stable identifier used by resolveAddress at Dial
+	// time and by Reconnect when the physical link drops. Storage
+	// canonicalisation is per-kind: uppercase MAC, lowercase UUID,
+	// verbatim for names — so Identity output round-trips cleanly.
+	addr string
+
+	// addrKind determines whether addr is a MAC, a CoreBluetooth UUID,
+	// or a LocalName, which in turn controls scan-match logic and
+	// whether the darwin direct-connect fast path is available.
+	addrKind addrKind
 
 	// adapter, device, txChar, rxChar are set exclusively within
 	// Dial (or Reconnect) under mu, and read from every other method.
@@ -200,7 +280,7 @@ func (t *bleTransport) Dial(ctx context.Context) error {
 	t.mu.Lock()
 	if t.adapter != nil {
 		t.mu.Unlock()
-		return fmt.Errorf("transport: ble already dialled (%s)", t.mac)
+		return fmt.Errorf("transport: ble already dialled (%s)", t.addr)
 	}
 	if t.closed {
 		t.mu.Unlock()
@@ -223,14 +303,31 @@ func (t *bleTransport) establish(ctx context.Context) error {
 		return fmt.Errorf("transport: enabling BLE adapter: %w", err)
 	}
 
-	addr, err := scanForMAC(ctx, adapter, t.mac)
+	addr, fast, err := t.resolveAddress(ctx, adapter)
 	if err != nil {
 		return err
 	}
 
 	device, err := adapter.Connect(addr, bluetooth.ConnectionParams{})
 	if err != nil {
-		return fmt.Errorf("transport: BLE connect to %s: %w", t.mac, err)
+		// On the darwin fast path we handed Connect an address that
+		// CoreBluetooth's retrievePeripherals cache may no longer
+		// recognise (peripheral removed, BT stack bounced, etc.). Fall
+		// back to a full scan once before giving up.
+		if !fast {
+			return fmt.Errorf("transport: BLE connect to %s: %w", t.addr, err)
+		}
+		slog.Debug("transport/ble: direct connect failed, retrying via scan",
+			"addr", t.addr, "err", err)
+		scanAddr, scanErr := scanForAddress(ctx, adapter, t.addrKind, t.addr)
+		if scanErr != nil {
+			return fmt.Errorf("transport: BLE connect to %s: %w (scan fallback also failed: %v)",
+				t.addr, err, scanErr)
+		}
+		device, err = adapter.Connect(scanAddr, bluetooth.ConnectionParams{})
+		if err != nil {
+			return fmt.Errorf("transport: BLE connect to %s after scan fallback: %w", t.addr, err)
+		}
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		_ = device.Disconnect()
@@ -240,17 +337,17 @@ func (t *bleTransport) establish(ctx context.Context) error {
 	services, err := device.DiscoverServices([]bluetooth.UUID{flipperBLEServiceUUID})
 	if err != nil {
 		_ = device.Disconnect()
-		return fmt.Errorf("transport: BLE service discovery on %s: %w — is BLE enabled in Flipper Settings > Bluetooth?", t.mac, err)
+		return fmt.Errorf("transport: BLE service discovery on %s: %w — is BLE enabled in Flipper Settings > Bluetooth?", t.addr, err)
 	}
 	if len(services) == 0 {
 		_ = device.Disconnect()
-		return fmt.Errorf("transport: flipper BLE service %s not found on %s — firmware rev may have changed the service UUID", flipperBLEServiceUUID.String(), t.mac)
+		return fmt.Errorf("transport: flipper BLE service %s not found on %s — firmware rev may have changed the service UUID", flipperBLEServiceUUID.String(), t.addr)
 	}
 
 	chars, err := services[0].DiscoverCharacteristics(nil)
 	if err != nil {
 		_ = device.Disconnect()
-		return fmt.Errorf("transport: BLE characteristic discovery on %s: %w", t.mac, err)
+		return fmt.Errorf("transport: BLE characteristic discovery on %s: %w", t.addr, err)
 	}
 	txChar, rxChar, err := selectFlipperCharacteristics(chars)
 	if err != nil {
@@ -260,7 +357,7 @@ func (t *bleTransport) establish(ctx context.Context) error {
 
 	if err := rxChar.EnableNotifications(t.onNotify); err != nil {
 		_ = device.Disconnect()
-		return fmt.Errorf("transport: enabling RX notifications on %s: %w", t.mac, err)
+		return fmt.Errorf("transport: enabling RX notifications on %s: %w", t.addr, err)
 	}
 
 	mtu := negotiateMTU(txChar)
@@ -330,15 +427,17 @@ func (t *bleTransport) onNotify(buf []byte) {
 	t.mu.Unlock()
 }
 
-// scanForMAC runs a single BLE scan bounded by bleScanTimeout and
-// stops as soon as an advertisement from the target MAC is seen. It
-// honours ctx cancellation by calling StopScan, which causes the
-// adapter's Scan loop to return.
+// scanForAddress runs a single BLE scan bounded by bleScanTimeout and
+// stops as soon as an advertisement matching the target identifier is
+// seen. The match field depends on kind: MAC and UUID compare against
+// sr.Address.String(); name compares against sr.LocalName(). Honours
+// ctx cancellation by calling StopScan, which causes the adapter's
+// Scan loop to return.
 //
-// Each scan result is logged at Debug level (MAC, RSSI, local name)
-// so operators can pattern-match the target device out of a crowded
-// RF environment if the expected MAC is never seen.
-func scanForMAC(ctx context.Context, adapter *bluetooth.Adapter, mac string) (bluetooth.Address, error) {
+// Each scan result is logged at Debug level (address, RSSI, local
+// name) so operators can pattern-match the target device out of a
+// crowded RF environment if the expected identifier is never seen.
+func scanForAddress(ctx context.Context, adapter *bluetooth.Adapter, kind addrKind, target string) (bluetooth.Address, error) {
 	scanCtx, cancel := context.WithTimeout(ctx, bleScanTimeout)
 	defer cancel()
 
@@ -352,9 +451,17 @@ func scanForMAC(ctx context.Context, adapter *bluetooth.Adapter, mac string) (bl
 				return
 			}
 			addrStr := sr.Address.String()
+			name := sr.LocalName()
 			slog.Debug("transport/ble: scan result",
-				"mac", addrStr, "rssi", sr.RSSI, "name", sr.LocalName())
-			if !strings.EqualFold(addrStr, mac) {
+				"addr", addrStr, "rssi", sr.RSSI, "name", name)
+			var matched bool
+			switch kind {
+			case addrKindMAC, addrKindUUID:
+				matched = strings.EqualFold(addrStr, target)
+			case addrKindName:
+				matched = strings.EqualFold(name, target)
+			}
+			if !matched {
 				return
 			}
 			if stopped.CompareAndSwap(false, true) {
@@ -376,19 +483,152 @@ func scanForMAC(ctx context.Context, adapter *bluetooth.Adapter, mac string) (bl
 		if err != nil {
 			return bluetooth.Address{}, fmt.Errorf("transport: BLE scan error: %w", err)
 		}
-		return bluetooth.Address{}, fmt.Errorf("transport: BLE scan ended without finding %s", mac)
+		return bluetooth.Address{}, fmt.Errorf("transport: BLE scan ended without finding %s %s", kind, target)
 	case <-scanCtx.Done():
 		stopped.Store(true)
 		_ = adapter.StopScan()
 		<-scanDone
 		if errors.Is(scanCtx.Err(), context.DeadlineExceeded) {
+			hint := "is it advertising? pair it once via your OS Bluetooth settings first"
+			if runtime.GOOS == "darwin" && kind == addrKindMAC {
+				hint = "macOS hides hardware MACs; use `promptzero --ble-discover` to find the per-machine UUID and connect via ble://<uuid>"
+			} else if runtime.GOOS == "darwin" {
+				hint = "run `promptzero --ble-discover` to enumerate visible peripherals"
+			}
 			return bluetooth.Address{}, fmt.Errorf(
-				"transport: no flipper found with MAC %s within %s — is it advertising? pair it once via your OS Bluetooth settings first",
-				mac, bleScanTimeout,
+				"transport: no flipper found with %s %s within %s — %s",
+				kind, target, bleScanTimeout, hint,
 			)
 		}
 		return bluetooth.Address{}, scanCtx.Err()
 	}
+}
+
+// resolveAddress is the platform-aware "find my Flipper" step. On
+// darwin with a UUID-form identifier it skips scanning entirely and
+// returns a synthetic Address that Adapter.Connect resolves via
+// CoreBluetooth's retrievePeripherals(withIdentifiers:) — the
+// canonical reconnect-by-stored-identifier pattern (Apple's
+// "Best Practices for Interacting with a Remote Peripheral Device").
+// All other paths (Linux/Windows; darwin with MAC or name) scan.
+//
+// The bool return signals "fast path was taken" so the caller can
+// optionally fall back to scan if Connect fails — the fast-path
+// Address may correspond to a peripheral that CoreBluetooth has
+// dropped from its cache (BT stack restart, peripheral unpaired
+// elsewhere, etc.).
+func (t *bleTransport) resolveAddress(ctx context.Context, adapter *bluetooth.Adapter) (bluetooth.Address, bool, error) {
+	if t.addrKind == addrKindUUID && runtime.GOOS == "darwin" {
+		if addr, ok := tryDirectConnectAddr(t.addr); ok {
+			slog.Debug("transport/ble: darwin direct-connect path", "uuid", t.addr)
+			return addr, true, nil
+		}
+	}
+	addr, err := scanForAddress(ctx, adapter, t.addrKind, t.addr)
+	return addr, false, err
+}
+
+// DiscoveredDevice is one peripheral seen during a Discover scan.
+// Address.String() is OS-dependent (MAC on Linux/Windows, CoreBluetooth
+// UUID on darwin); Name is whatever LocalName the peripheral
+// advertised, or empty.
+type DiscoveredDevice struct {
+	Address string
+	Name    string
+	RSSI    int16
+}
+
+// Discover scans for nearby BLE peripherals and returns one entry per
+// distinct address seen, deduplicated and sorted by RSSI (strongest
+// first). Used by the --ble-discover CLI flag so operators can find
+// their Flipper's stable identifier without grepping debug logs.
+//
+// The scan runs for at most timeout, or until ctx is cancelled. A
+// nil-or-empty result with no error means the adapter is up but no
+// peripherals were heard — usually indicates BT is off on the
+// surrounding devices, not a tool failure.
+func Discover(ctx context.Context, timeout time.Duration) ([]DiscoveredDevice, error) {
+	adapter := bluetooth.DefaultAdapter
+	if err := adapter.Enable(); err != nil {
+		return nil, fmt.Errorf("transport: enabling BLE adapter: %w", err)
+	}
+
+	scanCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var stopped atomic.Bool
+	scanDone := make(chan error, 1)
+	var mu sync.Mutex
+	seen := make(map[string]DiscoveredDevice)
+
+	go func() {
+		err := adapter.Scan(func(a *bluetooth.Adapter, sr bluetooth.ScanResult) {
+			if stopped.Load() {
+				return
+			}
+			addrStr := sr.Address.String()
+			mu.Lock()
+			prev, ok := seen[addrStr]
+			// Keep the strongest sighting and any non-empty name.
+			d := DiscoveredDevice{Address: addrStr, RSSI: sr.RSSI, Name: sr.LocalName()}
+			if ok {
+				if prev.Name != "" && d.Name == "" {
+					d.Name = prev.Name
+				}
+				if prev.RSSI > d.RSSI {
+					d.RSSI = prev.RSSI
+				}
+			}
+			seen[addrStr] = d
+			mu.Unlock()
+		})
+		scanDone <- err
+	}()
+
+	select {
+	case err := <-scanDone:
+		if err != nil {
+			return nil, fmt.Errorf("transport: BLE scan error: %w", err)
+		}
+	case <-scanCtx.Done():
+		stopped.Store(true)
+		_ = adapter.StopScan()
+		<-scanDone
+	}
+
+	mu.Lock()
+	out := make([]DiscoveredDevice, 0, len(seen))
+	for _, d := range seen {
+		out = append(out, d)
+	}
+	mu.Unlock()
+
+	// Strongest signal first; ties broken by name then address for
+	// deterministic output across runs.
+	sortDiscovered(out)
+	return out, nil
+}
+
+func sortDiscovered(d []DiscoveredDevice) {
+	for i := 1; i < len(d); i++ {
+		for j := i; j > 0; j-- {
+			if discoveredLess(d[j], d[j-1]) {
+				d[j], d[j-1] = d[j-1], d[j]
+				continue
+			}
+			break
+		}
+	}
+}
+
+func discoveredLess(a, b DiscoveredDevice) bool {
+	if a.RSSI != b.RSSI {
+		return a.RSSI > b.RSSI
+	}
+	if a.Name != b.Name {
+		return a.Name < b.Name
+	}
+	return a.Address < b.Address
 }
 
 // selectFlipperCharacteristics resolves the TX and RX characteristics
@@ -542,7 +782,7 @@ func (t *bleTransport) Write(p []byte) (int, error) {
 	}
 	if t.device == nil {
 		t.mu.Unlock()
-		return 0, fmt.Errorf("transport: ble write before Dial on %s", t.mac)
+		return 0, fmt.Errorf("transport: ble write before Dial on %s", t.addr)
 	}
 	txChar := t.txChar
 	chunkSize := t.mtu
@@ -560,10 +800,10 @@ func (t *bleTransport) Write(p []byte) (int, error) {
 		n, err := txChar.WriteWithoutResponse(p[total:end])
 		total += n
 		if err != nil {
-			return total, fmt.Errorf("transport: BLE write to %s: %w", t.mac, err)
+			return total, fmt.Errorf("transport: BLE write to %s: %w", t.addr, err)
 		}
 		if n == 0 {
-			return total, fmt.Errorf("transport: BLE write to %s returned 0 bytes", t.mac)
+			return total, fmt.Errorf("transport: BLE write to %s returned 0 bytes", t.addr)
 		}
 	}
 	return total, nil
@@ -614,7 +854,7 @@ func (t *bleTransport) Reconnect(ctx context.Context) error {
 	if oldDevice != nil {
 		if err := oldDevice.Disconnect(); err != nil {
 			slog.Debug("transport/ble: disconnect during reconnect returned error (continuing)",
-				"mac", t.mac, "err", err)
+				"mac", t.addr, "err", err)
 		}
 	}
 
@@ -641,7 +881,7 @@ func (t *bleTransport) Close() error {
 		return nil
 	}
 	if err := device.Disconnect(); err != nil {
-		return fmt.Errorf("transport: BLE disconnect from %s: %w", t.mac, err)
+		return fmt.Errorf("transport: BLE disconnect from %s: %w", t.addr, err)
 	}
 	return nil
 }
@@ -649,7 +889,7 @@ func (t *bleTransport) Close() error {
 // Identity returns the stable "ble://<MAC>" URL used for logging and
 // /status output. The MAC is already uppercased in bleDialer so this
 // is a pure formatter.
-func (t *bleTransport) Identity() string { return "ble://" + t.mac }
+func (t *bleTransport) Identity() string { return "ble://" + t.addr }
 
 // Kind returns the "ble" telemetry tag.
 func (t *bleTransport) Kind() string { return "ble" }

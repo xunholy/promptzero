@@ -75,6 +75,9 @@ func run() error {
 	if f.doInit {
 		return runInit()
 	}
+	if f.bleDiscover {
+		return runBLEDiscover(f.bleDiscoverDuration)
+	}
 
 	// First-run UX: no config anywhere and no API key env var? Print an
 	// onboarding hint and exit cleanly so this doesn't look like a crash.

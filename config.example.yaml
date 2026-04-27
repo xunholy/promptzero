@@ -21,7 +21,13 @@ serial:
   # transport_url overrides port + baud. Schemes:
   #   serial:///dev/ttyACM0?baud=230400
   #   mock:///dev/pts/5              (test harness pty slave)
-  #   ble://AA:BB:CC:DD:EE:FF        (live; Linux/macOS only — see docs)
+  #   ble://<addr>                   (live; Linux/macOS — not WSL2). The
+  #     <addr> is shape-detected:
+  #       80:E1:26:69:6E:55          hardware MAC (Linux/Windows native)
+  #       e127efc1-05ec-...          CoreBluetooth UUID (macOS; per-Mac)
+  #       Unholy                     advertising LocalName (any OS)
+  #     On macOS, run `promptzero --ble-discover` to find the UUID — the
+  #     OS hides hardware MACs and gives apps a per-Mac UUID instead.
   transport_url: ""
 
 # --- ESP32 Marauder (WiFi + BLE devboard) --------------------------------

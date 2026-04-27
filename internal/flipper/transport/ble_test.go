@@ -49,19 +49,24 @@ func TestBLEDialerURLParsing(t *testing.T) {
 			wantID: "ble://AA:BB:CC:DD:EE:FF",
 		},
 		{
-			name:   "empty MAC is rejected",
+			name:   "uppercase UUID is normalised to lowercase",
+			url:    "ble://E127EFC1-05EC-CE53-014E-B79FEE9117FA",
+			wantID: "ble://e127efc1-05ec-ce53-014e-b79fee9117fa",
+		},
+		{
+			name:   "lowercase UUID round-trips unchanged",
+			url:    "ble://e127efc1-05ec-ce53-014e-b79fee9117fa",
+			wantID: "ble://e127efc1-05ec-ce53-014e-b79fee9117fa",
+		},
+		{
+			name:   "device name is preserved verbatim",
+			url:    "ble://Unholy",
+			wantID: "ble://Unholy",
+		},
+		{
+			name:   "empty path is rejected",
 			url:    "ble://",
 			errSub: "empty path",
-		},
-		{
-			name:   "malformed MAC is rejected",
-			url:    "ble://not-a-mac",
-			errSub: "invalid MAC",
-		},
-		{
-			name:   "too-short MAC is rejected",
-			url:    "ble://AA:BB:CC",
-			errSub: "invalid MAC",
 		},
 	}
 	for _, tc := range cases {
@@ -332,11 +337,57 @@ func TestBLEKindAndDrainTimeoutConstants(t *testing.T) {
 func newBLEForTest(t *testing.T) *bleTransport {
 	t.Helper()
 	tx := &bleTransport{
-		mac: "AA:BB:CC:DD:EE:FF",
-		mtu: bleDefaultMTU - attHeaderOverhead,
+		addr:     "AA:BB:CC:DD:EE:FF",
+		addrKind: addrKindMAC,
+		mtu:      bleDefaultMTU - attHeaderOverhead,
 	}
 	tx.readCond = sync.NewCond(&tx.mu)
 	return tx
+}
+
+// TestParseBLEAddressClassification pins the shape-based classifier so
+// future churn in the parser doesn't silently re-route a MAC into the
+// name path (or vice versa) — both are valid forms but they take
+// different runtime paths (scan-match-on-Address vs scan-match-on-
+// LocalName, plus the darwin direct-connect fast path on UUID).
+func TestParseBLEAddressClassification(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		input    string
+		wantKind addrKind
+		wantOut  string
+	}{
+		{"80:E1:26:69:6E:55", addrKindMAC, "80:E1:26:69:6E:55"},
+		{"80-e1-26-69-6e-55", addrKindMAC, "80:E1:26:69:6E:55"},
+		{"e127efc1-05ec-ce53-014e-b79fee9117fa", addrKindUUID, "e127efc1-05ec-ce53-014e-b79fee9117fa"},
+		{"E127EFC1-05EC-CE53-014E-B79FEE9117FA", addrKindUUID, "e127efc1-05ec-ce53-014e-b79fee9117fa"},
+		{"Unholy", addrKindName, "Unholy"},
+		{"  spaced  ", addrKindName, "spaced"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.input, func(t *testing.T) {
+			t.Parallel()
+			gotKind, gotOut, err := parseBLEAddress(tc.input)
+			if err != nil {
+				t.Fatalf("parseBLEAddress(%q): %v", tc.input, err)
+			}
+			if gotKind != tc.wantKind {
+				t.Errorf("kind = %v, want %v", gotKind, tc.wantKind)
+			}
+			if gotOut != tc.wantOut {
+				t.Errorf("normalised = %q, want %q", gotOut, tc.wantOut)
+			}
+		})
+	}
+
+	if _, _, err := parseBLEAddress(""); err == nil {
+		t.Error("parseBLEAddress(\"\") expected error, got nil")
+	}
+	if _, _, err := parseBLEAddress("   "); err == nil {
+		t.Error("parseBLEAddress(whitespace-only) expected error, got nil")
+	}
 }
 
 // Compile-time assertion that the unit-test helper returns the

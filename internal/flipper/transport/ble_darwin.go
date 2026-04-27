@@ -15,7 +15,9 @@
 package transport
 
 import (
+	"context"
 	"fmt"
+	"time"
 )
 
 func init() {
@@ -26,5 +28,22 @@ func init() {
 // implementation. Match the shape of the non-darwin dialer's error
 // messages so operator-facing text is consistent.
 func bleDialerDarwin(url string) (Transport, error) {
+	return nil, fmt.Errorf("transport/ble: darwin BLE requires a macOS build with CGO enabled (GOOS=darwin CGO_ENABLED=1 go build). Cross-compiled darwin binaries do not include BLE")
+}
+
+// DiscoveredDevice mirrors the type exported by the real BLE
+// implementation. The stub form lets cmd/promptzero's --ble-discover
+// handler compile against this build configuration even though scans
+// are unsupported here.
+type DiscoveredDevice struct {
+	Address string
+	Name    string
+	RSSI    int16
+}
+
+// Discover stub for darwin without CGO. Returns the same "rebuild with
+// CGO" error the dialer does so the user gets one consistent diagnosis
+// regardless of which entry point they hit first.
+func Discover(_ context.Context, _ time.Duration) ([]DiscoveredDevice, error) {
 	return nil, fmt.Errorf("transport/ble: darwin BLE requires a macOS build with CGO enabled (GOOS=darwin CGO_ENABLED=1 go build). Cross-compiled darwin binaries do not include BLE")
 }
