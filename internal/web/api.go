@@ -57,6 +57,12 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/debug", s.requireAuth(s.handleDebug))
 
 	mux.HandleFunc("GET /api/device", s.requireAuth(s.handleDevice))
+	// TODO(SPEC.md §6.3): surface bridge state in /api/device JSON
+	// (`bridge: {active, reason, shared_port}`) and render the
+	// suspended Flipper pill / "via Flipper bridge" Marauder
+	// subtitle in the cockpit. Server-side state is already tracked
+	// via Server.SetBridgeMode; only the JSON wiring + frontend JS
+	// remain.
 
 	mux.HandleFunc("GET /api/fs/list", s.requireAuth(s.handleFSList))
 	mux.HandleFunc("GET /api/fs/read", s.requireAuth(s.handleFSRead))

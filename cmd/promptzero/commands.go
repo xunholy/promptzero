@@ -325,7 +325,9 @@ func printHelp() {
 func printStatus(cfg *config.Config, ai *agent.Agent, genLLM provider.Provider, wifi bool, hasVoice bool, auditLog *audit.Log, flip *flipper.Flipper, busy func() bool) {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  %s%sStatus%s\n", bold, white, reset)
-	if tx := flip.Transport(); tx != nil {
+	if flip != nil && flip.IsSuspended() {
+		statusWarn(fmt.Sprintf("Flipper Zero suspended — %s", flip.SuspensionReason()))
+	} else if tx := flip.Transport(); tx != nil {
 		statusOK(fmt.Sprintf("Flipper Zero on %s (%s)", tx.Identity(), tx.Kind()))
 	} else {
 		statusOK(fmt.Sprintf("Flipper Zero on %s", cfg.Serial.Port))
@@ -333,7 +335,16 @@ func printStatus(cfg *config.Config, ai *agent.Agent, genLLM provider.Provider, 
 	statusOK(fmt.Sprintf("Agent model: %s", cfg.Model))
 	statusOK(fmt.Sprintf("Generation: %s", genLLM.Name()))
 	if wifi {
-		statusOK(fmt.Sprintf("Marauder on %s", cfg.Marauder.Port))
+		if cfg.Marauder.Bridge {
+			if flip != nil && flip.IsSuspended() {
+				statusOK(fmt.Sprintf("Marauder via Flipper UART bridge on %s", cfg.Serial.Port))
+				statusWarn("Flipper CLI suspended — UART bridge active (flipper_* tools disabled)")
+			} else {
+				statusOK(fmt.Sprintf("Marauder via Flipper UART bridge on %s (hybrid; Flipper CLI on BLE)", cfg.Marauder.Port))
+			}
+		} else {
+			statusOK(fmt.Sprintf("Marauder on %s", cfg.Marauder.Port))
+		}
 	} else {
 		statusWarn("Marauder not connected (use --wifi)")
 	}

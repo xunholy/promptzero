@@ -54,6 +54,12 @@ const defaultMaxAccumBytes = 8 * 1024 * 1024 // 8 MiB
 // error so callers can inspect what arrived before the overflow.
 var ErrResponseTruncated = errors.New("flipper response truncated: exceeded max accumulator size")
 
+// ErrFlipperSuspended is returned by CLI methods when the Flipper handle
+// is suspended (typically because the Flipper firmware is in USB-UART
+// bridge mode and the CLI is unreachable by design). The wording is
+// public-facing — it surfaces in agent tool errors and the web UI banner.
+var ErrFlipperSuspended = errors.New("flipper offline (UART bridge active)")
+
 // Flipper is the command-layer handle for a connected device. It wraps a
 // transport.Transport and layers prompt framing, capability detection,
 // and hot-plug reconnect on top. All command wrappers (commands.go) go
@@ -83,6 +89,16 @@ type Flipper struct {
 	// without blocking on a mutex that may be held for the entire mirror
 	// session.
 	rpcMode atomic.Bool
+
+	// bridgeMode is set true when Suspend has been called — typically
+	// because the firmware has been switched into USB-UART bridge mode
+	// and the CLI is unreachable by design. Every CLI op short-circuits
+	// with ErrFlipperSuspended once this flips.
+	bridgeMode atomic.Bool
+	// bridgeReason carries the operator-visible string passed to Suspend
+	// (e.g. "UART bridge active") so /status and the web banner can
+	// surface why the handle is offline.
+	bridgeReason atomic.Pointer[string]
 
 	// reconnectCb receives "start"/"success"/"fail" phase updates so the
 	// REPL can render "● Flipper disconnected — reconnecting..." etc.
@@ -159,10 +175,47 @@ func (f *Flipper) Transport() transport.Transport { return f.transport }
 // replugged and auto-detect didn't fire (e.g., the agent was idle and no
 // IO error surfaced the drop).
 func (f *Flipper) Reconnect(ctx context.Context) error {
+	if f.bridgeMode.Load() {
+		return ErrFlipperSuspended
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.disconnected.Store(true)
 	return f.reconnectIfNeededLocked(ctx)
+}
+
+// Suspend marks this handle inactive and closes the underlying transport
+// so a sibling process (e.g. marauder.Connect) can open the same OS-level
+// port. Subsequent CLI calls return ErrFlipperSuspended until the process
+// exits. Suspend is idempotent — the first call's reason wins.
+func (f *Flipper) Suspend(reason string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.bridgeMode.Load() {
+		return nil
+	}
+	r := reason
+	f.bridgeReason.Store(&r)
+	f.bridgeMode.Store(true)
+	if f.transport == nil {
+		return nil
+	}
+	return f.transport.Close()
+}
+
+// IsSuspended reports whether Suspend has been called.
+func (f *Flipper) IsSuspended() bool { return f.bridgeMode.Load() }
+
+// SuspensionReason returns the string passed to the most recent Suspend
+// call, or "" when not suspended.
+func (f *Flipper) SuspensionReason() string {
+	if !f.bridgeMode.Load() {
+		return ""
+	}
+	if r := f.bridgeReason.Load(); r != nil {
+		return *r
+	}
+	return ""
 }
 
 // SetReconnectCallback registers a function invoked at each reconnect phase
@@ -439,6 +492,9 @@ func (f *Flipper) Exec(command string) (string, error) {
 // ExecCtx is the context-aware variant of Exec. The ctx is honoured during
 // reconnect polling and during the 10 s per-command read deadline.
 func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
+	if f.bridgeMode.Load() {
+		return "", ErrFlipperSuspended
+	}
 	if f.rpcMode.Load() {
 		return "", ErrInRPCMode
 	}
@@ -546,6 +602,9 @@ func (f *Flipper) ExecLongCtx(ctx context.Context, command string, timeout time.
 	if timeout <= 0 {
 		timeout = 60 * time.Second
 	}
+	if f.bridgeMode.Load() {
+		return "", ErrFlipperSuspended
+	}
 	if f.rpcMode.Load() {
 		return "", ErrInRPCMode
 	}
@@ -594,6 +653,9 @@ func (f *Flipper) ExecLongCtx(ctx context.Context, command string, timeout time.
 // A Ctrl+C is always sent to the Flipper on exit so in-flight commands
 // (like `rfid read` or `subghz rx`) are halted.
 func (f *Flipper) StreamCtx(ctx context.Context, command string, onLine func(line string) (stop bool)) error {
+	if f.bridgeMode.Load() {
+		return ErrFlipperSuspended
+	}
 	if f.rpcMode.Load() {
 		return ErrInRPCMode
 	}
@@ -684,6 +746,9 @@ func (f *Flipper) WriteFile(path string, data []byte) error {
 // "storage remove <path>" before writing, or the re-written file will
 // contain concatenated data.
 func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) error {
+	if f.bridgeMode.Load() {
+		return ErrFlipperSuspended
+	}
 	if f.rpcMode.Load() {
 		return ErrInRPCMode
 	}

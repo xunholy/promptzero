@@ -242,8 +242,35 @@ type SerialConfig struct {
 
 type MarauderConfig struct {
 	Enabled  bool   `yaml:"enabled"`
-	Port     string `yaml:"port"`
+	Port     string `yaml:"port"` // ignored when Bridge=true
 	BaudRate int    `yaml:"baud_rate"`
+
+	// --- bridge mode (Marauder stacked on Flipper GPIO header) ---
+
+	// Bridge enables Marauder-via-Flipper-USB-UART-bridge mode. When
+	// true, PromptZero issues BridgeCommand on the Flipper CLI, then
+	// reopens the same serial port at BaudRate and wraps it as a
+	// Marauder client. Mutually exclusive with a separate-cable
+	// Marauder (Port is ignored when Bridge=true).
+	Bridge bool `yaml:"bridge,omitempty"`
+
+	// BridgeCommand is the firmware-specific CLI string to launch the
+	// USB-UART bridge app. Empty means use the package default
+	// (`loader open "USB-UART Bridge"`). Override for forks that ship
+	// the app under a different name.
+	BridgeCommand string `yaml:"bridge_command,omitempty"`
+
+	// BridgeSettle is the post-launch sleep before reopening the port
+	// as a Marauder. Empty/zero means use 750ms — long enough for the
+	// firmware to swap CDC handlers and re-issue line coding, short
+	// enough that operators don't notice. Tune up if your kernel
+	// re-enumerates the CDC node.
+	BridgeSettle time.Duration `yaml:"bridge_settle,omitempty"`
+
+	// BridgePortReopenTimeout is the max time to wait for
+	// marauder.Connect() to succeed after the bridge launches.
+	// Empty/zero means 5s. Increase on USB hubs with slow re-enum.
+	BridgePortReopenTimeout time.Duration `yaml:"bridge_port_reopen_timeout,omitempty"`
 }
 
 type WebConfig struct {

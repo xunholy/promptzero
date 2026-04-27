@@ -161,6 +161,13 @@ type Server struct {
 	flipperOn  atomic.Bool
 	marauderOn atomic.Bool
 
+	// bridgeOn is set when the Flipper has been suspended for
+	// USB-UART bridge mode (Marauder stacked on the GPIO header). The
+	// JSON wiring on /api/device + the cockpit pill rendering is
+	// deferred — see SPEC.md §6.3.
+	bridgeOn     atomic.Bool
+	bridgeReason atomic.Pointer[string]
+
 	// marauderInfo* fields back the status-bar Marauder pill. Both are
 	// optional metadata captured at setup time via SetMarauderInfo; the
 	// server itself never queries the Marauder directly because the only
@@ -383,6 +390,22 @@ func (s *Server) setUIContextFromWS(view, path string) {
 // SetMarauderConnected records the current Marauder serial state for the
 // /api/debug snapshot. Call on connect/disconnect transitions.
 func (s *Server) SetMarauderConnected(v bool) { s.marauderOn.Store(v) }
+
+// SetBridgeMode records that the Flipper has been suspended for
+// USB-UART bridge mode (Marauder stacked on Flipper GPIO header). The
+// reason string is operator-visible and surfaces in /status today;
+// JSON-on-the-wire surfacing for the cockpit and the pill rendering
+// in the frontend are deferred — see SPEC.md §6.3 and the TODO in
+// api.go.
+func (s *Server) SetBridgeMode(active bool, reason string) {
+	s.bridgeOn.Store(active)
+	if active {
+		r := reason
+		s.bridgeReason.Store(&r)
+	} else {
+		s.bridgeReason.Store(nil)
+	}
+}
 
 // SetMarauderInfo records the Marauder serial port name (e.g.
 // "/dev/ttyACM1") and firmware version string for the /api/device

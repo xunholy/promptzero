@@ -192,7 +192,7 @@ func run() error {
 
 	genLLM := setupGenerator(cfg, ai, flip, &client, f.genProvider, f.ollamaURL, f.ollamaModel)
 
-	hasMarauder, marauderClose := setupMarauder(cfg, ai, rec, f.wifiEnabled)
+	hasMarauder, marauderClose := setupMarauder(ctx, cfg, ai, rec, flip, f.wifiEnabled)
 	defer marauderClose()
 
 	_, bruceClose := setupBruce(ctx, cfg, ai)
@@ -204,7 +204,13 @@ func run() error {
 
 	voiceEngine := setupVoice(cfg)
 
-	printCapabilitySummary(hasMarauder, voiceEngine != nil)
+	// Pill rendering: bridgeMarauder gives the Marauder "(bridge)" tag
+	// in either single-cable or hybrid mode; flipperSuspended drives the
+	// red "(suspended)" Flipper pill, which only fires in single-cable
+	// mode (hybrid keeps CLI alive over BLE so the pill stays green).
+	bridgeMarauder := cfg.Marauder.Bridge && hasMarauder
+	flipperSuspended := flip != nil && flip.IsSuspended()
+	printCapabilitySummary(hasMarauder, voiceEngine != nil, bridgeMarauder, flipperSuspended)
 
 	if f.webMode {
 		return runWebMode(ctx, sh, cfg, WebDeps{

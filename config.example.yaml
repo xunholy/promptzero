@@ -27,8 +27,28 @@ serial:
 # --- ESP32 Marauder (WiFi + BLE devboard) --------------------------------
 marauder:
   enabled: false                     # flip to true when the devboard is plugged in
-  port: "/dev/ttyUSB0"               # separate USB serial port from the Flipper
+  port: "/dev/ttyUSB0"               # used when bridge=false (separate USB cable)
   baud_rate: 115200
+
+  # Marauder stacked on Flipper GPIO header (single USB cable to Flipper).
+  # When bridge=true, PromptZero launches the Flipper's USB-UART Bridge app
+  # and pipes the host serial port through to the Marauder. While bridge
+  # mode is active, all flipper_* tools are disabled (the CLI is gone by
+  # firmware design).
+  bridge: false
+  # Override per firmware: Momentum / Unleashed / RogueMaster all ship the
+  # app as "USB-UART Bridge" today; older OFW builds may expect a different
+  # name. Quotes are part of the CLI verb — keep them.
+  # bridge_command: 'loader open "USB-UART Bridge"'
+  # bridge_settle: 750ms
+  # bridge_port_reopen_timeout: 5s
+
+  # Hybrid mode — Flipper over BLE, Marauder via the USB bridge:
+  # Set serial.transport_url: "ble://AA:BB:CC:DD:EE:FF" AND
+  # marauder.bridge: true AND marauder.port: "/dev/ttyACM0".
+  # This keeps the Flipper CLI alive (over BLE) while the USB cable
+  # carries Marauder traffic. Requires native Linux or macOS — WSL2
+  # does not expose Bluetooth to the Linux guest.
 
 # --- Web UI --------------------------------------------------------------
 web:

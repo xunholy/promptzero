@@ -92,8 +92,28 @@ serial:
 # ESP32 Marauder WiFi devboard (optional)
 marauder:
   enabled: false
-  port: "/dev/ttyUSB0"    # Usually a separate USB serial port
+  port: "/dev/ttyUSB0"    # Used when bridge=false (separate USB cable)
   baud_rate: 115200
+
+  # Marauder stacked on Flipper GPIO header (single USB cable to Flipper).
+  # When bridge=true, PromptZero launches the Flipper's USB-UART Bridge app
+  # and pipes the host serial port through to the Marauder. While bridge
+  # mode is active, all flipper_* tools are disabled (the CLI is gone by
+  # firmware design).
+  bridge: false
+  # Override per firmware: Momentum / Unleashed / RogueMaster all ship the
+  # app as "USB-UART Bridge" today; older OFW builds may expect a different
+  # name. Quotes are part of the CLI verb — keep them.
+  # bridge_command: 'loader open "USB-UART Bridge"'
+  # bridge_settle: 750ms
+  # bridge_port_reopen_timeout: 5s
+
+  # Hybrid mode — Flipper over BLE, Marauder via the USB bridge:
+  # Set serial.transport_url: "ble://AA:BB:CC:DD:EE:FF" AND
+  # marauder.bridge: true AND marauder.port: "/dev/ttyACM0".
+  # This keeps the Flipper CLI alive (over BLE) while the USB cable
+  # carries Marauder traffic. Requires native Linux or macOS — WSL2
+  # does not expose Bluetooth to the Linux guest.
 
 # Web UI settings
 web:
@@ -184,6 +204,8 @@ type runFlags struct {
 	portOverride         string
 	transportOverride    string
 	marauderPortOverride string
+	marauderBridge       bool   // --marauder-bridge
+	marauderBridgeCmd    string // --marauder-bridge-command
 	webMode              bool
 	webPort              int
 	voiceMode            bool
@@ -209,12 +231,16 @@ func parseFlags() *runFlags {
 	f := &runFlags{}
 	flag.StringVar(&f.cfgPath, "config", "config.yaml", "Path to config file")
 	flag.StringVar(&f.portOverride, "port", "", "Flipper serial port (overrides config; e.g. /dev/ttyACM0 (Linux), /dev/tty.usbmodemflip_* (macOS), COM3 (Windows))")
-	flag.StringVar(&f.transportOverride, "transport", "", "Flipper transport URL (overrides --port + config). Schemes: serial:// (USB), mock:// (tests), ble:// (reserved; Phase-B)")
+	flag.StringVar(&f.transportOverride, "transport", "", "Flipper transport URL (overrides --port + config). Schemes: serial:// (USB), mock:// (tests), ble://AA:BB:CC:DD:EE:FF (requires native Linux or macOS; not WSL2)")
 	flag.BoolVar(&f.webMode, "web", false, "Start web UI mode")
 	flag.IntVar(&f.webPort, "web-port", 0, "Web server port (overrides config)")
 	flag.BoolVar(&f.voiceMode, "voice", false, "Enable voice input (requires sox + OPENAI_API_KEY)")
 	flag.BoolVar(&f.wifiEnabled, "wifi", false, "Connect to ESP32 Marauder WiFi devboard")
 	flag.StringVar(&f.marauderPortOverride, "marauder-port", "", "Marauder serial port (overrides config; e.g. /dev/ttyUSB0 for CP210x-bridged Marauders, /dev/ttyACM1 for ESP32-S2 native USB)")
+	flag.BoolVar(&f.marauderBridge, "marauder-bridge", false,
+		"Drive the Marauder via the Flipper's USB-UART bridge (Marauder stacked on GPIO header — single USB cable). Disables flipper_* tools while active.")
+	flag.StringVar(&f.marauderBridgeCmd, "marauder-bridge-command", "",
+		"Override the Flipper CLI command that launches the UART bridge app (default: loader open \"USB-UART Bridge\").")
 	flag.BoolVar(&f.mcpMode, "mcp", false, "Run as MCP server (stdin/stdout)")
 	flag.BoolVar(&f.doInit, "init", false, "Scaffold ~/.promptzero/config.yaml and exit")
 	flag.StringVar(&f.resumeID, "resume", "", "Resume a saved session by id")
@@ -249,6 +275,15 @@ func applyConfigOverrides(cfg *config.Config, f *runFlags) {
 	}
 	if f.marauderPortOverride != "" {
 		cfg.Marauder.Port = f.marauderPortOverride
+	}
+	if f.marauderBridge {
+		cfg.Marauder.Bridge = true
+		// Bridge mode implies Marauder is wanted; --wifi can also be
+		// omitted with this flag set.
+		cfg.Marauder.Enabled = true
+	}
+	if f.marauderBridgeCmd != "" {
+		cfg.Marauder.BridgeCommand = f.marauderBridgeCmd
 	}
 	if lvl := os.Getenv("PROMPTZERO_LOG_LEVEL"); lvl != "" {
 		cfg.Observability.LogLevel = lvl
@@ -723,10 +758,16 @@ func setupGenerator(cfg *config.Config, ai *agent.Agent, flip *flipper.Flipper, 
 
 // setupMarauder attempts to connect the ESP32 Marauder WiFi devboard
 // when enabled. Returns (hasMarauder, cleanup). A failed connection is
-// non-fatal — the operator can still drive the Flipper alone.
-func setupMarauder(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder, wifiEnabled bool) (bool, func()) {
+// non-fatal — the operator can still drive the Flipper alone. When
+// cfg.Marauder.Bridge is set, the Marauder is reached via the Flipper's
+// USB-UART Bridge app (single-cable rig); otherwise the legacy
+// separate-cable path is used.
+func setupMarauder(ctx context.Context, cfg *config.Config, ai *agent.Agent, rec *obs.Recorder, flip *flipper.Flipper, wifiEnabled bool) (bool, func()) {
 	if !wifiEnabled && !cfg.Marauder.Enabled {
 		return false, func() {}
+	}
+	if cfg.Marauder.Bridge {
+		return setupMarauderViaBridge(ctx, cfg, ai, flip, rec)
 	}
 	statusInfo(fmt.Sprintf("Connecting to Marauder on %s%s%s...", bold, cfg.Marauder.Port, reset))
 	m, err := marauder.Connect(cfg.Marauder.Port, cfg.Marauder.BaudRate)
@@ -739,6 +780,67 @@ func setupMarauder(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder, wifiE
 		rec.SetMarauderConnected(true)
 	}
 	statusOK("Marauder WiFi devboard connected")
+	return true, func() { m.Close() }
+}
+
+// setupMarauderViaBridge launches the Flipper's USB-UART Bridge app and
+// reopens the same serial port as a Marauder client. On success the
+// passed *flipper.Flipper is suspended and all flipper_* CLI ops will
+// return ErrFlipperSuspended until process exit (auto-resume is out of
+// scope — see SPEC §8).
+//
+// Returns (true, cleanup) on success; (false, no-op) on failure.
+// Failure is non-fatal — the operator gets a warning and the agent runs
+// Flipper-only.
+func setupMarauderViaBridge(ctx context.Context, cfg *config.Config, ai *agent.Agent, flip *flipper.Flipper, rec *obs.Recorder) (bool, func()) {
+	if flip == nil {
+		statusWarn("Marauder bridge requires a connected Flipper — connect Flipper first or remove --marauder-bridge")
+		return false, func() {}
+	}
+	if flip.IsSuspended() {
+		statusWarn("Flipper already suspended — refusing to re-run bridge setup")
+		return false, func() {}
+	}
+	// Hybrid (BLE Flipper + USB-bridged Marauder) needs an explicit
+	// Marauder USB device — the Flipper isn't on USB so cfg.Serial.Port
+	// is irrelevant. Single-cable still uses cfg.Serial.Port.
+	hybrid := false
+	port := cfg.Serial.Port
+	if t := flip.Transport(); t != nil && t.Kind() == "ble" {
+		hybrid = true
+		if cfg.Marauder.Port == "" {
+			statusWarn("Hybrid bridge mode requires --marauder-port (Flipper is on BLE; Marauder USB device path must be set explicitly)")
+			return false, func() {}
+		}
+		port = cfg.Marauder.Port
+	}
+	statusInfo(fmt.Sprintf("Launching Flipper USB-UART Bridge for Marauder on %s%s%s...", bold, port, reset))
+	m, err := marauder.ConnectViaFlipper(
+		ctx,
+		flip,
+		port,
+		cfg.Marauder.BaudRate,
+		cfg.Marauder.BridgeCommand,
+		cfg.Marauder.BridgeSettle,
+		cfg.Marauder.BridgePortReopenTimeout,
+	)
+	if err != nil {
+		statusWarn(fmt.Sprintf("Marauder bridge: %v", err))
+		return false, func() {}
+	}
+	ai.SetMarauder(m)
+	if rec != nil {
+		rec.SetMarauderConnected(true)
+		if !hybrid {
+			rec.SetFlipperConnected(false) // CLI is gone for the rest of the session
+		}
+	}
+	if hybrid {
+		statusOK(fmt.Sprintf("Marauder via Flipper UART bridge on %s (Flipper CLI on BLE — both active)", port))
+	} else {
+		statusOK(fmt.Sprintf("Marauder via Flipper UART bridge on %s (Flipper CLI suspended)", port))
+		statusWarn("flipper_* tools disabled while UART bridge is active")
+	}
 	return true, func() { m.Close() }
 }
 
@@ -841,15 +943,28 @@ func setupVoice(cfg *config.Config) *voice.Engine {
 
 // printCapabilitySummary emits the "N tools loaded — Flipper · …" banner
 // that tops the REPL. Shown once, right before the REPL starts or the
-// web server binds.
-func printCapabilitySummary(hasMarauder, hasVoice bool) {
+// web server binds. flipperSuspended drives the red "(suspended)"
+// Flipper pill (single-cable bridge); bridgeMarauder drives the magenta
+// "(bridge)" Marauder pill. Hybrid mode (BLE Flipper + USB Marauder) is
+// flipperSuspended=false, bridgeMarauder=true — Flipper stays green
+// because the CLI is still reachable over BLE.
+func printCapabilitySummary(hasMarauder, hasVoice, bridgeMarauder, flipperSuspended bool) {
 	printSeparator()
 
 	tools := len(agent.ToolNames(hasMarauder))
 	fmt.Fprintf(os.Stderr, "  %s%s%d tools%s loaded", bold, white, tools, reset)
-	features := []string{fmt.Sprintf("%sFlipper%s", green, reset)}
+
+	flipperPill := fmt.Sprintf("%sFlipper%s", green, reset)
+	if flipperSuspended {
+		flipperPill = fmt.Sprintf("%sFlipper (suspended)%s", red, reset)
+	}
+	features := []string{flipperPill}
 	if hasMarauder {
-		features = append(features, fmt.Sprintf("%sMarauder%s", cyan, reset))
+		marauderPill := fmt.Sprintf("%sMarauder%s", cyan, reset)
+		if bridgeMarauder {
+			marauderPill = fmt.Sprintf("%sMarauder (bridge)%s", magenta, reset)
+		}
+		features = append(features, marauderPill)
 	}
 	features = append(features, fmt.Sprintf("%sGenerate%s", magenta, reset))
 	if hasVoice {
