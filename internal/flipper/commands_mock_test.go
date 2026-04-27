@@ -4,10 +4,12 @@ package flipper_test
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/flipper/mock"
 )
 
@@ -846,5 +848,68 @@ func TestLoaderOpenSingleWordNameStillQuoted(t *testing.T) {
 	rx := string(m.BytesReceived())
 	if !strings.Contains(rx, `loader open "NFC"`) {
 		t.Errorf("single-word name should also be quoted; bytes=%q", rx)
+	}
+}
+
+// TestExecCtxHonoursPipelineTimeout verifies the per-op pipeline knob
+// reaches ExecCtx: a profile with a short Exec deadline must surface the
+// "command hung" error before a profile with a longer deadline would.
+// The mock suppresses the prompt for "freeze" so the read can never
+// terminate naturally — only the active timeout terminates the call.
+//
+// This is the pipeline-equivalent of the existing TestExecLongTimeoutSendsCtrlC
+// (which exercised the same hung-prompt path with a caller-supplied
+// duration). The pipeline path is the one the new --pipeline flag drives,
+// so it gets its own coverage so future maintainers can't break it.
+func TestExecCtxHonoursPipelineTimeout(t *testing.T) {
+	if testing.Short() {
+		// Pipeline test plumbs a real wall-clock deadline through the
+		// dispatcher; the short suite skips slow timing-sensitive tests.
+		t.Skip("skipping pipeline timeout test in -short mode")
+	}
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("freeze"),
+		mock.WithHandler("freeze", func(args []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	// Custom bundle: 250ms Exec deadline. Use SetPipelineBundle directly
+	// so the test isn't coupled to whichever named profile happens to
+	// have the smallest Exec budget — keeps the assertion focused on
+	// "the pipeline value reaches ExecCtx", not "Fast happens to be 5s".
+	bundle := flipper.ProfileSettings(flipper.ProfileBalanced)
+	bundle.Exec = 250 * time.Millisecond
+	flip.SetPipelineBundle(bundle)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	_, err := flip.ExecCtx(ctx, "freeze")
+	elapsed := time.Since(start)
+
+	if err == nil || !strings.Contains(err.Error(), "command hung") {
+		t.Fatalf("ExecCtx with 250ms pipeline deadline should surface 'command hung', got err=%v", err)
+	}
+	// Ceiling: 250ms deadline + drain (~100ms) + poll overshoot
+	// (≤100ms) + final drain — well under 1.5s. A 10s upper bound
+	// would flag a regression where the pipeline value was ignored
+	// and the legacy 10s default still fired.
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("ExecCtx took %v, want ≤1.5s — pipeline.Exec did not gate the read", elapsed)
+	}
+
+	// Mock must have observed the Ctrl+C the hang-recovery path sends.
+	rx := m.BytesReceived()
+	if !bytes.Contains(rx, []byte{'\x03'}) {
+		t.Errorf("mock did not receive Ctrl+C after pipeline timeout fired; bytes: %q", rx)
+	}
+
+	// Now widen the budget and prove a fresh call succeeds — confirms
+	// the swap is observed on the next ExecCtx, not just the first.
+	bundle.Exec = 5 * time.Second
+	flip.SetPipelineBundle(bundle)
+	if _, err := flip.DeviceInfo(); err != nil {
+		t.Errorf("DeviceInfo after timeout recovery: %v", err)
 	}
 }

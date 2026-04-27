@@ -165,7 +165,7 @@ func main() {
 
 	url := fmt.Sprintf("serial://%s?baud=%d", *port, *baud)
 	fmt.Printf("connecting %s ...\n", url)
-	flip, err := flipper.ConnectURL(ctx, url, 15*time.Second)
+	flip, _, err := flipper.ConnectURL(ctx, url, 15*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: ConnectURL: %v\n", err)
 		os.Exit(2)
@@ -330,7 +330,7 @@ func main() {
 			deadline := time.Now().Add(30 * time.Second)
 			var reconnected *flipper.Flipper
 			for time.Now().Before(deadline) {
-				f2, err := flipper.ConnectURL(reconnectCtx, url, 5*time.Second)
+				f2, _, err := flipper.ConnectURL(reconnectCtx, url, 5*time.Second)
 				if err == nil {
 					reconnected = f2
 					break

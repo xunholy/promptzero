@@ -80,7 +80,7 @@ func NewMockFlipper(t *testing.T, opts ...MockFlipperOption) *flipper.Flipper {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 
-	flip, err := flipper.ConnectURL(ctx, m.URL(), 5*time.Second)
+	flip, _, err := flipper.ConnectURL(ctx, m.URL(), 5*time.Second)
 	if err != nil {
 		t.Fatalf("testmocks: flipper connect: %v", err)
 	}

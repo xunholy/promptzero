@@ -35,14 +35,34 @@ func NewClient(tx transport.Transport) *Client {
 	return &Client{tx: tx}
 }
 
-// OpenOption configures one Open call. Currently the only knob is
-// whether to send the text-CLI "start_rpc_session\r" preamble — needed
-// on USB CDC, harmful on BLE where the transport is RPC-only from the
-// firmware's perspective.
+// OpenOption configures one Open call. Knobs:
+//   - WithSkipStartRPCSession: skip the text-CLI preamble (BLE-only).
+//   - WithPipeline: override the handshake retry/timeout policy.
 type OpenOption func(*openConfig)
 
 type openConfig struct {
 	skipStartRPCSession bool
+	// retryAttempts and retryDelay default to 5/500ms — the legacy
+	// values — so callers that don't pass WithPipeline observe
+	// byte-for-byte the same handshake timing as before the pipeline
+	// refactor.
+	retryAttempts int
+	retryDelay    time.Duration
+}
+
+// HandshakePolicy is the retry/timeout subset of a Pipeline that Open
+// actually consumes. Decoupling the type from the parent flipper.Pipeline
+// keeps internal/flipper/rpc free of an upward dependency on
+// internal/flipper (which would create an import cycle: flipper imports
+// rpc, so rpc cannot import flipper). Callers in package flipper supply
+// these values from their resolved Pipeline at Open time.
+type HandshakePolicy struct {
+	// Attempts is the number of Ping handshakes Open will issue before
+	// giving up. <=0 means use the legacy default (5).
+	Attempts int
+	// PingTimeout is the per-attempt context timeout for the Ping read.
+	// <=0 means use the legacy default (500ms).
+	PingTimeout time.Duration
 }
 
 // WithSkipStartRPCSession suppresses the "start_rpc_session\r" text
@@ -55,6 +75,24 @@ type openConfig struct {
 // handshake that follows will time out.
 func WithSkipStartRPCSession() OpenOption {
 	return func(c *openConfig) { c.skipStartRPCSession = true }
+}
+
+// WithPipeline overrides the handshake retry/timeout policy for one
+// Open call. Pass values resolved from the parent flipper.Pipeline
+// (Attempts ↔ RPCRetryAttempts, PingTimeout ↔ RPCRetryDelay) so the
+// chosen profile reaches every layer of the dispatch stack. When this
+// option is omitted Open uses the legacy 5-attempts / 500ms-per-Ping
+// policy, preserving today's wire timing for any caller that doesn't
+// know about pipelines.
+func WithPipeline(p HandshakePolicy) OpenOption {
+	return func(c *openConfig) {
+		if p.Attempts > 0 {
+			c.retryAttempts = p.Attempts
+		}
+		if p.PingTimeout > 0 {
+			c.retryDelay = p.PingTimeout
+		}
+	}
 }
 
 // Open transitions the Flipper from CLI mode to RPC mode by writing
@@ -76,7 +114,13 @@ func WithSkipStartRPCSession() OpenOption {
 // Pass WithSkipStartRPCSession to skip the text preamble + initial drain;
 // the Ping retry loop runs unchanged.
 func (c *Client) Open(ctx context.Context, opts ...OpenOption) error {
-	cfg := openConfig{}
+	cfg := openConfig{
+		// Legacy defaults — match the pre-pipeline hard-coded values so
+		// any caller that omits WithPipeline observes byte-for-byte the
+		// same handshake timing as before.
+		retryAttempts: 5,
+		retryDelay:    500 * time.Millisecond,
+	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -99,8 +143,8 @@ func (c *Client) Open(ctx context.Context, opts ...OpenOption) error {
 	}
 
 	var lastErr error
-	for attempt := 0; attempt < 5; attempt++ {
-		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	for attempt := 0; attempt < cfg.retryAttempts; attempt++ {
+		pingCtx, cancel := context.WithTimeout(ctx, cfg.retryDelay)
 		err := c.Ping(pingCtx)
 		cancel()
 		if err == nil {

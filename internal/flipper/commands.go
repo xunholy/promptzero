@@ -1334,11 +1334,17 @@ func parseKiBLine(line string) (bytes, kind string, ok bool) {
 // (key, value) pairs are reformatted as the same `key: value\n` block
 // the CLI emits so downstream parsing in DeviceInfoMap / parseKVBlock
 // is transport-agnostic.
+//
+// Migrated to the compat-layer dispatch (Phase A). The viaCLI/viaRPC
+// closures wrap the same code paths the old inline `if f.IsBLE()`
+// branch used, so the public behaviour is identical.
 func (f *Flipper) DeviceInfo() (string, error) {
-	if f.IsBLE() {
-		return f.deviceInfoViaRPC(context.Background())
-	}
-	return f.Exec("device_info")
+	return f.dispatch(
+		"device_info",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) { return f.Exec("device_info") },
+		func() (string, error) { return f.deviceInfoViaRPC(context.Background()) },
+	)
 }
 
 // deviceInfoViaRPC drives the BLE-only RPC dispatch for DeviceInfo.
@@ -1442,15 +1448,24 @@ func (f *Flipper) RawCLI(command string) (string, error) {
 // regardless of fork — fork-specific CLI spelling is not relevant —
 // and the (key, value) pairs are reformatted to the same `key: value`
 // block the CLI emits.
+//
+// Migrated to the compat-layer dispatch (Phase A). Fork-specific CLI
+// verb selection still happens inside the viaCLI closure — the
+// compat layer doesn't know about per-fork verb spellings, only
+// about transport-level routing.
 func (f *Flipper) PowerInfo() (string, error) {
-	if f.IsBLE() {
-		return f.powerInfoViaRPC(context.Background())
-	}
-	cmd := f.Capabilities().PowerInfoCmd
-	if cmd == "" {
-		cmd = "power_info" // conservative default
-	}
-	return f.Exec(cmd)
+	return f.dispatch(
+		"power_info",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) {
+			cmd := f.Capabilities().PowerInfoCmd
+			if cmd == "" {
+				cmd = "power_info" // conservative default
+			}
+			return f.Exec(cmd)
+		},
+		func() (string, error) { return f.powerInfoViaRPC(context.Background()) },
+	)
 }
 
 // powerInfoViaRPC drives the BLE-only RPC dispatch for PowerInfo.
@@ -1484,11 +1499,15 @@ func (f *Flipper) powerInfoViaRPC(ctx context.Context) (string, error) {
 // flushed. Both branches return an empty string on success to match
 // the CLI's typical short/empty output.
 // CLI: power reboot
+//
+// Migrated to the compat-layer dispatch (Phase A).
 func (f *Flipper) Reboot() (string, error) {
-	if f.IsBLE() {
-		return f.rebootViaRPC(context.Background(), pb.RebootRequest_OS)
-	}
-	return f.Exec("power reboot")
+	return f.dispatch(
+		"power reboot",
+		CommandSupport{HasRPCVerb: true, HasCLI: true},
+		func() (string, error) { return f.Exec("power reboot") },
+		func() (string, error) { return f.rebootViaRPC(context.Background(), pb.RebootRequest_OS) },
+	)
 }
 
 // rebootViaRPC drives the BLE-only RPC dispatch for Reboot /

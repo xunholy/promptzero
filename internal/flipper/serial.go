@@ -128,9 +128,23 @@ type Flipper struct {
 	// Zero means use the default (10 s).
 	writeFileTimeout time.Duration
 
+	// pipelineCfg holds the active Pipeline bundle (retry/timeout knobs
+	// for CLI / RPC / file write / reconnect). atomic.Pointer so a
+	// caller can SetPipeline live without racing an in-flight Exec —
+	// the dispatcher snapshots the pointer once at the top of each call
+	// and the swap is observed on the next call. nil means "use the
+	// Balanced defaults"; pipeline() resolves that.
+	pipelineCfg atomic.Pointer[Pipeline]
+
 	// state caches the most recent State() snapshot. See state.go — the
 	// cache has its own mutex so state probes never contend with Exec.
 	state stateCache
+
+	// connReport is the structured per-step diagnostic populated during
+	// ConnectURL and surfaced via SetConnectionReport / ConnectionReport
+	// (diagnostics.go). atomic.Pointer so /api/device can read while a
+	// future Reconnect path refreshes it.
+	connReport atomic.Pointer[ConnectionReport]
 }
 
 // SetMaxAccumBytes overrides the per-operation read-buffer cap. Values <= 0
@@ -250,6 +264,64 @@ func (f *Flipper) launchBridgeViaGPIORPC(ctx context.Context) (string, error) {
 		return "", ctx.Err()
 	}
 	return "", nil
+}
+
+// transportKind reports the kind string of the underlying transport
+// in the form RouteFor expects ("ble", "serial", "http", "mock").
+// Returns the empty string when the transport is nil — RouteFor
+// treats that as "USB-class" which is the safe default for unit
+// tests that build a *Flipper without a live transport.
+func (f *Flipper) transportKind() string {
+	if f.transport == nil {
+		return ""
+	}
+	return f.transport.Kind()
+}
+
+// dispatch picks the right execution path for an operation based on
+// its declared CommandSupport, then runs the appropriate closure.
+// Used by command wrappers that have migrated to the compat-layer
+// pattern; older wrappers continue to use the inline `if f.IsBLE()`
+// style and will be migrated in Phase B.
+//
+// Contract:
+//   - operation is the human-readable command name used in error
+//     messages (e.g. "device_info", "power reboot"). Pass the CLI
+//     verb when one exists; otherwise pass a short identifier.
+//   - viaCLI is invoked when RouteFor returns RouteTextCLI. It
+//     typically wraps a single f.Exec / f.ExecLong call.
+//   - viaRPC is invoked when RouteFor returns RouteRPC. It typically
+//     wraps a `*ViaRPC` helper that talks to f.bleClient.
+//   - Either closure may be nil; if the chosen route's closure is
+//     nil, dispatch returns an ErrCommandRequiresUSB-flavoured error
+//     so callers don't crash on a programming mistake.
+//
+// dispatch returns the closure's (string, error) verbatim — no
+// wrapping or transformation — so the migration is behaviour-
+// preserving for the public methods.
+func (f *Flipper) dispatch(
+	operation string,
+	support CommandSupport,
+	viaCLI func() (string, error),
+	viaRPC func() (string, error),
+) (string, error) {
+	decision := RouteFor(operation, support, f.transportKind(), f.Capabilities())
+	switch decision.Route {
+	case RouteTextCLI:
+		if viaCLI == nil {
+			return "", fmt.Errorf("%s: text-CLI route selected but no CLI closure provided", operation)
+		}
+		return viaCLI()
+	case RouteRPC:
+		if viaRPC == nil {
+			return "", fmt.Errorf("%s: RPC route selected but no RPC closure provided", operation)
+		}
+		return viaRPC()
+	case RouteUSBOnly:
+		return "", fmt.Errorf("%s: %w (%s)", operation, ErrCommandRequiresUSB, decision.Reason)
+	default:
+		return "", fmt.Errorf("%s: unknown route %q", operation, decision.Route)
+	}
 }
 
 // rpcModeError selects the right error when a CLI dispatch attempt
@@ -384,9 +456,20 @@ func (f *Flipper) reconnectIfNeededLocked(ctx context.Context) error {
 	}
 
 	origIdent := f.transport.Identity()
+	pl := f.pipeline()
 	to := f.connectTimeout
 	if to == 0 {
+		// connectTimeout was never recorded — fall back to the active
+		// pipeline's Connect budget. Final fallback is 5s for parity with
+		// the pre-pipeline behaviour when both are unset.
+		to = pl.Connect
+	}
+	if to == 0 {
 		to = 5 * time.Second
+	}
+	retrySleep := pl.ReconnectAttemptDelay
+	if retrySleep <= 0 {
+		retrySleep = 250 * time.Millisecond
 	}
 	origUID := ""
 	if caps := f.caps.Load(); caps != nil {
@@ -404,7 +487,7 @@ func (f *Flipper) reconnectIfNeededLocked(ctx context.Context) error {
 		// Transport.Reconnect is responsible for the physical-layer
 		// dance (close old fd, rescan candidate ports, reopen).
 		if err := f.transport.Reconnect(ctx); err != nil {
-			time.Sleep(250 * time.Millisecond)
+			time.Sleep(retrySleep)
 			continue
 		}
 		// Run the CLI handshake on the freshly reopened transport.
@@ -412,19 +495,19 @@ func (f *Flipper) reconnectIfNeededLocked(ctx context.Context) error {
 		err := f.handshake(hsCtx)
 		cancel()
 		if err != nil {
-			time.Sleep(250 * time.Millisecond)
+			time.Sleep(retrySleep)
 			continue
 		}
 		// Verify identity if we knew it before.
 		if origUID != "" {
 			info, ierr := f.execLocked(ctx, "device_info", 5*time.Second)
 			if ierr != nil {
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(retrySleep)
 				continue
 			}
 			c := detectCapabilities(info)
 			if c.HardwareUID != origUID {
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(retrySleep)
 				continue
 			}
 			f.caps.Store(&c)
@@ -489,7 +572,8 @@ var ErrConnectTimeout = errors.New("timeout waiting for Flipper CLI prompt")
 // pick a non-serial transport should use ConnectURL directly.
 func Connect(ctx context.Context, portName string, baudRate int, timeout time.Duration) (*Flipper, error) {
 	url := fmt.Sprintf("serial://%s?baud=%d", portName, baudRate)
-	return ConnectURL(ctx, url, timeout)
+	flip, _, err := ConnectURL(ctx, url, timeout)
+	return flip, err
 }
 
 // ConnectURL opens the transport identified by rawURL and performs the
@@ -497,21 +581,57 @@ func Connect(ctx context.Context, portName string, baudRate int, timeout time.Du
 // package; a bare device path (e.g. "/dev/ttyACM0") is accepted as
 // shorthand for serial://.
 //
+// Returns the connected handle, a populated *ConnectionReport detailing
+// each step's outcome and timing (always non-nil — even on error so
+// operators can see which step actually failed), and any terminal
+// error. On error the transport is already closed and the *Flipper is
+// nil. On success the report is also stashed on the returned handle
+// (Flipper.ConnectionReport) so /api/device can surface it.
+//
 // The handshake is cancelable: if ctx is cancelled or timeout elapses before
-// the prompt arrives, Connect closes the transport and returns ctx.Err() or
+// the prompt arrives, ConnectURL closes the transport and returns ctx.Err() or
 // ErrConnectTimeout respectively.
-func ConnectURL(ctx context.Context, rawURL string, timeout time.Duration) (*Flipper, error) {
+func ConnectURL(ctx context.Context, rawURL string, timeout time.Duration) (*Flipper, *ConnectionReport, error) {
+	report := NewConnectionReport()
+	defer report.Complete()
+
 	dbg("ConnectURL: opening %s", rawURL)
 	tx, err := transport.Open(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("resolving transport: %w", err)
+		report.Add(Check{
+			Name:   "transport.open",
+			Level:  LevelFail,
+			Detail: fmt.Sprintf("resolve %s: %v", rawURL, err),
+		})
+		return nil, report, fmt.Errorf("resolving transport: %w", err)
 	}
+	report.Add(Check{
+		Name:   "transport.open",
+		Level:  LevelPass,
+		Detail: rawURL,
+	})
+
+	dialStart := time.Now()
 	dialCtx, cancelDial := context.WithTimeout(ctx, timeout)
-	defer cancelDial()
 	if err := tx.Dial(dialCtx); err != nil {
-		return nil, fmt.Errorf("opening transport %s: %w", rawURL, err)
+		cancelDial()
+		report.Add(Check{
+			Name:    "transport.dial",
+			Level:   LevelFail,
+			Detail:  fmt.Sprintf("%s: %v", rawURL, err),
+			Elapsed: time.Since(dialStart),
+		})
+		return nil, report, fmt.Errorf("opening transport %s: %w", rawURL, err)
 	}
+	cancelDial()
+	dialElapsed := time.Since(dialStart)
 	dbg("ConnectURL: transport dialled (%s)", tx.Identity())
+	report.Add(Check{
+		Name:    "transport.dial",
+		Level:   LevelPass,
+		Detail:  tx.Identity(),
+		Elapsed: dialElapsed,
+	})
 
 	f := &Flipper{
 		transport:      tx,
@@ -530,19 +650,41 @@ func ConnectURL(ctx context.Context, rawURL string, timeout time.Duration) (*Fli
 	// ErrCommandRequiresUSB on this transport.
 	if tx.Kind() == "ble" {
 		dbg("ConnectURL: BLE transport detected; entering permanent RPC mode")
+		report.Add(Check{
+			Name:   "handshake",
+			Level:  LevelSkipped,
+			Detail: "ble transport: no text CLI on BLE serial endpoint",
+		})
+		rpcStart := time.Now()
 		client := rpc.NewClient(tx)
 		openCtx, openCancel := context.WithTimeout(ctx, timeout)
-		defer openCancel()
 		if err := client.Open(openCtx, rpc.WithSkipStartRPCSession()); err != nil {
+			openCancel()
 			_ = tx.Close()
-			return nil, fmt.Errorf("opening RPC session over BLE: %w", err)
+			report.Add(Check{
+				Name:    "rpc.open",
+				Level:   LevelFail,
+				Detail:  err.Error(),
+				Elapsed: time.Since(rpcStart),
+			})
+			return nil, report, fmt.Errorf("opening RPC session over BLE: %w", err)
 		}
+		openCancel()
 		f.bleClient = client
 		f.rpcMode.Store(true)
 		dbg("ConnectURL: BLE RPC session ready (Identity=%s)", tx.Identity())
-		return f, nil
+		report.Add(Check{
+			Name:    "rpc.open",
+			Level:   LevelPass,
+			Detail:  tx.Identity(),
+			Elapsed: time.Since(rpcStart),
+		})
+		runDetectCapabilitiesCheck(f, report)
+		f.SetConnectionReport(report)
+		return f, report, nil
 	}
 
+	handshakeStart := time.Now()
 	handshakeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -558,19 +700,78 @@ func ConnectURL(ctx context.Context, rawURL string, timeout time.Duration) (*Fli
 	case err := <-done:
 		if err != nil {
 			_ = tx.Close()
-			return nil, err
+			report.Add(Check{
+				Name:    "handshake",
+				Level:   LevelFail,
+				Detail:  err.Error(),
+				Elapsed: time.Since(handshakeStart),
+			})
+			return nil, report, err
 		}
-		return f, nil
+		report.Add(Check{
+			Name:    "handshake",
+			Level:   LevelPass,
+			Detail:  "cli prompt detected",
+			Elapsed: time.Since(handshakeStart),
+		})
+		runDetectCapabilitiesCheck(f, report)
+		f.SetConnectionReport(report)
+		return f, report, nil
 	case <-handshakeCtx.Done():
 		// Closing the transport unblocks any read pending inside
 		// handshake().
 		_ = tx.Close()
 		<-done
+		report.Add(Check{
+			Name:    "handshake",
+			Level:   LevelFail,
+			Detail:  fmt.Sprintf("no prompt within %v", timeout),
+			Elapsed: time.Since(handshakeStart),
+		})
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, report, ctx.Err()
 		}
-		return nil, fmt.Errorf("%w after %v (is the Flipper on the home screen and awake?)", ErrConnectTimeout, timeout)
+		return nil, report, fmt.Errorf("%w after %v (is the Flipper on the home screen and awake?)", ErrConnectTimeout, timeout)
 	}
+}
+
+// runDetectCapabilitiesCheck calls DetectCapabilities and records the
+// outcome as a single "detect_capabilities" check. Errors are non-fatal
+// — DetectCapabilities falls back to conservative defaults — so the
+// failure surfaces as LevelWarn, not LevelFail. Subsequent code on the
+// happy path can still query f.Capabilities().
+func runDetectCapabilitiesCheck(f *Flipper, report *ConnectionReport) {
+	start := time.Now()
+	caps, err := f.DetectCapabilities()
+	elapsed := time.Since(start)
+	if err != nil {
+		report.Add(Check{
+			Name:    "detect_capabilities",
+			Level:   LevelWarn,
+			Detail:  fmt.Sprintf("falling back to defaults: %v", err),
+			Elapsed: elapsed,
+		})
+		return
+	}
+	detail := caps.HardwareName
+	if fork := strings.TrimSpace(caps.FriendlyFork()); fork != "" {
+		if detail != "" {
+			detail += " · "
+		}
+		detail += fork
+		if v := strings.TrimSpace(caps.FirmwareVersion); v != "" {
+			detail += " " + v
+		}
+	}
+	if detail == "" {
+		detail = "capabilities detected"
+	}
+	report.Add(Check{
+		Name:    "detect_capabilities",
+		Level:   LevelPass,
+		Detail:  detail,
+		Elapsed: elapsed,
+	})
 }
 
 // handshake breaks any running app with Ctrl+C + CR and reads until the first
@@ -662,7 +863,13 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 		return "", fmt.Errorf("sending command: %w", err)
 	}
 
+	// Pipeline is the source of truth; SetExecTimeout still wins when
+	// non-zero so existing callers that explicitly tightened the deadline
+	// keep that override (e.g. cfg.Flipper.ExecTimeout in setup.go).
 	execTO := f.execTimeout
+	if execTO <= 0 {
+		execTO = f.pipeline().Exec
+	}
 	if execTO <= 0 {
 		execTO = 10 * time.Second
 	}
@@ -936,7 +1143,12 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 		written += n
 	}
 
+	// Same precedence as ExecCtx: explicit SetWriteFileTimeout wins over
+	// the pipeline value when set; otherwise read from the active profile.
 	writeTO := f.writeFileTimeout
+	if writeTO <= 0 {
+		writeTO = f.pipeline().WriteFile
+	}
 	if writeTO <= 0 {
 		writeTO = 10 * time.Second
 	}

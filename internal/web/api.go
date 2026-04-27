@@ -699,6 +699,9 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 		"ble":      bleSection,
 		"sd":       sdSection,
 	}
+	if report := s.flipper.ConnectionReport(); report != nil {
+		resp["connection_report"] = report.ToJSON()
+	}
 	if len(powerInfoErrors) > 0 {
 		resp["power_info_errors"] = powerInfoErrors
 	}

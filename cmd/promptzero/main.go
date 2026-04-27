@@ -167,6 +167,7 @@ func run() error {
 		return err
 	}
 	gateEnabled := setupRiskGate(cfg, f.confirmRisk, f.yoloMode, activePersona, ai)
+	setupMode(cfg, f.modeName, ai)
 	setupSessionStore(ai, f.resumeID, f.autoResume)
 
 	auditLog, auditClose := setupAuditLog(ai)

@@ -25,7 +25,7 @@ func TestConnectURLViaMockScheme(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	flip, err := flipper.ConnectURL(ctx, m.URL(), 10*time.Second)
+	flip, _, err := flipper.ConnectURL(ctx, m.URL(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("ConnectURL: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestConnectURL_BLEUnreachableMAC(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, err := flipper.ConnectURL(ctx, "ble://00:00:00:00:00:00", 2*time.Second)
+	_, _, err := flipper.ConnectURL(ctx, "ble://00:00:00:00:00:00", 2*time.Second)
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -109,7 +109,7 @@ func TestConnectURLViaBLEScheme(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	flip, err := flipper.ConnectURL(ctx, "ble://"+mac, 45*time.Second)
+	flip, _, err := flipper.ConnectURL(ctx, "ble://"+mac, 45*time.Second)
 	if err != nil {
 		t.Fatalf("ConnectURL(ble://%s): %v", mac, err)
 	}

@@ -20,6 +20,7 @@ import (
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
@@ -175,6 +176,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 	case "/persona":
 		ed.writeOutput(func() { handlePersona(deps.ai, deps.personas, fields[1:]) })
 		return true, false
+	case "/mode":
+		ed.writeOutput(func() { handleMode(deps.ai, fields[1:]) })
+		return true, false
 	case "/watch":
 		ed.writeOutput(func() { handleWatchCmd(deps.watchMgr, fields[1:]) })
 		return true, false
@@ -288,6 +292,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/export training-set <path>%s  Export audit as JSONL fine-tuning dataset (--format=chat --success-only)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sOperator%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/mode [name]%s           Show or switch operation mode (standard|recon|intel|stealth|assault)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/webhooks [test <name>]%s List outbound webhooks with recent deliveries\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/validate <path>%s       Lint a BadUSB .txt payload on the Flipper SD card\n", cyan, reset)
@@ -1614,6 +1619,42 @@ func handlePersona(ai *agent.Agent, reg *persona.Registry, args []string) {
 	}
 	fmt.Fprintf(os.Stderr, "  %s●%s persona switched to %s%s%s %s(%s)%s\n",
 		green, reset, bold, p.Name, reset, dim, scope, reset)
+}
+
+// handleMode implements /mode. With no args it prints the active mode
+// plus the catalogue of alternatives and their descriptions. With a
+// name it switches modes; the agent enforces the new allow-list on
+// the next dispatch. Unknown modes echo a self-correcting error
+// listing the supported names.
+func handleMode(ai *agent.Agent, args []string) {
+	if len(args) == 0 {
+		current := ai.Mode()
+		fmt.Fprintf(os.Stderr, "  %s●%s active: %s%s%s %s· %s%s\n",
+			green, reset, bold, current.DisplayName(), reset,
+			dim, current.Description(), reset)
+		fmt.Fprintf(os.Stderr, "  %savailable modes:%s\n", dim, reset)
+		for _, m := range mode.All() {
+			marker := " "
+			if m == current {
+				marker = "*"
+			}
+			fmt.Fprintf(os.Stderr, "    %s%s%s %s%-9s%s %s%s%s\n",
+				dim, marker, reset,
+				bold, m.DisplayName(), reset,
+				dim, m.Description(), reset)
+		}
+		return
+	}
+	name := args[0]
+	target, err := mode.ParseMode(name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● %v%s\n", red, err, reset)
+		return
+	}
+	ai.SetMode(target)
+	fmt.Fprintf(os.Stderr, "  %s●%s mode switched to %s%s%s %s· %s%s\n",
+		green, reset, bold, target.DisplayName(), reset,
+		dim, target.Description(), reset)
 }
 
 // handleWatchCmd implements /watch. With no args it summarises watched

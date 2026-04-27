@@ -113,6 +113,60 @@ func TestMockLoaderListParsed(t *testing.T) {
 	}
 }
 
+// TestMockConnectionReport drives ConnectURL through the mock and
+// asserts the structured ConnectionReport surfaces the canonical
+// happy-path checks operators rely on (transport.dial + handshake at
+// LevelPass, plus detect_capabilities). The point isn't to pin every
+// detail string — it's to guarantee the report has the named checks
+// at all, since /api/device and PROMPTZERO_VERBOSE_CONNECT consumers
+// downstream read these names by hand.
+func TestMockConnectionReport(t *testing.T) {
+	m := mock.Spawn(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	flip, report, err := flipper.ConnectURL(ctx, m.URL(), 10*time.Second)
+	if err != nil {
+		t.Fatalf("ConnectURL: %v", err)
+	}
+	defer flip.Close()
+
+	if report == nil {
+		t.Fatal("ConnectURL returned nil report on success")
+	}
+	if got := flip.ConnectionReport(); got != report {
+		t.Errorf("Flipper.ConnectionReport mismatch: got %p want %p", got, report)
+	}
+
+	want := map[string]flipper.CheckLevel{
+		"transport.open":      flipper.LevelPass,
+		"transport.dial":      flipper.LevelPass,
+		"handshake":           flipper.LevelPass,
+		"detect_capabilities": flipper.LevelPass,
+	}
+	got := map[string]flipper.CheckLevel{}
+	for _, c := range report.Checks() {
+		got[c.Name] = c.Level
+	}
+	for name, lvl := range want {
+		if got[name] != lvl {
+			t.Errorf("check %q: level = %q, want %q (full report=%+v)",
+				name, got[name], lvl, report.Checks())
+		}
+	}
+
+	if report.PassedCount() < 3 {
+		t.Errorf("PassedCount = %d, want at least 3", report.PassedCount())
+	}
+	if report.FailedCount() != 0 {
+		t.Errorf("FailedCount = %d, want 0", report.FailedCount())
+	}
+	if report.CompletedAt.IsZero() {
+		t.Error("CompletedAt not stamped on success")
+	}
+}
+
 // TestMockSanitisesCRLF proves the CRLF sanitiser prevents an LLM-supplied
 // path containing \r from injecting a second CLI command. Without
 // sanitisation the mock would observe 2 commands; with it, only 1.

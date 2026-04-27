@@ -476,7 +476,7 @@ func main() {
 	fmt.Printf("connecting %s ...\n", url)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	flip, err := flipper.ConnectURL(ctx, url, 10*time.Second)
+	flip, _, err := flipper.ConnectURL(ctx, url, 10*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: ConnectURL: %v\n", err)
 		os.Exit(1)

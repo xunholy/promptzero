@@ -40,20 +40,25 @@ func (c Config) GoString() string {
 }
 
 type Config struct {
-	APIKey        string              `yaml:"api_key"`
-	OpenAIKey     string              `yaml:"openai_api_key"`
-	Model         string              `yaml:"model"`
-	Serial        SerialConfig        `yaml:"serial"`
-	Marauder      MarauderConfig      `yaml:"marauder"`
-	Bruce         BruceConfig         `yaml:"bruce,omitempty"`
-	Faultier      FaultierConfig      `yaml:"faultier,omitempty"`
-	BusPirate     BusPirateConfig     `yaml:"buspirate,omitempty"`
-	Flipper       FlipperConfig       `yaml:"flipper,omitempty"`
-	Agent         AgentConfig         `yaml:"agent,omitempty"`
-	Web           WebConfig           `yaml:"web"`
-	Devices       map[string]Device   `yaml:"devices"`
-	ConfirmRisk   string              `yaml:"confirm_risk,omitempty"`
-	Persona       string              `yaml:"persona,omitempty"`
+	APIKey      string            `yaml:"api_key"`
+	OpenAIKey   string            `yaml:"openai_api_key"`
+	Model       string            `yaml:"model"`
+	Serial      SerialConfig      `yaml:"serial"`
+	Marauder    MarauderConfig    `yaml:"marauder"`
+	Bruce       BruceConfig       `yaml:"bruce,omitempty"`
+	Faultier    FaultierConfig    `yaml:"faultier,omitempty"`
+	BusPirate   BusPirateConfig   `yaml:"buspirate,omitempty"`
+	Flipper     FlipperConfig     `yaml:"flipper,omitempty"`
+	Agent       AgentConfig       `yaml:"agent,omitempty"`
+	Web         WebConfig         `yaml:"web"`
+	Devices     map[string]Device `yaml:"devices"`
+	ConfirmRisk string            `yaml:"confirm_risk,omitempty"`
+	Persona     string            `yaml:"persona,omitempty"`
+	// Mode selects the operation profile (see internal/mode):
+	// standard | recon | intel | stealth | assault. Empty string
+	// resolves to standard (no constraints, behaviour identical to
+	// pre-mode builds). The CLI flag --mode overrides this value.
+	Mode          string              `yaml:"mode,omitempty"`
 	Watch         WatchConfig         `yaml:"watch,omitempty"`
 	Webhooks      []WebhookConfig     `yaml:"webhooks,omitempty"`
 	Observability ObservabilityConfig `yaml:"observability,omitempty"`
@@ -99,6 +104,11 @@ type FlipperConfig struct {
 	// WriteFileTimeout overrides the 10 s post-payload read deadline in
 	// WriteFileCtx.
 	WriteFileTimeout time.Duration `yaml:"write_file_timeout,omitempty"`
+	// Pipeline picks the named retry/timeout profile applied across the
+	// command-dispatch layer. One of "fast", "balanced", "resilient".
+	// Empty resolves to "balanced", which preserves legacy behaviour
+	// byte-for-byte. The CLI flag --pipeline overrides this when set.
+	Pipeline string `yaml:"pipeline,omitempty"`
 }
 
 // AgentConfig holds agent-level tunables that can be overridden via the

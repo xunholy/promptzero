@@ -73,7 +73,11 @@ func (f *Flipper) EnterRPC(ctx context.Context) (*rpc.Client, func(), error) {
 	f.drain()
 
 	client := rpc.NewClient(f.transport)
-	if err := client.Open(ctx); err != nil {
+	pl := f.pipeline()
+	if err := client.Open(ctx, rpc.WithPipeline(rpc.HandshakePolicy{
+		Attempts:    pl.RPCRetryAttempts,
+		PingTimeout: pl.RPCRetryDelay,
+	})); err != nil {
 		f.mu.Unlock()
 		return nil, nil, fmt.Errorf("rpc: open session: %w", err)
 	}

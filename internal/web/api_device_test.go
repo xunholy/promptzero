@@ -31,7 +31,7 @@ func connectFlipperToMock(t *testing.T, m *mock.Mock) *flipper.Flipper {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
-	flip, err := flipper.ConnectURL(ctx, m.URL(), 10*time.Second)
+	flip, _, err := flipper.ConnectURL(ctx, m.URL(), 10*time.Second)
 	if err != nil {
 		t.Fatalf("ConnectURL: %v", err)
 	}

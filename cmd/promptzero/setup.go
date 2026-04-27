@@ -25,6 +25,7 @@ import (
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/mcp"
 	"github.com/xunholy/promptzero/internal/mcpfed"
+	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
@@ -219,9 +220,11 @@ type runFlags struct {
 	ollamaURL            string
 	ollamaModel          string
 	connectTimeout       time.Duration
+	pipelineProfile      string
 	yoloMode             bool
 	confirmRisk          string
 	personaName          string
+	modeName             string // --mode
 	watchPaths           stringSlice
 	bleDiscover          bool          // --ble-discover
 	bleDiscoverDuration  time.Duration // --ble-discover-duration
@@ -251,9 +254,14 @@ func parseFlags() *runFlags {
 	flag.StringVar(&f.ollamaURL, "ollama-url", "http://localhost:11434", "Ollama server URL (default: http://localhost:11434)")
 	flag.StringVar(&f.ollamaModel, "ollama-model", "llama3.1", "Ollama model for generation (default: llama3.1)")
 	flag.DurationVar(&f.connectTimeout, "connect-timeout", 10*time.Second, "Max time to wait for Flipper CLI prompt (default 10s; increase for flaky cables)")
+	flag.StringVar(&f.pipelineProfile, "pipeline", "", "Command pipeline profile: fast | balanced | resilient (default balanced; overrides flipper.pipeline in config). 'balanced' preserves legacy retry/timeout values; 'fast' shortens deadlines; 'resilient' lengthens them for flaky cables.")
 	flag.BoolVar(&f.yoloMode, "yolo", false, "Skip risk confirmations (shorthand for --confirm-risk=none)")
 	flag.StringVar(&f.confirmRisk, "confirm-risk", "", "Confirmation threshold: none|low|medium|high|critical (default: high)")
 	flag.StringVar(&f.personaName, "persona", "", "Operator persona (default: value from config or 'default')")
+	flag.StringVar(&f.modeName, "mode", "",
+		"Operation mode: standard|recon|intel|stealth|assault (default: standard — all groups allowed). "+
+			"Recon = read-only, no RF transmit; Intel = Recon plus host-side analysis; "+
+			"Stealth = minimal RF (Flipper CLI/storage/IR only); Assault = same surface as Standard with an explicit-intent banner.")
 	flag.Var(&f.watchPaths, "watch", "Watch a directory for FS events; repeat to watch several")
 	flag.BoolVar(&f.showVersion, "version", false, "Show version")
 	flag.BoolVar(&f.bleDiscover, "ble-discover", false, "Scan for nearby BLE peripherals and print their addresses + names + RSSI (use this to find the right ble:// identifier on macOS where hardware MACs are hidden), then exit.")
@@ -288,6 +296,11 @@ func applyConfigOverrides(cfg *config.Config, f *runFlags) {
 	}
 	if f.marauderBridgeCmd != "" {
 		cfg.Marauder.BridgeCommand = f.marauderBridgeCmd
+	}
+	if f.pipelineProfile != "" {
+		// Flag wins over config so an operator can override a pinned
+		// profile from a one-off command line without editing the file.
+		cfg.Flipper.Pipeline = f.pipelineProfile
 	}
 	if lvl := os.Getenv("PROMPTZERO_LOG_LEVEL"); lvl != "" {
 		cfg.Observability.LogLevel = lvl
@@ -326,9 +339,10 @@ func connectFlipper(ctx context.Context, sh *signalHandler, cfg *config.Config, 
 
 	start := time.Now()
 	connectCtx, releaseConnect := sh.withCancel(ctx)
-	flip, err := flipper.ConnectURL(connectCtx, transportURL, connectTimeout)
+	flip, report, err := flipper.ConnectURL(connectCtx, transportURL, connectTimeout)
 	releaseConnect()
 	if err != nil {
+		printConnectionReportVerbose(report)
 		if errors.Is(err, context.Canceled) {
 			statusWarn("Flipper connection cancelled")
 			return nil, func() {}, err
@@ -337,9 +351,11 @@ func connectFlipper(ctx context.Context, sh *signalHandler, cfg *config.Config, 
 		return nil, func() {}, fmt.Errorf("flipper: %w", err)
 	}
 
-	caps, capsErr := flip.DetectCapabilities()
+	// ConnectURL ran DetectCapabilities as part of the report; reuse the
+	// cached value rather than firing the command again.
+	caps := flip.Capabilities()
 	elapsed := time.Since(start).Round(time.Millisecond)
-	if capsErr != nil || caps.HardwareName == "" {
+	if caps.HardwareName == "" {
 		statusOK(fmt.Sprintf("Flipper connected %s(%s)%s", dim, elapsed, reset))
 	} else {
 		// Example: "Flipper connected: Yonigida · Xtreme XFW-0053 (122ms)"
@@ -349,9 +365,16 @@ func connectFlipper(ctx context.Context, sh *signalHandler, cfg *config.Config, 
 			dim, fw, reset,
 			dim, elapsed, reset))
 	}
+	printConnectionReportVerbose(report)
 	if !caps.HasNFCSubshell {
 		statusWarn(fmt.Sprintf("NFC CLI not available on %s firmware — NFC-detect/emulate tools will error with a hint", caps.FriendlyFork()))
 	}
+
+	// Apply the pipeline profile FIRST so per-op timeout overrides below
+	// can still narrow the deadline. SetPipeline normalises empty/unknown
+	// names to "balanced", which matches today's hard-coded behaviour
+	// byte-for-byte — so configs that never set a profile see no drift.
+	flip.SetPipeline(flipper.PipelineProfile(cfg.Flipper.Pipeline))
 
 	// Apply configurable per-operation timeouts. Zero values in the config
 	// leave the flip defaults (10 s) in place.
@@ -363,6 +386,55 @@ func connectFlipper(ctx context.Context, sh *signalHandler, cfg *config.Config, 
 	}
 
 	return flip, func() { flip.Close() }, nil
+}
+
+// printConnectionReportVerbose dumps every connection check to stderr in
+// "[LEVEL] name (Xms): detail" form when verbose logging is on.
+//
+// Trigger: PROMPTZERO_LOG_LEVEL=debug or PROMPTZERO_VERBOSE_CONNECT=1.
+// Default UX (single-line connect status) is unchanged — the verbose
+// dump is additive and silent unless explicitly enabled.
+func printConnectionReportVerbose(report *flipper.ConnectionReport) {
+	if report == nil {
+		return
+	}
+	if !verboseConnectEnabled() {
+		return
+	}
+	for _, c := range report.Checks() {
+		tag := strings.ToUpper(string(c.Level))
+		var colour string
+		switch c.Level {
+		case flipper.LevelPass:
+			colour = green
+		case flipper.LevelWarn:
+			colour = yellow
+		case flipper.LevelFail:
+			colour = red
+		default:
+			colour = dim
+		}
+		ms := c.Elapsed.Round(time.Millisecond)
+		line := fmt.Sprintf("    %s[%s]%s %s%s%s (%s): %s",
+			colour, tag, reset,
+			bold, c.Name, reset,
+			ms, c.Detail)
+		fmt.Fprintln(os.Stderr, line)
+	}
+}
+
+// verboseConnectEnabled reports whether the operator opted into the
+// per-check connection-report dump. Either knob flips it on so existing
+// PROMPTZERO_LOG_LEVEL=debug operators get it for free, while a future
+// --verbose flag can route through PROMPTZERO_VERBOSE_CONNECT.
+func verboseConnectEnabled() bool {
+	if v := strings.ToLower(strings.TrimSpace(os.Getenv("PROMPTZERO_LOG_LEVEL"))); v == "debug" {
+		return true
+	}
+	if v := strings.TrimSpace(os.Getenv("PROMPTZERO_VERBOSE_CONNECT")); v != "" && v != "0" && strings.ToLower(v) != "false" {
+		return true
+	}
+	return false
 }
 
 // setupMetrics builds the Prometheus recorder when metrics are enabled.
@@ -483,6 +555,36 @@ func setupRiskGate(cfg *config.Config, confirmRisk string, yolo bool, p *persona
 		statusWarn("Risk gate disabled — destructive tools run without prompting")
 	}
 	return enabled
+}
+
+// setupMode resolves the operation mode from CLI flag + config (flag
+// wins) and applies it to the agent. An empty string from both
+// sources falls through to mode.ModeStandard, which is the
+// behaviour-preserving default. Unknown values log a warning and
+// fall back to Standard rather than aborting startup — operators
+// who typo a mode shouldn't lose their whole session.
+func setupMode(cfg *config.Config, modeFlag string, ai *agent.Agent) {
+	raw := cfg.Mode
+	if modeFlag != "" {
+		raw = modeFlag
+	}
+	m, err := mode.ParseMode(raw)
+	if err != nil {
+		statusWarn(fmt.Sprintf("%v — falling back to standard", err))
+		m = mode.ModeStandard
+	}
+	ai.SetMode(m)
+	switch m {
+	case mode.ModeStandard:
+		// Default is silent — same banner real estate as today when
+		// no operator action is needed.
+	case mode.ModeAssault:
+		statusWarn(fmt.Sprintf("Operation mode: %s — %s", m.DisplayName(), m.Description()))
+	default:
+		statusOK(fmt.Sprintf("Operation mode: %s%s%s %s· %s%s",
+			bold, m.DisplayName(), reset,
+			dim, m.Description(), reset))
+	}
 }
 
 // setupSessionStore attaches the on-disk session store and honours

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
+	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
@@ -33,6 +35,12 @@ import (
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
 	"github.com/xunholy/promptzero/internal/vision"
 )
+
+// ErrBlockedByMode is the sentinel returned by dispatch when the
+// active operation mode does not allow a tool's group. Callers
+// (telemetry, UI) can errors.Is against this so the rejection is
+// distinguishable from a runtime failure.
+var ErrBlockedByMode = errors.New("tool blocked by operation mode")
 
 // maxHistory is the maximum number of messages retained in the conversation
 // history. When exceeded, the first 2 entries (initial context) are kept and
@@ -186,6 +194,12 @@ type Agent struct {
 	// still get a working agent without the facts feature.
 	targetMem *targetmem.Store
 
+	// opMode is the active operation mode (Standard, Recon, Intel,
+	// Stealth, Assault). Default is mode.ModeStandard, which permits
+	// every tool group — preserving historical behaviour for builds /
+	// callers that never set a mode. Read+written under a.mu.
+	opMode mode.Mode
+
 	// latestUIContext carries the navigation state forwarded from the web UI.
 	latestUIContext atomic.Pointer[agentUIContext]
 
@@ -255,12 +269,38 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 		model:            cfg.Model,
 		confirmThreshold: risk.High,
 		maxToolsPerTurn:  defaultMaxToolCallsPerTurn,
+		opMode:           mode.ModeStandard,
 	}
 
 	// Set up vision analyzer
 	a.vision = vision.New(client, cfg.Model)
 
 	return a
+}
+
+// SetMode swaps the active operation mode. The mode constrains which
+// tool groups dispatch will accept; see internal/mode for the
+// per-mode allow-lists. An empty Mode resets to mode.ModeStandard
+// (the default, behaviour-preserving profile).
+func (a *Agent) SetMode(m mode.Mode) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if m == "" {
+		a.opMode = mode.ModeStandard
+		return
+	}
+	a.opMode = m
+}
+
+// Mode returns the currently-active operation mode. Returns
+// mode.ModeStandard when no mode has been explicitly set.
+func (a *Agent) Mode() mode.Mode {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.opMode == "" {
+		return mode.ModeStandard
+	}
+	return a.opMode
 }
 
 func (a *Agent) SetMarauder(m *marauder.Marauder) { a.marauder = m }
@@ -1101,10 +1141,22 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	// All tools are now in the central registry. The risk gate runs in
 	// executeTool (before dispatch is called), so this path inherits the
 	// gate for free.
-	if spec, ok := toolsreg.Get(name); ok {
-		return spec.Handler(ctx, a.deps(), p)
+	spec, ok := toolsreg.Get(name)
+	if !ok {
+		return "", fmt.Errorf("unknown tool: %s", name)
 	}
-	return "", fmt.Errorf("unknown tool: %s", name)
+
+	// Operation-mode gate. When the active mode disallows a tool's
+	// group, refuse the call before the handler runs. The error wraps
+	// ErrBlockedByMode so callers (telemetry, UI) can errors.Is it
+	// without scraping the message string. The Reason() body names
+	// the mode and is safe to surface verbatim to the operator.
+	if m := a.Mode(); !m.Allows(spec.Group) {
+		return "", fmt.Errorf("%w: %s blocked in %s mode — %s",
+			ErrBlockedByMode, spec.Name, m.DisplayName(), m.Reason(spec.Group))
+	}
+
+	return spec.Handler(ctx, a.deps(), p)
 }
 
 // workflowConfirmHook routes a workflow's internal sub-tool

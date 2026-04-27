@@ -221,7 +221,7 @@ func readPrompts(f *cliFlags) ([]string, error) {
 func connectFlipper(ctx context.Context, cfg *config.Config) (*flipper.Flipper, error) {
 	transportURL := fmt.Sprintf("serial://%s?baud=%d", cfg.Serial.Port, cfg.Serial.BaudRate)
 	fmt.Fprintf(os.Stderr, "▸ connecting flipper on %s...\n", cfg.Serial.Port)
-	flip, err := flipper.ConnectURL(ctx, transportURL, connectTimeout)
+	flip, _, err := flipper.ConnectURL(ctx, transportURL, connectTimeout)
 	if err != nil {
 		return nil, err
 	}

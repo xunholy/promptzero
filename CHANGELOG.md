@@ -11,6 +11,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Operation modes (`--mode`).** Five named modes — `standard`,
+  `recon`, `intel`, `stealth`, `assault` — gate the agent's tool
+  surface against the existing `tools.Group` taxonomy. `Standard`
+  preserves today's behavior (everything allowed); `Recon` is
+  read-only/scan-only (no RF transmit, no writes); `Stealth`
+  disables Marauder + Sub-GHz + NFC for minimal RF footprint;
+  `Intel` adds analysis tools to the Recon baseline; `Assault`
+  matches Standard but advertises explicit-TX intent. Switch via
+  `--mode <name>` flag, `mode:` config key, or REPL `/mode <name>`
+  slash command. Tools rejected by the active mode return a clear
+  `ErrBlockedByMode` naming the tool and the mode.
+- **Pipeline profiles (`--pipeline`).** Three named retry/timeout
+  bundles — `fast` (lower latency, fewer retries), `balanced`
+  (default — matches today's hardcoded constants byte-for-byte),
+  `resilient` (more retries + longer delays for flaky links). Each
+  profile carries CLI/RPC/file-write retry counts + per-op timeouts +
+  reconnect-attempt delay. Switch via flag or `flipper.pipeline`
+  config key. Existing per-op overrides (`flipper.exec_timeout`,
+  `flipper.write_file_timeout`) still win when set explicitly.
+  Manual selection only this round; auto-tune from observed
+  success-rate is a follow-up.
+- **Structured connection diagnostics report.** `flipper.ConnectURL`
+  now returns a `*ConnectionReport` alongside the `*Flipper`
+  capturing each connect step (`transport.open`, `transport.dial`,
+  `handshake`/`rpc.open`, `detect_capabilities`) with
+  PASS/WARN/FAIL/SKIPPED level + name + detail + elapsed. Default
+  one-line `Flipper connected ...` UX is preserved; verbose mode
+  (`PROMPTZERO_LOG_LEVEL=debug` or `PROMPTZERO_VERBOSE_CONNECT=1`)
+  prints every check inline; `/api/device` adds a
+  `connection_report` field for programmatic consumption.
+- **Firmware compatibility / command-routing foundation.** New
+  `internal/flipper/compat.go` defines `CommandRoute` (TextCLI /
+  RPC / USBOnly), `CommandSupport`, and a single `RouteFor()`
+  decision function that reads the existing `Capabilities`
+  (FirmwareFork etc.) without duplicating detection. New
+  `(*Flipper).dispatch(operation, support, viaCLI, viaRPC)` helper
+  centralises transport-aware routing. `DeviceInfo`, `PowerInfo`,
+  and `Reboot` migrated as proof; the remaining ~24 commands stay
+  on inline `if f.IsBLE()` and will migrate in a follow-up.
+
 - **Hybrid mode is fully functional: BLE Flipper + USB-bridged Marauder
   active simultaneously.** `LaunchBridge` on BLE drives the firmware into
   USB-UART bridge mode the canonical way: opens the GPIO app via
