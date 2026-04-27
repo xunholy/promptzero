@@ -306,6 +306,18 @@ body::before {
 .tool-result .k { font-family: var(--pixel); font-size: 9px; letter-spacing: 1px; color: var(--lcd-pixel-soft); }
 .tool-result .v { font-weight: 500; }
 
+/* Collapsible tool calls — closed by default, expand on click. */
+.tool-details { margin: 0; }
+.tool-details > summary { list-style: none; cursor: pointer; user-select: none; outline: none; }
+.tool-details > summary::-webkit-details-marker { display: none; }
+.tool-details > summary:focus-visible { outline: 2px dashed var(--lcd-pixel); outline-offset: 2px; }
+.tool-details > summary .meta { margin-bottom: 0; }
+.tool-details > summary:hover .tool-name { color: var(--lcd-pixel); }
+.tool-details .tool-chev { display: inline-block; transition: transform 120ms steps(2); color: var(--lcd-pixel-soft); }
+.tool-details[open] > summary .tool-chev { transform: rotate(90deg); }
+.tool-details .tool-details-content { margin-top: 6px; }
+.tool-details .tool-details-content > pre:first-child { margin-top: 4px; }
+
 /* TX preview */
 .tx-preview { margin-top: 12px; border: 3px double var(--lcd-pixel); padding: 10px 12px; background: repeating-linear-gradient(45deg, transparent 0 6px, #00000010 6px 7px); box-shadow: 4px 4px 0 var(--lcd-pixel-soft); }
 .tx-preview h3 { margin: 0 0 8px; font-family: var(--pixel); font-size: 9px; letter-spacing: 2px; display: flex; align-items: center; gap: 8px; }

@@ -1236,6 +1236,17 @@
     var sb = document.getElementById('scrollback');
     if (!sb) return;
 
+    // A new user message always starts a fresh agent turn. Tear down any
+    // lingering streaming bubble so the next text_delta cannot accidentally
+    // re-use the previous turn's element (e.g. when the server didn't send
+    // a clean `response`/`error` for the prior turn before this prompt).
+    if (_streamingMsgEl) {
+      var stale = _streamingMsgEl.querySelector('.blink-cursor-text');
+      if (stale) stale.parentNode.removeChild(stale);
+    }
+    _streamingMsgEl  = null;
+    _streamingTurnId = null;
+
     var msg  = mkEl('div', 'msg user');
     var who  = mkEl('div', 'who', 'U');
     var body = mkEl('div', 'body');
@@ -1350,15 +1361,40 @@
     var sb = document.getElementById('scrollback');
     if (!sb) return;
 
-    var wrap = mkEl('div', 'msg sys');
+    // A tool call is a hard break in the agent's narration. Whatever
+    // text was streaming up to this point belongs to the *pre-tool*
+    // reasoning; anything that arrives after this tool finishes is the
+    // *post-tool* answer. Finalising the current bubble here forces the
+    // next text_delta to open a fresh one — otherwise both segments
+    // would visually merge in the pre-tool bubble even though a tool
+    // executed between them.
+    if (_streamingMsgEl) {
+      var oldCaret = _streamingMsgEl.querySelector('.blink-cursor-text');
+      if (oldCaret) oldCaret.parentNode.removeChild(oldCaret);
+    }
+    _streamingMsgEl  = null;
+    _streamingTurnId = null;
+
+    var wrap = mkEl('div', 'msg sys tool');
     var key  = (msg.turn_id || '') + '|' + (msg.name || '');
     wrap.dataset.toolKey = key;
 
     var who  = mkEl('div', 'who', '▶');
     var body = mkEl('div', 'body');
+
+    // Collapsible: <summary> shows the meta row (name + risk + status);
+    // input/output live inside .tool-details-content and are hidden by
+    // default. Clicking the summary toggles. Native <details> handles
+    // a11y (keyboard, screen-reader announcement).
+    var details = mkEl('details', 'tool-details');
+    var summary = mkEl('summary');
     var meta = mkEl('div', 'meta');
 
-    var nameSpan = mkEl('span', null, msg.name || 'tool');  // textContent — safe
+    var chevron = mkEl('span', 'tool-chev', '▸');
+    chevron.setAttribute('aria-hidden', 'true');
+    meta.appendChild(chevron);
+
+    var nameSpan = mkEl('span', 'tool-name', msg.name || 'tool');
     meta.appendChild(nameSpan);
 
     // Risk badge — only known enum strings flow through classList
@@ -1371,13 +1407,18 @@
 
     var statusSpan = mkEl('span', 'tool-status-txt', 'running…');
     meta.appendChild(statusSpan);
-    body.appendChild(meta);
 
+    summary.appendChild(meta);
+    details.appendChild(summary);
+
+    var content = mkEl('div', 'tool-details-content');
     if (msg.input) {
       var pre = mkEl('pre', null, fmtJSON(msg.input));  // textContent — safe
-      body.appendChild(pre);
+      content.appendChild(pre);
     }
+    details.appendChild(content);
 
+    body.appendChild(details);
     wrap.appendChild(who);
     wrap.appendChild(body);
     sb.appendChild(wrap);
@@ -1395,8 +1436,10 @@
     var suffix    = msg.duration_ms != null ? ' · ' + (msg.duration_ms / 1000).toFixed(2) + 's' : '';
     if (indicator) indicator.textContent = (msg.err ? 'failed' : 'done') + suffix;
 
-    var body = wrap.querySelector('.body');
-    if (body && (msg.output || msg.err)) {
+    // Append output/error inside the collapsible body (.tool-details-content),
+    // not directly to .body — that keeps the row compact when collapsed.
+    var content = wrap.querySelector('.tool-details-content');
+    if (content && (msg.output || msg.err)) {
       var tileDiv = mkEl('div', 'tool-result');
       if (msg.output) {
         tileDiv.appendChild(mkEl('span', 'k', 'output'));
@@ -1409,7 +1452,12 @@
         tileDiv.appendChild(mkEl('span', 'k', 'error'));
         tileDiv.appendChild(ev);
       }
-      body.appendChild(tileDiv);
+      content.appendChild(tileDiv);
+    }
+    // Auto-open on error so the operator sees what failed without clicking.
+    if (msg.err) {
+      var d = wrap.querySelector('details.tool-details');
+      if (d) d.open = true;
     }
     var sb = document.getElementById('scrollback');
     if (sb) scrollSoon(sb);
