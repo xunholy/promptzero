@@ -144,8 +144,18 @@ jobs:
         uses: sigstore/cosign-installer@v4.1.1
 
       - name: Sign checksums with cosign (keyless)
+        # Cosign v3 (shipped with installer v4.x) made the new bundle
+        # format the default and silently ignores --output-signature /
+        # --output-certificate, then errors on a missing --bundle path.
+        # --new-bundle-format=false keeps the legacy two-file output so
+        # the verify-blob example in the header comment, and any
+        # downstream consumers using cosign v2 conventions, keep working
+        # unchanged. Migration to the bundle format is a separate
+        # release-process change; doing it here would silently break
+        # whoever's already verifying releases with --signature/--cert.
         run: |
           cosign sign-blob --yes \
+            --new-bundle-format=false \
             --output-signature dist/checksums.txt.sig \
             --output-certificate dist/checksums.txt.pem \
             dist/checksums.txt
