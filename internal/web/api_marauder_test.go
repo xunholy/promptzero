@@ -279,8 +279,8 @@ loop:
 	}
 
 	calls := fm.callsSnapshot()
-	if len(calls) == 0 || calls[0] != "stream:scanap" {
-		t.Errorf("first call = %q, want stream:scanap (calls=%v)", firstOr(calls, ""), calls)
+	if len(calls) == 0 || calls[0] != "stream:scanall" {
+		t.Errorf("first call = %q, want stream:scanall (calls=%v)", firstOr(calls, ""), calls)
 	}
 }
 

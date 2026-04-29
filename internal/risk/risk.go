@@ -45,6 +45,8 @@ var toolLevels = func() map[string]Level {
 		"wifi_stop_scan", "wifi_list_aps", "wifi_list_ssids", "wifi_list_stations",
 		"wifi_clear_aps", "wifi_clear_ssids", "wifi_clear_stations",
 		"wifi_info", "wifi_settings",
+		// Stop-only verb — terminates an active TX session, never starts one.
+		"wifi_evil_portal_stop",
 		"audit_query", "audit_export", "audit_stats",
 		"docs_search",
 		"target_recall",
@@ -180,7 +182,7 @@ var toolLevels = func() map[string]Level {
 		"wifi_beacon_rickroll", "wifi_beacon_funny",
 		"wifi_probe_flood",
 		"wifi_sniff_pmkid", "wifi_sniff_sae",
-		"wifi_evil_portal_start", "wifi_evil_portal_stop",
+		"wifi_evil_portal_start",
 		"wifi_ble_spam",
 		"wifi_join",
 		"wifi_ping_scan", "wifi_arp_scan", "wifi_port_scan", "wifi_portscan_service",

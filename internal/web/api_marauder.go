@@ -78,16 +78,18 @@ type commandEntry struct {
 //
 // The registry is NOT user-extensible at runtime; gating happens here.
 var marauderRegistry = map[string]commandEntry{
+	// scanap and scansta are legacy WS keys retained for client/UI continuity.
+	// Both were removed from Marauder firmware in v1.11.1+ and merged into
+	// scanall, which produces both AP and STA rows. We send scanall on the
+	// wire for both keys; the AP/STA parser pair is kept so the panel still
+	// gets the appropriate filtered event stream per click.
 	"scanap": {
-		build: staticCmd("scanap"),
+		build: staticCmd("scanall"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseScanAP, "ap_seen"),
 		kind:  "ap_seen",
 	},
 	"scansta": {
-		// scansta was removed in upstream v1.11.1+; use scanall which
-		// also produces STA rows. Older boards still understand scansta
-		// — we send scanall here, the parser accepts both.
 		build: staticCmd("scanall"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseScanSta, "sta_seen"),

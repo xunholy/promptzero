@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-04-29
+
+### Changed
+
+- **`wifi_random_mac` gains a `target` argument** — pass `'ap'` (default,
+  preserves prior behaviour) or `'sta'` to randomise the station-mode MAC
+  via the existing `Marauder.RandomStaMAC` client method. Closes the
+  Phase-2 audit gap noted in the integration coverage report; brings the
+  Spec in line with the firmware verbs `randapmac` + `randstamac`.
+
+### Fixed
+
+- **Stale `scanap` WS key on Marauder firmware ≥ v1.11.1.** Marauder
+  upstream merged `scanap`/`scansta` into `scanall` in v1.11.1+ and
+  removed the legacy verbs from `CommandLine.h`. The web Marauder synth
+  panel still keys `scanap` and `scansta` (frontend / WS / tests), but
+  now sends `scanall` on the wire for both keys. The AP/STA parser pair
+  is preserved so the UI still gets filtered event streams per click.
+- **`wifi_evil_portal_stop` mis-banded as High risk.** The stop verb
+  only terminates an already-active TX (i.e. it de-escalates) — same
+  shape as `wifi_stop_scan`. Demoted to Low and moved to the Low
+  classifier in `internal/risk/risk.go`. `wifi_evil_portal_start`
+  remains High.
+
 ## [0.14.0] - 2026-04-29
 
 ### Added

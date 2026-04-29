@@ -596,9 +596,12 @@ func init() {
 		Description: "Stop the evil portal.",
 		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
 		Required:    nil,
-		Risk:        risk.High,
-		Group:       GroupMarauderWiFi,
-		AgentOnly:   false,
+		// Stop verb only — terminates the active TX. Treated as low risk
+		// (de-escalation), in contrast to wifi_evil_portal_start which is
+		// rightly High.
+		Risk:      risk.Low,
+		Group:     GroupMarauderWiFi,
+		AgentOnly: false,
 		// wifi_evil_portal_stop maps to StopScan — there is no dedicated
 		// stop verb on Marauder firmware (§A.1 of the migration runbook).
 		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
@@ -733,17 +736,23 @@ func init() {
 
 	Register(Spec{
 		Name:        "wifi_random_mac",
-		Description: "Randomise the ESP32 AP MAC address.",
-		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
-		Required:    nil,
-		Risk:        risk.Medium,
-		Group:       GroupMarauderWiFi,
-		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+		Description: "Randomise the ESP32 MAC address. Pass target='ap' (default) to randomise the AP-mode MAC, or target='sta' to randomise the station-mode MAC.",
+		Schema: json.RawMessage(`{"type":"object","properties":{` +
+			`"target":{"type":"string","enum":["ap","sta"],"description":"Which MAC to randomise — 'ap' (default) or 'sta'"}}}`),
+		Required:  nil,
+		Risk:      risk.Medium,
+		Group:     GroupMarauderWiFi,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.RandomAPMAC()
+			switch str(p, "target") {
+			case "sta":
+				return d.Marauder.RandomStaMAC()
+			default: // "" or "ap"
+				return d.Marauder.RandomAPMAC()
+			}
 		},
 	})
 
