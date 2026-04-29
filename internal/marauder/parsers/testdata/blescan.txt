@@ -1,0 +1,6 @@
+-58 Device: AirPods Pro
+-72 Device: a4:c1:38:11:22:33
+-44 Device: Flipper Zero
+-81 Device: 5c:cf:7f:f0:f0:f0
+-66 Device: Galaxy Buds Live
+-90 Device: f0:18:98:55:55:55

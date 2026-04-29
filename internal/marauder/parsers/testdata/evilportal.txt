@@ -1,0 +1,8 @@
+Starting Evil Portal. Stop with stopscan
+Setting HTML...
+html set
+ap config set
+ap ip address: 192.168.4.1
+Evil Portal READY
+client connected
+client connected

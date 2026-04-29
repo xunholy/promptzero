@@ -1,0 +1,7 @@
+Starting Attack. Stop with stopscan
+packets/sec: 0
+packets/sec: 4180
+packets/sec: 4225
+packets/sec: 4198
+packets/sec: 4203
+packets/sec: 4187

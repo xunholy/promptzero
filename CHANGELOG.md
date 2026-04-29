@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Synthesised Marauder TFT panel in the web UI.** New
+  `internal/web/api_marauder.go` adds a WS command registry that maps
+  stable client-side keys (`scanap`, `sniffbeacon`, `attack_deauth`,
+  `blescan`, `gpsdata`, `led_set`, …) to Marauder CLI commands +
+  per-line / block parsers in `internal/marauder/parsers/`, dispatched
+  via Exec / Stream / Block modes. Holder semantics mirror the Flipper
+  screen-mirror: one synth-panel hold per server, one streaming
+  command per holder, automatic `stopscan` on cancel/disconnect.
+  Companion frontend renders a 320×240 ILI9341-look TFT with the full
+  firmware menu tree; synth panel is gated behind a JS feature flag
+  (`FEATURE_MARAUDER_ENABLED = false`) until a reliable USB-UART
+  bridge story is in place — research in this cycle confirmed the
+  built-in `USB-UART Bridge` is a scene inside the GPIO app, not a
+  loader-launchable target on any current firmware (Momentum,
+  Unleashed, RogueMaster, OFW). Backend handlers stay wired so
+  flipping the flag re-enables the full panel without further code
+  changes.
+- **Keyboard input for the Flipper screen mirror.** Arrow keys, Enter,
+  and Backspace now drive the held RPC d-pad while the Flipper mirror
+  is active and the operator is on the device screen — same WS frame
+  shape (`screen_input`, `event_type: short`) as the on-screen d-pad
+  click. Gated on `_currentScreen === 'device'` so navigating to
+  Files / Audit during a mirror still scrolls those views normally.
+
+### Fixed
+
+- **Flipper mirror confirmation modal could stack indefinitely.** The
+  inline `.fs-modal` is a sibling of the START MIRROR button (no
+  fullscreen overlay, no pointer trap), so each extra click on START
+  appended another prompt on top of the existing one. Added a
+  re-entry guard in `showScreenConfirmModal` that focuses the
+  existing modal instead of mounting another.
+
 ## [0.13.0] - 2026-04-28
 
 ### Added

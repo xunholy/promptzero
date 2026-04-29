@@ -10,6 +10,13 @@
      Constants
   ========================================================================= */
 
+  // Marauder synth-panel + nav entry. Disabled until we ship our own
+  // uart_bridge.fap — the default `loader open "USB-UART Bridge"` doesn't
+  // resolve to a launchable app on any current firmware (the built-in is a
+  // scene inside the GPIO app, not a top-level loader entry). Flip to true
+  // once the bridge story is sorted; the backend WS handlers stay wired.
+  var FEATURE_MARAUDER_ENABLED = false;
+
   // Per-subsystem catalog of likely tools / attacks.
   // Clicking an item prefills the agent input — the user reviews + sends.
   // risk: 'low' | 'med' | 'high' (renders as a badge; affects nothing else)
@@ -537,6 +544,13 @@
   ========================================================================= */
 
   function setupRailNav() {
+    if (!FEATURE_MARAUDER_ENABLED) {
+      qAll('.rail-item[data-route="marauder"]').forEach(function (el) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+      var pill = document.getElementById('statMarauder');
+      if (pill && pill.parentNode) pill.parentNode.removeChild(pill);
+    }
     qAll('.rail-item[data-route]').forEach(function (item) {
       item.addEventListener('click', function () { activateRoute(item.dataset.route); });
       item.addEventListener('keydown', function (e) {
@@ -899,17 +913,26 @@
     // state to repaint LIVE/HELD/OFFLINE without losing the underlying
     // RPC stream.
 
-    // Subsystem rail items show a category landing screen with tools/attacks
-    if (CATEGORY_TOOLS[route]) {
+    // Subsystem rail items show a category landing screen with tools/attacks.
+    // The marauder route owns its own synthesised TFT panel (handled below);
+    // its CATEGORY_TOOLS entry exists only so the items appear in the
+    // Quick Actions popover.
+    if (route !== 'marauder' && CATEGORY_TOOLS[route]) {
       showScreen('category-' + route);
       setCrumbs(CATEGORY_TOOLS[route].title, 'TOOLS');
       loadCategoryScreen(route);
       return;
     }
 
+    // Leaving the marauder route — release holder and tear down attack timers.
+    if (Marauder.isActive() && route !== 'marauder') Marauder.leave();
+
+    if (route === 'marauder' && !FEATURE_MARAUDER_ENABLED) { showAgentScreen(); return; }
+
     switch (route) {
       case 'agent':    showAgentScreen();   break;
       case 'device':   showScreen('device');   setCrumbs('DEVICE', 'MIRROR');    loadDeviceScreen();   break;
+      case 'marauder': showScreen('marauder'); setCrumbs('MARAUDER', 'MAIN');    Marauder.enter();     break;
       case 'files':    showScreen('files');    setCrumbs('FILES', 'BROWSE');    loadFilesScreen();    break;
       case 'audit':    showScreen('audit');    setCrumbs('AUDIT',   'LOG');      loadAuditScreen();    break;
       case 'report':   showScreen('report');   setCrumbs('REPORT',  'VALIDATE'); loadReportScreen();   break;
@@ -1080,6 +1103,16 @@
           return;
         }
 
+        // Marauder route: route presses to MarauderUI's state machine when the
+        // user has the synth-TFT panel open and dpad mode is device. Scroll
+        // mode still falls through so the user can scroll the (otherwise
+        // empty) scrollback if they want to.
+        if (Marauder.isActive() && _dpadMode === 'device') {
+          beep(dir === 'ok' ? 880 : 660, 0.04);
+          Marauder.handleDpad(dir);
+          return;
+        }
+
         if (_dpadMode === 'device') {
           // In device mode (no mirror), forward via the CLI REST endpoint.
           beep(dir === 'ok' ? 880 : 660, 0.04);
@@ -1127,6 +1160,41 @@
         if (_phase !== 'Idle')         { e.preventDefault(); cancelTurn(); return; }
       }
       if (!inInput) {
+        // Marauder route owns arrow / Enter / Backspace when active so the
+        // operator can navigate the synth TFT entirely from the keyboard.
+        if (Marauder.isActive()) {
+          var dir = (e.key === 'ArrowUp') ? 'up'
+                  : (e.key === 'ArrowDown') ? 'down'
+                  : (e.key === 'ArrowLeft') ? 'left'
+                  : (e.key === 'ArrowRight') ? 'right'
+                  : (e.key === 'Backspace' || e.key === 'Escape') ? 'back'
+                  : (e.key === 'Enter' && Marauder.view() !== 'fire') ? 'ok'
+                  : null;
+          if (dir) {
+            e.preventDefault();
+            Marauder.handleDpad(dir);
+            return;
+          }
+        }
+        // Flipper mirror: arrow keys + Enter + Backspace map to the Flipper's
+        // d-pad over the held RPC session — same wire frame as the on-screen
+        // dpad click. Gated on the device screen so the keys still scroll
+        // Files / Audit when the user navigates away mid-mirror.
+        if (_screenState && _screenState.isHolder && _currentScreen === 'device') {
+          var mdir = (e.key === 'ArrowUp')    ? 'up'
+                   : (e.key === 'ArrowDown')  ? 'down'
+                   : (e.key === 'ArrowLeft')  ? 'left'
+                   : (e.key === 'ArrowRight') ? 'right'
+                   : (e.key === 'Enter')      ? 'ok'
+                   : (e.key === 'Backspace')  ? 'back'
+                   : null;
+          if (mdir) {
+            e.preventDefault();
+            beep(mdir === 'ok' ? 880 : 660, 0.04);
+            sendWs({ type: 'screen_input', button: mdir, event_type: 'short' });
+            return;
+          }
+        }
         var sb = document.getElementById('scrollback');
         if (e.key === 'ArrowUp')   { e.preventDefault(); if (sb) sb.scrollTop -= 60; }
         if (e.key === 'ArrowDown') { e.preventDefault(); if (sb) sb.scrollTop += 60; }
@@ -1166,6 +1234,7 @@
   function handleBack() {
     if (_currentScreen === 'agent') return;
     if (_currentScreen === 'device') { backToAgent(); return; }
+    if (_currentScreen === 'marauder') { Marauder.leave(); backToAgent(); return; }
     if (_currentScreen === 'files') { backFromFiles(); return; }
     // Settings sub-pages pop to the settings menu first, then to agent.
     if (_currentScreen.indexOf('settings-') === 0) { backToSettings(); return; }
@@ -1374,6 +1443,13 @@
 
       case 'screen_error':
         onScreenErrorMessage(msg);
+        break;
+
+      case 'marauder_status':
+      case 'marauder_event':
+      case 'marauder_done':
+      case 'marauder_error':
+        Marauder.onMessage(msg);
         break;
     }
   }
@@ -3140,6 +3216,16 @@
     var ss = ensureSubscreen();
     if (!ss) return;
 
+    // Re-entry guard: the modal is an inline sibling of the START MIRROR
+    // button (not a fullscreen overlay), so without this every extra click
+    // on START stacks another prompt on top.
+    var existing = ss.querySelector('.screen-confirm-modal');
+    if (existing) {
+      var existingCancel = existing.querySelector('button');
+      if (existingCancel) existingCancel.focus();
+      return;
+    }
+
     var overlay = mkEl('div', 'fs-modal screen-confirm-modal');
 
     var h3 = mkEl('h3', null, 'START LIVE SCREEN MIRROR?');
@@ -3328,6 +3414,1025 @@
   });
 
   /* =========================================================================
+     Marauder TFT panel — synthesized 320x240 firmware UI
+     Driven by parsed CLI events from internal/marauder over WS
+     (marauder_acquire / marauder_release / marauder_cmd, see SPEC.md).
+     The panel renders into #subscreen when the marauder route is active.
+  ========================================================================= */
+
+  var Marauder = (function () {
+    'use strict';
+
+    // --------------------------------------------------------------- menu tree
+    // Mirrors the firmware menu hierarchy verbatim. Each leaf declares
+    // how the panel reacts when "OK" is pressed. Renderers live below.
+    var TREE = {
+      title: 'MAIN',
+      items: [
+        { kind: 'menu', label: 'WiFi', title: 'WIFI', items: [
+          { kind: 'menu', label: 'Sniffers', title: 'WIFI > SNIFFERS', items: [
+            { kind: 'list',  label: 'Beacon Sniff',   cmd: 'sniffbeacon',  evt: 'beacon',     col: 'beacon' },
+            { kind: 'list',  label: 'Probe Sniff',    cmd: 'sniffprobe',   evt: 'probe',      col: 'probe'  },
+            // Packet Monitor consumes sniffraw's aggregate `packet_rate`
+            // events (modeBlock); the chart's series come from the parsed
+            // beacon/deauth/probe/eapol/raw fields.
+            { kind: 'graph', label: 'Packet Monitor', cmd: 'sniffraw' },
+            // Per-line raw frames — backend's sniffraw_lines runs the same
+            // device cmd but emits per-line `raw` events (see task #9).
+            { kind: 'list',  label: 'Sniff Raw',      cmd: 'sniffraw_lines', evt: 'raw',        col: 'raw'    },
+            { kind: 'list',  label: 'Deauth Detector',cmd: 'sniffdeauth',    evt: 'deauth_seen',col: 'deauth' },
+          ]},
+          { kind: 'menu', label: 'Scanners', title: 'WIFI > SCANNERS', items: [
+            { kind: 'list', label: 'Scan APs',      cmd: 'scanap',  evt: 'ap_seen',  col: 'ap'  },
+            { kind: 'list', label: 'Scan Stations', cmd: 'scansta', evt: 'sta_seen', col: 'sta' },
+          ]},
+          { kind: 'menu', label: 'Attacks', title: 'WIFI > ATTACKS', items: [
+            { kind: 'attack', label: 'Beacon Spam (Random)', cmd: 'attack_beacon_random' },
+            { kind: 'attack', label: 'Beacon Spam (List)',   cmd: 'attack_beacon_list'   },
+            { kind: 'attack', label: 'Beacon Spam (AP list)',cmd: 'attack_beacon_ap'     },
+            { kind: 'attack', label: 'Rickroll Beacon',      cmd: 'attack_rickroll'      },
+            { kind: 'attack', label: 'Probe Flood',          cmd: 'attack_probe'         },
+            { kind: 'attack', label: 'Deauth',               cmd: 'attack_deauth'        },
+            { kind: 'attack', label: 'Evil Portal',          cmd: 'evilportal_start'     },
+          ]},
+        ]},
+        { kind: 'menu', label: 'Bluetooth', title: 'BT', items: [
+          { kind: 'menu', label: 'Sniffers', title: 'BT > SNIFFERS', items: [
+            // Backend reads args["target"] (not "t"); empty/all fall through
+            // to BT_SCAN_ALL — Apple/Samsung/Flipper need the explicit target.
+            { kind: 'list', label: 'BLE Sniff All',    cmd: 'blescan', args: { target: 'all' },     evt: 'ble_seen', col: 'ble' },
+            { kind: 'list', label: 'Apple Detector',   cmd: 'blescan', args: { target: 'apple' },   evt: 'ble_seen', col: 'ble' },
+            { kind: 'list', label: 'Samsung Detector', cmd: 'blescan', args: { target: 'samsung' }, evt: 'ble_seen', col: 'ble' },
+            { kind: 'list', label: 'Flipper Detector', cmd: 'blescan', args: { target: 'flipper' }, evt: 'ble_seen', col: 'ble' },
+          ]},
+          { kind: 'list', label: 'Wardrive', cmd: 'blewardrive', evt: 'ble_wardrive', col: 'wardrive' },
+          { kind: 'menu', label: 'Spam', title: 'BT > SPAM', items: [
+            // Backend's blespam target whitelist is apple|google|samsung|windows|flipper|all.
+            // The firmware's "Microsoft" payload set is what its `windows` mode emits.
+            { kind: 'attack', label: 'Sour Apple',   cmd: 'blespam', args: { target: 'apple' } },
+            { kind: 'attack', label: 'Samsung Spam', cmd: 'blespam', args: { target: 'samsung' } },
+            { kind: 'attack', label: 'Google Spam',  cmd: 'blespam', args: { target: 'google' } },
+            { kind: 'attack', label: 'Windows Spam', cmd: 'blespam', args: { target: 'windows' } },
+          ]},
+        ]},
+        { kind: 'menu', label: 'GPS', title: 'GPS', items: [
+          { kind: 'gps',  label: 'GPS Data', cmd: 'gpsdata' },
+          { kind: 'list', label: 'NMEA',     cmd: 'nmea',  evt: 'nmea_line', col: 'nmea' },
+        ]},
+        { kind: 'menu', label: 'Storage', title: 'STORAGE', items: [
+          { kind: 'browse', label: 'Browse SD' },
+        ]},
+        { kind: 'info', label: 'Device Info' },
+        { kind: 'leds', label: 'LED', title: 'LED', items: [
+          { label: 'Off',     hex: '000000' },
+          { label: 'Red',     hex: 'FF0000' },
+          { label: 'Green',   hex: '00FF00' },
+          { label: 'Blue',    hex: '0000FF' },
+          { label: 'White',   hex: 'FFFFFF' },
+          { label: 'Rainbow', rainbow: true },
+        ]},
+      ],
+    };
+
+    // --------------------------------------------------------------- column defs
+    // Each list-screen kind has a `col` token that picks how rows render.
+    var COLUMNS = {
+      ap: function (r, p) {
+        // p = { ssid, bssid, channel, rssi }
+        var ssid = String(p.ssid || '<hidden>').slice(0, 18);
+        var ch   = (p.channel != null) ? 'CH' + p.channel : '   ';
+        var meta = ch + '  ' + rssiBadge(p.rssi).text;
+        r.metaText  = meta;
+        r.metaBand  = rssiBadge(p.rssi).band;
+        r.label     = ssid;
+        r.rssi      = p.rssi;
+        r.bars      = rssiBars(p.rssi);
+      },
+      sta: function (r, p) {
+        // p = { mac, rssi, ap }
+        var mac = String(p.mac || '').slice(-8);
+        r.label = mac + (p.ap ? ' →' + String(p.ap).slice(0, 8) : '');
+        r.metaText = rssiBadge(p.rssi).text;
+        r.metaBand = rssiBadge(p.rssi).band;
+        r.rssi = p.rssi;
+        r.bars = rssiBars(p.rssi);
+      },
+      ble: function (r, p) {
+        // p = { name, mac, rssi, mfg }
+        var name = String(p.name || p.mac || '<unknown>').slice(0, 18);
+        r.label = name;
+        r.metaText = (p.mfg ? p.mfg.slice(0,4) + ' ' : '') + rssiBadge(p.rssi).text;
+        r.metaBand = rssiBadge(p.rssi).band;
+        r.rssi = p.rssi;
+        r.bars = rssiBars(p.rssi);
+      },
+      beacon: function (r, p) {
+        var s = String(p.ssid || p.bssid || '...').slice(0, 18);
+        r.label = s;
+        r.metaText = (p.channel ? 'CH' + p.channel : '') + ' ' + rssiBadge(p.rssi).text;
+        r.metaBand = rssiBadge(p.rssi).band;
+        r.bars = rssiBars(p.rssi);
+      },
+      probe: function (r, p) {
+        var ssid = String(p.ssid || '<wildcard>').slice(0, 18);
+        r.label = ssid;
+        r.metaText = String(p.mac || '').slice(-8);
+        r.metaBand = 'mid';
+      },
+      deauth: function (r, p) {
+        r.label = String(p.bssid || p.target || '...').slice(0, 18);
+        r.metaText = 'cnt ' + (p.count || 1);
+        r.metaBand = 'lo';
+      },
+      raw: function (r, p) {
+        // Backend's sniffraw_lines (and nmea) emit {line: "<verbatim>"} —
+        // there's no structured meta to surface; let the line fill the row.
+        // Fallbacks kept so the row never goes blank if the parser shape
+        // ever evolves.
+        r.label = String(p.line || p.raw || p.proto || p.summary || 'pkt').slice(0, 44);
+        r.metaText = '';
+        r.metaBand = 'mid';
+      },
+      wardrive: function (r, p) {
+        r.label = String(p.name || p.mac || '...').slice(0, 18);
+        r.metaText = (p.lat && p.lon) ? (Math.round(p.rssi || 0)) + 'dB' : '—';
+        r.metaBand = rssiBadge(p.rssi).band;
+        r.bars = rssiBars(p.rssi);
+      },
+      nmea: function (r, p) {
+        // Backend uses parsers.ParseRaw — same {line: "<text>"} shape as raw.
+        r.label = String(p.line || p.raw || '').slice(0, 44);
+        r.metaText = '';
+        r.metaBand = 'mid';
+      },
+    };
+
+    function rssiBadge(rssi) {
+      var v = Number(rssi);
+      if (!isFinite(v) || v === 0) return { text: '   ', band: 'mid' };
+      var band = (v > -60) ? 'hi' : (v > -75) ? 'mid' : 'lo';
+      return { text: (v < 0 ? '' : '+') + v.toString().padStart(3, ' '), band: band };
+    }
+    function rssiBars(rssi) {
+      var v = Number(rssi);
+      if (!isFinite(v) || v === 0) return 0;
+      if (v > -55) return 5;
+      if (v > -65) return 4;
+      if (v > -75) return 3;
+      if (v > -85) return 2;
+      return 1;
+    }
+
+    // --------------------------------------------------------------- state
+    var state = {
+      mounted: false,
+      panelEl: null,
+      viewEl: null,
+      crumbEl: null,
+      modeEl: null,
+      statBat: null,
+      statGps: null,
+      statTgt: null,
+      sideLink: null,
+      sidePort: null,
+      sideFw: null,
+      sideDpad: null,
+
+      stack: [],          // [{ frame, cursor, title, render }]
+      view: 'menu',       // 'menu'|'leds'|'list'|'gps'|'graph'|'fire'|'streaming'|'info'|'browse'
+      data: null,         // current view's payload buffer
+
+      activeCmd: null,    // { cmd, args, kind } currently streaming
+      packetSeries: { beacon: [], deauth: [], probe: [], eapol: [], raw: [], maxLen: 60 },
+
+      hold: { running: false, startMs: 0, raf: 0, fired: false, target: null },
+
+      connected: false,
+      port: '',
+      firmware: '',
+      battery: null,
+      gpsSats: 0,
+      gpsFix: false,
+      target: null,
+      stoppedAt: 0,
+    };
+
+    // --------------------------------------------------------------- DOM mount
+    function mount() {
+      if (state.mounted) return state.panelEl;
+      var tpl = document.getElementById('marauderPanelTpl');
+      if (!tpl || !tpl.content) return null;
+      var frag = tpl.content.cloneNode(true);
+      var wrap = frag.querySelector('[data-mar-wrap]');
+      state.panelEl = wrap;
+      state.viewEl  = wrap.querySelector('[data-mar-view]');
+      state.crumbEl = wrap.querySelector('[data-mar-crumb]');
+      state.modeEl  = wrap.querySelector('[data-mar-stat-mode]');
+      state.statBat = wrap.querySelector('[data-mar-stat-bat]');
+      state.statGps = wrap.querySelector('[data-mar-stat-gps]');
+      state.statTgt = wrap.querySelector('[data-mar-stat-tgt]');
+      state.sideLink = wrap.querySelector('[data-mar-link]');
+      state.sidePort = wrap.querySelector('[data-mar-port]');
+      state.sideFw   = wrap.querySelector('[data-mar-fw]');
+      state.sideDpad = wrap.querySelector('[data-mar-dpadmode]');
+      state.mounted = true;
+      // Re-measure scale on resize
+      window.addEventListener('resize', scheduleRescale);
+      return state.panelEl;
+    }
+
+    var _rescaleRaf = 0;
+    function scheduleRescale() {
+      if (_rescaleRaf) return;
+      _rescaleRaf = requestAnimationFrame(function () {
+        _rescaleRaf = 0;
+        rescale();
+      });
+    }
+    function rescale() {
+      var wrap = state.panelEl;
+      if (!wrap || !wrap.parentNode) return;
+      var tft = wrap.querySelector('[data-mar-tft]');
+      if (!tft) return;
+      // Available area = parent's box; the side strip steals ~110px on wide.
+      var rect = wrap.getBoundingClientRect();
+      var sideW = (window.innerWidth > 720) ? 110 : 0;
+      var availW = Math.max(160, rect.width - sideW - 24);
+      var availH = Math.max(140, rect.height - 24);
+      var s = Math.min(availW / 320, availH / 240);
+      // Keep a sane min/max so we don't get pixel slop or absurd zoom.
+      s = Math.max(0.6, Math.min(s, 3.5));
+      tft.style.setProperty('--mar-scale', s.toFixed(3));
+    }
+
+    // --------------------------------------------------------------- enter / leave
+    function enter() {
+      var ss = ensureSubscreen();
+      if (!ss) return;
+      clearEl(ss);
+      var panel = mount();
+      if (!panel) return;
+      ss.appendChild(panel);
+      // Reset stack to root menu
+      state.stack = [{
+        view: 'menu',
+        items: TREE.items,
+        cursor: 0,
+        title: TREE.title,
+      }];
+      state.view = 'menu';
+      state.data = null;
+      state.target = null;
+      state.activeCmd = null;
+      // Mark route active so dpad shows + apply device mode if currently scrollback
+      document.body.dataset.marauderActive = '1';
+      _dpadMode = 'device';
+      try { sessionStorage.setItem('promptzero_dpad_mode', _dpadMode); } catch (_) {}
+      applyDpadMode();
+      // Acquire the holder slot
+      sendWs({ type: 'marauder_acquire' });
+      render();
+      scheduleRescale();
+    }
+
+    function leave() {
+      stopHold();
+      stopActive('stop');
+      sendWs({ type: 'marauder_release' });
+      document.body.dataset.marauderActive = '';
+      applyDpadMode();
+    }
+
+    // --------------------------------------------------------------- render
+    function render() {
+      if (!state.mounted) return;
+      // Crumb
+      var path = state.stack.map(function (f) { return f.title || f.label; }).join(' › ');
+      state.crumbEl.textContent = path || 'MAIN';
+      // Mode pill
+      var mode = state.view === 'fire' ? 'ARM'
+               : state.view === 'streaming' ? 'RUN'
+               : state.activeCmd ? 'RUN' : 'IDLE';
+      state.modeEl.textContent = mode;
+      state.modeEl.dataset.state = mode === 'ARM' ? 'atk' : mode === 'RUN' ? 'run' : '';
+      // Status bar fields
+      updateStatus();
+      // Side strip
+      if (state.sideLink) {
+        state.sideLink.textContent = state.connected ? 'ONLINE' : 'OFFLINE';
+        state.sideLink.dataset.state = state.connected ? 'on' : 'off';
+      }
+      if (state.sidePort) state.sidePort.textContent = state.port || '—';
+      if (state.sideFw)   state.sideFw.textContent   = (state.firmware || '—').slice(0, 14);
+      if (state.sideDpad) state.sideDpad.textContent = (_dpadMode === 'device') ? 'DEVICE' : 'SCROLL';
+
+      var view = state.viewEl;
+      clearEl(view);
+      switch (state.view) {
+        case 'menu':       renderMenu(view); break;
+        case 'leds':       renderLeds(view); break;
+        case 'list':       renderList(view); break;
+        case 'gps':        renderGps(view);  break;
+        case 'graph':      renderGraph(view); break;
+        case 'fire':       renderFire(view); break;
+        case 'streaming':  renderStreaming(view); break;
+        case 'info':       renderInfo(view); break;
+        case 'browse':     renderBrowse(view); break;
+        default:           renderPlaceholder(view, 'UNKNOWN VIEW');
+      }
+    }
+
+    function updateStatus() {
+      // Battery: pulled from auto-poll body if we ever store it; for now, use --
+      if (state.statBat) {
+        state.statBat.textContent = 'BAT ' + (state.battery == null ? '--%' : (state.battery + '%'));
+      }
+      if (state.statGps) {
+        state.statGps.textContent = 'GPS ' + (state.gpsSats || 0) + 'sat';
+      }
+      if (state.statTgt) {
+        state.statTgt.textContent = 'TGT ' + (state.target ? String(state.target).slice(0, 6) : '—');
+      }
+    }
+
+    // --------------------------------------------------------------- renderers
+    function renderPlaceholder(view, label, sub) {
+      var p = mkEl('div', 'mar-placeholder');
+      p.appendChild(mkEl('div', 'mar-spinner', '◴'));
+      p.appendChild(mkEl('strong', null, label || 'WAITING'));
+      if (sub) p.appendChild(mkEl('div', null, sub));
+      view.appendChild(p);
+    }
+
+    function renderMenu(view) {
+      var frame = top();
+      var list = mkEl('div', 'mar-list');
+      frame.items.forEach(function (it, i) {
+        var row = mkEl('div', 'mar-row');
+        if (i === frame.cursor) row.dataset.selected = '1';
+        row.appendChild(mkEl('span', 'mar-row-arrow', i === frame.cursor ? '▸' : ' '));
+        row.appendChild(mkEl('span', 'mar-row-label', it.label));
+        var meta = '';
+        if (it.kind === 'menu' || it.kind === 'leds') meta = '›';
+        else if (it.kind === 'attack') meta = '⚠';
+        else if (it.kind === 'list')   meta = '◉';
+        else if (it.kind === 'graph')  meta = '⇅';
+        else if (it.kind === 'gps')    meta = '⊕';
+        else if (it.kind === 'browse') meta = '/';
+        else if (it.kind === 'info')   meta = 'i';
+        row.appendChild(mkEl('span', 'mar-row-meta', meta));
+        list.appendChild(row);
+      });
+      view.appendChild(list);
+    }
+
+    function renderLeds(view) {
+      var frame = top();
+      var grid = mkEl('div', 'mar-leds');
+      frame.items.forEach(function (it, i) {
+        var sw = mkEl('div', 'mar-led');
+        if (i === frame.cursor) sw.dataset.selected = '1';
+        if (it.rainbow) {
+          sw.dataset.rainbow = '1';
+        } else {
+          sw.style.setProperty('--swatch', '#' + it.hex);
+        }
+        sw.appendChild(mkEl('span', null, it.label.toUpperCase()));
+        grid.appendChild(sw);
+      });
+      view.appendChild(grid);
+    }
+
+    function renderList(view) {
+      var d = state.data || {};
+      var rows = d.rows || [];
+      if (rows.length === 0) {
+        renderPlaceholder(view, d.title || 'SCANNING…', d.cmdLabel || '');
+        return;
+      }
+      var list = mkEl('div', 'mar-list');
+      // Show ~14 rows; cursor scrolls window
+      var max = 14;
+      var start = Math.max(0, Math.min(d.cursor || 0, rows.length - 1) - Math.floor(max / 2));
+      start = Math.max(0, Math.min(start, Math.max(0, rows.length - max)));
+      for (var i = start; i < Math.min(rows.length, start + max); i++) {
+        var r = rows[i];
+        var row = mkEl('div', 'mar-row');
+        if (i === d.cursor) row.dataset.selected = '1';
+        row.appendChild(mkEl('span', 'mar-row-arrow', i === d.cursor ? '▸' : ' '));
+
+        var labelWrap = mkEl('span', 'mar-row-label');
+        if (r.bars && r.bars > 0) {
+          var bar = mkEl('span', 'mar-rssi-bar');
+          bar.dataset.strength = String(r.bars);
+          for (var b = 0; b < 5; b++) bar.appendChild(mkEl('i'));
+          labelWrap.appendChild(bar);
+        }
+        labelWrap.appendChild(document.createTextNode(' ' + (r.label || '')));
+        row.appendChild(labelWrap);
+
+        var meta = mkEl('span', 'mar-row-meta', r.metaText || '');
+        if (r.metaBand) meta.classList.add('mar-rssi-num');
+        if (r.metaBand) meta.dataset.band = r.metaBand;
+        row.appendChild(meta);
+        list.appendChild(row);
+      }
+      view.appendChild(list);
+      // Counter strip in crumb-meta? Use status bar mode pill counter
+      // (already shows RUN). Add a tiny floating count in top-right.
+      var counter = mkEl('div', 'mar-graph-readout');
+      counter.textContent = String(rows.length);
+      var sub = mkEl('small', null, 'SEEN');
+      counter.appendChild(sub);
+      view.appendChild(counter);
+    }
+
+    function renderGps(view) {
+      var d = state.data || {};
+      if (!d.fix && (!d.sats || d.sats === 0)) {
+        renderPlaceholder(view, 'GPS NO FIX', 'WAITING FOR SATS');
+        return;
+      }
+      var grid = mkEl('div', 'mar-gps');
+      var rows = [
+        ['FIX',   d.fix ? 'YES' : 'NO',  String(d.fix ? 1 : 0)],
+        ['SATS',  String(d.sats || 0),   ''],
+        ['HDOP',  d.hdop != null ? d.hdop.toFixed(2) : '—', ''],
+        ['ALT',   d.alt  != null ? (d.alt.toFixed(1) + 'm') : '—', ''],
+        ['LAT',   d.lat  != null ? d.lat.toFixed(5)  : '—', ''],
+        ['LON',   d.lon  != null ? d.lon.toFixed(5)  : '—', ''],
+        ['SPD',   d.speedKn != null ? (d.speedKn.toFixed(1) + 'kn') : '—', ''],
+        ['UTC',   d.timeUTC || '—', ''],
+      ];
+      rows.forEach(function (r) {
+        var cell = mkEl('div', 'mar-gps-cell');
+        cell.appendChild(mkEl('div', 'mar-gps-label', r[0]));
+        var val = mkEl('div', 'mar-gps-val', r[1]);
+        if (r[2] !== '') val.dataset.fix = r[2];
+        cell.appendChild(val);
+        grid.appendChild(cell);
+      });
+      view.appendChild(grid);
+    }
+
+    function renderGraph(view) {
+      var W = 320, H = 200;   // view region is ~320 × 213; leave room
+      var s = state.packetSeries;
+      var seriesNames = ['beacon', 'deauth', 'probe', 'eapol', 'raw'];
+      var seriesColors = {
+        beacon: 'var(--tft-orange)',
+        deauth: 'var(--tft-red)',
+        probe:  'var(--tft-amber)',
+        eapol:  'var(--tft-green)',
+        raw:    'var(--tft-fg-dim)',
+      };
+      // Determine vertical scale
+      var maxVal = 1;
+      seriesNames.forEach(function (n) {
+        s[n].forEach(function (v) { if (v > maxVal) maxVal = v; });
+      });
+      var ns = 'http://www.w3.org/2000/svg';
+      var svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('class', 'mar-graph');
+      svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+      svg.setAttribute('preserveAspectRatio', 'none');
+      // Grid
+      var grid = document.createElementNS(ns, 'g');
+      grid.setAttribute('class', 'mar-graph-grid');
+      for (var i = 1; i < 4; i++) {
+        var ln = document.createElementNS(ns, 'line');
+        ln.setAttribute('x1', 0); ln.setAttribute('x2', W);
+        ln.setAttribute('y1', H * i / 4); ln.setAttribute('y2', H * i / 4);
+        grid.appendChild(ln);
+      }
+      svg.appendChild(grid);
+      // Traces
+      seriesNames.forEach(function (name, idx) {
+        var arr = s[name];
+        if (!arr || arr.length < 2) return;
+        var step = W / (s.maxLen - 1);
+        var pts = arr.map(function (v, i) {
+          var x = (i + (s.maxLen - arr.length)) * step;
+          var y = H - (Math.min(v, maxVal) / maxVal) * (H - 6) - 2;
+          return x.toFixed(1) + ',' + y.toFixed(1);
+        }).join(' ');
+        var glow = document.createElementNS(ns, 'polyline');
+        glow.setAttribute('class', 'mar-graph-trace-glow');
+        glow.setAttribute('points', pts);
+        glow.setAttribute('style', 'stroke:' + seriesColors[name]);
+        svg.appendChild(glow);
+        var line = document.createElementNS(ns, 'polyline');
+        line.setAttribute('class', 'mar-graph-trace');
+        line.setAttribute('points', pts);
+        line.setAttribute('style', 'stroke:' + seriesColors[name]);
+        svg.appendChild(line);
+        // Legend
+        var lg = document.createElementNS(ns, 'text');
+        lg.setAttribute('class', 'mar-graph-legend ' + name);
+        lg.setAttribute('x', 4 + idx * 50);
+        lg.setAttribute('y', 8);
+        lg.textContent = name.toUpperCase();
+        svg.appendChild(lg);
+      });
+      view.appendChild(svg);
+      // Big readout: latest beacon count
+      var last = (s.beacon[s.beacon.length - 1]) || 0;
+      var ro = mkEl('div', 'mar-graph-readout');
+      ro.textContent = String(last);
+      var sub = mkEl('small', null, 'BCN/s');
+      ro.appendChild(sub);
+      view.appendChild(ro);
+    }
+
+    function renderFire(view) {
+      var d = state.data || {};
+      var fire = mkEl('div', 'mar-fire');
+      if (state.hold.fired) fire.dataset.armed = '1';
+      fire.appendChild(mkEl('div', 'mar-fire-cmd', (d.cmd || '').toUpperCase()));
+      var argsLine = '';
+      if (d.args) {
+        argsLine = Object.keys(d.args).map(function (k) { return '-' + k + ' ' + d.args[k]; }).join(' ');
+      }
+      if (argsLine) fire.appendChild(mkEl('div', 'mar-fire-args', argsLine));
+
+      var ring = mkEl('div', 'mar-fire-ring');
+      // SVG ring
+      var ns = 'http://www.w3.org/2000/svg';
+      var svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('viewBox', '0 0 64 64');
+      var bg = document.createElementNS(ns, 'circle');
+      bg.setAttribute('class', 'ring-bg');
+      bg.setAttribute('cx', 32); bg.setAttribute('cy', 32); bg.setAttribute('r', 28);
+      svg.appendChild(bg);
+      var fill = document.createElementNS(ns, 'circle');
+      fill.setAttribute('class', 'ring-fill');
+      fill.setAttribute('cx', 32); fill.setAttribute('cy', 32); fill.setAttribute('r', 28);
+      svg.appendChild(fill);
+      ring.appendChild(svg);
+      var glyph = mkEl('div', 'mar-fire-glyph', state.hold.fired ? '◉' : 'OK');
+      ring.appendChild(glyph);
+      fire.appendChild(ring);
+
+      var hint = mkEl('div', 'mar-fire-hint');
+      hint.appendChild(mkEl('b', null, 'HOLD OK 1.5s'));
+      hint.appendChild(document.createTextNode(' TO ARM · BACK TO ABORT'));
+      fire.appendChild(hint);
+
+      view.appendChild(fire);
+      // Initial ring progress
+      ring.style.setProperty('--hold-progress', state.hold.running
+        ? Math.min((Date.now() - state.hold.startMs) / 1500, 1).toFixed(3)
+        : '0');
+    }
+
+    function renderStreaming(view) {
+      var d = state.data || {};
+      var wrap = mkEl('div', 'mar-stream');
+      var head = mkEl('div', 'mar-stream-head');
+      head.appendChild(mkEl('span', null, (d.cmd || '').toUpperCase()));
+      var counter = mkEl('span', 'mar-stream-counter', String(d.events || 0));
+      head.appendChild(counter);
+      wrap.appendChild(head);
+
+      var log = mkEl('div', 'mar-stream-log');
+      (d.lines || []).slice(-12).reverse().forEach(function (ln) {
+        var row = mkEl('div', 'row' + (ln.level ? (' ' + ln.level) : ''), ln.text);
+        log.appendChild(row);
+      });
+      wrap.appendChild(log);
+
+      var stop = mkEl('div', 'mar-stream-stop', 'BACK TO STOP');
+      wrap.appendChild(stop);
+      view.appendChild(wrap);
+    }
+
+    function renderInfo(view) {
+      var d = state.data || {};
+      var grid = mkEl('div', 'mar-info');
+      var rows = [
+        ['LINK',     state.connected ? 'ONLINE' : 'OFFLINE'],
+        ['PORT',     state.port || '—'],
+        ['FIRMWARE', state.firmware || '—'],
+        ['BATTERY',  state.battery != null ? (state.battery + '%') : '—'],
+        ['GPS SATS', String(state.gpsSats || 0)],
+        ['GPS FIX',  state.gpsFix ? 'YES' : 'NO'],
+      ];
+      rows.forEach(function (r) {
+        grid.appendChild(mkEl('div', 'mar-info-key', r[0]));
+        grid.appendChild(mkEl('div', 'mar-info-val', r[1]));
+      });
+      view.appendChild(grid);
+    }
+
+    function renderBrowse(view) {
+      var d = state.data || {};
+      if (!d.entries || d.entries.length === 0) {
+        renderPlaceholder(view, 'BROWSING SD', d.path || '/');
+        return;
+      }
+      var list = mkEl('div', 'mar-list');
+      d.entries.forEach(function (e, i) {
+        var row = mkEl('div', 'mar-row');
+        if (i === d.cursor) row.dataset.selected = '1';
+        row.appendChild(mkEl('span', 'mar-row-arrow', i === d.cursor ? '▸' : ' '));
+        row.appendChild(mkEl('span', 'mar-row-label', e.name));
+        row.appendChild(mkEl('span', 'mar-row-meta', e.kind === 'dir' ? '/' : (e.size || '')));
+        list.appendChild(row);
+      });
+      view.appendChild(list);
+    }
+
+    // --------------------------------------------------------------- nav helpers
+    function top() { return state.stack[state.stack.length - 1] || null; }
+
+    function pushFrame(item) {
+      if (item.kind === 'menu') {
+        state.stack.push({ view: 'menu', items: item.items, cursor: 0, title: item.title || item.label });
+        state.view = 'menu';
+        state.data = null;
+      } else if (item.kind === 'leds') {
+        state.stack.push({ view: 'leds', items: item.items, cursor: 0, title: item.title || 'LED' });
+        state.view = 'leds';
+        state.data = null;
+      } else if (item.kind === 'list') {
+        state.stack.push({ view: 'list', title: item.label, leaf: item });
+        state.view = 'list';
+        state.data = { rows: [], cursor: 0, dedupKeys: {}, evt: item.evt, col: item.col, cmd: item.cmd, cmdLabel: item.label };
+        startCmd(item.cmd, 'start', item.args || {});
+      } else if (item.kind === 'graph') {
+        state.stack.push({ view: 'graph', title: item.label, leaf: item });
+        state.view = 'graph';
+        state.data = {};
+        // reset series
+        state.packetSeries = { beacon: [], deauth: [], probe: [], eapol: [], raw: [], maxLen: 60 };
+        startCmd(item.cmd, 'start', item.args || {});
+      } else if (item.kind === 'gps') {
+        state.stack.push({ view: 'gps', title: item.label, leaf: item });
+        state.view = 'gps';
+        state.data = { sats: state.gpsSats, fix: state.gpsFix };
+        startCmd('gpsdata', 'once', {});
+      } else if (item.kind === 'attack') {
+        state.stack.push({ view: 'fire', title: item.label, leaf: item });
+        state.view = 'fire';
+        state.data = { cmd: item.cmd, args: item.args || {}, attack: true, label: item.label };
+      } else if (item.kind === 'browse') {
+        state.stack.push({ view: 'browse', title: item.label, leaf: item });
+        state.view = 'browse';
+        state.data = { path: '/', entries: [], cursor: 0 };
+        startCmd('ls', 'start',{ path: '/' });
+      } else if (item.kind === 'info') {
+        state.stack.push({ view: 'info', title: item.label, leaf: item });
+        state.view = 'info';
+        state.data = {};
+      } else {
+        return;
+      }
+    }
+
+    function popFrame() {
+      if (state.stack.length <= 1) return false;
+      stopHold();
+      stopActive('stop');
+      state.stack.pop();
+      var f = top();
+      state.view = f.view;
+      state.data = (f.view === 'menu' || f.view === 'leds') ? null : state.data;
+      // For menu / leds frame, ensure data null
+      if (f.view === 'menu' || f.view === 'leds') state.data = null;
+      return true;
+    }
+
+    function selectCurrent() {
+      var f = top();
+      if (!f) return;
+      if (f.view === 'menu') {
+        var it = f.items[f.cursor];
+        if (it) pushFrame(it);
+      } else if (f.view === 'leds') {
+        var it2 = f.items[f.cursor];
+        if (it2) {
+          if (it2.rainbow) {
+            sendWs({ type: 'marauder_cmd', cmd: 'led_rainbow', action: 'once', args: {} });
+          } else {
+            sendWs({ type: 'marauder_cmd', cmd: 'led_set', action: 'once', args: { hex: it2.hex } });
+          }
+          showToast('LED → ' + it2.label.toUpperCase());
+        }
+      } else if (f.view === 'list') {
+        // Set target = selected row's identifier
+        var d = state.data || {}; var r = (d.rows || [])[d.cursor || 0];
+        if (r) state.target = r.label;
+      } else if (f.view === 'browse') {
+        var d2 = state.data || {}; var e = (d2.entries || [])[d2.cursor || 0];
+        if (e && e.kind === 'dir') {
+          d2.path = (d2.path === '/' ? '' : d2.path) + '/' + e.name;
+          d2.entries = [];
+          d2.cursor = 0;
+          startCmd('ls', 'start',{ path: d2.path });
+        }
+      }
+    }
+
+    // --------------------------------------------------------------- WS commands
+    function startCmd(cmd, action, args) {
+      stopActive(null);
+      state.activeCmd = { cmd: cmd, args: args, action: action };
+      sendWs({ type: 'marauder_cmd', cmd: cmd, action: action || 'start', args: args || {} });
+    }
+
+    function stopActive(_reason) {
+      if (!state.activeCmd) return;
+      // Send stop only for streaming-like actions
+      if (state.activeCmd.action === 'start') {
+        sendWs({ type: 'marauder_cmd', cmd: state.activeCmd.cmd, action: 'stop', args: state.activeCmd.args || {} });
+      }
+      state.activeCmd = null;
+    }
+
+    // --------------------------------------------------------------- hold-to-fire
+    function startHold() {
+      if (state.view !== 'fire' || state.hold.running) return;
+      state.hold.running = true;
+      state.hold.fired = false;
+      state.hold.startMs = Date.now();
+      var loop = function () {
+        if (!state.hold.running) return;
+        var p = Math.min((Date.now() - state.hold.startMs) / 1500, 1);
+        var ring = state.viewEl && state.viewEl.querySelector('.mar-fire-ring');
+        if (ring) ring.style.setProperty('--hold-progress', p.toFixed(3));
+        if (p >= 1) {
+          state.hold.fired = true;
+          fireArmed();
+          return;
+        }
+        state.hold.raf = requestAnimationFrame(loop);
+      };
+      state.hold.raf = requestAnimationFrame(loop);
+      beep(440, 0.06);
+    }
+    function stopHold() {
+      if (!state.hold.running) return;
+      cancelAnimationFrame(state.hold.raf);
+      state.hold.running = false;
+      state.hold.raf = 0;
+      state.hold.fired = false;
+      state.hold.startMs = 0;
+      var ring = state.viewEl && state.viewEl.querySelector('.mar-fire-ring');
+      if (ring) ring.style.setProperty('--hold-progress', '0');
+    }
+    function fireArmed() {
+      var d = state.data || {};
+      var leaf = top() && top().leaf;
+      if (!leaf) { stopHold(); return; }
+      // Transition fire frame → streaming frame in place
+      var streamFrame = { view: 'streaming', title: leaf.label, leaf: leaf };
+      state.stack.pop();
+      state.stack.push(streamFrame);
+      state.view = 'streaming';
+      state.data = {
+        cmd: d.cmd, args: d.args || {}, lines: [],
+        events: 0, attack: true,
+      };
+      startCmd(d.cmd, 'start', d.args || {});
+      stopHold();
+      beep(880, 0.12);
+      render();
+    }
+
+    // --------------------------------------------------------------- dpad routing
+    function handleDpad(dir) {
+      // Fire screen: OK is owned by the hold handlers; clicks should be ignored.
+      if (state.view === 'fire' && dir === 'ok') return;
+
+      switch (dir) {
+        case 'up':    moveCursor(-1); break;
+        case 'down':  moveCursor(+1); break;
+        case 'left':  popFrame(); break;
+        case 'right':
+          // Right: same as OK on a menu, but doesn't fire attacks (safer)
+          if (state.view === 'menu' || state.view === 'leds' || state.view === 'browse') selectCurrent();
+          break;
+        case 'ok':    selectCurrent(); break;
+        case 'back':  popFrame(); break;
+      }
+      render();
+    }
+
+    function moveCursor(delta) {
+      var f = top();
+      if (!f) return;
+      if (f.view === 'menu' || f.view === 'leds') {
+        var n = f.items.length;
+        f.cursor = (f.cursor + delta + n) % n;
+      } else if (f.view === 'list') {
+        var rows = (state.data && state.data.rows) || [];
+        if (rows.length === 0) return;
+        var c = state.data.cursor || 0;
+        state.data.cursor = (c + delta + rows.length) % rows.length;
+      } else if (f.view === 'browse') {
+        var es = (state.data && state.data.entries) || [];
+        if (es.length === 0) return;
+        var c2 = state.data.cursor || 0;
+        state.data.cursor = (c2 + delta + es.length) % es.length;
+      }
+    }
+
+    // --------------------------------------------------------------- WS events
+    function onMessage(msg) {
+      switch (msg.type) {
+        case 'marauder_status':
+          state.connected = !!msg.connected;
+          state.port      = msg.port || '';
+          state.firmware  = msg.firmware || '';
+          render();
+          break;
+        case 'marauder_event':
+          handleEvent(msg.kind, msg.payload || {});
+          break;
+        case 'marauder_done':
+          if (state.activeCmd && state.activeCmd.cmd === msg.cmd) state.activeCmd = null;
+          if (state.view === 'streaming' && state.data) {
+            state.data.lines = (state.data.lines || []).concat([{ level: '', text: '✓ done' }]);
+          }
+          render();
+          break;
+        case 'marauder_error':
+          if (state.view === 'streaming' && state.data) {
+            state.data.lines = (state.data.lines || []).concat([{ level: 'err', text: 'ERR: ' + (msg.message || msg.cmd) }]);
+          } else {
+            showToast('Marauder: ' + (msg.message || msg.cmd || 'error'));
+          }
+          render();
+          break;
+      }
+    }
+
+    function handleEvent(kind, p) {
+      switch (kind) {
+        case 'ap_seen':
+        case 'sta_seen':
+        case 'ble_seen':
+        case 'beacon':
+        case 'probe':
+        case 'deauth_seen':
+        case 'raw':
+        case 'ble_wardrive':
+        case 'nmea_line':
+          appendListRow(kind, p);
+          // also feed the streaming log so the streaming view gets updates
+          appendStreamLine(kind, p);
+          break;
+        case 'packet_rate':
+          ingestPacketRate(p);
+          break;
+        case 'gps':
+          state.gpsSats = p.sats || 0;
+          state.gpsFix  = !!p.fix;
+          if (state.view === 'gps') {
+            state.data = Object.assign(state.data || {}, p);
+          }
+          break;
+        case 'attack_status':
+        case 'portal_status':
+          if (state.view === 'streaming' && state.data) {
+            state.data.lines = (state.data.lines || []).concat([{ level: 'warn', text: shortPayload(p) }]);
+            state.data.events = (state.data.events || 0) + 1;
+          }
+          break;
+        case 'ls_entry':
+          // Backend's `ls` registry entry runs in modeStream and emits one
+          // `ls_entry` event per parsed directory row (parsers.ParseLs).
+          // pushFrame('browse') initialises entries=[] so we just append.
+          if (state.view === 'browse' && state.data) {
+            if (!Array.isArray(state.data.entries)) state.data.entries = [];
+            state.data.entries.push(p);
+          }
+          break;
+        case 'led_ack':
+        case 'stopped':
+          break;
+      }
+      render();
+    }
+
+    function appendListRow(kind, payload) {
+      if (state.view !== 'list') return;
+      var d = state.data; if (!d) return;
+      var col = COLUMNS[d.col] || COLUMNS.ap;
+      // raw / nmea are line streams — every emit is a fresh log row, NEVER
+      // deduped. Scan-style columns (ap/sta/ble/wardrive) dedup by stable
+      // identifier so RSSI updates refresh the existing row in place.
+      var lineStream = (d.col === 'raw' || d.col === 'nmea');
+      var key = lineStream
+        ? ('row-' + (d._seq = (d._seq || 0) + 1))
+        : (payload.bssid || payload.mac || payload.ssid || payload.line || JSON.stringify(payload));
+      if (!lineStream && d.dedupKeys[key] != null) {
+        // update existing row (refresh RSSI/last-seen)
+        var idx = d.dedupKeys[key];
+        var r = d.rows[idx]; col(r, payload); r._seen = Date.now();
+        return;
+      }
+      var r2 = { _key: key, _seen: Date.now() };
+      col(r2, payload);
+      d.dedupKeys[key] = d.rows.length;
+      d.rows.push(r2);
+      // Keep list bounded so we don't hog memory on long scans
+      if (d.rows.length > 256) {
+        var dropped = d.rows.shift();
+        delete d.dedupKeys[dropped._key];
+        // re-index
+        d.dedupKeys = {};
+        d.rows.forEach(function (rw, ix) { d.dedupKeys[rw._key] = ix; });
+        if (d.cursor > 0) d.cursor--;
+      }
+    }
+
+    function appendStreamLine(kind, p) {
+      if (state.view !== 'streaming' || !state.data) return;
+      state.data.events = (state.data.events || 0) + 1;
+      state.data.lines = state.data.lines || [];
+      state.data.lines.push({ level: '', text: shortPayload(p) });
+      if (state.data.lines.length > 60) state.data.lines.shift();
+    }
+
+    function shortPayload(p) {
+      if (!p || typeof p !== 'object') return String(p || '');
+      if (p.line) return String(p.line).slice(0, 36);
+      if (p.ssid) return (p.ssid + ' · RSSI ' + (p.rssi || '')).slice(0, 36);
+      if (p.mac)  return (p.mac + ' · RSSI ' + (p.rssi || '')).slice(0, 36);
+      if (p.message) return String(p.message).slice(0, 36);
+      var ks = Object.keys(p).slice(0, 3);
+      return ks.map(function (k) { return k + '=' + p[k]; }).join(' ').slice(0, 36);
+    }
+
+    function ingestPacketRate(p) {
+      var s = state.packetSeries;
+      ['beacon', 'deauth', 'probe', 'eapol', 'raw'].forEach(function (n) {
+        var v = Number(p[n] || 0);
+        s[n].push(v);
+        if (s[n].length > s.maxLen) s[n].shift();
+      });
+    }
+
+    // --------------------------------------------------------------- public
+    return {
+      enter: enter,
+      leave: leave,
+      onMessage: onMessage,
+      handleDpad: handleDpad,
+      isActive: function () { return document.body.dataset.marauderActive === '1'; },
+      view: function () { return state.view; },
+      startHold: startHold,
+      stopHold: stopHold,
+      render: render,
+      // Debug helper for stub-WS testing in the browser console:
+      _state: state,
+      _injectEvent: function (k, p) { handleEvent(k, p || {}); render(); },
+    };
+  }());
+
+  // Expose for stub-WS debugging from the browser console.
+  try { window.MarauderUI = Marauder; } catch (_) {}
+
+  function setupMarauderHoldHandlers() {
+    var okBtn = document.querySelector('.dpad button[data-dir="ok"]');
+    if (!okBtn) return;
+    var press = function (e) {
+      if (!Marauder.isActive() || Marauder.view() !== 'fire') return;
+      if (e && e.preventDefault) e.preventDefault();
+      Marauder.startHold();
+    };
+    var release = function (e) {
+      if (!Marauder.isActive() || Marauder.view() !== 'fire') return;
+      if (e && e.preventDefault) e.preventDefault();
+      Marauder.stopHold();
+      Marauder.render();
+    };
+    okBtn.addEventListener('mousedown', press);
+    okBtn.addEventListener('mouseup', release);
+    okBtn.addEventListener('mouseleave', release);
+    okBtn.addEventListener('touchstart', press, { passive: false });
+    okBtn.addEventListener('touchend', release);
+    okBtn.addEventListener('touchcancel', release);
+
+    // Keyboard fallback: hold Space/Enter to arm
+    document.addEventListener('keydown', function (e) {
+      if (!Marauder.isActive() || Marauder.view() !== 'fire') return;
+      if (e.repeat) return;
+      if (e.key !== ' ' && e.key !== 'Enter') return;
+      e.preventDefault();
+      Marauder.startHold();
+    });
+    document.addEventListener('keyup', function (e) {
+      if (!Marauder.isActive() || Marauder.view() !== 'fire') return;
+      if (e.key !== ' ' && e.key !== 'Enter') return;
+      e.preventDefault();
+      Marauder.stopHold();
+      Marauder.render();
+    });
+  }
+
+  /* =========================================================================
      Initialisation
   ========================================================================= */
 
@@ -3341,6 +4446,7 @@
     setupQuickActions();
     setupDpad();
     setupDpadModeToggle();
+    setupMarauderHoldHandlers();
     setupHistory();
     setupInputForm();
 
@@ -3369,6 +4475,7 @@
 
     window.addEventListener('beforeunload', function () {
       if (_screenState.isHolder) { try { sendWs({ type: 'screen_release' }); } catch (_) {} }
+      if (Marauder.isActive())   { try { sendWs({ type: 'marauder_release' }); } catch (_) {} }
       if (_ws) { try { _ws.close(); } catch (_) {} }
     });
   }

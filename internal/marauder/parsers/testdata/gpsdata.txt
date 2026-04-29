@@ -1,0 +1,26 @@
+Getting GPS Data. Stop with stopscan
+==== GPS Data ====
+  Good Fix: Yes
+Satellites: 8
+  Accuracy: 1.20
+  Latitude: 37.4220656
+ Longitude: -122.0840897
+  Altitude: 12.30
+  Datetime: 2026-04-28 17:42:18
+==== GPS Data ====
+  Good Fix: Yes
+      Text: PROMPTZERO_TEST
+Satellites: 9
+  Accuracy: 0.95
+  Latitude: 37.4220719
+ Longitude: -122.0840923
+  Altitude: 12.45
+  Datetime: 2026-04-28 17:42:19
+==== GPS Data ====
+  Good Fix: No
+Satellites: 0
+  Accuracy: 99.99
+  Latitude: 0.0000000
+ Longitude: 0.0000000
+  Altitude: 0.00
+  Datetime: 2000-01-01 00:00:00

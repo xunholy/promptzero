@@ -187,5 +187,54 @@
   </footer>
 </div>
 
+<!-- Synthesized Marauder TFT panel — fixed 320x240 logical viewport,
+     scaled with transform to fit. Hidden by default; mounted into
+     #subscreen by activateRoute('marauder'). -->
+<template id="marauderPanelTpl">
+  <div class="marauder-wrap" data-mar-wrap>
+    <div class="marauder-tft" data-mar-tft>
+      <div class="marauder-bezel" aria-hidden="true"></div>
+      <div class="marauder-screen" data-mar-screen>
+        <div class="mar-statusbar" data-mar-status>
+          <span class="mar-stat" data-mar-stat-bat>BAT&nbsp;--%</span>
+          <span class="mar-stat-sep" aria-hidden="true">│</span>
+          <span class="mar-stat" data-mar-stat-gps>GPS&nbsp;0sat</span>
+          <span class="mar-stat-sep" aria-hidden="true">│</span>
+          <span class="mar-stat" data-mar-stat-tgt>TGT&nbsp;—</span>
+          <span class="mar-stat-spacer"></span>
+          <span class="mar-stat mar-stat-mode" data-mar-stat-mode>IDLE</span>
+        </div>
+        <div class="mar-crumb" data-mar-crumb>MAIN</div>
+        <div class="mar-view" data-mar-view></div>
+        <div class="mar-footer" data-mar-footer>
+          <span><b>OK</b>&nbsp;SELECT</span>
+          <span><b>◀</b>&nbsp;UP-LEVEL</span>
+          <span><b>BACK</b>&nbsp;EXIT</span>
+        </div>
+        <div class="mar-scanlines" aria-hidden="true"></div>
+        <div class="mar-bloom" aria-hidden="true"></div>
+      </div>
+    </div>
+    <div class="marauder-side">
+      <div class="marauder-side-block">
+        <div class="marauder-side-label">DPAD</div>
+        <div class="marauder-side-val" data-mar-dpadmode>DEVICE</div>
+      </div>
+      <div class="marauder-side-block">
+        <div class="marauder-side-label">LINK</div>
+        <div class="marauder-side-val" data-mar-link>—</div>
+      </div>
+      <div class="marauder-side-block">
+        <div class="marauder-side-label">PORT</div>
+        <div class="marauder-side-val mono" data-mar-port>—</div>
+      </div>
+      <div class="marauder-side-block">
+        <div class="marauder-side-label">FW</div>
+        <div class="marauder-side-val mono" data-mar-fw>—</div>
+      </div>
+    </div>
+  </div>
+</template>
+
 </body>
 </html>

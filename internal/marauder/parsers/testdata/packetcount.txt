@@ -1,0 +1,8 @@
+HomeWiFi: 142
+Guest-Network: 23
+5c:cf:7f:01:02:03: 87
+8c:85:90:aa:bb:cc: 4
+HomeWiFi: 198
+Guest-Network: 31
+5c:cf:7f:01:02:03: 102
+8c:85:90:aa:bb:cc: 9

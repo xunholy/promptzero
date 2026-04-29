@@ -1,0 +1,22 @@
+     Mgmt: 142
+     Data: 87
+  Channel: 6
+   Beacon: 64
+Probe Req: 12
+Probe Res: 7
+   Deauth: 0
+    EAPOL: 0
+     RSSI: -91 - -33
+
+DEAUTH TX: FALSE
+     Mgmt: 285
+     Data: 174
+  Channel: 6
+   Beacon: 128
+Probe Req: 24
+Probe Res: 14
+   Deauth: 2
+    EAPOL: 1
+     RSSI: -92 - -32
+
+DEAUTH TX: FALSE

@@ -1,0 +1,6 @@
+-52 Ch: 6 aa:bb:cc:dd:ee:ff ESSID: HomeWiFi
+-49 Ch: 6 aa:bb:cc:dd:ee:ff ESSID: HomeWiFi
+-78 Ch: 11 11:22:33:44:55:66 ESSID: Guest-Network
+-83 Ch: 1 de:ad:be:ef:00:01 ESSID:
+-77 Ch: 11 11:22:33:44:55:66 ESSID: Guest-Network
+-60 Ch: 6 aa:bb:cc:dd:ee:ff ESSID: HomeWiFi

@@ -158,6 +158,24 @@ type Server struct {
 	// mirrorLastSeen is the unix-nano timestamp of the last keepalive from the holder.
 	mirrorLastSeen atomic.Int64
 
+	// marauder is the optional ESP32 Marauder client, wired by
+	// SetMarauder. The web layer drives the synthesised TFT panel through
+	// it (one-shot Exec for snapshot commands, Stream for live screens).
+	// Held as an interface so tests can inject a fake without opening a
+	// real serial port.
+	marauder marauderClient
+
+	// marauderMu guards marauderHolder, marauderCancel, marauderRunning.
+	// marauderActive is the fast-path atomic for "is the synth panel
+	// holding the device" — its semantics are independent of mirrorActive
+	// (Marauder mirror MUST coexist with Flipper mirror per SPEC §3.5),
+	// so it is NOT consulted by refuseIfMirrorActive.
+	marauderMu      sync.Mutex
+	marauderHolder  *sessionConn
+	marauderCancel  context.CancelFunc
+	marauderRunning string // command currently streaming, "" if idle
+	marauderActive  atomic.Bool
+
 	// startedAt records the time NewServer returned; /api/debug computes
 	// uptime against it rather than os.StartTime so the number matches the
 	// connection lifecycle the operator sees in the cockpit.
@@ -273,6 +291,13 @@ type wsInbound struct {
 	// session via Gui.SendInputEventRequest.
 	Button    string `json:"button,omitempty"`
 	EventType string `json:"event_type,omitempty"`
+	// Cmd / Action / Args carry the marauder_cmd payload. Cmd is the
+	// registry key (see api_marauder.go). Action is "start" | "stop" |
+	// "once". Args is an opaque map forwarded to the registry entry's
+	// argument formatter (e.g. blespam {target:"apple"}).
+	Cmd    string         `json:"cmd,omitempty"`
+	Action string         `json:"action,omitempty"`
+	Args   map[string]any `json:"args,omitempty"`
 }
 
 // NewServer creates a web server bound to addr. If the host portion of addr
@@ -411,6 +436,14 @@ func (s *Server) setUIContextFromWS(view, path string) {
 // SetMarauderConnected records the current Marauder serial state for the
 // /api/debug snapshot. Call on connect/disconnect transitions.
 func (s *Server) SetMarauderConnected(v bool) { s.marauderOn.Store(v) }
+
+// SetMarauder wires the Marauder serial client. The synth-panel WS
+// handlers route Exec / Stream calls through this. Pass nil to clear the
+// reference (the handlers refuse with `marauder_error/no_device`).
+//
+// *marauder.Marauder satisfies the marauderClient interface; tests inject
+// a fake without opening a real port.
+func (s *Server) SetMarauder(m marauderClient) { s.marauder = m }
 
 // SetBridgeMode records that the Flipper has been suspended for
 // USB-UART bridge mode (Marauder stacked on Flipper GPIO header). The
@@ -791,6 +824,14 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		if isHolder {
 			s.releaseScreen("holder_disconnect")
 		}
+		// Same for the Marauder synth-panel hold — abandoning the WS must
+		// stop any in-flight stream and release the device.
+		s.marauderMu.Lock()
+		isMHolder := s.marauderHolder == c
+		s.marauderMu.Unlock()
+		if isMHolder {
+			s.releaseMarauder("holder_disconnect")
+		}
 		wg.Wait()
 	}()
 
@@ -839,6 +880,12 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			s.handleScreenKeepalive(c)
 		case "screen_input":
 			s.handleScreenInput(c, msg.Button, msg.EventType)
+		case "marauder_acquire":
+			go s.handleMarauderAcquire(c)
+		case "marauder_release":
+			go s.handleMarauderRelease(c)
+		case "marauder_cmd":
+			go s.handleMarauderCmd(c, msg.Cmd, msg.Action, msg.Args)
 		}
 	}
 }

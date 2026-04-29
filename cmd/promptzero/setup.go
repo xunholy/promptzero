@@ -1232,6 +1232,13 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	if deps.Flipper != nil {
 		srv.SetFlipper(deps.Flipper)
 	}
+	// Wire the Marauder client into the synth-panel WS handler. The agent
+	// already holds the live client (set by setupMarauder / setupMarauderViaBridge);
+	// we plug the same instance into the web server so the Marauder TFT panel
+	// can drive Exec / Stream without going through agent tool-use.
+	if m := deps.Ai.Marauder(); m != nil {
+		srv.SetMarauder(m)
+	}
 	// Always wire the session driver — *agent.Agent.SessionID returns an
 	// empty string until SetSessionStore runs, so the API layer simply
 	// reports an empty list when persistence is unavailable.

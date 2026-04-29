@@ -1,0 +1,5 @@
+-45 Ch: 6 aa:bb:cc:dd:ee:ff ESSID: HomeWiFi 64 00
+-72 Ch: 11 11:22:33:44:55:66 ESSID: Guest-Network 64 00
+STA: 5c:cf:7f:01:02:03 -> aa:bb:cc:dd:ee:ff
+STA: 8c:85:90:aa:bb:cc -> 11:22:33:44:55:66
+-58 Ch: 1 de:ad:be:ef:00:01 ESSID: Cafe Wi-Fi 64 00

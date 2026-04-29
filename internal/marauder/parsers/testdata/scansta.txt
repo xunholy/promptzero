@@ -1,0 +1,5 @@
+0 | MAC: 11:22:33:44:55:66, RSSI: -55
+1 | MAC: aa:bb:cc:dd:ee:ff, BSSID: 00:11:22:33:44:55, RSSI: -72
+2 | MAC: 5c:cf:7f:01:02:03, RSSI: -90
+station sniff starting
+Stopped after 30s

@@ -1,0 +1,5 @@
+-65 Ch: 6 Client: 5c:cf:7f:01:02:03 Probe: linksys
+-71 Ch: 1 Client: 8c:85:90:aa:bb:cc Probe: HomeWiFi
+-58 Ch: 11 Client: f0:18:98:11:22:33 Probe:
+-82 Ch: 6 Client: 5c:cf:7f:01:02:03 Probe: xfinitywifi
+-67 Ch: 1 Client: 8c:85:90:aa:bb:cc Probe: HomeWiFi
