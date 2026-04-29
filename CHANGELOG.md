@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-04-29
+
+### Added
+
+- **37 new tool Specs closing the v0.14.0 audit gap analysis**
+  (~/ObsidianVault/agent/integration-coverage-and-skills.md). Brings
+  Marauder coverage from ~88 % to effectively complete and closes the
+  largest aggregate Flipper gaps (Crypto enclave, GUI screen stream,
+  RTC date, archive extract, destructive ops, power rails). Bringing
+  the total registry to 268 tool Specs.
+
+  **Marauder Specs (24)** — `internal/tools/wifi_v016.go`
+    + `internal/marauder/commands_v016.go`:
+    - `wifi_clone_sta_mac` (companion to wifi_clone_mac)
+    - `wifi_info_ap` (per-AP detail)
+    - `wifi_mactrack` (follower / probing detector)
+    - `wifi_sigmon` (RSSI ticker)
+    - `wifi_sniff_pinescan` (Hak5 Pineapple deauth fingerprint)
+    - `wifi_sniff_multissid` (rogue multi-SSID radio)
+    - `wifi_wardrive_start` / `_stop` / `_poi` (Wigle-CSV with GPS)
+    - `gps_tracker_start` / `_stop` and `gps_poi` (start/mark/end)
+    - `wifi_add_ap` / `wifi_add_station` (manual list injection)
+    - `wifi_bt_spoof_airtag` (RF transmit; AirTag identity spoof)
+    - `wifi_karma` (probe-targeted rogue AP)
+    - `wifi_attack_quiet` / `_badmsg` / `_sleep` (WPA3-era disruption)
+    - `wifi_evil_portal_set_html`, `_set_ap`, `_reset`, `_ack`
+      (companion subverbs to existing start/stop)
+
+  **Flipper Specs (16)** — `internal/tools/system_v016.go`
+    + `internal/flipper/commands_v016.go`:
+    - `crypto_encrypt` / `crypto_decrypt` / `crypto_has_key`
+      (HMAC enclave; companion to existing crypto_store_key)
+    - `gui_screen_stream` (PBM frame stream over RPC)
+    - `flipper_date_get` / `_set` (RTC)
+    - `flipper_storage_extract` (tar extract on SD)
+    - `flipper_storage_format` (destructive — confirm:'YES_FORMAT')
+    - `flipper_factory_reset` (destructive — confirm:'YES_FACTORY_RESET')
+    - `flipper_backup_create`
+    - `flipper_backup_restore` (destructive — confirm:'YES_RESTORE')
+    - `flipper_power_off`
+    - `flipper_power_5v` / `flipper_power_3v3` (GPIO rail toggles)
+
+  Risk classification updated for every new tool in
+  `internal/risk/risk.go` so the confirm gate fires consistently
+  across CLI, REPL, web, and MCP. Registry-size test bumped from
+  231 → 268 with a comment explaining the wave delta.
+
+- **11 user-facing slash-command skills** filed in `~/.claude/skills/`
+  (no release coupling — they live in user config). Wraps common
+  Flipper / Marauder workflows that previously required manual chaining:
+  `/recon-pass`, `/loot-pull`, `/firmware-snapshot`, `/badge-triage`,
+  `/wifi-handshake`, `/garage-sweep`, `/hw-blackbox`, `/badge-walk`,
+  `/marauder-init`, `/payload-deploy`, `/glitch-hunt`. Each declares
+  its tool chain, prerequisites, and risk-gate behaviour.
+
+### Notes
+
+- Destructive Specs (`flipper_storage_format`, `flipper_factory_reset`,
+  `flipper_backup_restore`) require an exact-string `confirm` arg in
+  addition to the Critical risk-band confirmation gate. The literal
+  token (`YES_FORMAT`, `YES_FACTORY_RESET`, `YES_RESTORE`) is
+  documented in the Spec description and enforced by the handler.
+  This is a belt-and-braces gate so even with `--yolo` (risk gate off)
+  the tool can't be triggered by an LLM accident.
+
 ## [0.15.0] - 2026-04-29
 
 ### Changed

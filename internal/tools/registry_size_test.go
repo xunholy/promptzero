@@ -67,13 +67,20 @@ func TestRegistrySize(t *testing.T) {
 	// expansion: Bruce/Faultier/Bus Pirate, FlipperHTTP, Sub-GHz
 	// classifier; v0.9 Companion FAP integration) added a further +42
 	// specs without re-narrating the wave deltas in this comment block.
+	// v0.16 closes the remaining v0.14 audit gaps (~/ObsidianVault/agent/
+	// integration-coverage-and-skills.md): +37 specs across new Marauder
+	// verbs (wardrive, mactrack, sigmon, karma, attack-t quiet/badmsg/
+	// sleep, evil-portal subverbs) and new Flipper primitives (crypto
+	// enclave encrypt/decrypt/has_key, GUI screen stream, RTC date
+	// get/set, storage extract, plus the destructive trio: format,
+	// factory_reset, backup create/restore + power off and 5V/3V3 rails).
 	// When this number drifts, the right action is *not* to bump the
 	// constant blindly — diff `tools.Names()` against the prior known
 	// good (git blame this line) and confirm every new name is
 	// intentional. A surprise +1 usually means a duplicate alias or a
 	// loader_* generated for a new firmware app; both are bugs to fix
 	// at the source.
-	const expected = 231
+	const expected = 268
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

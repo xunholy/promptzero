@@ -97,6 +97,12 @@ var toolLevels = func() map[string]Level {
 		// v0.7 OSS-expansion: pure-Go Sub-GHz protocol classifier.
 		// Pure analysis on a captured .sub file — no I/O, no transmission.
 		"subghz_classify",
+		// v0.16 — passive Marauder sniffers and read-only GPS / info / crypto / GUI.
+		"wifi_info_ap",
+		"wifi_sigmon", "wifi_sniff_pinescan", "wifi_sniff_multissid",
+		"wifi_wardrive_stop", "wifi_wardrive_poi",
+		"gps_tracker_start", "gps_tracker_stop", "gps_poi",
+		"crypto_has_key", "gui_screen_stream", "flipper_date_get",
 	)
 
 	// Captures, scans, file writes
@@ -167,6 +173,14 @@ var toolLevels = func() map[string]Level {
 		// I2C scan + SPI dump + UART bridge are all bus reads/writes
 		// but limited to the connected target — no broader blast.
 		"buspirate_i2c_scan", "buspirate_spi_dump", "buspirate_uart_bridge",
+		// v0.16 — passive sniffer with active probe class, list mutators,
+		// crypto enclave reads, RTC writes, archive extract, evil-portal
+		// state mutators that don't TX (reset/ack drain).
+		"wifi_clone_sta_mac", "wifi_mactrack", "wifi_wardrive_start",
+		"wifi_add_ap", "wifi_add_station",
+		"wifi_evil_portal_reset", "wifi_evil_portal_ack",
+		"crypto_encrypt", "crypto_decrypt",
+		"flipper_date_set", "flipper_storage_extract",
 	)
 
 	// Active transmission, emulation, execution
@@ -217,6 +231,13 @@ var toolLevels = func() map[string]Level {
 		"port_scan_tcp",
 		"http_enum_common",
 		// TODO(v0.5.1 risk-review): mfoc_attack, mfcuk_attack, mfkey32_recover — tasks #7
+		// v0.16 — RF transmit + state-affecting Flipper primitives that
+		// drive external hardware (5V/3V3 rails) or reach the boot loop
+		// (power off, full backup write).
+		"wifi_bt_spoof_airtag",
+		"wifi_evil_portal_set_html", "wifi_evil_portal_set_ap",
+		"flipper_backup_create", "flipper_power_off",
+		"flipper_power_5v", "flipper_power_3v3",
 	)
 
 	// Destructive, attack, brute force. flipper_raw_cli is here because it's
@@ -263,6 +284,13 @@ var toolLevels = func() map[string]Level {
 		// classification here.
 		"glitch_arm", "glitch_fire", "glitch_sweep",
 		"glitch_disarm", "glitch_set_pulse",
+		// v0.16 — destructive (format SD, factory reset, backup restore)
+		// and disruptive RF (Marauder karma + WPA3-era attack-t variants).
+		// Each destructive Spec also requires a literal confirm token in
+		// args (see internal/tools/system_v016.go).
+		"flipper_storage_format", "flipper_factory_reset", "flipper_backup_restore",
+		"wifi_karma",
+		"wifi_attack_quiet", "wifi_attack_badmsg", "wifi_attack_sleep",
 	)
 
 	return m
