@@ -330,3 +330,52 @@ func TestAddSSIDStripsQuote(t *testing.T) {
 		t.Fatalf("unexpected quote count on wire: %q", seen[0])
 	}
 }
+
+// TestStreamBackpressureExits verifies that when the consumer is slow (holds
+// the channel full for >2s), the Stream goroutine exits via the backpressure
+// timer rather than wedging indefinitely. The test sleeps 3 seconds to let
+// the 2-second timer fire; it is gated behind testing.Short().
+func TestStreamBackpressureExits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("backpressure test requires ~3s — skip with -short")
+	}
+
+	fp := newFakePort()
+	// 200 lines (> 128-item channel buffer); no trailing prompt needed
+	// because the goroutine blocks on send #129 before reaching the prompt.
+	var sb strings.Builder
+	for i := 0; i < 200; i++ {
+		fmt.Fprintf(&sb, "bp%03d\r\n", i)
+	}
+	fp.respond("scanbeacon", sb.String())
+
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	lines, done, err := m.Stream("scanbeacon")
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	defer close(done)
+
+	// Do NOT read from lines — simulates a stuck consumer.
+	// The goroutine fills the 128-slot buffer, then blocks on the 129th send.
+	// After the 2-second backpressure timer fires it returns and closes lines.
+	time.Sleep(3 * time.Second)
+
+	// At this point the goroutine should have already exited.
+	// Drain any buffered items to detect channel close.
+	drainDone := make(chan struct{})
+	go func() {
+		defer close(drainDone)
+		for range lines {
+		}
+	}()
+
+	select {
+	case <-drainDone:
+		// goroutine exited cleanly — 
+	case <-time.After(time.Second):
+		t.Fatal("stream goroutine did not exit within 3s+1s (backpressure timer may be missing)")
+	}
+}

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.bug.st/serial"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // Port is the subset of go.bug.st/serial.Port the package actually uses.
@@ -214,7 +216,15 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 					return
 				}
 				if line != "" {
-					lines <- line
+					select {
+					case lines <- line:
+					case <-done:
+						_, _ = m.port.Write([]byte("stopscan\n"))
+						return
+					case <-time.After(2 * time.Second):
+						obs.Default().Warn("marauder_stream_backpressure", "cmd", command)
+						return
+					}
 				}
 			}
 
