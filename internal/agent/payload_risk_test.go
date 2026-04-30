@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/testmocks"
@@ -76,6 +77,12 @@ func TestRunPayloadCriticalRiskGate(t *testing.T) {
 	cfg := &config.Config{Model: "claude-mock"}
 	a := New(client, nil, cfg)
 	a.SetConfirmThreshold(risk.High)
+	auditLog, err := audit.Open(t.TempDir() + "/audit.db")
+	if err != nil {
+		t.Fatalf("audit.Open: %v", err)
+	}
+	defer auditLog.Close()
+	a.SetAuditLog(auditLog)
 
 	var seenRisk risk.Level
 	var callCount int
@@ -99,6 +106,42 @@ func TestRunPayloadCriticalRiskGate(t *testing.T) {
 	}
 	if seenRisk != risk.Critical {
 		t.Errorf("expected confirm request risk to be Critical for run_payload(.sub), got %v", seenRisk)
+	}
+}
+
+// TestAuditGate_RefusesHighRiskWithoutAuditLog verifies that when no audit
+// log is configured, a High-risk tool call is refused (with a synthetic
+// tool_result) rather than executed silently — the dispatch-site call to
+// audit.RequireOpen is the fail-closed contract.
+func TestAuditGate_RefusesHighRiskWithoutAuditLog(t *testing.T) {
+	script := []testmocks.AnthropicScript{
+		{
+			Tool:      "run_payload",
+			ToolInput: map[string]any{"path": "signal.sub", "command": ""},
+		},
+		{Text: "done"},
+	}
+	client := testmocks.NewMockAnthropic(t, script)
+
+	cfg := &config.Config{Model: "claude-mock"}
+	a := New(client, nil, cfg)
+	a.SetConfirmThreshold(risk.High)
+	// Deliberately do NOT call SetAuditLog — RequireOpen must refuse.
+
+	var callCount int
+	a.SetConfirmCallback(func(_ context.Context, _ ConfirmRequest) ConfirmResponse {
+		callCount++
+		return ConfirmResponse{Decision: DecisionApprove}
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := a.Run(ctx, "transmit signal"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if callCount != 0 {
+		t.Fatalf("audit gate must short-circuit before confirm callback, got %d calls", callCount)
 	}
 }
 

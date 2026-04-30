@@ -429,8 +429,9 @@ func (a *Agent) confirmWithIdleTimeout(ctx context.Context, req ConfirmRequest) 
 	// deferred cancel() above) so a well-behaved callback will
 	// unblock promptly after timeout / ctx cancel. Callbacks that
 	// only watch the outer ctx are API violations; the contract is
-	// documented on ConfirmFunc.
-	go func() { ch <- cb(childCtx, req) }()
+	// documented on ConfirmFunc. SafeGo recovers panics — the select
+	// then falls through to ctx/timer and returns DecisionDeny.
+	obs.SafeGo("agent.confirm_callback", func() { ch <- cb(childCtx, req) })
 	select {
 	case r := <-ch:
 		return r
@@ -780,6 +781,18 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			// turn. Approve-all is a convenience for reducing prompt fatigue
 			// on moderate actions; it should never silently authorise a
 			// critical one.
+			// Audit gate: refuse risk≥High actions when no audit log is
+			// initialised — running a destructive tool with no audit trail
+			// would break the project's safety posture.
+			if err := audit.RequireOpen(a.auditLog, toolRisk); err != nil {
+				msg := err.Error()
+				if a.toolStatusCb != nil {
+					a.toolStatusCb(ToolEvent{Phase: "start", Name: tc.Name, Input: input})
+					a.toolStatusCb(ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: msg, Err: true})
+				}
+				toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, msg, true))
+				continue
+			}
 			gated := toolRisk == risk.Critical || !approveAllRemaining
 			if a.confirmCb != nil && gated && toolRisk >= a.confirmThreshold {
 				// Release a.mu while the confirm callback waits on
