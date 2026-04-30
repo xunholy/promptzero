@@ -50,13 +50,15 @@ func TestIsUntrustedHardwareOutput(t *testing.T) {
 		{"fileformat_read", true},
 		{"fileformat_edit", true},
 		{"fileformat_diff", true},
+		// analyze_image and discover_apps removed from allowlist (row 13):
+		// their output can carry attacker-controlled text from hardware.
+		{"analyze_image", true},
+		{"discover_apps", true},
 		// Internal / structured — must NOT be wrapped.
 		{"list_devices", false},
-		{"analyze_image", false},
 		{"audit_query", false},
 		{"audit_export", false},
 		{"audit_stats", false},
-		{"discover_apps", false},
 		{"generate_evil_portal", false},
 		{"run_payload", false},
 		{"workflow_nfc_badge_pipeline", false},
@@ -81,21 +83,57 @@ func TestQuarantineOutput_WrapsHardware(t *testing.T) {
 	}
 }
 
-func TestQuarantineOutput_DoesNotWrapError(t *testing.T) {
-	// Error messages come from our own code, not from hardware.
-	out := quarantineOutput("wifi_scan_ap", "error: marauder not connected", true)
-	if strings.Contains(out, "<untrusted-hardware-output>") {
-		t.Fatalf("error output wrongly wrapped: %q", out)
+// TestQuarantineOutput_WrapsHardwareError verifies that error output from
+// hardware-origin tools is wrapped. Error messages can embed attacker-
+// controlled text (e.g. "connect failed: SSID='<injection>'" from the
+// Marauder serial layer), so they receive the same quarantine treatment
+// as successful output.
+func TestQuarantineOutput_WrapsHardwareError(t *testing.T) {
+	out := quarantineOutput("wifi_scan_ap", "error: connect failed to SSID=<evil>", true)
+	if !strings.HasPrefix(out, "<untrusted-hardware-output>\n") {
+		t.Fatalf("hardware error output should be wrapped, missing open tag: %q", out)
 	}
-	if out != "error: marauder not connected" {
-		t.Fatalf("error text altered: %q", out)
+	if !strings.HasSuffix(out, "\n</untrusted-hardware-output>") {
+		t.Fatalf("hardware error output should be wrapped, missing close tag: %q", out)
 	}
 }
 
+// TestQuarantineOutput_DoesNotWrapStructuredTool confirms tools in the
+// notWrappedTools allowlist are never wrapped, even when isErr=false.
 func TestQuarantineOutput_DoesNotWrapStructuredTool(t *testing.T) {
 	out := quarantineOutput("audit_query", `[{"id":1,"tool":"nfc_detect"}]`, false)
 	if strings.Contains(out, "<untrusted-hardware-output>") {
 		t.Fatalf("structured tool wrongly wrapped: %q", out)
+	}
+}
+
+// TestQuarantineOutput_DoesNotWrapStructuredToolError confirms that even
+// error output from structured (non-hardware) tools is not wrapped.
+func TestQuarantineOutput_DoesNotWrapStructuredToolError(t *testing.T) {
+	out := quarantineOutput("audit_query", "database unavailable", true)
+	if strings.Contains(out, "<untrusted-hardware-output>") {
+		t.Fatalf("structured tool error output wrongly wrapped: %q", out)
+	}
+}
+
+// TestQuarantineOutput_WrapsAnalyzeImageSuccess confirms analyze_image is
+// now treated as a hardware-origin tool (row 13: removed from allowlist).
+// Its output may contain attacker-controlled text read back from camera /
+// storage paths.
+func TestQuarantineOutput_WrapsAnalyzeImageSuccess(t *testing.T) {
+	out := quarantineOutput("analyze_image", `{"description":"a login form"}`, false)
+	if !strings.HasPrefix(out, "<untrusted-hardware-output>\n") {
+		t.Fatalf("analyze_image success should be wrapped: %q", out)
+	}
+}
+
+// TestQuarantineOutput_WrapsDiscoverAppsSuccess confirms discover_apps is
+// now treated as a hardware-origin tool (row 13: removed from allowlist).
+// The SD-card directory listing it returns originates from the Flipper.
+func TestQuarantineOutput_WrapsDiscoverAppsSuccess(t *testing.T) {
+	out := quarantineOutput("discover_apps", `[{"name":"Evil App","path":"/ext/apps/evil"}]`, false)
+	if !strings.HasPrefix(out, "<untrusted-hardware-output>\n") {
+		t.Fatalf("discover_apps success should be wrapped: %q", out)
 	}
 }
 

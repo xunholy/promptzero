@@ -37,18 +37,10 @@ var notWrappedTools = map[string]struct{}{
 	// Pure internal / configuration surfaces.
 	"list_devices": {},
 
-	// Vision analysis — output is the analysing model's own narration,
-	// not the raw image.
-	"analyze_image": {},
-
 	// Audit log — content comes from our own SQLite store.
 	"audit_query":  {},
 	"audit_export": {},
 	"audit_stats":  {},
-
-	// SD-card discovery summary — produced by our scanner, not by the
-	// Flipper CLI verbatim.
-	"discover_apps": {},
 
 	// Generation pipeline — output is our own preview/path text.
 	"generate_evil_portal": {},
@@ -91,10 +83,15 @@ func sanitizeControlChars(s string) string {
 }
 
 // quarantineOutput runs sanitizeControlChars on every output and, for
-// hardware-origin tools that completed without error, wraps the result
-// in <untrusted-hardware-output> delimiters. Error strings (isErr=true)
-// are sanitised but not wrapped — error messages are formatted by our
-// own dispatch code, not captured from hardware.
+// hardware-origin tools, wraps the result in <untrusted-hardware-output>
+// delimiters regardless of whether the call succeeded or errored.
+// Structured-internal tools (those in the notWrappedTools allowlist) are
+// never wrapped.
+//
+// Error strings from hardware-origin tools are wrapped on the same rule
+// as successes: error messages can contain attacker-controlled text
+// (e.g., an SSID embedded in a connection-failure message) so they must
+// be quarantined too.
 //
 // The wrapping is the countermeasure for prompt-injection attacks where
 // attacker-controllable content (SSIDs, NFC tag URIs, BLE device names,
@@ -102,8 +99,9 @@ func sanitizeControlChars(s string) string {
 // tool output. The paired clause in the system prompt tells the model
 // to treat content inside these tags as data, not instructions.
 func quarantineOutput(toolName, output string, isErr bool) string {
+	_ = isErr // hardware errors carry the same risk as successes; wrap both
 	sanitized := sanitizeControlChars(output)
-	if isErr || !isUntrustedHardwareOutput(toolName) {
+	if !isUntrustedHardwareOutput(toolName) {
 		return sanitized
 	}
 	// Trim trailing whitespace so the closing tag lands on its own line.
