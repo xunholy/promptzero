@@ -608,13 +608,21 @@ func (s *Server) Start(ctx context.Context) error {
 		fmt.Fprintf(os.Stderr, "\x1b[31m\u25cf\x1b[0m Web UI bound non-loopback with NO TOKEN set — every /api + /ws is open. Set web.token or PROMPTZERO_WEB_TOKEN.\n")
 	}
 
-	srv := &http.Server{Addr: s.addr, Handler: mux}
+	srv := &http.Server{
+		Addr:              s.addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		// ReadTimeout / WriteTimeout intentionally 0 — websocket upgrades need long-lived reads/writes
+	}
 
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		srv.Shutdown(shutdownCtx)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			obs.Default().Warn("web_shutdown", "err", err)
+		}
 	}()
 
 	obs.Default().Info("web_ui_ready", "url", "http://"+s.addr)
