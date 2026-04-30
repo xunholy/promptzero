@@ -8,12 +8,15 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/marauder/parsers"
 )
 
@@ -313,12 +316,12 @@ func TestMarauderReleaseCancelsStream(t *testing.T) {
 
 // TestMarauderStreamRotatesOnNewCmd: starting a new stream while one is
 // running cancels the prior one (exactly one streaming command at a time
-// per holder).
+// per holder). Uses two Low-risk commands so no confirm gate is involved.
 func TestMarauderStreamRotatesOnNewCmd(t *testing.T) {
 	fm := newFakeMarauder()
 	fm.streamLines = [][]string{
 		{"-45 Ch: 6 aa:bb:cc:dd:ee:ff ESSID: A"},
-		{"-44 Ch: 6 aa:bb:cc:dd:ee:ff -> 5c:cf:7f:01:02:03"},
+		{"-45 Ch: 6 Client: aa:bb:cc:dd:ee:ff Probe: TestSSID"},
 	}
 	_, ts := marauderServer(t, fm)
 	c, cleanup := dialWS(t, ts)
@@ -331,11 +334,12 @@ func TestMarauderStreamRotatesOnNewCmd(t *testing.T) {
 	sendJSON(t, ctx, c, map[string]any{"type": "marauder_cmd", "cmd": "scanap"})
 	readUntilType(t, ctx, c, "marauder_event")
 
-	sendJSON(t, ctx, c, map[string]any{"type": "marauder_cmd", "cmd": "sniffdeauth"})
-	// The deauth event should arrive after rotation.
+	// sniffprobe is Low-risk — no confirm needed; rotation happens immediately.
+	sendJSON(t, ctx, c, map[string]any{"type": "marauder_cmd", "cmd": "sniffprobe"})
+	// The probe event should arrive after rotation.
 	m := readUntilType(t, ctx, c, "marauder_event")
-	if m["kind"] != "deauth_seen" {
-		t.Errorf("rotated kind = %v want deauth_seen", m["kind"])
+	if m["kind"] != "probe" {
+		t.Errorf("rotated kind = %v want probe", m["kind"])
 	}
 }
 
@@ -828,5 +832,197 @@ func TestFrontendBrowseSDEventKindMismatch(t *testing.T) {
 	}
 	if _, ok := m["name"]; !ok {
 		t.Error("LSEntry JSON missing 'name' field")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Risk gate + consent + audit tests (validated.md row 4)
+// ---------------------------------------------------------------------------
+
+// readUntilOneOfTypes returns the first frame whose type is one of the wanted
+// types, skipping all others. Returned map includes {"type": matchedType, ...}.
+func readUntilOneOfTypes(t *testing.T, ctx context.Context, c *websocket.Conn, types ...string) map[string]any {
+	t.Helper()
+	for {
+		m := readJSON(t, ctx, c)
+		typ, _ := m["type"].(string)
+		for _, want := range types {
+			if typ == want {
+				return m
+			}
+		}
+	}
+}
+
+// TestMarauderLowRiskDispatchesWithoutConfirm verifies that a Low-risk command
+// (scanap) reaches the device directly — no marauder_confirm_request emitted.
+func TestMarauderLowRiskDispatchesWithoutConfirm(t *testing.T) {
+	fm := newFakeMarauder()
+	fm.streamLines = [][]string{{
+		"-45 Ch: 6 aa:bb:cc:dd:ee:ff ESSID: HomeWiFi 64 00",
+	}}
+	_, ts := marauderServer(t, fm)
+	c, cleanup := dialWS(t, ts)
+	defer cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sendJSON(t, ctx, c, map[string]any{"type": "marauder_acquire"})
+	readUntilType(t, ctx, c, "marauder_status")
+	sendJSON(t, ctx, c, map[string]any{"type": "marauder_cmd", "cmd": "scanap", "action": "start"})
+
+	// First substantive frame must NOT be a confirm_request.
+	m := readUntilOneOfTypes(t, ctx, c, "marauder_confirm_request", "marauder_event", "marauder_done")
+	if m["type"] == "marauder_confirm_request" {
+		t.Fatalf("Low-risk command should not emit marauder_confirm_request; got %v", m)
+	}
+}
+
+// TestMarauderHighRiskRequiresConfirmToken verifies that a High-risk command
+// (blespam) emits marauder_confirm_request with a non-empty confirm_id and the
+// correct risk string, and does NOT immediately dispatch.
+func TestMarauderHighRiskRequiresConfirmToken(t *testing.T) {
+	fm := newFakeMarauder()
+	_, ts := marauderServer(t, fm)
+	c, cleanup := dialWS(t, ts)
+	defer cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sendJSON(t, ctx, c, map[string]any{"type": "marauder_acquire"})
+	readUntilType(t, ctx, c, "marauder_status")
+	sendJSON(t, ctx, c, map[string]any{
+		"type": "marauder_cmd", "cmd": "blespam",
+		"args": map[string]any{"target": "apple"},
+	})
+
+	m := readUntilType(t, ctx, c, "marauder_confirm_request")
+	if m["cmd"] != "blespam" {
+		t.Errorf("confirm_request cmd = %v, want blespam", m["cmd"])
+	}
+	if m["risk"] != "high" {
+		t.Errorf("confirm_request risk = %v, want high", m["risk"])
+	}
+	cid, _ := m["confirm_id"].(string)
+	if cid == "" {
+		t.Fatalf("confirm_request missing confirm_id: %v", m)
+	}
+	// Device must not have been touched yet.
+	for _, call := range fm.callsSnapshot() {
+		if strings.Contains(call, "blespam") {
+			t.Errorf("device should not be called before confirm; saw %s", call)
+		}
+	}
+}
+
+// TestMarauderAuditRowWrittenForAllowAndDeny verifies that:
+//   - a Low-risk command writes an audit row with success=true;
+//   - a High-risk command denied by the operator writes an audit row with
+//     success=false.
+func TestMarauderAuditRowWrittenForAllowAndDeny(t *testing.T) {
+	fm := newFakeMarauder()
+	fm.streamLines = [][]string{{
+		"-45 Ch: 6 aa:bb:cc:dd:ee:ff ESSID: HomeWiFi 64 00",
+	}}
+	s, ts2 := marauderServer(t, fm)
+
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	auditLog, err := audit.Open(logPath)
+	if err != nil {
+		t.Fatalf("audit.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = auditLog.Close() })
+	s.SetAuditLog(auditLog)
+
+	c, cleanup := dialWS(t, ts2)
+	defer cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sendJSON(t, ctx, c, map[string]any{"type": "marauder_acquire"})
+	readUntilType(t, ctx, c, "marauder_status")
+
+	// Part A: Low-risk command (scanap) — allowed, no confirm.
+	sendJSON(t, ctx, c, map[string]any{"type": "marauder_cmd", "cmd": "scanap", "action": "start"})
+	readUntilOneOfTypes(t, ctx, c, "marauder_event", "marauder_done")
+	// Allow audit goroutine to flush.
+	time.Sleep(50 * time.Millisecond)
+
+	entries, err := auditLog.QueryFiltered(audit.Filter{Tool: "web.marauder.scanap"})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected audit row for scanap, got none")
+	}
+	if !entries[0].Success {
+		t.Errorf("scanap audit success = false, want true")
+	}
+
+	// Part B: High-risk command (blespam) denied by the operator.
+	sendJSON(t, ctx, c, map[string]any{
+		"type": "marauder_cmd", "cmd": "blespam",
+		"args": map[string]any{"target": "samsung"},
+	})
+	confirmMsg := readUntilType(t, ctx, c, "marauder_confirm_request")
+	cid, _ := confirmMsg["confirm_id"].(string)
+	sendJSON(t, ctx, c, map[string]any{
+		"type":       "confirm_response",
+		"confirm_id": cid,
+		"decision":   "deny",
+	})
+	errMsg := readUntilType(t, ctx, c, "marauder_error")
+	if msg, _ := errMsg["message"].(string); !strings.Contains(msg, "denied") {
+		t.Errorf("error message = %q, want substring 'denied'", msg)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	entries2, err := auditLog.QueryFiltered(audit.Filter{Tool: "web.marauder.blespam"})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(entries2) == 0 {
+		t.Fatal("expected audit row for blespam deny, got none")
+	}
+	if entries2[0].Success {
+		t.Errorf("blespam denied audit success = true, want false")
+	}
+}
+
+// TestMarauderConfirmTooFastRejected verifies that approving a High-risk
+// command before the minimum 2-second delay yields marauder_error (the
+// server-side gate rejects the keystroke).
+func TestMarauderConfirmTooFastRejected(t *testing.T) {
+	fm := newFakeMarauder()
+	_, ts := marauderServer(t, fm)
+	c, cleanup := dialWS(t, ts)
+	defer cleanup()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sendJSON(t, ctx, c, map[string]any{"type": "marauder_acquire"})
+	readUntilType(t, ctx, c, "marauder_status")
+	sendJSON(t, ctx, c, map[string]any{
+		"type": "marauder_cmd", "cmd": "blespam",
+		"args": map[string]any{"target": "apple"},
+	})
+	confirmMsg := readUntilType(t, ctx, c, "marauder_confirm_request")
+	cid, _ := confirmMsg["confirm_id"].(string)
+
+	// Approve immediately — gate window has not elapsed.
+	sendJSON(t, ctx, c, map[string]any{
+		"type":       "confirm_response",
+		"confirm_id": cid,
+		"decision":   "approve",
+	})
+	errMsg := readUntilType(t, ctx, c, "marauder_error")
+	if msg, _ := errMsg["message"].(string); !strings.Contains(msg, "minimum delay") {
+		t.Errorf("error message = %q, want substring 'minimum delay'", msg)
+	}
+	// Device must not have been called.
+	for _, call := range fm.callsSnapshot() {
+		if strings.Contains(call, "blespam") {
+			t.Errorf("device should not be called on fast-approve; saw %s", call)
+		}
 	}
 }

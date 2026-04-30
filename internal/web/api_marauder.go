@@ -21,7 +21,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/marauder/parsers"
+	"github.com/xunholy/promptzero/internal/risk"
 )
 
 // marauderClient is the narrow surface the synth-panel needs from a Marauder
@@ -70,6 +73,9 @@ type commandEntry struct {
 	// blockEvery, when >0, flushes the block every N lines (used by
 	// renderRawStats which has a fixed shape but no terminator marker).
 	blockEvery int
+	// risk is the operator-visible risk level for this command. Used by
+	// handleMarauderCmd to gate risk≥High behind the confirm round-trip.
+	risk risk.Level
 }
 
 // marauderRegistry is the locked-in mapping of WS cmd keys to device
@@ -88,24 +94,28 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseScanAP, "ap_seen"),
 		kind:  "ap_seen",
+		risk: risk.Low,
 	},
 	"scansta": {
 		build: staticCmd("scanall"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseScanSta, "sta_seen"),
 		kind:  "sta_seen",
+		risk: risk.Low,
 	},
 	"sniffbeacon": {
 		build: staticCmd("sniffbeacon"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseSniffBeacon, "beacon"),
 		kind:  "beacon",
+		risk: risk.Low,
 	},
 	"sniffprobe": {
 		build: staticCmd("sniffprobe"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseSniffProbe, "probe"),
 		kind:  "probe",
+		risk: risk.Low,
 	},
 	"sniffraw": {
 		build:      staticCmd("sniffraw"),
@@ -113,6 +123,7 @@ var marauderRegistry = map[string]commandEntry{
 		emit:       emitBlockWith(parsers.ParseRawStats, "packet_rate"),
 		kind:       "packet_rate",
 		blockEvery: 10, // renderRawStats prints ~10 labelled lines per block
+		risk: risk.Low,
 	},
 	// Per-line variant of sniffraw for the "Sniff Raw" menu leaf — emits
 	// every non-empty line as a `raw` event so the frontend list view can
@@ -126,18 +137,21 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseRaw, "raw"),
 		kind:  "raw",
+		risk: risk.Low,
 	},
 	"sniffdeauth": {
 		build: staticCmd("sniffdeauth"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseSniffDeauth, "deauth_seen"),
 		kind:  "deauth_seen",
+		risk: risk.High,
 	},
 	"packetcount": {
 		build: staticCmd("packetcount"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParsePacketCount, "packet_rate"),
 		kind:  "packet_rate",
+		risk: risk.Low,
 	},
 
 	// Attacks — same parser (rate ticker) + status events.
@@ -146,36 +160,42 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
+		risk: risk.Critical,
 	},
 	"attack_beacon_random": {
 		build: staticCmd("attack -t beacon -r"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
+		risk: risk.Critical,
 	},
 	"attack_beacon_list": {
 		build: staticCmd("attack -t beacon -l"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
+		risk: risk.Critical,
 	},
 	"attack_beacon_ap": {
 		build: staticCmd("attack -t beacon -a"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
+		risk: risk.Critical,
 	},
 	"attack_probe": {
 		build: staticCmd("attack -t probe"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
+		risk: risk.Critical,
 	},
 	"attack_rickroll": {
 		build: staticCmd("attack -t rickroll"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
+		risk: risk.Critical,
 	},
 
 	// Evil portal — start emits status updates as the firmware progresses.
@@ -184,6 +204,7 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseEvilPortal, "portal_status"),
 		kind:  "portal_status",
+		risk: risk.Critical,
 	},
 
 	// BLE — upstream firmware uses sniffbt / blespam / wardrive.
@@ -203,12 +224,14 @@ var marauderRegistry = map[string]commandEntry{
 		mode: modeStream,
 		emit: emitWith(parsers.ParseBLESniff, "ble_seen"),
 		kind: "ble_seen",
+		risk: risk.Low,
 	},
 	"blewardrive": {
 		build: staticCmd("wardrive"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseBLEWardrive, "ble_wardrive"),
 		kind:  "ble_wardrive",
+		risk: risk.Low,
 	},
 	"blespam": {
 		build: func(args map[string]any) (string, error) {
@@ -223,6 +246,7 @@ var marauderRegistry = map[string]commandEntry{
 		mode: modeStream,
 		emit: emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind: "attack_status",
+		risk: risk.High,
 	},
 
 	// GPS.
@@ -232,12 +256,14 @@ var marauderRegistry = map[string]commandEntry{
 		emit:            emitBlockWith(parsers.ParseGPSData, "gps"),
 		kind:            "gps",
 		blockTerminator: "==== GPS Data ====",
+		risk: risk.Low,
 	},
 	"nmea": {
 		build: staticCmd("nmea"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseRaw, "nmea_line"),
 		kind:  "nmea_line",
+		risk: risk.Low,
 	},
 
 	// Storage.
@@ -257,6 +283,7 @@ var marauderRegistry = map[string]commandEntry{
 		emit:    emitWith(parsers.ParseLs, "ls_entry"),
 		kind:    "ls_entry",
 		timeout: 5 * time.Second,
+		risk: risk.Low,
 	},
 
 	// LED — one-shot, no per-event payload, just an ack/done.
@@ -272,12 +299,14 @@ var marauderRegistry = map[string]commandEntry{
 		mode:    modeExec,
 		kind:    "led_ack",
 		timeout: 5 * time.Second,
+		risk: risk.Low,
 	},
 	"led_rainbow": {
 		build:   staticCmd("led -p rainbow"),
 		mode:    modeExec,
 		kind:    "led_ack",
 		timeout: 5 * time.Second,
+		risk: risk.Low,
 	},
 
 	// Universal stop — the registry entry is here so stop maps to the
@@ -288,6 +317,7 @@ var marauderRegistry = map[string]commandEntry{
 		mode:    modeExec,
 		kind:    "stopped",
 		timeout: 5 * time.Second,
+		risk: risk.Low,
 	},
 }
 
@@ -479,6 +509,20 @@ func (s *Server) handleMarauderCmd(c *sessionConn, cmdKey, action string, args m
 		return
 	}
 
+	start := time.Now()
+
+	// Gate risk≥High behind operator consent before touching the device.
+	if entry.risk >= risk.High {
+		if !s.marauderConfirmGate(c, cmdKey, entry.risk, args, start) {
+			return
+		}
+	}
+
+	// Audit the allowed dispatch.
+	if s.auditLog != nil {
+		s.auditLog.RecordCtx(context.Background(), "web.marauder."+cmdKey, args, "", entry.risk.String(), audit.LevelAction, time.Since(start), true)
+	}
+
 	switch entry.mode {
 	case modeExec:
 		go s.runMarauderExec(c, cmdKey, cliCmd, entry)
@@ -490,6 +534,61 @@ func (s *Server) handleMarauderCmd(c *sessionConn, cmdKey, action string, args m
 	case modeBlock:
 		s.cancelMarauderStream()
 		go s.runMarauderStream(c, cmdKey, cliCmd, entry, true)
+	}
+}
+
+// marauderConfirmGate blocks until the operator approves or denies the command
+// via the WebSocket confirm round-trip. It reuses s.confirms (same channel map
+// as chat-driven confirms) so the existing deliverConfirm path routes responses
+// here automatically.
+//
+// Returns true when the operator approves after the minimum delay has elapsed.
+// On denial, timeout, or a too-fast approval it audits the attempt with
+// success=false, sends marauder_error to the client, and returns false.
+func (s *Server) marauderConfirmGate(c *sessionConn, cmdKey string, lvl risk.Level, args map[string]any, start time.Time) bool {
+	nonce := newID()
+	ch := make(chan agent.ConfirmResponse, 1)
+	s.mu.Lock()
+	s.confirms[nonce] = ch
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.confirms, nonce)
+		s.mu.Unlock()
+	}()
+
+	// Emit the confirm request and start the minimum-delay gate.
+	gate := agent.NewConfirmDelayGate(agent.MinimumConfirmDelay)
+	s.sendTo(c, map[string]any{
+		"type":       "marauder_confirm_request",
+		"cmd":        cmdKey,
+		"risk":       lvl.String(),
+		"confirm_id": nonce,
+	})
+	gate.Show()
+
+	timer := time.NewTimer(30 * time.Second)
+	defer timer.Stop()
+
+	deny := func(msg string) bool {
+		if s.auditLog != nil {
+			s.auditLog.RecordCtx(context.Background(), "web.marauder."+cmdKey, args, "", lvl.String(), audit.LevelAction, time.Since(start), false)
+		}
+		s.sendTo(c, map[string]any{"type": "marauder_error", "cmd": cmdKey, "message": msg})
+		return false
+	}
+
+	select {
+	case resp := <-ch:
+		if resp.Decision == agent.DecisionApprove || resp.Decision == agent.DecisionApproveAll {
+			if !gate.Open() {
+				return deny("confirm rejected — minimum delay not elapsed")
+			}
+			return true
+		}
+		return deny("command denied")
+	case <-timer.C:
+		return deny("confirm timeout")
 	}
 }
 

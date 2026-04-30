@@ -1445,6 +1445,11 @@
         onScreenErrorMessage(msg);
         break;
 
+      case 'marauder_confirm_request':
+        // Reuse the existing confirm dialog: map cmd→tool so the risk card renders correctly.
+        showConfirm({ tool: 'marauder:' + (msg.cmd || ''), risk: msg.risk || 'high', confirm_id: msg.confirm_id });
+        break;
+
       case 'marauder_status':
       case 'marauder_event':
       case 'marauder_done':
