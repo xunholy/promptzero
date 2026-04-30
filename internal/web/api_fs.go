@@ -20,6 +20,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/validator"
 )
 
 const (
@@ -434,6 +435,19 @@ func (s *Server) handleFSUpload(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
+	// BadUSB scripts uploaded to /ext/badusb/*.txt are validated before
+	// being written to the Flipper. Uploads that contain critical-severity
+	// findings (rm -rf /, reverse shells, defender-disable, etc.) are
+	// refused unless the operator explicitly opts in via ?validator_bypass=true.
+	if strings.HasPrefix(destPath, "/ext/badusb/") && strings.HasSuffix(destPath, ".txt") {
+		rep := validator.Validate(destPath, string(data))
+		if rep.Has(validator.SeverityCritical) && r.URL.Query().Get("validator_bypass") != "true" {
+			writeError(w, http.StatusUnprocessableEntity,
+				"badusb payload contains critical-severity findings — add ?validator_bypass=true to override")
+			return
+		}
+	}
+
 	if overwrite {
 		if _, rerr := s.flipper.StorageRemove(destPath); rerr != nil {
 			if isFAPBusy(rerr) {
@@ -453,7 +467,15 @@ func (s *Server) handleFSUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.fsAudit("web.fs.upload", destPath)
+	// Bump audit level to "high" for badusb writes — these deploy directly-
+	// executable keystroke injection scripts to the Flipper.
+	auditLevel := "low"
+	if strings.HasPrefix(destPath, "/ext/badusb/") && strings.HasSuffix(destPath, ".txt") {
+		auditLevel = "high"
+	}
+	if s.auditLog != nil {
+		s.auditLog.Record("web.fs.upload", map[string]string{"path": destPath}, "", auditLevel, audit.LevelAction, 0, true)
+	}
 	respondJSON(w, http.StatusOK, map[string]any{
 		"path": destPath,
 		"size": len(data),

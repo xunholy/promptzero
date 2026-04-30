@@ -667,3 +667,98 @@ func TestServerUIContext(t *testing.T) {
 		t.Errorf("hostile view changed state to (%q, %q)", v, p)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// POST /api/fs/upload — BadUSB validator gate (row 5)
+// ---------------------------------------------------------------------------
+
+// uploadBadUSB is a helper that posts a multipart upload to /api/fs/upload
+// targeting a badusb path. Returns the HTTP status code and response body.
+func uploadBadUSB(t *testing.T, ts *httptest.Server, path, payload, query string) (int, []byte) {
+	t.Helper()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("path", path)
+	fw, _ := mw.CreateFormFile("file", "payload.txt")
+	_, _ = fw.Write([]byte(payload))
+	mw.Close()
+
+	url := ts.URL + "/api/fs/upload"
+	if query != "" {
+		url += "?" + query
+	}
+	req, _ := http.NewRequest(http.MethodPost, url, &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("upload request: %v", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, raw
+}
+
+// criticalBadUSBPayload is a DuckyScript payload that triggers SeverityCritical
+// (rm -rf / wipes the filesystem).
+const criticalBadUSBPayload = "STRING rm -rf /\n"
+
+// TestFSUploadBadUSBCritical_RejectedWithoutBypass verifies that uploading a
+// BadUSB script with a critical-severity finding is refused (422) unless
+// the operator supplies ?validator_bypass=true.
+func TestFSUploadBadUSBCritical_RejectedWithoutBypass(t *testing.T) {
+	_, ts, _ := fsServer(t,
+		mock.WithHandler("storage", func(args []string) string { return "" }),
+	)
+
+	code, body := uploadBadUSB(t, ts, "/ext/badusb/evil.txt", criticalBadUSBPayload, "")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body=%s", code, body)
+	}
+	if !strings.Contains(string(body), "critical-severity") {
+		t.Errorf("response body should mention critical-severity, got %s", body)
+	}
+}
+
+// TestFSUploadBadUSBCritical_AllowedWithBypass verifies that uploading a
+// BadUSB script with a critical finding is permitted when the operator
+// sets ?validator_bypass=true.
+func TestFSUploadBadUSBCritical_AllowedWithBypass(t *testing.T) {
+	_, ts, _ := fsServer(t,
+		mock.WithHandler("storage", func(args []string) string { return "" }),
+	)
+
+	code, body := uploadBadUSB(t, ts, "/ext/badusb/evil.txt", criticalBadUSBPayload, "validator_bypass=true")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 with bypass; body=%s", code, body)
+	}
+}
+
+// TestFSUploadNonBadUSB_UnchangedByValidator verifies that uploading to a
+// non-badusb path (e.g. /ext/subghz/) is not affected by the validator
+// gate — it should still succeed regardless of content.
+func TestFSUploadNonBadUSB_UnchangedByValidator(t *testing.T) {
+	_, ts, _ := fsServer(t,
+		mock.WithHandler("storage", func(args []string) string { return "" }),
+	)
+
+	// Use a "dangerous" payload content but on a non-badusb path.
+	code, body := uploadBadUSB(t, ts, "/ext/subghz/test.sub", criticalBadUSBPayload, "")
+	if code != http.StatusOK {
+		t.Fatalf("non-badusb upload should be unaffected by validator (status=%d, body=%s)", code, body)
+	}
+}
+
+// TestFSUploadBadUSBClean_Accepted verifies that a clean BadUSB payload
+// (no critical findings) is accepted without bypass.
+func TestFSUploadBadUSBClean_Accepted(t *testing.T) {
+	_, ts, _ := fsServer(t,
+		mock.WithHandler("storage", func(args []string) string { return "" }),
+	)
+
+	cleanPayload := "REM benign script\nDELAY 500\nSTRING Hello World\n"
+	code, body := uploadBadUSB(t, ts, "/ext/badusb/clean.txt", cleanPayload, "")
+	if code != http.StatusOK {
+		t.Fatalf("clean badusb payload should be accepted (status=%d, body=%s)", code, body)
+	}
+}
