@@ -94,28 +94,28 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseScanAP, "ap_seen"),
 		kind:  "ap_seen",
-		risk: risk.Low,
+		risk:  risk.Low,
 	},
 	"scansta": {
 		build: staticCmd("scanall"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseScanSta, "sta_seen"),
 		kind:  "sta_seen",
-		risk: risk.Low,
+		risk:  risk.Low,
 	},
 	"sniffbeacon": {
 		build: staticCmd("sniffbeacon"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseSniffBeacon, "beacon"),
 		kind:  "beacon",
-		risk: risk.Low,
+		risk:  risk.Low,
 	},
 	"sniffprobe": {
 		build: staticCmd("sniffprobe"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseSniffProbe, "probe"),
 		kind:  "probe",
-		risk: risk.Low,
+		risk:  risk.Low,
 	},
 	"sniffraw": {
 		build:      staticCmd("sniffraw"),
@@ -123,7 +123,7 @@ var marauderRegistry = map[string]commandEntry{
 		emit:       emitBlockWith(parsers.ParseRawStats, "packet_rate"),
 		kind:       "packet_rate",
 		blockEvery: 10, // renderRawStats prints ~10 labelled lines per block
-		risk: risk.Low,
+		risk:       risk.Low,
 	},
 	// Per-line variant of sniffraw for the "Sniff Raw" menu leaf — emits
 	// every non-empty line as a `raw` event so the frontend list view can
@@ -137,21 +137,21 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseRaw, "raw"),
 		kind:  "raw",
-		risk: risk.Low,
+		risk:  risk.Low,
 	},
 	"sniffdeauth": {
 		build: staticCmd("sniffdeauth"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseSniffDeauth, "deauth_seen"),
 		kind:  "deauth_seen",
-		risk: risk.High,
+		risk:  risk.High,
 	},
 	"packetcount": {
 		build: staticCmd("packetcount"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParsePacketCount, "packet_rate"),
 		kind:  "packet_rate",
-		risk: risk.Low,
+		risk:  risk.Low,
 	},
 
 	// Attacks — same parser (rate ticker) + status events.
@@ -160,42 +160,42 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
-		risk: risk.Critical,
+		risk:  risk.Critical,
 	},
 	"attack_beacon_random": {
 		build: staticCmd("attack -t beacon -r"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
-		risk: risk.Critical,
+		risk:  risk.Critical,
 	},
 	"attack_beacon_list": {
 		build: staticCmd("attack -t beacon -l"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
-		risk: risk.Critical,
+		risk:  risk.Critical,
 	},
 	"attack_beacon_ap": {
 		build: staticCmd("attack -t beacon -a"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
-		risk: risk.Critical,
+		risk:  risk.Critical,
 	},
 	"attack_probe": {
 		build: staticCmd("attack -t probe"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
-		risk: risk.Critical,
+		risk:  risk.Critical,
 	},
 	"attack_rickroll": {
 		build: staticCmd("attack -t rickroll"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseAttackStatus, "attack_status"),
 		kind:  "attack_status",
-		risk: risk.Critical,
+		risk:  risk.Critical,
 	},
 
 	// Evil portal — start emits status updates as the firmware progresses.
@@ -204,7 +204,7 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseEvilPortal, "portal_status"),
 		kind:  "portal_status",
-		risk: risk.Critical,
+		risk:  risk.Critical,
 	},
 
 	// BLE — upstream firmware uses sniffbt / blespam / wardrive.
@@ -231,7 +231,7 @@ var marauderRegistry = map[string]commandEntry{
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseBLEWardrive, "ble_wardrive"),
 		kind:  "ble_wardrive",
-		risk: risk.Low,
+		risk:  risk.Low,
 	},
 	"blespam": {
 		build: func(args map[string]any) (string, error) {
@@ -256,14 +256,14 @@ var marauderRegistry = map[string]commandEntry{
 		emit:            emitBlockWith(parsers.ParseGPSData, "gps"),
 		kind:            "gps",
 		blockTerminator: "==== GPS Data ====",
-		risk: risk.Low,
+		risk:            risk.Low,
 	},
 	"nmea": {
 		build: staticCmd("nmea"),
 		mode:  modeStream,
 		emit:  emitWith(parsers.ParseRaw, "nmea_line"),
 		kind:  "nmea_line",
-		risk: risk.Low,
+		risk:  risk.Low,
 	},
 
 	// Storage.
@@ -283,7 +283,7 @@ var marauderRegistry = map[string]commandEntry{
 		emit:    emitWith(parsers.ParseLs, "ls_entry"),
 		kind:    "ls_entry",
 		timeout: 5 * time.Second,
-		risk: risk.Low,
+		risk:    risk.Low,
 	},
 
 	// LED — one-shot, no per-event payload, just an ack/done.
@@ -299,14 +299,14 @@ var marauderRegistry = map[string]commandEntry{
 		mode:    modeExec,
 		kind:    "led_ack",
 		timeout: 5 * time.Second,
-		risk: risk.Low,
+		risk:    risk.Low,
 	},
 	"led_rainbow": {
 		build:   staticCmd("led -p rainbow"),
 		mode:    modeExec,
 		kind:    "led_ack",
 		timeout: 5 * time.Second,
-		risk: risk.Low,
+		risk:    risk.Low,
 	},
 
 	// Universal stop — the registry entry is here so stop maps to the
@@ -317,7 +317,7 @@ var marauderRegistry = map[string]commandEntry{
 		mode:    modeExec,
 		kind:    "stopped",
 		timeout: 5 * time.Second,
-		risk: risk.Low,
+		risk:    risk.Low,
 	},
 }
 

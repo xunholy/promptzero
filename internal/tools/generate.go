@@ -326,7 +326,6 @@ func genRunPayloadRisk(path string) (underlyingTool string, level risk.Level) {
 	}
 }
 
-
 // genDefaultPath mirrors the generator package's default-path selection.
 func genDefaultPath(payloadType string) string {
 	switch payloadType {

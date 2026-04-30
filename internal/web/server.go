@@ -816,7 +816,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	obs.SafeGo("ws.writer",    func() { defer wg.Done(); s.runWriter(connCtx, c) })
+	obs.SafeGo("ws.writer", func() { defer wg.Done(); s.runWriter(connCtx, c) })
 	obs.SafeGo("ws.heartbeat", func() { defer wg.Done(); s.runHeartbeat(connCtx, c) })
 
 	defer func() {
