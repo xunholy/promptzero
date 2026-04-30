@@ -125,6 +125,26 @@ func WiFiTargetToHashcat(ctx context.Context, deps Deps, params map[string]inter
 	if ctx.Err() != nil {
 		return cancelledResult("wifi target to hashcat", phases, extra), nil
 	}
+	// wifi_sniff_pmkid is risk.High — re-gate before the active sniff so
+	// approving the workflow as a whole does not imply approving every
+	// RF-active sub-step inside it.
+	if !gateSubtool(ctx, deps, "wifi_sniff_pmkid",
+		map[string]string{"ssid": target.SSID, "bssid": target.BSSID}, "high") {
+		deniedP := PhaseResult{
+			Phase:  "sniff_pmkid",
+			Tool:   "wifi_sniff_pmkid",
+			Output: "PMKID sniff denied by operator",
+			OK:     false,
+		}
+		phases = append(phases, deniedP)
+		recordPhase(deps.Audit, wf, deniedP, map[string]string{"ssid": target.SSID}, "high")
+		return encode(Result{
+			Summary:   "PMKID sniff gate denied — no capture attempted",
+			Phases:    phases,
+			NextSteps: []string{"Re-run and approve the PMKID sniff step to capture"},
+			Extra:     extra,
+		}), nil
+	}
 	sniffPhase := runPhase("sniff_pmkid", "wifi_sniff_pmkid", func() (string, error) {
 		return deps.Marauder.SniffPMKID(0, false, false, time.Duration(sniffSecs)*time.Second)
 	})
