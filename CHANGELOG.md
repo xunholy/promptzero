@@ -7,6 +7,170 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-04-30
+
+Safety, reliability, and DX hotfix wave following a multi-agent review of
+v0.16.0. 17 commits across architecture, code quality, UX, security/safety,
+and testing. No new tool Specs; no transport changes. Closes 14 prioritized
+findings from the review (`docs/refactor/review-2026-04-30/` — synthesis
+removed before release; reports preserved in git history at `2c10455..ffc76e9`).
+
+### Security
+
+- **MCP server consent gate.** Tool calls at `risk.High` and `risk.Critical`
+  now refuse by default with a `mcp.NewToolResultError` and require explicit
+  operator opt-in via `PROMPTZERO_MCP_ALLOW_HIGH=1` / `PROMPTZERO_MCP_ALLOW_CRITICAL=1`.
+  All MCP tool calls — allowed or denied — are now recorded via
+  `audit.RecordCtx`. Closes a CRITICAL bypass where MCP clients could call
+  destructive tools (`wifi_deauth`, `flipper_factory_reset`, `glitch_fire`)
+  with no consent and no audit. **Breaking for headless MCP integrations** —
+  set the env vars to restore the previous behavior. (`internal/mcp/server.go`)
+
+- **`generate_deploy_run` risk inheritance.** Spec is now `risk.Critical`;
+  the handler now derives the inner action's risk via the same lookup as
+  `resolveRunPayloadRisk` and surfaces a typed `WorkflowConfirm` per payload
+  type (BadUSB / portal / Sub-GHz / IR / NFC) before `runPayload`. Previously
+  one keystroke could deploy and fire a Critical inner action. (`internal/tools/generate.go`)
+
+- **Web Marauder synth-panel consent + audit.** Every entry in the panel
+  registry is now classified (Low / High / Critical). High and above route
+  through the existing `s.confirms` channel for parity with the chat-driven
+  confirm UX, with a server-issued nonce and 30 s expiry. Server-side
+  `ConfirmDelayGate` mirrors the 2-second REPL delay so a malicious tab can
+  not bypass. All commands — allowed or denied — write an audit row. Closes
+  a CRITICAL bypass where a single WebSocket frame triggered RF transmit.
+  (`internal/web/api_marauder.go`, `internal/web/static/app.js`)
+
+- **2-second consent delay wired into REPL.** `ConfirmDelayGate` was defined
+  in v0.3.0 but never instantiated outside tests. The REPL now constructs
+  one per confirmation prompt and discards positive consent keystrokes
+  (`y`, `all`, `confirm`) until the gate opens. Negative decisions
+  (`n`, `r`, Esc, Ctrl+C) bypass the delay. (`cmd/promptzero/repl.go`)
+
+- **BadUSB upload validator.** `/api/fs/upload` now runs `validator.Validate`
+  on uploads targeting `/ext/badusb/*.txt`; SeverityCritical findings are
+  refused with HTTP 422 unless the operator passes `?validator_bypass=true`.
+  Audit level for badusb uploads bumped from `low` to `high`. (`internal/web/api_fs.go`)
+
+- **Audit log fail-closed at dispatch.** New `audit.RequireOpen(l, level)`
+  helper returns an error when `l == nil && level >= risk.High`. The agent
+  dispatch path now refuses High and Critical tool calls when no audit log
+  is initialized, with a synthetic tool_result so the model sees a clean
+  refusal turn. Previously the agent failed open. (`internal/audit/audit.go`,
+  `internal/agent/agent.go`)
+
+- **Quarantine wraps tool errors and removes the `analyze_image` /
+  `discover_apps` exemptions.** Both tools surface attacker-controllable
+  text (image content / SD card filenames). Errors from hardware-origin
+  tools are now wrapped on the same allowlist rule as successes — error
+  messages can carry attacker-controlled text (e.g. an SSID in a Marauder
+  connect failure). Structured-internal tools (audit_*, generate_*,
+  workflows) remain exempt. (`internal/agent/quarantine.go`)
+
+- **Workflow `gateSubtool` retrofit.** `WiFiTargetToHashcat` now routes its
+  High-risk `wifi_sniff_pmkid` step through `gateSubtool`, mirroring the
+  pattern from `badusb_profile` and `mousejack`. (`internal/workflows/`)
+
+- **Web HTTP server hardened against Slowloris.** `ReadHeaderTimeout: 10s`
+  and `IdleTimeout: 120s` set on `http.Server`; `ReadTimeout` /
+  `WriteTimeout` left at 0 because WebSocket upgrades need long-lived
+  reads/writes. `srv.Shutdown` errors now surface via `obs.Default().Warn`
+  instead of being silently dropped. (`internal/web/server.go`)
+
+### Added
+
+- `obs.SafeGo(name, fn)` — goroutine wrapper with deferred `recover()` that
+  logs panics via `obs.Default().Error` instead of crashing the process.
+  Used in the rules engine, voice subprocess, all 8 WebSocket inbound
+  goroutines, the WS writer/heartbeat, and the agent confirm callback.
+  (`internal/obs/safego.go`)
+- `audit.RequireOpen(l *Log, level risk.Level) error` — fail-closed helper
+  used at the agent dispatch site. (`internal/audit/audit.go`)
+- `internal/risk/risk_test.go` — table-driven tests for `Classify`,
+  `AutoApprove`, `WantsDiff`, `Register` / `Unregister`. The package was
+  previously at 0 % coverage; now 80 %.
+- `internal/voice/voice_test.go` — `httptest`-based Whisper mock plus
+  `Available()` no-`rec` test. Voice was 0 % coverage; now 55 %.
+- `audit_test.go` table-test for `RequireOpen` covering nil + each risk
+  level + open log.
+- `marauder.TestStreamBackpressureExits` — backpressure regression test.
+- `agent.TestAuditGate_RefusesHighRiskWithoutAuditLog` — locks in the new
+  fail-closed contract.
+
+### Changed
+
+- **`task test` now sets `CGO_ENABLED=1` per-task** for `test`, `test:full`,
+  and `test:eval`. Previously the global `CGO_ENABLED=0` collided with
+  `-race` (which requires cgo) and the documented test command failed
+  immediately on a clean checkout. Global env unchanged — host-build CGO=0
+  remains intentional. (`Taskfile.yml`)
+- **`task lint` precondition** errors with a friendly "run task dev:setup
+  first" if `golangci-lint` is not on PATH.
+- **`/help`** now lists the eight commands previously omitted: `/attack`,
+  `/campaign`, `/rewind`, `/report`, `/stats`, `/cost`, `/debug`, `/rules`.
+  (`cmd/promptzero/commands.go`)
+- **`/tools`** gains pagination via `/tools page <n>`.
+- **README tool count** updated from "160+ Tools" to the actual registry
+  size (268+).
+- **Audit log truncation** raised from 10 000 → 65 535 bytes per row so
+  large tool outputs survive without premature loss. (`internal/audit/audit.go`)
+- **Marauder TFT panel** is now gated server-side via a `marauder_available`
+  field in the initial WS status payload (true only when `s.marauder != nil`
+  and the device is connected). The frontend reveals the rail item only
+  when the server confirms the bridge is up. Replaces the static
+  `FEATURE_MARAUDER_ENABLED=false` flag. (`internal/web/static/app.js`,
+  `internal/web/server.go`)
+- **`internal/voice`** subprocess paths use `exec.CommandContext` and the
+  Whisper HTTP call uses a dedicated `&http.Client{Timeout: 60*time.Second}`
+  instead of `http.DefaultClient`. Voice can no longer hang indefinitely
+  on a stalled mic or unreachable Whisper endpoint.
+
+### Fixed
+
+- **`marauder.Stream` no longer wedges** when the consumer is slow or stopped.
+  The unbuffered `lines<-line` send under held mutex is replaced with a
+  `select` that handles the `done`-channel cancellation (sends `stopscan`
+  + returns) and a 2-second backpressure timeout (warns and returns).
+  (`internal/marauder/marauder.go`)
+- **MCP `Server.deps()` no longer NPEs on Bruce / Faultier / BusPirate
+  Specs.** ~28 Specs (`bruce_*`, `glitch_*`, `buspirate_*`) now have their
+  backends wired through. (`internal/mcp/server.go`)
+- **Confirm-callback goroutine** at `internal/agent/agent.go:433` no longer
+  crashes the process on a panicking ConfirmFunc — the `obs.SafeGo` wrapper
+  recovers; the select falls through to ctx/timer and returns `DecisionDeny`.
+- Eight bare WebSocket inbound dispatch goroutines (text, audio, reset,
+  screen acquire/release, marauder acquire/release, marauder cmd) now
+  recover panics. Same for the writer / heartbeat goroutines.
+  (`internal/web/server.go`)
+- `internal/rules` `RunTool` goroutine wrapped with `obs.SafeGo` —
+  panicking tool callbacks no longer crash the daemon.
+
+### Removed
+
+- **`FEATURE_MARAUDER_ENABLED` static frontend flag** in
+  `internal/web/static/app.js`. Replaced by the server-emitted
+  `marauder_available` field above.
+- **README "browser-based voice recording" claim.** The frontend has no
+  `MediaRecorder` wired up; the server-side `handleAudio` exists but is
+  unreachable from the UI today. v0.18 will implement properly; the
+  misleading claim is removed in the meantime.
+- **`analyze_image` and `discover_apps` quarantine exemptions** — both now
+  go through the standard wrap. (`internal/agent/quarantine.go`)
+
+### Migration notes
+
+- **MCP integrators**: existing clients that called High or Critical tools
+  will get a refusal until they set `PROMPTZERO_MCP_ALLOW_HIGH=1` /
+  `PROMPTZERO_MCP_ALLOW_CRITICAL=1`. Audit captures both allowed and
+  denied calls. The interactive elicitation path (mcp-go ≥ 0.30) is on
+  the v0.18 plan.
+- **Headless agents without an audit log**: if you call the agent dispatch
+  path directly with `auditLog == nil` and a `risk.High`+ tool, you will
+  now get a refusal instead of silent execution. Construct an
+  `audit.Open(path)` (sqlite) or accept the refusal.
+- **Web Marauder panel users**: rail item only appears when the device is
+  detected and the bridge handshake completes. Set up the device first.
+
 ## [0.16.0] - 2026-04-29
 
 ### Added
