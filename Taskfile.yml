@@ -60,6 +60,9 @@ tasks:
 
   lint:
     desc: Run golangci-lint across the module.
+    preconditions:
+      - sh: which golangci-lint
+        msg: "run task dev:setup first"
     cmds:
       - golangci-lint run ./...
 
@@ -70,11 +73,15 @@ tasks:
 
   test:
     desc: Short test suite — skips slow timing-sensitive tests.
+    env:
+      CGO_ENABLED: "1"
     cmds:
       - go test -race -count=1 -short ./...
 
   test:full:
     desc: Full test suite (matches CI).
+    env:
+      CGO_ENABLED: "1"
     cmds:
       - go test -race -count=1 ./...
 
@@ -82,6 +89,8 @@ tasks:
     desc: Golden evaluation harness (roadmap P2-25). Runs integration
       scenarios against mock transports and reports pass/fail + timing
       per scenario. CI gate for regressions in top-level agent flows.
+    env:
+      CGO_ENABLED: "1"
     cmds:
       - go test -race -count=1 -v -run TestDefaultSuiteAllPass ./internal/eval/...
 
