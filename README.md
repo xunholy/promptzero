@@ -100,9 +100,11 @@ Slash commands: `/help`, `/attack`, `/campaign`, `/rewind`, `/report`, `/stats`,
 
 ### Web UI — `promptzero --web`
 
-Dark-themed browser interface at `http://localhost:8080`. Includes the chat surface, live status, and (when a Marauder is connected) a TFT display panel.
+Dark-themed browser interface at `http://localhost:8080`. Includes the chat surface, a live Flipper viewport, file browser, audit log, report builder, and (when a Marauder is connected) a TFT display panel.
 
-<!-- TODO(screenshot): .github/assets/web.png -->
+<p align="center">
+  <img src=".github/assets/web.png" alt="PromptZero web UI — chat, live Flipper viewport, file browser, audit log" width="900">
+</p>
 
 > [!IMPORTANT]
 > **Auth.** Set `web.token` in your config or `PROMPTZERO_WEB_TOKEN` in env. The browser picks up `#token=…` from the URL fragment on first load and caches it in `sessionStorage`. Empty token + non-loopback bind → server prints a red warning. PromptZero speaks plain HTTP — terminate TLS at a reverse proxy (Caddy / Traefik / nginx) or a Tailscale / Cloudflare tunnel.
