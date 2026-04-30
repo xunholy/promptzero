@@ -65,7 +65,7 @@ promptzero> what's this?  [photo of a remote control]
   I can generate a complete remote file. Want me to create it?
 ```
 
-### 160+ Tools Across 5 Subsystems
+### 268+ Tools Across 5 Subsystems
 
 | Subsystem | Tools | Capabilities |
 |-----------|-------|-------------|
@@ -306,7 +306,6 @@ promptzero> read the NFC tag on my desk
 
 Dark-themed browser interface at `http://localhost:8080`. Includes:
 - Chat interface with real-time WebSocket communication
-- Browser-based voice recording (no sox needed)
 - Status indicators and conversation management
 
 **Flipper feedback:** When the web UI (or CLI REPL) drives a turn, the Flipper's blue LED lights up for the duration of that turn and turns off once the agent finishes — a quick physical signal that the agent is actively working. The CLI REPL also notes this on startup: `blue LED while agent is working`.

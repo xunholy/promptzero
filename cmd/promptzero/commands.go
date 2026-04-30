@@ -190,10 +190,19 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 		return true, false
 	case "/tools":
 		filter := ""
+		page := 1
 		if len(fields) > 1 {
-			filter = fields[1]
+			if strings.ToLower(fields[1]) == "page" {
+				if len(fields) > 2 {
+					if n, err := strconv.Atoi(fields[2]); err == nil && n > 0 {
+						page = n
+					}
+				}
+			} else {
+				filter = fields[1]
+			}
 		}
-		ed.writeOutput(func() { printTools(deps.hasMarauder, filter) })
+		ed.writeOutput(func() { printTools(deps.hasMarauder, filter, page) })
 		return true, false
 	case "/resume":
 		if len(fields) < 2 {
@@ -290,12 +299,20 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/audit session <id>%s    Dump a specific session\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit export <path>%s   Write session audit JSON to <path>\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/export training-set <path>%s  Export audit as JSONL fine-tuning dataset (--format=chat --success-only)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/stats [section]%s       Session cost summary (tokens, spend, cache hit-rate)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/cost%s                  Current cost snapshot\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/debug%s                 Diagnostic snapshot (config, transport, agent state)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sOperator%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/mode [name]%s           Show or switch operation mode (standard|recon|intel|stealth|assault)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/watch [pause|resume]%s  Show watched paths, pause/resume FS triggers\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/webhooks [test <name>]%s List outbound webhooks with recent deliveries\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/validate <path>%s       Lint a BadUSB .txt payload on the Flipper SD card\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/attack [set|clear] <techniques>%s  ATT&CK technique constraint for the session\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/campaign validate|run <file>%s  Validate or execute a multi-step campaign file\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/rewind [snapshot]%s    Undo SD card writes to a named or latest snapshot\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/report [session] [save]%s  Markdown engagement report with ATT&CK heatmap\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/rules%s                 List automation rules and fire counts\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sDevice%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sInput%s\n", bold, white, reset)
@@ -1313,7 +1330,7 @@ func printSessions(ai *agent.Agent) {
 
 const toolsMaxRows = 40
 
-func printTools(hasMarauder bool, filter string) {
+func printTools(hasMarauder bool, filter string, page int) {
 	catalog := agent.ToolCatalog(hasMarauder)
 	filtered := catalog
 	lowerFilter := strings.ToLower(filter)
@@ -1345,25 +1362,46 @@ func printTools(hasMarauder bool, filter string) {
 	}
 	sort.Strings(order)
 
-	shown := 0
-	fmt.Fprintln(os.Stderr)
-outer:
+	type flatEntry struct {
+		group string
+		entry agent.ToolCatalogEntry
+	}
+	var flat []flatEntry
 	for _, g := range order {
-		fmt.Fprintf(os.Stderr, "  %s%s%s%s\n", bold, white, g, reset)
 		for _, e := range groups[g] {
-			if shown >= toolsMaxRows {
-				break outer
-			}
-			fmt.Fprintf(os.Stderr, "    %s%s%s  %s%s%s\n", cyan, e.Name, reset, dim, toolDescSummary(e.Description), reset)
-			shown++
+			flat = append(flat, flatEntry{g, e})
 		}
 	}
-	if shown < len(filtered) {
-		hint := "/tools <filter>"
+
+	if page < 1 {
+		page = 1
+	}
+	start := (page - 1) * toolsMaxRows
+	if start >= len(flat) {
+		totalPages := (len(flat) + toolsMaxRows - 1) / toolsMaxRows
+		fmt.Fprintf(os.Stderr, "  %spage %d out of range — total pages: %d%s\n", dim, page, totalPages, reset)
+		return
+	}
+	end := start + toolsMaxRows
+	if end > len(flat) {
+		end = len(flat)
+	}
+
+	fmt.Fprintln(os.Stderr)
+	lastGroup := ""
+	for _, item := range flat[start:end] {
+		if item.group != lastGroup {
+			fmt.Fprintf(os.Stderr, "  %s%s%s%s\n", bold, white, item.group, reset)
+			lastGroup = item.group
+		}
+		fmt.Fprintf(os.Stderr, "    %s%s%s  %s%s%s\n", cyan, item.entry.Name, reset, dim, toolDescSummary(item.entry.Description), reset)
+	}
+	if end < len(flat) {
+		hint := fmt.Sprintf("/tools page %d", page+1)
 		if filter != "" {
 			hint = "use a narrower filter"
 		}
-		fmt.Fprintf(os.Stderr, "  %s… and %d more, try %s%s\n", dim, len(filtered)-shown, hint, reset)
+		fmt.Fprintf(os.Stderr, "  %s… and %d more, try %s%s\n", dim, len(flat)-end, hint, reset)
 	}
 	fmt.Fprintln(os.Stderr)
 }
