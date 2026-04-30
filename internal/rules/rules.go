@@ -271,7 +271,9 @@ func (e *Engine) fire(r *Rule, entry audit.Entry) {
 				continue
 			}
 			e.inFlight.Add(1)
-			go func(tool string, params map[string]interface{}) {
+			tool := a.Tool
+			params := a.Params
+			obs.SafeGo("rules.tool", func() {
 				defer e.inFlight.Add(-1)
 				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 				defer cancel()
@@ -285,7 +287,7 @@ func (e *Engine) fire(r *Rule, entry audit.Entry) {
 						logger.Warn("rule_tool_failed", "rule", r.Name, "tool", tool, "err", err)
 					}
 				}
-			}(a.Tool, a.Params)
+			})
 		default:
 			logger.Warn("rule_unknown_kind", "kind", string(a.Kind))
 		}

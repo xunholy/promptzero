@@ -2,6 +2,7 @@ package voice
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,17 +12,34 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Engine struct {
-	apiKey string
-	model  string
+	apiKey     string
+	model      string
+	whisperURL string
+	// httpClient overrides the default 60-second Whisper client; set in
+	// tests to inject a short-timeout or mock-server client.
+	httpClient *http.Client
+}
+
+// client returns the HTTP client to use for Whisper API calls.
+// When httpClient is nil (production), a fresh client with a 60-second
+// timeout is returned so we never reuse http.DefaultClient's shared
+// transport state and cannot be blocked by a hung upstream forever.
+func (e *Engine) client() *http.Client {
+	if e.httpClient != nil {
+		return e.httpClient
+	}
+	return &http.Client{Timeout: 60 * time.Second}
 }
 
 func New(openAIKey string) *Engine {
 	return &Engine{
-		apiKey: openAIKey,
-		model:  "whisper-1",
+		apiKey:     openAIKey,
+		model:      "whisper-1",
+		whisperURL: "https://api.openai.com/v1/audio/transcriptions",
 	}
 }
 
@@ -39,7 +57,7 @@ func (e *Engine) Record(outPath string) error {
 		"1", "1.0", "1%",
 	}
 
-	cmd := exec.Command("rec", args...)
+	cmd := exec.CommandContext(context.Background(), "rec", args...)
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
@@ -54,7 +72,7 @@ func (e *Engine) RecordFixed(outPath string, seconds int) error {
 		"trim", "0", fmt.Sprintf("%d", seconds),
 	}
 
-	cmd := exec.Command("rec", args...)
+	cmd := exec.CommandContext(context.Background(), "rec", args...)
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
@@ -91,14 +109,14 @@ func (e *Engine) TranscribeReader(audio io.Reader, filename string) (string, err
 	}
 	writer.Close()
 
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/audio/transcriptions", &buf)
+	req, err := http.NewRequest("POST", e.whisperURL, &buf)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+e.apiKey)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := e.client().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("whisper API request: %w", err)
 	}

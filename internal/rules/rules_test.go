@@ -299,3 +299,43 @@ func TestEngine_ToolActionSaturation(t *testing.T) {
 		t.Errorf("RunTool called %d times, want <= %d (cap)", n, maxToolActions)
 	}
 }
+
+// TestEngine_ToolActionPanicRecovered verifies that a panic inside a
+// RunTool goroutine is caught by obs.SafeGo so the rules engine (daemon)
+// keeps running and can fire subsequent rules normally.
+func TestEngine_ToolActionPanicRecovered(t *testing.T) {
+	started := make(chan struct{})
+	eng := New(Deps{
+		RunTool: func(_ context.Context, tool string, _ map[string]interface{}) (string, error) {
+			close(started)
+			panic("deliberate test panic in tool")
+		},
+	})
+	eng.Register(Rule{
+		Name:    "panic_rule",
+		Match:   Match{Tool: "panic_trigger"},
+		Actions: []Action{{Kind: ActionTool, Tool: "panic_tool"}},
+		Enabled: true,
+	})
+
+	eng.Handle(audit.Entry{Tool: "panic_trigger"})
+
+	// Wait for the goroutine to start and panic.
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("tool goroutine did not start within 1s")
+	}
+
+	// Allow the panic/recover to complete.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if eng.inFlight.Load() == 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if eng.inFlight.Load() != 0 {
+		t.Errorf("inFlight=%d after panic recovery, expected 0 (defer did not run)", eng.inFlight.Load())
+	}
+}
