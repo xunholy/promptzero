@@ -175,7 +175,7 @@ func init() {
 			`"path":{"type":"string","description":"Custom deploy path"}` +
 			`}}`),
 		Required:  []string{"type", "description"},
-		Risk:      risk.High,
+		Risk:      risk.Critical,
 		Group:     GroupGen,
 		AgentOnly: true,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
@@ -274,6 +274,8 @@ func runPayload(d *Deps, path, command string) (string, error) {
 }
 
 // generateDeployRun runs the full generate → deploy → run pipeline.
+// The run step is gated through d.WorkflowConfirm so each payload type
+// (badusb/portal/subghz/nfc/ir) surfaces a typed confirm before execution.
 func generateDeployRun(ctx context.Context, d *Deps, payloadType, description, path, targetOS string) (string, error) {
 	genResult, err := generatePayloadWithBypass(ctx, d, payloadType, description, path, targetOS, true, false)
 	if err != nil {
@@ -285,12 +287,45 @@ func generateDeployRun(ctx context.Context, d *Deps, payloadType, description, p
 		deployedPath = genDefaultPath(payloadType)
 	}
 
+	// Gate the run step on the underlying tool's actual risk level so
+	// portal/badusb/sub-GHz/IR/NFC each surface a typed confirm.
+	underlyingTool, riskLevel := genRunPayloadRisk(deployedPath)
+	if d.WorkflowConfirm != nil {
+		if !d.WorkflowConfirm(ctx, underlyingTool, map[string]string{"path": deployedPath}, riskLevel.String()) {
+			return genResult + "\n\nRun denied: operator declined the confirm gate.", nil
+		}
+	}
+
 	runResult, err := runPayload(d, deployedPath, "")
 	if err != nil {
 		return genResult + fmt.Sprintf("\n\nGenerated and deployed, but run failed: %v", err), nil
 	}
 	return genResult + "\n\nExecuted: " + runResult, nil
 }
+
+// genRunPayloadRisk returns the underlying tool name and effective risk level
+// for a given deployed payload path. Mirrors resolveRunPayloadRisk in
+// internal/agent/agent.go — kept local to avoid a circular import between
+// internal/tools and internal/agent.
+func genRunPayloadRisk(path string) (underlyingTool string, level risk.Level) {
+	switch {
+	case strings.Contains(path, "evil_portal"):
+		return "MarauderEvilPortalStart", risk.Critical
+	case strings.HasSuffix(path, ".txt") && strings.Contains(path, "badusb"):
+		return "BadUSBRun", risk.Critical
+	case strings.HasSuffix(path, ".sub"):
+		return "SubGHzTx", risk.Critical
+	case strings.HasSuffix(path, ".nfc"):
+		return "NFCEmulate", risk.High
+	case strings.HasSuffix(path, ".ir"):
+		return "IRUniversal", risk.Low
+	case strings.HasSuffix(path, ".rfid"):
+		return "RFIDEmulate", risk.High
+	default:
+		return "unknown", risk.High
+	}
+}
+
 
 // genDefaultPath mirrors the generator package's default-path selection.
 func genDefaultPath(payloadType string) string {

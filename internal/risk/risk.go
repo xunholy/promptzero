@@ -201,7 +201,6 @@ var toolLevels = func() map[string]Level {
 		"wifi_join",
 		"wifi_ping_scan", "wifi_arp_scan", "wifi_port_scan", "wifi_portscan_service",
 		"run_payload",
-		"generate_deploy_run",
 		"loader_open",
 		"subghz_tx_key", "subghz_chat",
 		"nfc_raw_frame", "nfc_apdu", "nfc_mfu_wrbl",
@@ -262,6 +261,9 @@ var toolLevels = func() map[string]Level {
 		"power_reboot_dfu",
 		"update_install",
 		"workflow_rolljam_lab_demo",
+		// generate_deploy_run: all-in-one generate→deploy→run; execution risk
+		// is Critical because the inner runPayload can launch badusb/subghz/portal.
+		"generate_deploy_run",
 		// v0.5 security: offline dictionary hash cracking (same tier as subghz_bruteforce)
 		"hash_crack_dictionary",
 		// v0.6 OSS-expansion: KeeLoq CPU brute-force can run for hours
