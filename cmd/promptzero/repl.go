@@ -70,6 +70,10 @@ type confirmState struct {
 	result     chan agent.ConfirmResponse
 	typing     []rune
 	typingKind confirmTypingKind
+	// gate enforces the minimum 2-second delay between rendering the
+	// confirmation prompt and accepting a positive consent keystroke.
+	// Negative consent (n, Esc, Ctrl+C) always passes immediately.
+	gate *agent.ConfirmDelayGate
 }
 
 // confirmTypingKind records what the buffered characters represent
@@ -218,8 +222,26 @@ func resolveConfirmKey(cs *confirmState, k keyEvent, ed *lineEditor) bool {
 			var d agent.Decision
 			switch {
 			case critical && lower == "confirm":
+				if cs.gate != nil && !cs.gate.Open() {
+					ed.writeOutput(func() {
+						pad := strings.Repeat(" ", boxPad)
+						fmt.Fprintf(os.Stderr, "%s  %s(wait — approval opens in %.0fs)%s\n",
+							pad, dim, cs.gate.Remaining().Seconds(), reset)
+					})
+					cs.typing = nil // reset so they can try again
+					return false
+				}
 				d = agent.DecisionApprove
 			case !critical && lower == "all":
+				if cs.gate != nil && !cs.gate.Open() {
+					ed.writeOutput(func() {
+						pad := strings.Repeat(" ", boxPad)
+						fmt.Fprintf(os.Stderr, "%s  %s(wait — approval opens in %.0fs)%s\n",
+							pad, dim, cs.gate.Remaining().Seconds(), reset)
+					})
+					cs.typing = nil // reset so they can try again
+					return false
+				}
 				d = agent.DecisionApproveAll
 			default:
 				d = agent.DecisionDeny
@@ -256,6 +278,14 @@ func resolveConfirmKey(cs *confirmState, k keyEvent, ed *lineEditor) bool {
 		}
 		switch k.r {
 		case 'y', 'Y':
+			if cs.gate != nil && !cs.gate.Open() {
+				ed.writeOutput(func() {
+					pad := strings.Repeat(" ", boxPad)
+					fmt.Fprintf(os.Stderr, "%s  %s(wait — approval opens in %.0fs)%s\n",
+						pad, dim, cs.gate.Remaining().Seconds(), reset)
+				})
+				return false
+			}
 			return confirmResolve(cs, agent.DecisionApprove, ed)
 		case 'n', 'N':
 			return confirmResolve(cs, agent.DecisionDeny, ed)
@@ -644,10 +674,12 @@ func enterREPL(deps *REPLDeps) error {
 				"input": string(req.Input),
 			}
 			wh.Fire(webhook.EventRiskPrompted, promptPayload)
+			gate := agent.NewConfirmDelayGate(agent.MinimumConfirmDelay)
 			resultCh := make(chan agent.ConfirmResponse, 1)
-			pendingConfirm.Store(&confirmState{req: req, result: resultCh})
+			pendingConfirm.Store(&confirmState{req: req, result: resultCh, gate: gate})
 			ed.writeOutput(func() {
 				renderConfirmPrompt(req, ui.Cols())
+				gate.Show() // start the 2s clock after prompt is on screen
 			})
 			defer pendingConfirm.Store(nil)
 			var resp agent.ConfirmResponse
