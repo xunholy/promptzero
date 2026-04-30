@@ -816,8 +816,8 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); s.runWriter(connCtx, c) }()
-	go func() { defer wg.Done(); s.runHeartbeat(connCtx, c) }()
+	obs.SafeGo("ws.writer",    func() { defer wg.Done(); s.runWriter(connCtx, c) })
+	obs.SafeGo("ws.heartbeat", func() { defer wg.Done(); s.runHeartbeat(connCtx, c) })
 
 	defer func() {
 		cancel()
@@ -863,14 +863,14 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		switch msg.Type {
 		case "text":
-			go s.handleText(connCtx, c, msg.Content)
+			obs.SafeGo("ws.text", func() { s.handleText(connCtx, c, msg.Content) })
 		case "audio":
-			go s.handleAudio(connCtx, c, msg.Content)
+			obs.SafeGo("ws.audio", func() { s.handleAudio(connCtx, c, msg.Content) })
 		case "reset":
-			go func() {
+			obs.SafeGo("ws.reset", func() {
 				s.agent.Reset()
 				s.sendTo(c, map[string]any{"type": "status", "content": "conversation reset"})
-			}()
+			})
 		case "confirm_response":
 			s.deliverConfirm(msg.ConfirmID, agent.ConfirmResponse{
 				Decision: decodeDecision(msg.Decision),
@@ -881,19 +881,19 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "ui_context":
 			s.setUIContextFromWS(msg.View, msg.FSPath)
 		case "screen_acquire":
-			go s.handleScreenAcquire(c)
+			obs.SafeGo("ws.screen_acquire", func() { s.handleScreenAcquire(c) })
 		case "screen_release":
-			go s.handleScreenRelease(c)
+			obs.SafeGo("ws.screen_release", func() { s.handleScreenRelease(c) })
 		case "screen_keepalive":
 			s.handleScreenKeepalive(c)
 		case "screen_input":
 			s.handleScreenInput(c, msg.Button, msg.EventType)
 		case "marauder_acquire":
-			go s.handleMarauderAcquire(c)
+			obs.SafeGo("ws.marauder_acquire", func() { s.handleMarauderAcquire(c) })
 		case "marauder_release":
-			go s.handleMarauderRelease(c)
+			obs.SafeGo("ws.marauder_release", func() { s.handleMarauderRelease(c) })
 		case "marauder_cmd":
-			go s.handleMarauderCmd(c, msg.Cmd, msg.Action, msg.Args)
+			obs.SafeGo("ws.marauder_cmd", func() { s.handleMarauderCmd(c, msg.Cmd, msg.Action, msg.Args) })
 		}
 	}
 }

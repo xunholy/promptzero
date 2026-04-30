@@ -397,3 +397,38 @@ func TestNoLiteralUndefinedInTemplates(t *testing.T) {
 			count)
 	}
 }
+
+// TestPanicInHandlerDoesNotCrashConnection verifies that obs.SafeGo wrapping
+// prevents a panic inside a WS-dispatched goroutine from crashing the process
+// or the connection. The first turn panics; the second turn succeeds, proving
+// the WS connection is still alive.
+func TestPanicInHandlerDoesNotCrashConnection(t *testing.T) {
+	fa := &fakeAgent{}
+	var panicOnce sync.Once
+	fa.runFn = func(ctx context.Context, input string, f *fakeAgent) (string, error) {
+		panicOnce.Do(func() { panic("intentional test panic in handleText") })
+		return "still alive", nil
+	}
+
+	c, cleanup := startTestServer(t, fa)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// First message triggers the panic; SafeGo recovers it.
+	if err := writeJSON(ctx, c, map[string]any{"type": "text", "content": "panic now"}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	// Allow the goroutine time to panic and recover before the next send.
+	time.Sleep(150 * time.Millisecond)
+
+	// Second message must succeed — connection must still be open.
+	if err := writeJSON(ctx, c, map[string]any{"type": "text", "content": "still here?"}); err != nil {
+		t.Fatalf("write after panic: %v", err)
+	}
+	resp := readUntil(t, ctx, c, "response")
+	if resp["content"] != "still alive" {
+		t.Errorf("response content = %v, want 'still alive'", resp["content"])
+	}
+}
