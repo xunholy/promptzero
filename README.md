@@ -12,6 +12,11 @@
 
 PromptZero is a natural-language operator for the [Flipper Zero](https://flipperzero.one). Talk to it like you'd talk to a person — it generates payloads, deploys them, and runs them, all from a single sentence.
 
+> [!CAUTION]
+> **Authorised use only.** PromptZero generates and runs RF, NFC, RFID, and HID payloads — illegal outside contexts you own or have written authorisation to test. Read [`SECURITY.md`](SECURITY.md) for the safety model and threat boundary. The project is under active development; APIs and tools change between minor versions.
+>
+> *Built end-to-end with [Claude](https://claude.ai). Review generated payloads before deployment.*
+
 ```
 promptzero> make me a Starbucks WiFi captive portal
   Generated and deployed evil_portal to /ext/apps_data/evil_portal/index.html
@@ -29,11 +34,6 @@ promptzero> what's this?  [photo of a remote control]
   That's a Samsung BN59 series TV remote using the Samsung32 IR protocol.
   I can generate a complete remote file. Want me to create it?
 ```
-
-> [!CAUTION]
-> **Authorised use only.** PromptZero generates and runs RF, NFC, RFID, and HID payloads — illegal outside contexts you own or have written authorisation to test. Read [`SECURITY.md`](SECURITY.md) for the safety model and threat boundary. The project is under active development; APIs and tools change between minor versions.
->
-> *Built end-to-end with [Claude](https://claude.ai). Review generated payloads before deployment.*
 
 ---
 
