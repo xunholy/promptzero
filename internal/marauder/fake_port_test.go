@@ -374,7 +374,7 @@ func TestStreamBackpressureExits(t *testing.T) {
 
 	select {
 	case <-drainDone:
-		// goroutine exited cleanly — 
+		// goroutine exited cleanly —
 	case <-time.After(time.Second):
 		t.Fatal("stream goroutine did not exit within 3s+1s (backpressure timer may be missing)")
 	}
