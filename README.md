@@ -30,7 +30,7 @@ promptzero> create a BadUSB payload that opens a reverse shell on Windows
   Generated and deployed badusb to /ext/badusb/generated_payload.txt
   Ready to execute - plug into target and run
 
-promptzero> what's this?  [photo of a remote control]
+promptzero> identify this device: /tmp/remote.jpg
   That's a Samsung BN59 series TV remote using the Samsung32 IR protocol.
   I can generate a complete remote file. Want me to create it?
 ```
@@ -73,7 +73,7 @@ PromptZero connects to your Flipper Zero (and optional ESP32 Marauder WiFi devbo
 | **Flipper Zero** | Sub-GHz TX/RX, IR TX/RX, NFC detect/emulate, RFID read/write/emulate, iButton, GPIO, BadUSB, storage, app launcher |
 | **ESP32 Marauder** | WiFi scan, deauth, beacon spam, probe flood, PMKID capture, evil portal, BLE spam, BT scanning, skimmer detection, wardriving, MAC spoofing |
 | **AI Generation** | Evil portal HTML, BadUSB DuckyScript, Sub-GHz `.sub`, IR `.ir`, NFC `.nfc` from natural language — plus parametric builders for typed parameters |
-| **Intelligence** | Vision analysis (photo → device ID + attack vector), SD card discovery |
+| **Intelligence** | Image analysis via Claude vision (file path → device ID + attack vector), SD card discovery |
 | **Audit** | SQLite audit log with MITRE ATT&CK technique tags, session export, statistics |
 
 Run `promptzero` and type `/tools` for the live registry. Tool count grows release-over-release.
