@@ -844,9 +844,10 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	s.sendTo(c, map[string]any{
-		"type":       "status",
-		"content":    "connected",
-		"session_id": c.id,
+		"type":               "status",
+		"content":            "connected",
+		"session_id":         c.id,
+		"marauder_available": s.marauder != nil && s.marauderOn.Load(),
 	})
 
 	for {

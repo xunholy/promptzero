@@ -10,13 +10,6 @@
      Constants
   ========================================================================= */
 
-  // Marauder synth-panel + nav entry. Disabled until we ship our own
-  // uart_bridge.fap — the default `loader open "USB-UART Bridge"` doesn't
-  // resolve to a launchable app on any current firmware (the built-in is a
-  // scene inside the GPIO app, not a top-level loader entry). Flip to true
-  // once the bridge story is sorted; the backend WS handlers stay wired.
-  var FEATURE_MARAUDER_ENABLED = false;
-
   // Per-subsystem catalog of likely tools / attacks.
   // Clicking an item prefills the agent input — the user reviews + sends.
   // risk: 'low' | 'med' | 'high' (renders as a badge; affects nothing else)
@@ -218,6 +211,7 @@
   var _beepCtx        = null;
   var _toolEls        = {};   // (turn_id|name) -> DOM element
   var _personas       = { current: '', list: [] };
+  var _marauderAvailable = false; // set from marauder_available in initial status payload
 
   // Files screen state
   var _fsCwd          = '/ext';   // current directory being shown in tree pane
@@ -544,13 +538,13 @@
   ========================================================================= */
 
   function setupRailNav() {
-    if (!FEATURE_MARAUDER_ENABLED) {
-      qAll('.rail-item[data-route="marauder"]').forEach(function (el) {
-        if (el.parentNode) el.parentNode.removeChild(el);
-      });
-      var pill = document.getElementById('statMarauder');
-      if (pill && pill.parentNode) pill.parentNode.removeChild(pill);
-    }
+    // Marauder panel visibility is server-side gated via marauder_available in the
+    // initial status payload. Start hidden; dispatch() reveals it when confirmed.
+    qAll('.rail-item[data-route="marauder"]').forEach(function (el) {
+      el.style.display = 'none';
+    });
+    var marPill = document.getElementById('statMarauder');
+    if (marPill) marPill.style.display = 'none';
     qAll('.rail-item[data-route]').forEach(function (item) {
       item.addEventListener('click', function () { activateRoute(item.dataset.route); });
       item.addEventListener('keydown', function (e) {
@@ -927,7 +921,7 @@
     // Leaving the marauder route — release holder and tear down attack timers.
     if (Marauder.isActive() && route !== 'marauder') Marauder.leave();
 
-    if (route === 'marauder' && !FEATURE_MARAUDER_ENABLED) { showAgentScreen(); return; }
+    if (route === 'marauder' && !_marauderAvailable) { showAgentScreen(); return; }
 
     switch (route) {
       case 'agent':    showAgentScreen();   break;
@@ -1372,6 +1366,12 @@
             _sessionId = msg.session_id;
             var sid = document.getElementById('sessionId');
             if (sid) sid.textContent = msg.session_id.slice(0, 8);
+          }
+          _marauderAvailable = !!msg.marauder_available;
+          if (_marauderAvailable) {
+            qAll('.rail-item[data-route="marauder"]').forEach(function (el) { el.style.display = ''; });
+            var marPill2 = document.getElementById('statMarauder');
+            if (marPill2) marPill2.style.display = '';
           }
           setModelTag('ready');
         } else if (msg.content === 'conversation reset') {
