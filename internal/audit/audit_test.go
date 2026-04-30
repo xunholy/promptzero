@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/risk"
 )
 
 // openTestLog constructs an audit log backed by a temp-file DB. Pure
@@ -251,4 +253,34 @@ func itoa(i int) string {
 		buf[n] = '-'
 	}
 	return string(buf[n:])
+}
+
+func TestRequireOpen(t *testing.T) {
+	log := openTestLog(t)
+
+	cases := []struct {
+		name    string
+		log     *Log
+		level   risk.Level
+		wantErr bool
+	}{
+		{"nil+low", nil, risk.Low, false},
+		{"nil+medium", nil, risk.Medium, false},
+		{"nil+high", nil, risk.High, true},
+		{"nil+critical", nil, risk.Critical, true},
+		{"open+low", log, risk.Low, false},
+		{"open+high", log, risk.High, false},
+		{"open+critical", log, risk.Critical, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := RequireOpen(tc.log, tc.level)
+			if tc.wantErr && err == nil {
+				t.Errorf("RequireOpen(%v, %v): want error, got nil", tc.log == nil, tc.level)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("RequireOpen(%v, %v): want nil, got %v", tc.log == nil, tc.level, err)
+			}
+		})
+	}
 }

@@ -14,6 +14,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/xunholy/promptzero/internal/obs"
+	"github.com/xunholy/promptzero/internal/risk"
 )
 
 type Level string
@@ -190,8 +191,8 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 	inputJSON, _ := json.Marshal(input)
 
 	// Truncate long outputs for storage
-	if len(output) > 10000 {
-		output = output[:10000] + "... [truncated]"
+	if len(output) > 65535 {
+		output = output[:65535] + "... [truncated]"
 	}
 
 	ts := time.Now().UTC()
@@ -561,4 +562,18 @@ func (l *Log) Stats() (string, error) {
 
 	return fmt.Sprintf("Session: %s\nTotal actions: %d\nSuccessful: %d\nFailed: %d\nUnique tools: %d",
 		l.sessionID, total, success, failed, tools), nil
+}
+
+// RequireOpen returns an error when l is nil and level is High or above.
+// This enforces fail-closed behaviour: when the audit log is not initialised,
+// destructive (High/Critical) actions are refused rather than proceeding silently.
+// Low/Medium actions are permitted without an audit log for back-compat.
+func RequireOpen(l *Log, level risk.Level) error {
+	if l != nil {
+		return nil
+	}
+	if level >= risk.High {
+		return fmt.Errorf("audit log not initialized — refusing %s-risk action", level)
+	}
+	return nil
 }
