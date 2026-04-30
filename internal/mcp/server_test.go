@@ -14,6 +14,7 @@ import (
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/testmocks"
 )
 
@@ -225,13 +226,44 @@ func TestServer_CallTool_MissingRequiredArg(t *testing.T) {
 	}
 }
 
-func TestServer_CallTool_HighRiskSubGHzReceive(t *testing.T) {
-	// Risk-High call path: subghz_receive (wait, receive is Medium).
-	// Pick subghz_transmit which is unambiguously High. Under MCP the
-	// server currently auto-executes every call — the startup banner on
-	// stderr tells operators to trust their client. This test pins that
-	// behaviour: destructive tools execute, but the destructiveHint
-	// annotation stays surfaced so the MCP client can gate client-side.
+// TestServer_CallTool_HighRiskDefaultDenied verifies that a risk.High tool
+// (subghz_transmit) is refused by default when PROMPTZERO_MCP_ALLOW_HIGH is
+// not set. This is the primary consent-gate assertion for the High tier.
+func TestServer_CallTool_HighRiskDefaultDenied(t *testing.T) {
+	t.Setenv("PROMPTZERO_MCP_ALLOW_HIGH", "")
+	t.Setenv("PROMPTZERO_MCP_ALLOW_CRITICAL", "")
+
+	c, _ := newTestHarness(t, false, testmocks.WithFlipperHandler("subghz", func(args []string) string {
+		return "tx complete"
+	}))
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var req mcplib.CallToolRequest
+	req.Params.Name = "subghz_transmit"
+	req.Params.Arguments = map[string]any{"file": "/ext/subghz/test.sub"}
+
+	res, err := c.CallTool(ctx, req)
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("high-risk tool should be denied by default (IsError=false, got success)")
+	}
+	text := firstText(t, res)
+	if !strings.Contains(text, "PROMPTZERO_MCP_ALLOW_HIGH") {
+		t.Errorf("denial message should reference PROMPTZERO_MCP_ALLOW_HIGH, got %q", text)
+	}
+}
+
+// TestServer_CallTool_HighRiskAllowedWithEnv verifies that setting
+// PROMPTZERO_MCP_ALLOW_HIGH=1 permits a risk.High tool to execute.
+func TestServer_CallTool_HighRiskAllowedWithEnv(t *testing.T) {
+	t.Setenv("PROMPTZERO_MCP_ALLOW_HIGH", "1")
+	t.Setenv("PROMPTZERO_MCP_ALLOW_CRITICAL", "")
+
 	c, _ := newTestHarness(t, false, testmocks.WithFlipperHandler("subghz", func(args []string) string {
 		return "tx complete"
 	}))
@@ -249,11 +281,92 @@ func TestServer_CallTool_HighRiskSubGHzReceive(t *testing.T) {
 		t.Fatalf("CallTool: %v", err)
 	}
 	if res.IsError {
-		t.Fatalf("subghz_transmit returned IsError=true: %+v", res.Content)
+		t.Fatalf("high-risk tool with ALLOW_HIGH=1 returned IsError=true: %+v", res.Content)
 	}
 	text := firstText(t, res)
 	if !strings.Contains(text, "tx complete") {
 		t.Errorf("expected tx handler output, got %q", text)
+	}
+}
+
+// TestServer_CallTool_CriticalRiskDefaultDenied verifies that a risk.Critical
+// tool is refused even when PROMPTZERO_MCP_ALLOW_HIGH=1 but CRITICAL is unset.
+func TestServer_CallTool_CriticalRiskDefaultDenied(t *testing.T) {
+	t.Setenv("PROMPTZERO_MCP_ALLOW_HIGH", "1")
+	t.Setenv("PROMPTZERO_MCP_ALLOW_CRITICAL", "")
+
+	c, _ := newTestHarness(t, false, testmocks.WithFlipperHandler("storage", func(args []string) string {
+		return ""
+	}))
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var req mcplib.CallToolRequest
+	req.Params.Name = "flipper_raw_cli"
+	req.Params.Arguments = map[string]any{"command": "power_info"}
+
+	res, err := c.CallTool(ctx, req)
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("critical-risk tool should be denied without ALLOW_CRITICAL (IsError=false)")
+	}
+	text := firstText(t, res)
+	if !strings.Contains(text, "PROMPTZERO_MCP_ALLOW_CRITICAL") {
+		t.Errorf("denial message should reference PROMPTZERO_MCP_ALLOW_CRITICAL, got %q", text)
+	}
+}
+
+// TestServer_CallTool_AuditRecordedOnDenial verifies that consent-denied
+// calls are still written to the audit log (success=false) so operators
+// have a full record of attempted invocations.
+func TestServer_CallTool_AuditRecordedOnDenial(t *testing.T) {
+	t.Setenv("PROMPTZERO_MCP_ALLOW_HIGH", "")
+	t.Setenv("PROMPTZERO_MCP_ALLOW_CRITICAL", "")
+
+	c, s := newTestHarness(t, false)
+	defer c.Close()
+
+	// Wire a real in-memory audit log.
+	l, err := audit.Open(t.TempDir() + "/audit.db")
+	if err != nil {
+		t.Fatalf("audit.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	s.SetAuditLog(l)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var req mcplib.CallToolRequest
+	req.Params.Name = "subghz_transmit"
+	req.Params.Arguments = map[string]any{"file": "/ext/subghz/test.sub"}
+
+	res, _ := c.CallTool(ctx, req)
+	if res != nil && !res.IsError {
+		t.Fatal("expected denial")
+	}
+
+	// The audit log should have recorded the denied attempt.
+	entries, qerr := l.Query(10)
+	if qerr != nil {
+		t.Fatalf("audit.Query: %v", qerr)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("expected at least one audit entry for denied call, got 0")
+	}
+	found := false
+	for _, e := range entries {
+		if e.Tool == "subghz_transmit" && !e.Success {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no denied audit entry for subghz_transmit; entries: %+v", entries)
 	}
 }
 

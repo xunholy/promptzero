@@ -8,6 +8,18 @@
 // (readOnlyHint, destructiveHint, openWorldHint). Operators can use those
 // hints to gate destructive calls in their MCP client.
 //
+// # Risk consent gate
+//
+// Tools at risk.High or risk.Critical are refused by default. Set the
+// following environment variables to opt in:
+//
+//   - PROMPTZERO_MCP_ALLOW_HIGH=1     — permits risk.High tool calls.
+//   - PROMPTZERO_MCP_ALLOW_CRITICAL=1 — permits risk.Critical tool calls
+//     (implies High is also permitted).
+//
+// Denied calls are still recorded in the audit log (if wired) so the
+// operator has a full record of attempted MCP tool invocations.
+//
 // # MCP resources
 //
 // Built-in wordlists are exposed as static MCP resources so clients can
@@ -41,14 +53,20 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
+	"github.com/xunholy/promptzero/internal/audit"
+	"github.com/xunholy/promptzero/internal/bruce"
+	"github.com/xunholy/promptzero/internal/buspirate"
+	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/snapshot"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
 	"github.com/xunholy/promptzero/internal/wordlists"
 )
@@ -58,10 +76,18 @@ import (
 type Server struct {
 	flipper   *flipper.Flipper
 	marauder  *marauder.Marauder
-	srv       *mcpserver.MCPServer
-	tools     []string
-	prompts   []string
-	resources []string
+	bruce     *bruce.Client
+	faultier  *faultier.Client
+	busPirate *buspirate.Client
+	audit     *audit.Log
+	snapshot  *snapshot.Manager
+	// workflowConfirm is intentionally nil in MCP mode: sub-tool confirm
+	// gates auto-approve when no hook is installed (see gateSubtool).
+	workflowConfirm func(ctx context.Context, tool string, input any, riskLevel string) bool
+	srv             *mcpserver.MCPServer
+	tools           []string
+	prompts         []string
+	resources       []string
 }
 
 type toolHandler func(ctx context.Context, args map[string]interface{}) (string, error)
@@ -89,6 +115,22 @@ func NewServer(f *flipper.Flipper, m *marauder.Marauder) *Server {
 
 	return s
 }
+
+// SetAuditLog wires an audit log so every MCP tool call (including
+// consent-denied ones) is recorded. Call before ServeStdio.
+func (s *Server) SetAuditLog(l *audit.Log) { s.audit = l }
+
+// SetBruce wires an optional Bruce devboard so bruce_* handlers do not
+// short-circuit with "not connected" in MCP mode.
+func (s *Server) SetBruce(b *bruce.Client) { s.bruce = b }
+
+// SetFaultier wires an optional Faultier glitcher so faultier_* handlers
+// do not short-circuit with "not connected" in MCP mode.
+func (s *Server) SetFaultier(f *faultier.Client) { s.faultier = f }
+
+// SetBusPirate wires an optional Bus Pirate 5 so buspirate_* handlers do
+// not short-circuit with "not connected" in MCP mode.
+func (s *Server) SetBusPirate(bp *buspirate.Client) { s.busPirate = bp }
 
 // MCPServer returns the underlying mcp-go server. Exposed so tests can
 // attach alternate transports (e.g. in-process pipes) without going
@@ -120,17 +162,19 @@ func (s *Server) ResourceNames() []string {
 // ServeStdio starts the server on the process's stdin/stdout pair. Blocks
 // until the client disconnects or the process is signalled.
 func (s *Server) ServeStdio() error {
-	// MCP has no shell to prompt on; every tool executes immediately.
-	// Surface that trust boundary on startup so it's never implicit.
-	fmt.Fprintln(os.Stderr, "\x1b[33m●\x1b[0m MCP mode: all tools execute without confirmation — trust your MCP client")
+	// Surface the risk-consent policy on startup so it's never implicit.
+	// High/Critical tools are refused by default; operators opt in via env.
+	fmt.Fprintln(os.Stderr, "\x1b[33m●\x1b[0m MCP mode: risk≥High tools refused by default — set PROMPTZERO_MCP_ALLOW_HIGH=1 / PROMPTZERO_MCP_ALLOW_CRITICAL=1 to permit (all calls are audited)")
 	return mcpserver.ServeStdio(s.srv)
 }
 
 // add registers a tool against the underlying MCP server. The handler is
-// wrapped with argument unmarshalling, required-field validation, and
-// risk-based MCP annotations. Required field names are the subset of opts
-// that callers must supply — they are validated in addition to any
-// schema-level Required() markers already attached to opts.
+// wrapped with argument unmarshalling, required-field validation, risk
+// consent gating, and risk-based MCP annotations.
+//
+// Risk consent gate: tools at risk.High are refused unless
+// PROMPTZERO_MCP_ALLOW_HIGH=1; tools at risk.Critical are refused unless
+// PROMPTZERO_MCP_ALLOW_CRITICAL=1. Denied calls are still audited.
 func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string, handler toolHandler) {
 	level := risk.Classify(name)
 
@@ -149,6 +193,10 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 	allOpts := append(annotations, opts...)
 	tool := mcp.NewTool(name, allOpts...)
 
+	// Capture loop variables for the closure.
+	capturedLevel := level
+	capturedName := name
+
 	s.srv.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args, err := decodeArgs(req)
 		if err != nil {
@@ -159,9 +207,43 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 				fmt.Sprintf("missing required argument(s): %s", strings.Join(missing, ", ")),
 			), nil
 		}
-		result, err := handler(ctx, args)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("error: %v", err)), nil
+
+		levelStr := capturedLevel.String()
+
+		// Risk consent gate: refuse risk≥High unless the operator has
+		// opted in via environment variable. Always audit the attempt.
+		if capturedLevel == risk.Critical && os.Getenv("PROMPTZERO_MCP_ALLOW_CRITICAL") != "1" {
+			if s.audit != nil {
+				s.audit.RecordCtx(ctx, capturedName, args, "", levelStr, audit.LevelAction, 0, false)
+			}
+			return mcp.NewToolResultError(
+				"tool requires consent — set PROMPTZERO_MCP_ALLOW_CRITICAL=1 to allow critical-risk MCP calls (audit will still record)",
+			), nil
+		}
+		if capturedLevel == risk.High && os.Getenv("PROMPTZERO_MCP_ALLOW_HIGH") != "1" {
+			if s.audit != nil {
+				s.audit.RecordCtx(ctx, capturedName, args, "", levelStr, audit.LevelAction, 0, false)
+			}
+			return mcp.NewToolResultError(
+				"tool requires consent — set PROMPTZERO_MCP_ALLOW_HIGH=1 to allow high-risk MCP calls (audit will still record)",
+			), nil
+		}
+
+		start := time.Now()
+		result, herr := handler(ctx, args)
+		dur := time.Since(start)
+
+		success := herr == nil
+		output := result
+		if herr != nil {
+			output = herr.Error()
+		}
+		if s.audit != nil {
+			s.audit.RecordCtx(ctx, capturedName, args, output, levelStr, audit.LevelAction, dur, success)
+		}
+
+		if herr != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("error: %v", herr)), nil
 		}
 		return mcp.NewToolResultText(result), nil
 	})
@@ -315,14 +397,20 @@ func (s *Server) registerFromRegistry() {
 	}
 }
 
-// deps returns a Deps bag populated with only the transports the MCP
-// server has access to. The LLM-specific fields (Generator, Vision,
-// Snapshot, etc.) are nil — only non-AgentOnly handlers are called
-// through this path, so they must degrade gracefully on nil fields.
+// deps returns a Deps bag populated with the transports the MCP server
+// has access to. LLM-specific fields (Generator, Vision, RAG, etc.) are
+// nil — only non-AgentOnly handlers are called through this path, so
+// they must degrade gracefully on nil fields.
 func (s *Server) deps() *toolsreg.Deps {
 	return &toolsreg.Deps{
-		Flipper:  s.flipper,
-		Marauder: s.marauder,
+		Flipper:         s.flipper,
+		Marauder:        s.marauder,
+		Bruce:           s.bruce,
+		Faultier:        s.faultier,
+		BusPirate:       s.busPirate,
+		Audit:           s.audit,
+		Snapshot:        s.snapshot,
+		WorkflowConfirm: s.workflowConfirm,
 	}
 }
 
