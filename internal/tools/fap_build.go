@@ -129,20 +129,34 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 		return string(body), fmt.Errorf("fap_build: %w", buildErr)
 	}
 
-	produced := findFAP(absSrc, absOut)
+	// Scan only the canonical ufbt output directory. Searching the
+	// LLM-controlled output_dir would let an adversarial invocation set
+	// output_dir=/ to harvest every .fap on the host and (with deploy=true)
+	// push them to the Flipper. ufbt writes to .ufbt/dist/ inside the
+	// source dir; nothing else is in scope.
+	produced := findFAP(filepath.Join(absSrc, ".ufbt", "dist"))
 	out["fap_paths"] = produced
 	if len(produced) == 0 {
 		body, _ := json.Marshal(out)
 		return string(body), fmt.Errorf(
-			"fap_build: build succeeded but no .fap found in %s or %s",
-			absSrc, absOut,
+			"fap_build: build succeeded but no .fap found in %s/.ufbt/dist/",
+			absSrc,
 		)
 	}
 
 	if deploy := boolOr(args, "deploy", false); deploy {
-		if d == nil || d.Flipper == nil {
+		switch {
+		case d == nil || d.Flipper == nil:
 			out["deploy_status"] = "skipped: Flipper transport unavailable"
-		} else {
+		case !confirmFAPDeploy(ctx, d, produced):
+			// Risk-inheritance gate: fap_build's base risk is Medium
+			// (host-side compile + SD write), but pushing native ARM
+			// code to /ext/apps elevates the composite blast radius
+			// to High — the operator only needs one loader_open click
+			// to execute the payload. Re-gate here so a Medium
+			// autoconfirm does not silently land the binary.
+			out["deploy_status"] = "declined: operator refused fap_deploy_to_flipper at high-risk gate"
+		default:
 			pushed, perr := pushFAPs(ctx, d, produced)
 			out["deploy_pushed"] = pushed
 			if perr != nil {
@@ -155,9 +169,10 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 	return string(body), nil
 }
 
-// findFAP recursively scans dirs for *.fap files and returns absolute paths.
-// Both the source dir (ufbt writes to .ufbt/dist/ inside it) and any
-// explicit output_dir are searched.
+// findFAP scans the canonical ufbt dist directory for *.fap files and
+// returns absolute paths. Restricted by design: it must NOT walk an
+// LLM-controlled directory, otherwise deploy=true becomes an arbitrary
+// .fap discovery + write primitive.
 func findFAP(dirs ...string) []string {
 	var out []string
 	for _, d := range dirs {
@@ -172,6 +187,30 @@ func findFAP(dirs ...string) []string {
 		})
 	}
 	return out
+}
+
+// confirmFAPDeploy invokes the operator-confirmation hook with risk level
+// "high" before pushing built .fap files to /ext/apps. Returns true when
+// the hook is absent (auto-approve, matches workflows.gateSubtool fallback)
+// or when the operator approves. Mirrors the wifi_sniff_pmkid re-gate inside
+// WiFiTargetToHashcat — the operator's earlier consent to fap_build at
+// Medium does not cover a native-code write to the Flipper.
+//
+// The dialog includes both source paths (so the operator can verify what
+// is being pushed) and destination paths (so they see where it lands).
+func confirmFAPDeploy(ctx context.Context, d *Deps, faps []string) bool {
+	if d == nil || d.WorkflowConfirm == nil {
+		return true
+	}
+	dsts := make([]string, 0, len(faps))
+	for _, p := range faps {
+		dsts = append(dsts, "/ext/apps/"+filepath.Base(p))
+	}
+	return d.WorkflowConfirm(ctx, "fap_deploy_to_flipper",
+		map[string]any{
+			"sources":      faps,
+			"destinations": dsts,
+		}, "high")
 }
 
 // pushFAPs writes each built .fap to the connected Flipper's /ext/apps.
