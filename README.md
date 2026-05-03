@@ -113,13 +113,24 @@ promptzero> what's this?  [photo of a remote control]
 **Prebuilt binary (Linux & macOS, amd64/arm64):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xunholy/promptzero/main/install.sh | sh
+curl -fsSL https://github.com/xunholy/promptzero/releases/latest/download/install.sh | sh
 ```
 
-The script downloads the latest release, verifies the SHA-256 against the
-release's `checksums.txt`, and installs `promptzero` into the first writable
+The script is fetched from the latest release artifacts (immutable per
+release tag) rather than `main`, so a compromised tip-of-`main` cannot
+swap your installer mid-curl. The script then downloads the matching
+release binary, verifies its SHA-256 against the release's
+`checksums.txt`, and installs `promptzero` into the first writable
 directory of: `$XDG_BIN_HOME`, `~/.local/bin`, or `/usr/local/bin`. Run
 `sh install.sh --help` for flags (`--version`, `--prefix`).
+
+If you prefer to inspect before piping, download and audit first:
+
+```bash
+curl -fsSLO https://github.com/xunholy/promptzero/releases/latest/download/install.sh
+less install.sh   # review
+sh install.sh
+```
 
 Once installed, let the CLI keep itself current:
 

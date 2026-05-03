@@ -71,6 +71,13 @@ tasks:
     cmds:
       - go vet ./...
 
+  vuln:
+    desc: |
+      Scan for known CVEs in our dependencies (and reachable stdlib calls)
+      via govulncheck. Run before each release. CI runs this on every PR.
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   test:
     desc: Short test suite — skips slow timing-sensitive tests.
     env:

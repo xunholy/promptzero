@@ -166,6 +166,22 @@ jobs:
       - name: Stage install.sh alongside release assets
         run: cp install.sh dist/install.sh
 
+      - name: Sign install.sh with cosign (keyless)
+        # Without this, a tampered install.sh on the release page would
+        # be indistinguishable from the genuine artefact. Consumers who
+        # care can verify with the same identity-regexp pattern shown
+        # at the top of this workflow:
+        #   cosign verify-blob \
+        #     --certificate install.sh.pem --signature install.sh.sig \
+        #     --certificate-identity-regexp '...refs/tags/v.*' \
+        #     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+        #     install.sh
+        run: |
+          cosign sign-blob --yes \
+            --output-signature dist/install.sh.sig \
+            --output-certificate dist/install.sh.pem \
+            dist/install.sh
+
       # Extract the CHANGELOG section matching the tag. The pattern
       # mirrors Keep a Changelog: ## [<version>] - <date>. Falling
       # back to auto-generated notes when no section is found means a
@@ -210,3 +226,5 @@ jobs:
             dist/checksums.txt.pem
             dist/promptzero.cdx.json
             dist/install.sh
+            dist/install.sh.sig
+            dist/install.sh.pem
