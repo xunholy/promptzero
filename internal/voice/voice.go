@@ -19,15 +19,17 @@ type Engine struct {
 	apiKey     string
 	model      string
 	whisperURL string
-	// httpClient overrides the default 60-second Whisper client; set in
-	// tests to inject a short-timeout or mock-server client.
+	// httpClient is the Whisper API client. Constructed once in New()
+	// with a 60-second timeout; tests can override the field directly
+	// when they construct Engine via the literal (matches existing
+	// test pattern at internal/voice/voice_test.go).
 	httpClient *http.Client
 }
 
-// client returns the HTTP client to use for Whisper API calls.
-// When httpClient is nil (production), a fresh client with a 60-second
-// timeout is returned so we never reuse http.DefaultClient's shared
-// transport state and cannot be blocked by a hung upstream forever.
+// client returns the configured HTTP client. Kept as a method so a
+// future variant (e.g. per-request middleware) has a single edit
+// point. The lazy fallback for nil httpClient remains as a safety net
+// for code that bypasses New() and forgets to set the field.
 func (e *Engine) client() *http.Client {
 	if e.httpClient != nil {
 		return e.httpClient
@@ -40,6 +42,10 @@ func New(openAIKey string) *Engine {
 		apiKey:     openAIKey,
 		model:      "whisper-1",
 		whisperURL: "https://api.openai.com/v1/audio/transcriptions",
+		// Cache the production client so each Transcribe call doesn't
+		// build a fresh http.Client. Tests construct &Engine{...}
+		// directly with a custom httpClient and skip this default.
+		httpClient: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 
