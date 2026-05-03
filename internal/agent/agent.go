@@ -1053,14 +1053,24 @@ func (a *Agent) deps() *toolsreg.Deps {
 
 // RunTool exposes the agent's tool-dispatch path so external
 // orchestrators (Campaigns runner, MCP server) can invoke individual
-// tools without going through the full Run loop. Honours the risk
-// gate, reflexion, detector engine, and quarantine layers exactly
-// as Run would — callers get identical semantics to a tool_use
-// arriving from the model.
+// tools without going through the full Run loop. The two safety
+// gates that protect Run are applied here too:
 //
-// ctx cancellation aborts an in-flight tool call; the returned
-// output is whatever the dispatch layer produced (likely the
-// ToolError JSON on a ctx-cancel error).
+//  1. audit.RequireOpen — High/Critical tools are refused when no audit
+//     log is wired. Fail-closed: an unattended runner cannot silently
+//     execute destructive tools without leaving a trace.
+//  2. confirmCb gate — when a confirm callback is installed and the
+//     resolved risk meets confirmThreshold, the operator is asked
+//     before dispatch. Mirrors the Run-loop gate at agent.go:797.
+//
+// Outputs are NOT quarantine-wrapped (no <untrusted-hardware-output>
+// tags) because RunTool callers consume the result as data, not as
+// model context. If you intend to feed RunTool output back to an LLM,
+// wrap it through QuarantineForTest / quarantineOutput at the call
+// site.
+//
+// Audit records are written on success and failure exactly as Run
+// would record them. ctx cancellation aborts an in-flight tool call.
 func (a *Agent) RunTool(ctx context.Context, tool string, params map[string]interface{}) (string, error) {
 	if tool == "" {
 		return "", fmt.Errorf("agent: empty tool name")
@@ -1071,7 +1081,65 @@ func (a *Agent) RunTool(ctx context.Context, tool string, params map[string]inte
 	defer a.turnMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.dispatch(ctx, tool, params)
+
+	// Resolve risk the same way Run does: prefer the registered
+	// Spec.Risk, fall back to risk.Classify when the spec is missing.
+	toolRisk := risk.Classify(tool)
+	if spec, ok := toolsreg.Get(tool); ok {
+		toolRisk = spec.Risk
+		if resolved := risk.Classify(tool); resolved > toolRisk {
+			toolRisk = resolved
+		}
+	}
+
+	// Audit gate (fail-closed for High/Critical without audit log).
+	if err := audit.RequireOpen(a.auditLog, toolRisk); err != nil {
+		return err.Error(), err
+	}
+
+	// Confirm gate — same threshold check as the Run loop. RunTool has
+	// no approve-all state, so every call gates independently. When no
+	// confirmCb is installed (test harnesses, MCP without operator),
+	// the gate is skipped — RequireOpen above already blocked
+	// High/Critical without audit, so the floor is preserved.
+	if a.confirmCb != nil && toolRisk >= a.confirmThreshold {
+		rawInput, _ := json.Marshal(params)
+		a.mu.Unlock()
+		resp := a.confirmWithIdleTimeout(ctx, a.buildConfirmRequest(tool, rawInput, toolRisk))
+		a.mu.Lock()
+		switch resp.Decision {
+		case DecisionDeny, DecisionRevise:
+			const denyMsg = "user denied this action"
+			if a.auditLog != nil {
+				a.auditLog.RecordCtx(ctx, tool, rawInput, denyMsg, toolRisk.String(), audit.LevelAction, 0, false)
+			}
+			return denyMsg, fmt.Errorf("agent: %s", denyMsg)
+		}
+	}
+
+	// Marshal params for executeTool's json.RawMessage signature.
+	// executeTool re-decodes them but also runs the confidence check
+	// and the ToolError-wrapping that RunTool callers benefit from.
+	rawInput, err := json.Marshal(params)
+	if err != nil {
+		return "", fmt.Errorf("agent: marshal params: %w", err)
+	}
+
+	start := time.Now()
+	output, isErr := a.executeTool(ctx, tool, rawInput)
+	duration := time.Since(start)
+
+	if a.auditLog != nil {
+		a.auditLog.RecordCtx(ctx, tool, rawInput, output, toolRisk.String(), audit.LevelAction, duration, !isErr)
+	}
+
+	if isErr {
+		// executeTool wraps errors as ToolError JSON in `output`.
+		// Surface it as both the result string and a non-nil error so
+		// callers can errors.Is / pattern-match if they want.
+		return output, fmt.Errorf("agent: %s tool returned error", tool)
+	}
+	return output, nil
 }
 
 // NewForTest constructs a minimal Agent suitable for the eval
