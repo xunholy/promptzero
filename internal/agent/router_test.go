@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/tools"
 )
 
 func TestToolGroup_PrefixMapping(t *testing.T) {
@@ -53,9 +54,18 @@ func TestToolGroup_PrefixMapping(t *testing.T) {
 		{"workflow_nfc_badge_pipeline", GroupWorkflows},
 		// Vision.
 		{"analyze_image", GroupVision},
+		// Security tools — must NOT fall through to GroupMetaUtil
+		// (otherwise the dynamic catalog can never narrow them away).
+		{"hash_identify", GroupSecurity},
+		{"hash_crack_dictionary", GroupSecurity},
+		{"port_scan_tcp", GroupSecurity},
+		{"http_enum_common", GroupSecurity},
 		// Flipper system surfaces.
 		{"storage_list", GroupFlipperSystem},
-		{"loader_mfkey", GroupFlipperSystem},
+		// loader_mfkey is the mfkey32 / mfkey64 recovery loader app;
+		// its Spec classifies it as NFC because that's the family it
+		// belongs to functionally, even though it ships via the loader.
+		{"loader_mfkey", GroupFlipperNFC},
 		{"system_info", GroupFlipperSystem},
 		{"power_info", GroupFlipperSystem},
 		{"flipper_raw_cli", GroupFlipperSystem},
@@ -66,6 +76,33 @@ func TestToolGroup_PrefixMapping(t *testing.T) {
 	for _, c := range cases {
 		if got := ToolGroup(c.name); got != c.want {
 			t.Errorf("ToolGroup(%q) = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestToolGroup_AgreesWithSpecGroup walks every registered Spec and
+// asserts that ToolGroup(spec.Name) returns the same value as
+// spec.Group. The two sources of truth must agree because:
+//
+//   - Spec.Group drives the persona/Mode.Allows() block-list (agent.go:1181)
+//   - ToolGroup(name) drives the dynamic router's catalog narrowing
+//
+// If they disagree, the persona system can block a tool while the router
+// still ships it (or vice versa) — a class of silent misconfiguration
+// that's hard to detect by inspection. This test catches that drift.
+//
+// Specs with Spec.Group == "" map to GroupMetaUtil by convention (the
+// router's safe default for unclassified tools).
+func TestToolGroup_AgreesWithSpecGroup(t *testing.T) {
+	for _, spec := range tools.All() {
+		want := string(spec.Group)
+		if want == "" {
+			want = GroupMetaUtil
+		}
+		got := ToolGroup(spec.Name)
+		if got != want {
+			t.Errorf("ToolGroup(%q) = %q but Spec.Group = %q — sources of truth diverge",
+				spec.Name, got, want)
 		}
 	}
 }
