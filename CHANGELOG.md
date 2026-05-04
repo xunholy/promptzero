@@ -7,6 +7,168 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-05-04
+
+Multi-agent review-and-action wave on top of v0.17.0. A fresh six-agent
+audit (architecture, performance, security, testing, DX/docs,
+build/CI) surfaced 70+ findings; an independent six-agent validation
+pass confirmed 58 verified, 12 partial, 0 wrong. This release closes
+the verified set with no regressions: vet 0, lint 0, full test suite
+0 failures, 0 govulncheck vulnerabilities, binary size delta +0.04%.
+
+### Security
+
+- **`RunTool` now applies the audit + confirm gates** that protect
+  `Run()`. Closes Sec HIGH-1 from the review: callers that fed tools
+  through `agent.RunTool` (the campaign executor wired at
+  `cmd/promptzero/commands.go`, plus future rules-engine paths)
+  bypassed `audit.RequireOpen`, the operator confirmation callback,
+  and the quarantine layer. The docstring's "exactly as Run would"
+  promise is now true. (`internal/agent/agent.go`,
+  `internal/agent/runtool_test.go`)
+
+- **`fap_build` deploy hardening.** `findFAP` now scans only the
+  canonical `$absSrc/.ufbt/dist/` directory rather than the
+  LLM-controlled `output_dir`; an adversarial invocation with
+  `output_dir=/` can no longer harvest arbitrary `.fap` files from
+  the host and push them to `/ext/apps/`. The deploy step now
+  re-gates at `risk: high` via `confirmFAPDeploy` so the operator
+  re-confirms the native-code write to the Flipper (`fap_build`'s
+  parent risk is Medium; without this an "approve all" on a Medium
+  tool would silently authorise a binary push). The confirmation
+  dialog includes both source and destination paths so the operator
+  can verify build provenance. Closes Sec HIGH-2.
+  (`internal/tools/fap_build.go`, `internal/tools/fap_build_test.go`)
+
+- **Approve-all now scopes to a risk ceiling.** When the operator
+  says "approve all" on a Medium tool, a subsequent High tool in the
+  same turn re-prompts. Critical is unconditionally gated as before.
+  Closes Sec MED-3. (`internal/agent/agent.go`)
+
+- **Voice recording uses `os.MkdirTemp` + `defer RemoveAll`.** The
+  previous `/tmp/promptzero_voice.wav` was a predictable path with
+  a window between Record and Remove during which a co-resident
+  process could read or symlink-overwrite. Closes Sec MED-4.
+  (`cmd/promptzero/repl.go`)
+
+- **Web server bounds REST routes with `http.TimeoutHandler` (30s)**
+  while WebSocket upgrade requests pass through unchanged. Slow-loris
+  attacks against `/api/fs/upload` and friends can no longer pin a
+  worker indefinitely. Closes Sec MED-5. (`internal/web/server.go`)
+
+- **`webhook.ValidateSubscription` rejects loopback, RFC1918,
+  link-local (incl. 169.254.169.254 cloud-metadata), and non-http(s)
+  URLs at config-load time.** Webhook payloads carry tool
+  inputs/outputs (potentially captured credentials) — a mistakenly
+  internal target was an SSRF leak vector. Set
+  `PROMPTZERO_WEBHOOK_ALLOW_INTERNAL=1` for homelab/on-prem
+  deployments. Closes Sec MED-6. (`internal/webhook/webhook.go`,
+  `internal/webhook/validate_test.go`, `cmd/promptzero/setup.go`)
+
+### Architecture
+
+- **`ToolGroup()` now consults the registry as the source of truth.**
+  Previously the prefix-based switch in `internal/agent/router.go`
+  could disagree with `Spec.Group` set in `internal/tools/*.go` —
+  25+ tools were silently mis-classified (security tools fell to
+  `meta.util` "always-on", crypto and GPS tools couldn't be narrowed,
+  etc.). Persona-mode `Allows()` and dynamic-catalog narrowing now
+  share a single classification path. New
+  `TestToolGroup_AgreesWithSpecGroup` walks every registered Spec
+  and pins the contract. Closes Arch #1. (`internal/agent/router.go`,
+  `internal/agent/router_test.go`)
+
+### Performance
+
+Five low-risk allocation/I-O wins on hot paths. None change
+observable behaviour:
+
+- `buildTools()` is now `sync.Once`-cached. The 274-entry catalog
+  (with JSON-schema unmarshals) was rebuilt every Run loop.
+  (`internal/agent/tools.go`)
+- `audit.notify()` short-circuits when zero observers are
+  registered, skipping the slice copy on every dispatch.
+  (`internal/audit/audit.go`)
+- `audit.Stats()` collapses three SQLite round-trips into one
+  conditional-aggregate query. (`internal/audit/audit.go`)
+- `ValidateEvilPortal` hoists its five required-present regexps to
+  package-level (`epRequiredRules`), matching the existing
+  `epBadRules` convention. (`internal/validator/evilportal.go`)
+- `voice.Engine.client()` is built once in `New()` rather than
+  rebuilt per Transcribe. (`internal/voice/voice.go`)
+
+### Testing
+
+- **`internal/session` (file-based session persistence) and
+  `internal/generate` (LLM-driven build/validate/deploy) now have
+  test coverage.** Both packages were on the critical path with zero
+  tests at the v0.17.0 baseline. 11 + 17 cases respectively cover
+  round-trips, error paths, atomic-write semantics, fence-stripping
+  edge cases, runaway-output caps, and mock-LLM-driven happy paths.
+  No production code changed. (`internal/session/session_test.go`,
+  `internal/generate/generate_test.go`)
+
+- **Audit benchmark + `fap_build` tests committed to the tree** —
+  previously untracked but already passing.
+  (`internal/audit/audit_bench_test.go`, `internal/tools/fap_build_test.go`)
+
+### Build / CI
+
+- **govulncheck wired into CI and Taskfile** (`task vuln` runs
+  locally; CI vuln job runs on every PR + main push). Baseline:
+  zero vulnerabilities at the time of this release.
+  (`.github/workflows/ci.yaml`, `Taskfile.yml`)
+
+- **`actions/dependency-review-action` blocks PRs that introduce a
+  Moderate-or-higher CVE in any dependency.**
+  (`.github/workflows/ci.yaml`)
+
+- **`install.sh` URL pinned to release artifacts.** README now
+  recommends
+  `https://github.com/xunholy/promptzero/releases/latest/download/install.sh`
+  (immutable per release tag) instead of fetching from
+  `raw.githubusercontent.com/.../main/install.sh`. The release
+  pipeline cosign-signs `install.sh` alongside `checksums.txt` so
+  consumers can verify the script before piping to `sh`. Closes the
+  unsigned-installer gap. (`README.md`,
+  `.github/workflows/release.yaml`)
+
+### DX / Docs
+
+- **New `CONTRIBUTING.md`** — package map, first-contribution flow,
+  hardware-free harness pointer (`cmd/pzrunner`), commit/PR
+  conventions, scope/review notes specific to a tool that drives
+  RF + USB. Single largest onboarding gap from the DX review.
+
+- **README cleaned up.** Tool-count consistency (TOC anchor,
+  heading, BLE paragraph all agree at 268 to match
+  `registry_size_test.go`); `pre-commit install` added to
+  from-source quick-start; `promptzero --init` is now the
+  recommended configure path with `cp config.example.yaml`
+  demoted to "if you're hacking on PromptZero itself".
+
+- **`examples/config.yaml` synced** from `config.example.yaml` — the
+  Marauder BLE address-shape detection, bridge mode, hybrid mode,
+  and `mcp_clients` block were missing from the examples copy.
+
+- **Three actionable error messages** rewritten so operators can
+  recover without spelunking the source: `repl.go` "raw mode"
+  failure now explains the most common cause (pipe / file
+  redirection); upgrade.go HTTP-status and `--version`-output
+  errors include the URL/captured-output/expected-format.
+
+### Notes
+
+- **Tier-4 strategic items deliberately deferred.** The internal
+  /tools dependency-inversion refactor and the Marauder transport
+  unification onto `transport.Transport` carry inherent regression
+  risk that "zero regressions in this release" cannot accommodate.
+  Both are tracked for a future minor release.
+- **Validation methodology**: 12 specialist agents in two passes
+  (six review, six validate) executed against commit `2f7f3fc`. Per-
+  domain reports were written to the operator's research vault and
+  inform the action plan that produced this release.
+
 ## [0.17.0] - 2026-04-30
 
 Safety, reliability, and DX hotfix wave following a multi-agent review of
