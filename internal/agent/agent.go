@@ -41,7 +41,21 @@ import (
 // active operation mode does not allow a tool's group. Callers
 // (telemetry, UI) can errors.Is against this so the rejection is
 // distinguishable from a runtime failure.
+//
+// Deprecated: use ErrReadOnly. Mode is being phased out in v0.19.0
+// in favour of the simpler read-only-vs-full-CRUD safety rail. The
+// sentinel stays so existing errors.Is callers don't break during
+// the deprecation window; the dispatch path emits ErrReadOnly going
+// forward.
 var ErrBlockedByMode = errors.New("tool blocked by operation mode")
+
+// ErrReadOnly is returned by dispatch when the agent is in read-only
+// mode (SetReadOnly(true)) and the operator (or the LLM) attempts a
+// tool whose risk classification is anything above risk.Low. Read-only
+// is the v0.19.0 replacement for the persona+mode allow-list maze:
+// one boolean, one rule — Spec.Risk == risk.Low passes, anything else
+// is refused.
+var ErrReadOnly = errors.New("tool blocked: read-only mode (no writes, no transmits, no execution)")
 
 // maxHistory is the maximum number of messages retained in the conversation
 // history. When exceeded, the first 2 entries (initial context) are kept and
@@ -210,12 +224,26 @@ type Agent struct {
 	// every tool group — preserving historical behaviour for builds /
 	// callers that never set a mode.
 	//
+	// Deprecated: kept for one release so existing callers don't break.
+	// The dispatch path now consults readOnly first; mode is consulted
+	// only when readOnly is false. v0.20.0 removes the field.
+	//
 	// Stored in an atomic.Pointer instead of under a.mu because dispatch
 	// is invoked from Run with a.mu already held — taking it again in
 	// Mode() would deadlock (Go mutexes aren't re-entrant). Atomic read
 	// in dispatch's hot path also avoids contention with concurrent
 	// mu-protected field updates elsewhere in Agent.
 	opMode atomic.Pointer[mode.Mode]
+
+	// readOnly is the v0.19.0 safety rail. When true, dispatch refuses
+	// any spec whose Risk is above risk.Low (writes, transmits,
+	// emulation, execution, payload generation). Independent of the
+	// confirm gate — read-only is a hard no, not "ask first".
+	//
+	// atomic.Bool so dispatch reads it without taking a.mu (matching
+	// opMode's rationale). Default false preserves historical CRUD
+	// behaviour for callers that never set it.
+	readOnly atomic.Bool
 
 	// latestUIContext carries the navigation state forwarded from the web UI.
 	latestUIContext atomic.Pointer[agentUIContext]
@@ -299,11 +327,39 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 // tool groups dispatch will accept; see internal/mode for the
 // per-mode allow-lists. An empty Mode resets to mode.ModeStandard
 // (the default, behaviour-preserving profile).
+//
+// Deprecated: prefer SetReadOnly. Mode is being phased out in v0.19.0
+// in favour of the simpler read-only-vs-full-CRUD safety rail. The
+// setter still works for one release; v0.20.0 will remove it.
 func (a *Agent) SetMode(m mode.Mode) {
 	if m == "" {
 		m = mode.ModeStandard
 	}
 	a.opMode.Store(&m)
+}
+
+// SetReadOnly toggles the read-only safety rail. When v is true,
+// dispatch refuses any tool whose Spec.Risk is above risk.Low — no
+// writes, no transmits, no emulation, no payload generation. Buys an
+// operator a hard guarantee that the session cannot mutate the
+// Flipper, the Marauder, the SD card, or anything off-host.
+//
+// The flag is independent of the confirm gate — read-only is a refusal,
+// not a "confirm first". Pair with --confirm-risk if you also want
+// confirms on Low-risk reads (e.g. audit_export from a sensitive
+// session).
+//
+// Lock-free atomic, matching SetMode's contract for the same reason
+// (dispatch reads it under a.mu held, must not re-acquire).
+func (a *Agent) SetReadOnly(v bool) {
+	a.readOnly.Store(v)
+}
+
+// ReadOnly reports whether the read-only safety rail is engaged.
+// Used by REPL banner rendering, /status, and the catalog narrowing
+// in buildTools.
+func (a *Agent) ReadOnly() bool {
+	return a.readOnly.Load()
 }
 
 // Mode returns the currently-active operation mode. Returns
@@ -652,8 +708,22 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	// All tools are in the central registry; buildTools() covers them all.
 	tools := buildTools()
 
-	if a.persona != nil && len(a.persona.Tools) > 0 {
-		tools = persona.FilterTools(tools, a.persona.Tools)
+	// Read-only catalog narrowing. When the safety rail is engaged we
+	// also strip non-Low specs from the LLM's catalog so the model
+	// doesn't waste a turn planning a tool it would only get refused
+	// at dispatch. The dispatch check above remains the authoritative
+	// gate — this is purely a token-saving + UX improvement.
+	if a.readOnly.Load() {
+		tools = filterToolsToReadOnly(tools)
+	}
+
+	// Persona-based tool narrowing is deprecated as of v0.19.0 — the
+	// safety job moved to the read-only rail above. We still honour
+	// non-empty Tools fields for one release so user personas under
+	// ~/.promptzero/personas/*.yaml that specify allowlists keep
+	// working until v0.20.0.
+	if a.persona != nil && len(a.persona.Tools) > 0 { //nolint:staticcheck // back-compat through v0.19.0
+		tools = persona.FilterTools(tools, a.persona.Tools) //nolint:staticcheck // back-compat through v0.19.0
 	}
 	// WiFi framing is appended only when the filtered tool set still exposes
 	// WiFi capabilities — personas that prune them (defender, rf-recon, etc.)
@@ -1263,11 +1333,21 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
 
-	// Operation-mode gate. When the active mode disallows a tool's
-	// group, refuse the call before the handler runs. The error wraps
-	// ErrBlockedByMode so callers (telemetry, UI) can errors.Is it
-	// without scraping the message string. The Reason() body names
-	// the mode and is safe to surface verbatim to the operator.
+	// Read-only safety rail (v0.19.0). When engaged, refuse anything
+	// above risk.Low. This is the simplification of the persona+mode
+	// matrix: a single binary that maps to "is this tool a pure read".
+	// Checked before the legacy Mode gate so SetReadOnly takes
+	// precedence without callers having to clear opMode first.
+	if a.readOnly.Load() && spec.Risk > risk.Low {
+		return "", fmt.Errorf(
+			"%w: %s is %s-risk; disable read-only to allow",
+			ErrReadOnly, spec.Name, spec.Risk)
+	}
+
+	// Operation-mode gate (deprecated; v0.20.0 will remove). When the
+	// active mode disallows a tool's group, refuse the call before the
+	// handler runs. Error wraps ErrBlockedByMode for back-compat with
+	// existing errors.Is callers; new code should use ErrReadOnly.
 	if m := a.Mode(); !m.Allows(spec.Group) {
 		return "", fmt.Errorf("%w: %s blocked in %s mode — %s",
 			ErrBlockedByMode, spec.Name, m.DisplayName(), m.Reason(spec.Group))

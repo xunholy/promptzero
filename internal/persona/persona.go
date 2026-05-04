@@ -38,9 +38,31 @@ type Persona struct {
 	Name                 string            `yaml:"name"`
 	Description          string            `yaml:"description"`
 	SystemPrompt         string            `yaml:"system_prompt"`
-	Tools                []string          `yaml:"tools"`
 	DefaultRiskThreshold string            `yaml:"default_risk_threshold,omitempty"`
 	Models               map[string]string `yaml:"models,omitempty"`
+
+	// Tools is an optional allowlist of tool names. When non-empty,
+	// FilterTools narrows the catalog to just these names so the LLM
+	// doesn't see anything else.
+	//
+	// Deprecated: use the read-only safety rail (--read-only or
+	// read_only: true in config) for the safety job instead. Personas
+	// kept their Tools field through v0.19.0 so existing user YAML
+	// keeps working, but new personas should leave it empty and let
+	// SystemPrompt + Models carry the persona's identity. v0.20.0
+	// will retire this field.
+	Tools []string `yaml:"tools"`
+
+	// Provider is an optional per-tier LLM-provider override. Keys
+	// match the model tier names (classify / generate / plan /
+	// exploit) and values are provider identifiers ("claude", "ollama",
+	// "openrouter"). Lets a persona declare a fallback for tiers
+	// where Anthropic policy may refuse legitimate offensive work —
+	// e.g. set generate: ollama on the physical-pentest persona to
+	// route payload synthesis through a local model. Empty map
+	// preserves the session's default provider for every tier.
+	Provider map[string]string `yaml:"provider,omitempty"`
+
 	// Thinking is an optional per-tier extended-thinking budget in
 	// tokens. Keys match the model tier names (classify / generate /
 	// plan / exploit). A positive value enables Claude's interleaved

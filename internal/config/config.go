@@ -58,7 +58,19 @@ type Config struct {
 	// standard | recon | intel | stealth | assault. Empty string
 	// resolves to standard (no constraints, behaviour identical to
 	// pre-mode builds). The CLI flag --mode overrides this value.
-	Mode          string              `yaml:"mode,omitempty"`
+	//
+	// Deprecated: use ReadOnly instead. Mode is being phased out in
+	// v0.19.0. recon|intel|stealth aliases to read_only: true;
+	// standard|assault are no-ops. v0.20.0 will remove this field.
+	Mode string `yaml:"mode,omitempty"`
+
+	// ReadOnly engages the v0.19.0 safety rail: dispatch refuses any
+	// tool above risk.Low (no writes, no transmits, no execution, no
+	// payload generation). Replaces the persona+mode allow-list maze
+	// with a single boolean. Default false preserves historic CRUD
+	// behaviour. The CLI flag --read-only overrides this value.
+	ReadOnly bool `yaml:"read_only,omitempty"`
+
 	Watch         WatchConfig         `yaml:"watch,omitempty"`
 	Webhooks      []WebhookConfig     `yaml:"webhooks,omitempty"`
 	Observability ObservabilityConfig `yaml:"observability,omitempty"`

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/toolctx"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
 )
@@ -37,6 +38,35 @@ func buildTools() []anthropic.ToolUnionParam {
 		builtToolsCache = regTools
 	})
 	return builtToolsCache
+}
+
+// filterToolsToReadOnly narrows a tool catalog to only those whose
+// registered Spec.Risk is risk.Low. Used by the Run loop when the
+// agent is in read-only mode so the LLM doesn't see tools it would
+// only get refused at dispatch — saves tokens and avoids wasted
+// reflexion turns on policy-walled writes/transmits.
+//
+// Tools whose Spec is not in the registry (defensive: should never
+// happen since buildTools sources from the registry) pass through
+// unchanged so a future code path adding non-registered tools does
+// not silently disappear under read-only.
+func filterToolsToReadOnly(in []anthropic.ToolUnionParam) []anthropic.ToolUnionParam {
+	out := make([]anthropic.ToolUnionParam, 0, len(in))
+	for _, t := range in {
+		if t.OfTool == nil {
+			out = append(out, t)
+			continue
+		}
+		spec, ok := toolsreg.Get(t.OfTool.Name)
+		if !ok {
+			out = append(out, t)
+			continue
+		}
+		if spec.Risk == risk.Low {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // schemaToProps converts the "properties" object from a JSON Schema into the

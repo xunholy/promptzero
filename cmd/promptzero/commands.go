@@ -381,10 +381,13 @@ func printStatus(cfg *config.Config, ai *agent.Agent, genLLM provider.Provider, 
 		statusWarn("Audit logging disabled")
 	}
 	if p := ai.Persona(); p != nil {
-		if len(p.Tools) == 0 {
+		// Tools field is deprecated in v0.19.0; keeping the read so
+		// legacy user personas (~/.promptzero/personas/*.yaml) that
+		// still define tool allowlists render correctly until v0.20.0.
+		if len(p.Tools) == 0 { //nolint:staticcheck // back-compat through v0.19.0
 			statusOK(fmt.Sprintf("Persona: %s (all tools)", p.Name))
 		} else {
-			statusOK(fmt.Sprintf("Persona: %s (%d tools allowed)", p.Name, len(p.Tools)))
+			statusOK(fmt.Sprintf("Persona: %s (%d tools allowed)", p.Name, len(p.Tools))) //nolint:staticcheck // back-compat through v0.19.0
 		}
 	} else {
 		statusInfo("Persona: default")
@@ -1591,7 +1594,7 @@ func renderDebugSnapshot(w io.Writer, cfg *config.Config, rec *obs.Recorder, p *
 	if p != nil {
 		snap.PersonaName = p.Name
 		snap.PersonaTools = len(agent.ToolNames(hasMarauder))
-		snap.PersonaAllow = len(p.Tools)
+		snap.PersonaAllow = len(p.Tools) //nolint:staticcheck // back-compat through v0.19.0
 		if snap.PersonaAllow == 0 {
 			snap.PersonaAllow = snap.PersonaTools
 		}
@@ -1627,7 +1630,7 @@ func handlePersona(ai *agent.Agent, reg *persona.Registry, args []string) {
 	if len(args) == 0 {
 		cur := ai.Persona()
 		if cur != nil {
-			count := len(cur.Tools)
+			count := len(cur.Tools) //nolint:staticcheck // back-compat through v0.19.0
 			scope := fmt.Sprintf("%d tools", count)
 			if count == 0 {
 				scope = "all tools"
@@ -1650,7 +1653,7 @@ func handlePersona(ai *agent.Agent, reg *persona.Registry, args []string) {
 	}
 	ai.SetPersona(p)
 	ai.Reset()
-	count := len(p.Tools)
+	count := len(p.Tools) //nolint:staticcheck // back-compat through v0.19.0
 	scope := fmt.Sprintf("%d tools", count)
 	if count == 0 {
 		scope = "all tools"
@@ -1689,7 +1692,7 @@ func handleMode(ai *agent.Agent, args []string) {
 		fmt.Fprintf(os.Stderr, "  %s● %v%s\n", red, err, reset)
 		return
 	}
-	ai.SetMode(target)
+	ai.SetMode(target) //nolint:staticcheck // back-compat through v0.19.0
 	fmt.Fprintf(os.Stderr, "  %s●%s mode switched to %s%s%s %s· %s%s\n",
 		green, reset, bold, target.DisplayName(), reset,
 		dim, target.Description(), reset)
