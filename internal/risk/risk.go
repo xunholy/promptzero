@@ -103,6 +103,11 @@ var toolLevels = func() map[string]Level {
 		"wifi_wardrive_stop", "wifi_wardrive_poi",
 		"gps_tracker_start", "gps_tracker_stop", "gps_poi",
 		"crypto_has_key", "gui_screen_stream", "flipper_date_get",
+		// v0.20.0 — explorer persona meta-tool. Reads the most recent
+		// audit row(s) and returns the JSON for the agent to narrate.
+		// No mutation, no I/O beyond a read of the audit DB the operator
+		// already owns.
+		"explain_last_result",
 	)
 
 	// Captures, scans, file writes
@@ -117,6 +122,10 @@ var toolLevels = func() map[string]Level {
 		"wifi_sniff_pwnagotchi", "wifi_sniff_raw",
 		"wifi_sniff_bt", "wifi_sniff_skimmer",
 		"wifi_add_ssid", "wifi_remove_ssid", "wifi_generate_ssids",
+		// v0.20.0 — PMKID pcap → hashcat .hc22000 handoff. Pure host-
+		// side: reads the pcap, writes the .hc22000, may shell out to
+		// hcxpcapngtool. No RF, no Flipper or Marauder writes.
+		"marauder_handoff_hashcat",
 		"wifi_set_channel",
 		"wifi_save_aps", "wifi_save_ssids", "wifi_load_aps", "wifi_load_ssids",
 		"wifi_set_setting",

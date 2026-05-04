@@ -80,7 +80,9 @@ func TestRegistrySize(t *testing.T) {
 	// intentional. A surprise +1 usually means a duplicate alias or a
 	// loader_* generated for a new firmware app; both are bugs to fix
 	// at the source.
-	const expected = 268
+	// v0.20.0 added explain_last_result (newcomer-explorer meta-tool)
+	// + marauder_handoff_hashcat (PMKID → .hc22000 + hashcat CLI).
+	const expected = 270
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
