@@ -28,10 +28,41 @@ const (
 	TierExploit = "exploit"
 )
 
+// defaultModelsByTier maps every tier to a sensible cost-aware default.
+// Pre-v0.20.0 the resolution short-circuited straight to a.model when
+// the persona didn't override a tier — which routed every classify-tier
+// call (router / reflexion / verifier / detector) to the operator's
+// configured base model, almost always Opus. That over-spent 5–20× on
+// the cheapest path of every turn.
+//
+// The new fallback table picks the canonical Anthropic family for each
+// tier so a persona with Models == nil still gets correct routing:
+//
+//	classify → Haiku   (router / reflexion / handoff narrative)
+//	generate → Sonnet  (payload synthesis — quality matters, Opus overkill)
+//	plan     → Sonnet  (main agent turn — multi-step orchestration)
+//	exploit  → Opus    (critical confirmations, high-stakes decisions)
+//
+// Operators who want different defaults still win — both the persona's
+// Models map and the session's base model take precedence over this
+// table. The table only fires when nothing more specific is set.
+//
+// Bumped together when Anthropic releases new generations. As of v0.20.0
+// the Claude 4.x family is current.
+//
+//nolint:gochecknoglobals
+var defaultModelsByTier = map[string]string{
+	TierClassify: "claude-haiku-4-5",
+	TierGenerate: "claude-sonnet-4-6",
+	TierPlan:     "claude-sonnet-4-6",
+	TierExploit:  "claude-opus-4-7",
+}
+
 // ModelFor returns the model name the agent should use for the given
 // cost tier. Resolution order:
 //  1. The active persona's Models[tier] if present.
-//  2. The session's base model (a.model).
+//  2. The defaultModelsByTier table for the tier.
+//  3. The session's base model (a.model) — final fallback.
 //
 // Unknown tiers fall straight through to the base model so code that
 // introduces a new tier name is always safe. The function takes the
@@ -50,6 +81,9 @@ func (a *Agent) modelForLocked(tier string) string {
 		if m, ok := a.persona.Models[tier]; ok && m != "" {
 			return m
 		}
+	}
+	if m, ok := defaultModelsByTier[tier]; ok && m != "" {
+		return m
 	}
 	return a.model
 }

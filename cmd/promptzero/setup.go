@@ -68,6 +68,13 @@ func printFirstRunHint() {
 	fmt.Fprintln(os.Stderr, "    3. Plug in your Flipper Zero (USB Virtual COM Port mode)")
 	fmt.Fprintln(os.Stderr, "    4. Relaunch `promptzero` and type /help for commands")
 	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "  A few features worth knowing about up-front:")
+	fmt.Fprintln(os.Stderr, "    • /save <name>      — name the session so you can /resume by name later")
+	fmt.Fprintln(os.Stderr, "    • --watch <dir>     — auto-analyse .sub / .nfc / .png files dropped into a folder")
+	fmt.Fprintln(os.Stderr, "    • --read-only       — refuse anything that writes, transmits, or runs (audit-only mode)")
+	fmt.Fprintln(os.Stderr, "    • --persona <name>  — swap the system framing (default | rf-recon | badge-cloner | hw-recon | physical-pentest | defender)")
+	fmt.Fprintln(os.Stderr, "    • --mcp             — expose the Flipper to Claude Desktop / Claude Code as an MCP server")
+	fmt.Fprintln(os.Stderr)
 }
 
 // configTemplate is written by --init when no on-disk example is present.
@@ -900,7 +907,15 @@ func pluralS(n int) string {
 // falling back to Claude when OpenRouter lacks a key. Wires it onto the
 // agent as both the payload generator and the "gen LLM" used by REPL
 // slash commands.
-func setupGenerator(cfg *config.Config, ai *agent.Agent, flip *flipper.Flipper, client *anthropic.Client, genProvider, ollamaURL, ollamaModel string) provider.Provider {
+//
+// v0.20.0+ also wires an optional refusal-fallback provider when the
+// active persona declares `provider: generate: <name>` in its YAML.
+// On a Claude refusal during a generate_* tool call the fallback (e.g.
+// a local Ollama instance) is consulted automatically — addresses the
+// AI/ML reviewer's finding that legitimate offensive payload synthesis
+// gets policy-walled with no recovery path. See
+// internal/generate/refusal.go.
+func setupGenerator(cfg *config.Config, ai *agent.Agent, flip *flipper.Flipper, client *anthropic.Client, p *persona.Persona, genProvider, ollamaURL, ollamaModel string) provider.Provider {
 	var genLLM provider.Provider
 	switch genProvider {
 	case "ollama":
@@ -916,10 +931,46 @@ func setupGenerator(cfg *config.Config, ai *agent.Agent, flip *flipper.Flipper, 
 	if genLLM == nil {
 		genLLM = provider.NewClaude(client, cfg.Model)
 	}
-	ai.SetGenerator(generate.New(genLLM, flip))
+
+	gen := generate.New(genLLM, flip)
+	if fb := buildPersonaFallback(p, ollamaURL, ollamaModel, client, cfg); fb != nil {
+		gen.SetFallback(fb)
+		statusOK(fmt.Sprintf("Generation fallback %s(%s — engaged on refusals)%s",
+			dim, fb.Name(), reset))
+	}
+
+	ai.SetGenerator(gen)
 	ai.SetGenLLM(genLLM)
 	statusOK(fmt.Sprintf("Generation engine %s(%s)%s", dim, genLLM.Name(), reset))
 	return genLLM
+}
+
+// buildPersonaFallback resolves the persona's `provider.generate`
+// override (if any) into a concrete provider.Provider. Returns nil
+// when the persona is absent, doesn't declare an override, or names
+// the same provider as the primary (no point falling back to itself).
+func buildPersonaFallback(p *persona.Persona, ollamaURL, ollamaModel string, client *anthropic.Client, cfg *config.Config) provider.Provider {
+	if p == nil || p.Provider == nil {
+		return nil
+	}
+	name := strings.ToLower(strings.TrimSpace(p.Provider[agent.TierGenerate]))
+	switch name {
+	case "ollama":
+		return provider.NewOllama(ollamaURL, ollamaModel)
+	case "openrouter":
+		if key := os.Getenv("OPENROUTER_API_KEY"); key != "" {
+			return provider.NewOpenRouter(key, "")
+		}
+		statusWarn("persona declares OpenRouter fallback but OPENROUTER_API_KEY is not set — no fallback wired")
+		return nil
+	case "claude":
+		return provider.NewClaude(client, cfg.Model)
+	case "":
+		return nil
+	default:
+		statusWarn(fmt.Sprintf("persona declares unknown fallback provider %q — supported: claude, ollama, openrouter", name))
+		return nil
+	}
 }
 
 // validateMarauderFlags catches mutually-exclusive Marauder transport flags.

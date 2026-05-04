@@ -856,7 +856,7 @@ var httpEnumCommonSpec = Spec{
 			"wall_timeout_ms":{"type":"integer","minimum":1000,
 				"description":"Total scan ceiling in ms (default 120000)"},
 			"user_agent":{"type":"string",
-				"description":"Override the User-Agent header (default 'PromptZero/0.5')"}
+				"description":"Override the User-Agent header. Default is a generic browser UA so the scan does not self-attribute the project — operators can pin a custom UA for engagements that require attribution or matching a specific tool."}
 		},
 		"required":["base_url"]
 	}`),
@@ -972,7 +972,13 @@ func httpEnumCommonHandler(ctx context.Context, _ *Deps, p map[string]any) (stri
 	wallTimeoutMS := intOr(p, "wall_timeout_ms", 120000)
 	userAgent := str(p, "user_agent")
 	if userAgent == "" {
-		userAgent = "PromptZero/0.5"
+		// Default to a generic Chrome UA rather than the project name.
+		// Self-attributing in `User-Agent` (the pre-v0.20.0 default,
+		// "PromptZero/0.5") gave DFIR a free indicator-of-tooling marker
+		// every time a recon scan landed in a target's web logs. Operators
+		// who *want* attribution still get it via the user_agent argument.
+		userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+			"(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(wallTimeoutMS)*time.Millisecond)

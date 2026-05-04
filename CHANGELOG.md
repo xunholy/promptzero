@@ -7,6 +7,124 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-05-05
+
+Operator-experience release. Acts on the Tier-1 quick wins and
+high-priority Tier-2 features from the 2026-05-04 multi-angle review.
+Strategic decisions: full mode stays the default (hobbyist-leaning,
+red-team-friendly), Claude-first with persona-declared fallbacks for
+other providers when policy refuses legitimate work.
+
+### Added
+
+- **Refusal detection + persona-declared provider fallback** for the
+  generate_* tools. When Claude refuses a legitimate offensive
+  payload synthesis, PromptZero detects the canonical refusal shape
+  and retries through the fallback provider declared in the active
+  persona's `provider:` map. Set `provider: generate: ollama` on a
+  persona to route payload generation through a local Ollama
+  instance on refusal. Result.Provider names whichever provider
+  served the request. (`internal/generate/refusal.go`,
+  `cmd/promptzero/setup.go`)
+
+- **`explain_last_result` meta-tool.** Returns the most recent audit
+  row(s) so the explorer / default persona can narrate what just
+  happened in plain language. Pair with `count` to recap the last
+  few actions for a learning walkthrough. Risk: Low.
+  (`internal/tools/audit.go`)
+
+- **`marauder_handoff_hashcat` tool.** The missing-link in the WiFi
+  attack chain identified by the hardware-ecosystem reviewer.
+  Converts a captured PMKID pcap (typically pulled from
+  `/ext/marauder/pcaps/`) to hashcat-22000 format and emits a
+  ready-to-run hashcat command line. Wraps `hcxpcapngtool` when
+  installed; prints the install hint + eventual command when not.
+  Risk: Medium (host-side only — no RF, no Flipper or Marauder
+  writes). (`internal/tools/marauder_handoff.go`)
+
+- **`explorer` persona** for newcomers and learners. Patient
+  teaching tone, every action gets a "what / why / what next"
+  explanation, terminology unpacked the first time it's used.
+  Pairs with `--read-only` for a fully safe exploration session.
+  (`examples/personas/explorer.yaml`)
+
+- **GitHub issue + PR templates.** Bug-report template prompts for
+  PromptZero version, OS, hardware, firmware, and reproduction
+  steps. Feature-request template includes the authorised-use
+  acknowledgement. PR template prompts for test plan + risk-
+  classification reminder for new tools. The blank-issue path is
+  disabled with steers to private security disclosure and
+  Discussions for open-ended questions.
+  (`.github/ISSUE_TEMPLATE/`, `.github/pull_request_template.md`)
+
+### Changed
+
+- **Default model routing per cost tier.** Pre-v0.20.0 the model
+  resolution short-circuited every tier to the operator's base
+  model — which routed every classify-tier call (router /
+  reflexion / verifier / detector judge) to whatever the operator
+  picked, almost always Opus. The new `defaultModelsByTier` map
+  picks the right Anthropic family per tier: classify→Haiku,
+  generate→Sonnet, plan→Sonnet, exploit→Opus. Persona overrides
+  and base-model fallback both still take precedence. Closes the
+  AI/ML reviewer's 5–20× overspend finding.
+  (`internal/agent/models.go`)
+
+- **Audit log query output now wraps in
+  `<untrusted-audit-content>`.** `audit_query`, `audit_export`, and
+  `audit_stats` previously returned unwrapped to the model. Audit
+  rows can carry historical hardware-origin content (captured
+  SSIDs, NFC URIs, evil-portal credentials), so unwrapped output
+  was a laundering injection path — adversarial bytes from an
+  earlier session could surface in a later turn's audit query and
+  reach the model as instructions. The trust-boundary clause in
+  the system prompt names both wrapper tags. Closes the threat-
+  modeller finding. (`internal/agent/quarantine.go`,
+  `internal/agent/prompts/trust_append.tmpl`)
+
+- **Voice manual-confirm.** Transcribed voice input now drops into
+  the input buffer for an explicit second-Enter confirmation
+  rather than auto-firing the turn. A mis-heard word or stray
+  Enter no longer dispatches an unintended request to the model.
+  Operator-empath finding. (`cmd/promptzero/repl.go`)
+
+- **`http_enum_common` default User-Agent depersonalised.** Changes
+  from `PromptZero/0.5` to a generic Chrome string. The old
+  default gave DFIR a free indicator-of-tooling marker on every
+  recon scan; engagements that need attribution can still set it
+  via the `user_agent` argument. Threat-modeller finding.
+  (`internal/tools/security.go`)
+
+- **System prompt now has a single source of truth.** `system.tmpl`
+  was a duplicate of the default-builtin persona's system prompt;
+  it's been removed. `BuildSystemPrompt` falls back to the
+  registry's default-builtin SystemPrompt when called with `p ==
+  nil`, eliminating the silent divergence between CLI and harness
+  paths. (`internal/agent/prompts.go`, removes
+  `prompts/system.tmpl`)
+
+- **First-run hint surfaces buried features.** `/save`, `--watch`,
+  `--read-only`, `--persona`, and `--mcp` now appear in the
+  welcome banner so new users discover them without spelunking
+  the source. Operator-empath + DevRel findings.
+  (`cmd/promptzero/setup.go`)
+
+- **`/rewind` error message.** Used to tell users to run
+  `/session save <name>` (a command that doesn't exist). Now
+  correctly points at `/save <name>`. (`cmd/promptzero/commands.go`)
+
+### Notes
+
+- Registry size: 268 → 270 (added `explain_last_result` +
+  `marauder_handoff_hashcat`).
+- Validation: vet clean, lint 0 issues, test 54 packages pass /
+  0 fail, govulncheck 0 vulnerabilities, binary +0.06% vs v0.19.
+- Follow-up Tier-2/3 items from the multi-angle review (API
+  resilience pass with retry/backoff + signal handlers, audit-DB
+  encryption, post-engagement PDF report, MCP-in-Claude-Desktop
+  marketing reframe, distribution push) deferred to subsequent
+  releases.
+
 ## [0.19.0] - 2026-05-04
 
 Simplification release. Replaces the persona+mode safety-allow-list maze

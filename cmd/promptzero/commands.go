@@ -542,7 +542,7 @@ func handleRewind(deps *REPLDeps, rawArgs string) {
 	}
 	sessionID := deps.ai.SessionID()
 	if sessionID == "" {
-		fmt.Fprintf(os.Stderr, "  %srewind: no active session — start one with /session save <name>%s\n", dim, reset)
+		fmt.Fprintf(os.Stderr, "  %srewind: no active session — start one with /save <name>%s\n", dim, reset)
 		return
 	}
 
@@ -897,7 +897,7 @@ func handleReport(deps *REPLDeps, args []string) {
 		}
 	}
 	if sessionID == "" {
-		fmt.Fprintf(os.Stderr, "  %sreport: no active session; start one with /session save <name>%s\n", dim, reset)
+		fmt.Fprintf(os.Stderr, "  %sreport: no active session; start one with /save <name>%s\n", dim, reset)
 		return
 	}
 
