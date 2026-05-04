@@ -198,7 +198,7 @@ func run() error {
 	mcpfedClose := setupMCPFederation(ctx, cfg)
 	defer mcpfedClose()
 
-	genLLM := setupGenerator(cfg, ai, flip, &client, f.genProvider, f.ollamaURL, f.ollamaModel)
+	genLLM := setupGenerator(cfg, ai, flip, &client, activePersona, f.genProvider, f.ollamaURL, f.ollamaModel)
 
 	hasMarauder, marauderClose := setupMarauder(ctx, cfg, ai, rec, flip, f.wifiEnabled)
 	defer marauderClose()

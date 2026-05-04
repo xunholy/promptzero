@@ -11,13 +11,33 @@ import (
 
 // Generator creates, validates, deploys, and runs payloads on the Flipper Zero.
 type Generator struct {
-	llm     provider.Provider
-	flipper *flipper.Flipper
+	llm provider.Provider
+	// fallback is an optional secondary provider used when the primary
+	// returns a model refusal (Anthropic policy walls a legitimate
+	// red-team payload, etc.). When nil, refusals propagate to the
+	// caller unchanged — same UX as pre-v0.20.0.
+	fallback provider.Provider
+	flipper  *flipper.Flipper
 }
 
 func New(llm provider.Provider, f *flipper.Flipper) *Generator {
 	return &Generator{llm: llm, flipper: f}
 }
+
+// SetFallback wires a secondary provider that's consulted when the
+// primary returns text matching a canonical refusal pattern. Pass nil
+// to disable. The fallback is typically a local Ollama instance for
+// engagements where Anthropic policy refuses legitimate offensive
+// payload synthesis.
+func (g *Generator) SetFallback(p provider.Provider) {
+	g.fallback = p
+}
+
+// Result.Provider names the provider that actually generated the
+// payload — empty string when the primary served (the common case),
+// non-empty when a fallback was used. Surfaced so the operator can
+// see "generated via ollama/llama3.1" rather than wondering why a
+// previously-refused request now succeeded.
 
 // Result of a generation operation.
 type Result struct {
@@ -26,6 +46,10 @@ type Result struct {
 	Path     string `json:"path"`
 	Deployed bool   `json:"deployed"`
 	Preview  string `json:"preview"`
+	// Provider names the LLM that served the request when a
+	// refusal-fallback fired. Empty when the primary provider
+	// generated the response (the common case).
+	Provider string `json:"provider,omitempty"`
 }
 
 // --- Evil Portal ---
@@ -46,9 +70,10 @@ REQUIREMENTS:
 - Include subtle details: favicon meta tags, proper page title, placeholder text
 - Return ONLY the HTML, nothing else — no markdown, no explanation, no code fences`, description)
 
-	resp, err := g.llm.Complete(ctx, "You are an expert web developer and UI designer. You create pixel-perfect replicas of login pages. Output raw HTML only — no markdown, no explanation.", []provider.Message{
-		{Role: "user", Content: prompt},
-	})
+	resp, fbProvider, err := g.completeWithFallback(ctx,
+		"You are an expert web developer and UI designer. You create pixel-perfect replicas of login pages. Output raw HTML only — no markdown, no explanation.",
+		[]provider.Message{{Role: "user", Content: prompt}},
+		"evil_portal")
 	if err != nil {
 		return nil, fmt.Errorf("generating evil portal: %w", err)
 	}
@@ -60,9 +85,10 @@ REQUIREMENTS:
 	}
 
 	return &Result{
-		Type:    "evil_portal",
-		Content: html,
-		Preview: truncate(html, 500),
+		Type:     "evil_portal",
+		Content:  html,
+		Preview:  truncate(html, 500),
+		Provider: fbProvider,
 	}, nil
 }
 
@@ -104,9 +130,10 @@ REQUIREMENTS:
 - Be efficient — minimize delays where possible but keep it reliable
 - Return ONLY the DuckyScript, nothing else — no markdown, no explanation`, description, targetOS)
 
-	resp, err := g.llm.Complete(ctx, "You are an expert in DuckyScript and USB HID attack payloads for Flipper Zero. You create reliable, efficient scripts. Output raw DuckyScript only.", []provider.Message{
-		{Role: "user", Content: prompt},
-	})
+	resp, fbProvider, err := g.completeWithFallback(ctx,
+		"You are an expert in DuckyScript and USB HID attack payloads for Flipper Zero. You create reliable, efficient scripts. Output raw DuckyScript only.",
+		[]provider.Message{{Role: "user", Content: prompt}},
+		"badusb")
 	if err != nil {
 		return nil, fmt.Errorf("generating badusb: %w", err)
 	}
@@ -116,9 +143,10 @@ REQUIREMENTS:
 	script = capSize(script, 65536)
 
 	return &Result{
-		Type:    "badusb",
-		Content: script,
-		Preview: truncate(script, 500),
+		Type:     "badusb",
+		Content:  script,
+		Preview:  truncate(script, 500),
+		Provider: fbProvider,
 	}, nil
 }
 
@@ -153,9 +181,10 @@ REQUIREMENTS:
 - Choose the appropriate file type (key vs raw) and protocol based on the description
 - Return ONLY the .sub file content, nothing else — no markdown, no explanation`, description)
 
-	resp, err := g.llm.Complete(ctx, "You are an expert in RF signal encoding and Sub-GHz protocols. You create valid Flipper Zero .sub files. Output raw file content only.", []provider.Message{
-		{Role: "user", Content: prompt},
-	})
+	resp, fbProvider, err := g.completeWithFallback(ctx,
+		"You are an expert in RF signal encoding and Sub-GHz protocols. You create valid Flipper Zero .sub files. Output raw file content only.",
+		[]provider.Message{{Role: "user", Content: prompt}},
+		"subghz")
 	if err != nil {
 		return nil, fmt.Errorf("generating subghz: %w", err)
 	}
@@ -165,9 +194,10 @@ REQUIREMENTS:
 	content = capSize(content, 131072)
 
 	return &Result{
-		Type:    "subghz",
-		Content: content,
-		Preview: truncate(content, 500),
+		Type:     "subghz",
+		Content:  content,
+		Preview:  truncate(content, 500),
+		Provider: fbProvider,
 	}, nil
 }
 
@@ -200,9 +230,10 @@ REQUIREMENTS:
 - Include multiple useful commands if the description implies a device (e.g. power, vol up, vol down, mute, input select)
 - Return ONLY the .ir file content, nothing else — no markdown, no explanation`, description)
 
-	resp, err := g.llm.Complete(ctx, "You are an expert in infrared protocols and consumer electronics. You create valid Flipper Zero .ir files. Output raw file content only.", []provider.Message{
-		{Role: "user", Content: prompt},
-	})
+	resp, fbProvider, err := g.completeWithFallback(ctx,
+		"You are an expert in infrared protocols and consumer electronics. You create valid Flipper Zero .ir files. Output raw file content only.",
+		[]provider.Message{{Role: "user", Content: prompt}},
+		"ir")
 	if err != nil {
 		return nil, fmt.Errorf("generating ir: %w", err)
 	}
@@ -212,9 +243,10 @@ REQUIREMENTS:
 	content = capSize(content, 65536)
 
 	return &Result{
-		Type:    "ir",
-		Content: content,
-		Preview: truncate(content, 500),
+		Type:     "ir",
+		Content:  content,
+		Preview:  truncate(content, 500),
+		Provider: fbProvider,
 	}, nil
 }
 
@@ -264,9 +296,10 @@ REQUIREMENTS:
 - Format all hex values as uppercase pairs separated by spaces
 - Return ONLY the .nfc file content, nothing else — no markdown, no explanation`, description)
 
-	resp, err := g.llm.Complete(ctx, "You are an expert in NFC protocols and MIFARE/NTAG technology. You create valid Flipper Zero .nfc files. Output raw file content only.", []provider.Message{
-		{Role: "user", Content: prompt},
-	})
+	resp, fbProvider, err := g.completeWithFallback(ctx,
+		"You are an expert in NFC protocols and MIFARE/NTAG technology. You create valid Flipper Zero .nfc files. Output raw file content only.",
+		[]provider.Message{{Role: "user", Content: prompt}},
+		"nfc")
 	if err != nil {
 		return nil, fmt.Errorf("generating nfc: %w", err)
 	}
@@ -276,9 +309,10 @@ REQUIREMENTS:
 	content = capSize(content, 32768)
 
 	return &Result{
-		Type:    "nfc",
-		Content: content,
-		Preview: truncate(content, 500),
+		Type:     "nfc",
+		Content:  content,
+		Preview:  truncate(content, 500),
+		Provider: fbProvider,
 	}, nil
 }
 
