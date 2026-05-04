@@ -110,7 +110,7 @@ GOOS=windows GOARCH=amd64 go build -o promptzero-windows-amd64.exe ./cmd/promptz
 
 PromptZero drives real RF and USB hardware. Two review concerns weigh more heavily than in most Go projects:
 
-1. **Safety regressions.** Anything that touches `internal/agent/agent.go` (the dispatch + confirm gate), `internal/audit/`, or `internal/risk/risk.go` is read carefully for whether it preserves fail-closed semantics. The doc comments around `executeTool`, `RunTool`, `audit.RequireOpen`, and `confirmCb` are load-bearing — update them when behaviour changes.
+1. **Safety regressions.** Anything that touches `internal/agent/agent.go` (the dispatch + confirm gate), `internal/audit/`, or `internal/risk/risk.go` is read carefully for whether it preserves fail-closed semantics. The doc comments around `executeTool`, `RunTool`, `audit.RequireOpen`, `confirmCb`, and `SetReadOnly` are load-bearing — update them when behaviour changes. Note that `--read-only` (v0.19.0) is the operator-facing safety rail and refuses anything above `risk.Low` at dispatch; new tools must classify their `Risk` correctly so the rail stays sound.
 2. **Surprising tool catalogues.** New tools should land in the registry, classify their risk, and pick a Group. The `TestToolGroup_AgreesWithSpecGroup` test guards against silent drift between persona-mode blocking and dynamic-catalog narrowing.
 
 Out of scope: features that primarily exist to evade detection in attacker workflows. Defensive use, authorised pentesting, education, and CTF use cases are all welcome.

@@ -60,6 +60,12 @@ promptzero> what's connected?
 
 That's the whole onboarding. From here, type natural-language instructions or `/help` to see slash commands.
 
+> **Defensive posture (one-flag safety rail):** add `--read-only` to refuse any tool that writes, transmits, or executes. Pure reads / scans / queries still dispatch; anything risk-Medium or above is refused at the boundary. See [Read-only safety rail](docs/reference/configuration.md#read-only-safety-rail) for the full rule.
+>
+> ```bash
+> promptzero --read-only          # blue-team / forensics / training
+> ```
+
 **Other paths:** Windows users grab the `.zip` from the [releases page](https://github.com/xunholy/promptzero/releases). WSL2 needs USB passthrough — see [Transports → WSL2](docs/reference/transports.md#wsl2-usb-passthrough). For wireless BLE, config files, personas, environment variables, and self-upgrade: [Configuration reference](docs/reference/configuration.md).
 
 ---
