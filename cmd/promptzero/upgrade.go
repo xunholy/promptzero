@@ -210,7 +210,9 @@ func latestTag(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("unexpected status %d", resp.StatusCode)
+		return "", fmt.Errorf(
+			"GET %s/latest returned HTTP %d — GitHub releases unreachable or the project has no releases yet",
+			releasesBase, resp.StatusCode)
 	}
 	final := resp.Request.URL.Path
 	tag := filepath.Base(final)
@@ -291,7 +293,11 @@ func preflightNewBinary(candidate, tag string) error {
 	}
 	fields := strings.Fields(string(out))
 	if len(fields) < 2 {
-		return fmt.Errorf("unexpected --version output: %q", strings.TrimSpace(string(out)))
+		return fmt.Errorf(
+			"candidate binary at %s printed %q for --version (expected `promptzero <tag>`); "+
+				"this usually means the release archive was mis-built or tampered with — "+
+				"re-run `promptzero upgrade` to retry, or report the issue with this output attached",
+			candidate, strings.TrimSpace(string(out)))
 	}
 	reported := fields[1]
 	if reported != tag {

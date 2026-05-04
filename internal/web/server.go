@@ -608,12 +608,22 @@ func (s *Server) Start(ctx context.Context) error {
 		fmt.Fprintf(os.Stderr, "\x1b[31m\u25cf\x1b[0m Web UI bound non-loopback with NO TOKEN set — every /api + /ws is open. Set web.token or PROMPTZERO_WEB_TOKEN.\n")
 	}
 
+	// Per-route timeouts: REST endpoints get a 30s ceiling so a slow-loris
+	// or slow-read can't hold them forever, while WebSocket upgrade
+	// requests pass straight through (long-lived by design — chat
+	// streams, status pushes). The check is cheap (header-equality) and
+	// runs before the 30s timer arms, so every non-WS path inherits a
+	// hard wall-clock bound on top of the existing ReadHeaderTimeout.
+	wrapped := withRESTTimeout(mux, 30*time.Second)
 	srv := &http.Server{
 		Addr:              s.addr,
-		Handler:           mux,
+		Handler:           wrapped,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		// ReadTimeout / WriteTimeout intentionally 0 — websocket upgrades need long-lived reads/writes
+		// Server-level ReadTimeout / WriteTimeout intentionally 0 — the
+		// per-route wrapper above bounds REST requests; setting these
+		// would also clamp WS connections and break long-poll-style
+		// streams.
 	}
 
 	go func() {
@@ -1226,4 +1236,29 @@ func hostOf(addr string) string {
 		return ""
 	}
 	return h
+}
+
+// withRESTTimeout wraps next so REST requests are bounded by d, while
+// WebSocket upgrade requests pass through unchanged. Detection is via
+// the canonical Upgrade: websocket header — any request that's about
+// to be hijacked by websocket.Accept() must keep its long-lived
+// connection. A 30s default is generous for genuine REST work
+// (uploads, validators) and tight enough that slow-loris can't pin a
+// worker indefinitely.
+func withRESTTimeout(next http.Handler, d time.Duration) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isWebSocketUpgrade(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		http.TimeoutHandler(next, d, "request timed out").ServeHTTP(w, r)
+	})
+}
+
+func isWebSocketUpgrade(r *http.Request) bool {
+	if !strings.EqualFold(r.Header.Get("Connection"), "upgrade") &&
+		!strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade") {
+		return false
+	}
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 }

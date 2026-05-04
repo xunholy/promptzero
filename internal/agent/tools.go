@@ -3,24 +3,40 @@ package agent
 import (
 	"encoding/json"
 	"strings"
+	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/toolctx"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
 )
 
+// builtToolsOnce caches the assembled tool catalog. The registry is
+// read-only after package init() — every Spec is added exactly once
+// via Register — so we can build the Anthropic ToolUnionParam list a
+// single time and reuse it across every Run. Run was rebuilding all
+// 274+ entries (each requiring a JSON unmarshal of the schema)
+// per-turn before this cache.
+var (
+	builtToolsOnce  sync.Once
+	builtToolsCache []anthropic.ToolUnionParam
+)
+
 func buildTools() []anthropic.ToolUnionParam {
-	// All tools are registered in the central registry. Emit one entry per
-	// Spec (and per Alias) so the LLM sees every tool name as a callable.
-	var regTools []anthropic.ToolUnionParam
-	for _, spec := range toolsreg.All() {
-		propsMap := schemaToProps(spec.Schema)
-		regTools = append(regTools, tool(spec.Name, spec.Description, propsMap, spec.Required...))
-		for _, alias := range spec.Aliases {
-			regTools = append(regTools, tool(alias, spec.Description, propsMap, spec.Required...))
+	builtToolsOnce.Do(func() {
+		// All tools are registered in the central registry. Emit one
+		// entry per Spec (and per Alias) so the LLM sees every tool
+		// name as a callable.
+		regTools := make([]anthropic.ToolUnionParam, 0, len(toolsreg.All()))
+		for _, spec := range toolsreg.All() {
+			propsMap := schemaToProps(spec.Schema)
+			regTools = append(regTools, tool(spec.Name, spec.Description, propsMap, spec.Required...))
+			for _, alias := range spec.Aliases {
+				regTools = append(regTools, tool(alias, spec.Description, propsMap, spec.Required...))
+			}
 		}
-	}
-	return regTools
+		builtToolsCache = regTools
+	})
+	return builtToolsCache
 }
 
 // schemaToProps converts the "properties" object from a JSON Schema into the

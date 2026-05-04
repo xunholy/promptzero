@@ -266,8 +266,17 @@ func (l *Log) AddObserver(fn func(Entry)) {
 // notify fans out an Entry to every registered observer. RLock so
 // AddObserver does not block the Record path; observers panicking would
 // crash audit recording, so they are run in a deferred-recover block.
+//
+// The zero-observer fast path skips the slice copy entirely. notify is
+// called from RecordCtx on every tool dispatch, and most sessions wire
+// only an internal logger or none at all — saving the make/copy keeps
+// the dispatch hot path free of one heap allocation per audit row.
 func (l *Log) notify(e Entry) {
 	l.obsMu.RLock()
+	if len(l.observers) == 0 {
+		l.obsMu.RUnlock()
+		return
+	}
 	observers := make([]func(Entry), len(l.observers))
 	copy(observers, l.observers)
 	l.obsMu.RUnlock()
@@ -546,19 +555,21 @@ func (l *Log) Export() (string, error) {
 }
 
 func (l *Log) Stats() (string, error) {
-	var total, success, failed int
-	if err := l.db.QueryRow("SELECT COUNT(*) FROM audit_log WHERE session_id = ?", l.sessionID).Scan(&total); err != nil {
+	// One conditional-aggregate query instead of three round-trips.
+	// SQLite turns SUM(boolean-expr) into a count-where for free, and
+	// COUNT(DISTINCT tool) coexists with the conditional sums in a
+	// single scan over the session's rows.
+	var total, success, tools int
+	err := l.db.QueryRow(`
+		SELECT
+			COUNT(*),
+			COALESCE(SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END), 0),
+			COUNT(DISTINCT tool)
+		FROM audit_log WHERE session_id = ?`, l.sessionID).Scan(&total, &success, &tools)
+	if err != nil {
 		return "", fmt.Errorf("querying stats: %w", err)
 	}
-	if err := l.db.QueryRow("SELECT COUNT(*) FROM audit_log WHERE session_id = ? AND success = 1", l.sessionID).Scan(&success); err != nil {
-		return "", fmt.Errorf("querying stats: %w", err)
-	}
-	failed = total - success
-
-	var tools int
-	if err := l.db.QueryRow("SELECT COUNT(DISTINCT tool) FROM audit_log WHERE session_id = ?", l.sessionID).Scan(&tools); err != nil {
-		return "", fmt.Errorf("querying stats: %w", err)
-	}
+	failed := total - success
 
 	return fmt.Sprintf("Session: %s\nTotal actions: %d\nSuccessful: %d\nFailed: %d\nUnique tools: %d",
 		l.sessionID, total, success, failed, tools), nil

@@ -9,6 +9,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/attack"
+	"github.com/xunholy/promptzero/internal/tools"
 )
 
 // Tool groups are the coarse-grained buckets the router reasons over.
@@ -32,6 +33,10 @@ const (
 	GroupGen            = "gen"
 	GroupWorkflows      = "workflows"
 	GroupVision         = "vision"
+	// GroupSecurity covers host-side security tools (hash analysis,
+	// network scanning, HTTP enumeration). Mirrors the constant of the
+	// same name in internal/tools/spec.go.
+	GroupSecurity = "security"
 	// GroupHostTools covers tools that run on the operator's host machine
 	// (firmware extraction, container-bridge tools, binary analysis).
 	GroupHostTools = "host.tools"
@@ -47,15 +52,19 @@ var alwaysOnGroups = map[string]bool{
 }
 
 // ToolGroup returns the logical group a registered tool belongs to.
-// Prefix-matching is used wherever possible so adding a new tool
-// variant (e.g. another subghz_* wrapper) auto-joins the right group
-// with no metadata change. Tools the router can't classify fall back
-// to GroupMetaUtil — shipping them every turn is the safe default.
+// The registered Spec.Group is the source of truth — Mode.Allows()
+// (persona blocking) and the dynamic router's narrowing both consult
+// the same value, so they cannot disagree.
 //
-// The mapping is intentionally stable and keyed by name string so
-// workflow/persona filtering and dynamic narrowing can share it
-// cheaply without a per-tool metadata struct.
+// For names not in the registry (or specs that left Group at the zero
+// value), the function falls through to a name-prefix heuristic so a
+// tool registered without an explicit Group still classifies. Tools
+// that match neither path map to GroupMetaUtil, which is the safe
+// default — shipping them every turn never breaks correctness.
 func ToolGroup(name string) string {
+	if spec, ok := tools.Get(name); ok && spec.Group != "" {
+		return string(spec.Group)
+	}
 	switch {
 	case strings.HasPrefix(name, "audit_"):
 		return GroupMetaAudit
@@ -83,6 +92,11 @@ func ToolGroup(name string) string {
 		return GroupWorkflows
 	case name == "analyze_image":
 		return GroupVision
+	case name == "hash_identify",
+		name == "hash_crack_dictionary",
+		name == "port_scan_tcp",
+		name == "http_enum_common":
+		return GroupSecurity
 	case name == "firmware_extract":
 		return GroupHostTools
 	case strings.HasPrefix(name, "loader_"),

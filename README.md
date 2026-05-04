@@ -42,8 +42,8 @@ promptzero> identify this device: /tmp/remote.jpg
 **Prerequisites** — Flipper Zero with modded firmware (Momentum / Unleashed / RogueMaster), an Anthropic API key, and a USB cable.
 
 ```bash
-# 1. Install (Linux/macOS, amd64/arm64)
-curl -fsSL https://raw.githubusercontent.com/xunholy/promptzero/main/install.sh | sh
+# 1. Install (Linux/macOS, amd64/arm64) — pinned to release artifacts (immutable per tag)
+curl -fsSL https://github.com/xunholy/promptzero/releases/latest/download/install.sh | sh
 
 # 2. Configure
 export ANTHROPIC_API_KEY="sk-ant-..."

@@ -690,6 +690,12 @@ func setupAuditLog(ai *agent.Agent) (*audit.Log, func()) {
 // setupWebhooks builds the dispatcher from config. An empty subscriber
 // list yields a no-op-ish dispatcher so downstream callback wiring stays
 // branch-free.
+//
+// Each subscription URL is validated up-front via webhook.ValidateSubscription
+// so misconfigured (loopback, RFC1918, cloud-metadata, non-http(s)) targets
+// fail loudly at startup rather than leaking on the first event. Operators
+// who legitimately want internal sinks can set
+// PROMPTZERO_WEBHOOK_ALLOW_INTERNAL=1.
 func setupWebhooks(cfg *config.Config) webhook.Dispatcher {
 	var subs []webhook.Subscription
 	for _, w := range cfg.Webhooks {
@@ -697,13 +703,18 @@ func setupWebhooks(cfg *config.Config) webhook.Dispatcher {
 		for _, e := range w.Events {
 			evs = append(evs, webhook.Event(e))
 		}
-		subs = append(subs, webhook.Subscription{
+		sub := webhook.Subscription{
 			Name:    w.Name,
 			URL:     w.URL,
 			Events:  evs,
 			Headers: w.Headers,
 			Secret:  w.Secret,
-		})
+		}
+		if err := webhook.ValidateSubscription(sub); err != nil {
+			statusWarn(fmt.Sprintf("webhook subscription rejected: %v — skipping", err))
+			continue
+		}
+		subs = append(subs, sub)
 	}
 	return webhook.New(subs)
 }

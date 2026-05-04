@@ -77,6 +77,28 @@ var epBadRules = []rule{
 	},
 }
 
+// epRequiredRules are compiled once at package init. Previously these
+// regexps were declared (and re-compiled) inside ValidateEvilPortal on
+// every call, which is the same anti-pattern epBadRules above explicitly
+// avoids. Hoisting matches the existing convention and removes ~5
+// regexp.MustCompile calls per validation.
+var epRequiredRules = []struct {
+	id      string
+	pattern *regexp.Regexp
+	missing string
+}{
+	{"ep_missing_form", regexp.MustCompile(`(?is)<form\b`),
+		"no <form> element; Marauder has no credential submission path"},
+	{"ep_missing_action_get", regexp.MustCompile(`(?is)<form\b[^>]*\baction\s*=\s*["']\s*/get\b`),
+		`form action must be "/get" — Marauder only logs credentials on that endpoint`},
+	{"ep_missing_method_get", regexp.MustCompile(`(?is)<form\b[^>]*\bmethod\s*=\s*["']\s*GET\s*["']`),
+		`form method must be "GET" — Marauder only reads query-string params`},
+	{"ep_missing_email_field", regexp.MustCompile(`(?is)<input\b[^>]*\bname\s*=\s*["']email["']`),
+		`missing <input name="email"> — credential capture won't include username`},
+	{"ep_missing_password_field", regexp.MustCompile(`(?is)<input\b[^>]*\bname\s*=\s*["']password["']`),
+		`missing <input name="password"> — credential capture won't include password`},
+}
+
 // ValidateEvilPortal scans an Evil Portal HTML payload and returns a
 // Report. Findings mirror the BadUSB shape so upstream risk-gating code
 // can treat them uniformly. The report's top-level Severity is the
@@ -93,23 +115,7 @@ func ValidateEvilPortal(name, html string) Report {
 	// Required-present checks — these flip severity only when the
 	// pattern does NOT match, so a compliant payload produces no
 	// findings for them.
-	required := []struct {
-		id      string
-		pattern *regexp.Regexp
-		missing string
-	}{
-		{"ep_missing_form", regexp.MustCompile(`(?is)<form\b`),
-			"no <form> element; Marauder has no credential submission path"},
-		{"ep_missing_action_get", regexp.MustCompile(`(?is)<form\b[^>]*\baction\s*=\s*["']\s*/get\b`),
-			`form action must be "/get" — Marauder only logs credentials on that endpoint`},
-		{"ep_missing_method_get", regexp.MustCompile(`(?is)<form\b[^>]*\bmethod\s*=\s*["']\s*GET\s*["']`),
-			`form method must be "GET" — Marauder only reads query-string params`},
-		{"ep_missing_email_field", regexp.MustCompile(`(?is)<input\b[^>]*\bname\s*=\s*["']email["']`),
-			`missing <input name="email"> — credential capture won't include username`},
-		{"ep_missing_password_field", regexp.MustCompile(`(?is)<input\b[^>]*\bname\s*=\s*["']password["']`),
-			`missing <input name="password"> — credential capture won't include password`},
-	}
-	for _, r := range required {
+	for _, r := range epRequiredRules {
 		if !r.pattern.MatchString(html) {
 			rep.Findings = append(rep.Findings, Finding{
 				Severity: SeverityCritical,
