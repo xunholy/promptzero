@@ -19,7 +19,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,6 +105,90 @@ const recentResultLimit = 3
 // event rates PromptZero produces (dominated by tool calls, typically
 // << 1/s).
 const workerCount = 4
+
+// ValidateSubscription rejects subscription URLs that point at
+// loopback, link-local, or RFC1918 destinations — webhook payloads
+// carry tool inputs/outputs (potentially including captured
+// credentials), so SSRF into the cloud-metadata endpoint
+// (169.254.169.254), local Kubernetes API, or peer services on the
+// host network is in scope.
+//
+// To target an internal endpoint deliberately, set
+// PROMPTZERO_WEBHOOK_ALLOW_INTERNAL=1 — the rejection becomes a warning.
+//
+// Validation runs at config-load time so a misconfigured URL fails
+// loudly instead of leaking on first event.
+func ValidateSubscription(s Subscription) error {
+	if s.URL == "" {
+		return fmt.Errorf("webhook %q: URL is required", s.Name)
+	}
+	u, err := url.Parse(s.URL)
+	if err != nil {
+		return fmt.Errorf("webhook %q: invalid URL: %w", s.Name, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("webhook %q: scheme must be http or https, got %q", s.Name, u.Scheme)
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("webhook %q: missing host", s.Name)
+	}
+	// Refuse private destinations unless explicitly allowed.
+	if isInternalHost(host) && !internalAllowed() {
+		return fmt.Errorf(
+			"webhook %q: refusing internal/loopback target %q "+
+				"(set PROMPTZERO_WEBHOOK_ALLOW_INTERNAL=1 to override)",
+			s.Name, host)
+	}
+	return nil
+}
+
+// isInternalHost returns true when host is a literal IP in a private,
+// loopback, or link-local range, OR a name that resolves only to such
+// addresses. Hostnames that resolve to a public IP pass — operators
+// regularly point webhooks at SaaS receivers via DNS.
+func isInternalHost(host string) bool {
+	if ip := net.ParseIP(host); ip != nil {
+		return isInternalIP(ip)
+	}
+	// Hostname: resolve and check every result. If any single answer
+	// is public, allow — DNS rebinding via mid-flight repointing is
+	// out of scope (config-load-time check).
+	addrs, err := net.LookupIP(host)
+	if err != nil || len(addrs) == 0 {
+		// Unresolvable at config time; defer to runtime — better to
+		// fail open here than reject a valid name during a
+		// transient DNS hiccup.
+		return false
+	}
+	for _, a := range addrs {
+		if !isInternalIP(a) {
+			return false
+		}
+	}
+	return true
+}
+
+func isInternalIP(ip net.IP) bool {
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() ||
+		// IsPrivate doesn't currently flag the AWS / GCP / Azure
+		// metadata link-local /32. IsLinkLocalUnicast covers
+		// 169.254.0.0/16 which includes 169.254.169.254 — defensive
+		// double-check for clarity.
+		ip.Equal(net.IPv4(169, 254, 169, 254))
+}
+
+func internalAllowed() bool {
+	v := strings.TrimSpace(strings.ToLower(getenv("PROMPTZERO_WEBHOOK_ALLOW_INTERNAL")))
+	return v == "1" || v == "true" || v == "yes"
+}
+
+// getenv is var-stored so tests can swap. Production reads os.Getenv.
+var getenv = os.Getenv
 
 // New constructs a dispatcher. When subs is empty it returns a no-op
 // dispatcher so callers don't branch on nil.

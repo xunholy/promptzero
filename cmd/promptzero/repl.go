@@ -752,7 +752,20 @@ func enterREPL(deps *REPLDeps) error {
 			ed.writeOutput(func() {
 				fmt.Fprintf(os.Stderr, "  %s● Recording...%s (stops on silence)\n", red, reset)
 			})
-			tmpFile := filepath.Join(os.TempDir(), "promptzero_voice.wav")
+			// Record into a per-invocation directory created with
+			// 0700 — the previous /tmp/promptzero_voice.wav was a
+			// world-readable predictable path. Audio captures may
+			// contain target/credential content the operator spoke
+			// aloud during the session.
+			recDir, err := os.MkdirTemp("", "promptzero-voice-*")
+			if err != nil {
+				ed.writeOutput(func() {
+					fmt.Fprintf(os.Stderr, "  %s● Recording error: %v%s\n", red, err, reset)
+				})
+				return false
+			}
+			defer os.RemoveAll(recDir)
+			tmpFile := filepath.Join(recDir, "voice.wav")
 			if err := voiceEngine.Record(tmpFile); err != nil {
 				ed.writeOutput(func() {
 					fmt.Fprintf(os.Stderr, "  %s● Recording error: %v%s\n", red, err, reset)
@@ -763,7 +776,6 @@ func enterREPL(deps *REPLDeps) error {
 				fmt.Fprintf(os.Stderr, "  %s● Transcribing...%s\n", blue, reset)
 			})
 			text, err := voiceEngine.Transcribe(tmpFile)
-			os.Remove(tmpFile)
 			if err != nil {
 				ed.writeOutput(func() {
 					fmt.Fprintf(os.Stderr, "  %s● Transcription error: %v%s\n", red, err, reset)

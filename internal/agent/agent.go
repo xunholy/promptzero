@@ -751,7 +751,17 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		a.history = append(a.history, anthropic.NewAssistantMessage(toUnionBlocks(resp.Content)...))
 
 		var toolResults []anthropic.ContentBlockParamUnion
-		var approveAllRemaining bool
+		// approveAllRemaining gates future tools in the same turn that
+		// are at or below approveAllCeiling. Without the ceiling, an
+		// "approve all" on a Medium-risk tool would silently authorise
+		// a subsequent High-risk tool — operators reasonably expect
+		// "approve all" to scope to what they just saw, not escalate.
+		// Critical is always gated independently (see the `gated` expr
+		// below).
+		var (
+			approveAllRemaining bool
+			approveAllCeiling   risk.Level
+		)
 		for _, tc := range toolCalls {
 			input := json.RawMessage(tc.Input)
 			toolRisk := risk.Classify(tc.Name)
@@ -793,7 +803,12 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, msg, true))
 				continue
 			}
-			gated := toolRisk == risk.Critical || !approveAllRemaining
+			// Approve-all only auto-approves tools at or below the risk
+			// level the operator was prompted on. Critical is always
+			// gated regardless. A subsequent tool above the ceiling
+			// re-prompts; the operator can extend the ceiling by
+			// approve-all'ing again at that higher level.
+			gated := toolRisk == risk.Critical || !approveAllRemaining || toolRisk > approveAllCeiling
 			if a.confirmCb != nil && gated && toolRisk >= a.confirmThreshold {
 				// Release a.mu while the confirm callback waits on
 				// the operator. turnMu still guards against a
@@ -843,6 +858,13 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 					continue
 				case DecisionApproveAll:
 					approveAllRemaining = true
+					// Cap the auto-approve scope at the risk level
+					// just shown. A later High-risk tool in the same
+					// turn (when the operator just approve-all'd a
+					// Medium one) re-prompts.
+					if toolRisk > approveAllCeiling {
+						approveAllCeiling = toolRisk
+					}
 				}
 			}
 
