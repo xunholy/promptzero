@@ -99,10 +99,12 @@ func TestQuarantineOutput_WrapsHardwareError(t *testing.T) {
 }
 
 // TestQuarantineOutput_DoesNotWrapStructuredTool confirms tools in the
-// notWrappedTools allowlist are never wrapped, even when isErr=false.
+// notWrappedTools allowlist (list_devices, generate_*, workflow_*) are
+// never wrapped — their output is structurally trusted PromptZero
+// content with no hardware-origin bytes inside.
 func TestQuarantineOutput_DoesNotWrapStructuredTool(t *testing.T) {
-	out := quarantineOutput("audit_query", `[{"id":1,"tool":"nfc_detect"}]`, false)
-	if strings.Contains(out, "<untrusted-hardware-output>") {
+	out := quarantineOutput("list_devices", `{"flipper":"connected"}`, false)
+	if strings.Contains(out, "<untrusted-") {
 		t.Fatalf("structured tool wrongly wrapped: %q", out)
 	}
 }
@@ -110,9 +112,44 @@ func TestQuarantineOutput_DoesNotWrapStructuredTool(t *testing.T) {
 // TestQuarantineOutput_DoesNotWrapStructuredToolError confirms that even
 // error output from structured (non-hardware) tools is not wrapped.
 func TestQuarantineOutput_DoesNotWrapStructuredToolError(t *testing.T) {
-	out := quarantineOutput("audit_query", "database unavailable", true)
-	if strings.Contains(out, "<untrusted-hardware-output>") {
+	out := quarantineOutput("generate_badusb", "model returned empty", true)
+	if strings.Contains(out, "<untrusted-") {
 		t.Fatalf("structured tool error output wrongly wrapped: %q", out)
+	}
+}
+
+// TestQuarantineOutput_WrapsAuditQueryAsAuditContent locks the v0.20.0
+// audit-quarantine fix. Audit log queries can return historical
+// hardware-origin content (captured SSIDs, NFC URIs, evil-portal
+// credentials) embedded in row data — without wrapping, an adversarial
+// NDEF payload from an earlier session could launder itself into a
+// later turn's instruction stream via an unwrapped audit_query result.
+//
+// The audit wrapper is intentionally a different tag from the hardware
+// wrapper so the system prompt's trust clause can name them
+// separately.
+func TestQuarantineOutput_WrapsAuditQueryAsAuditContent(t *testing.T) {
+	out := quarantineOutput("audit_query", `[{"id":1,"tool":"wifi_scan_ap","output":"SSID=Free-WiFi'); DROP TABLE--"}]`, false)
+	if !strings.HasPrefix(out, "<untrusted-audit-content>\n") {
+		t.Fatalf("audit_query output should be wrapped in <untrusted-audit-content>; got: %q", out)
+	}
+	if !strings.HasSuffix(out, "\n</untrusted-audit-content>") {
+		t.Fatalf("audit_query output missing close tag: %q", out)
+	}
+	if strings.Contains(out, "<untrusted-hardware-output>") {
+		t.Fatalf("audit_query should use audit wrapper, not hardware wrapper: %q", out)
+	}
+}
+
+// TestQuarantineOutput_AuditExportAndStatsAlsoWrapped covers the
+// remaining two members of the audit-wrapped set so a future
+// reclassification mistake can't drop one quietly.
+func TestQuarantineOutput_AuditExportAndStatsAlsoWrapped(t *testing.T) {
+	for _, name := range []string{"audit_export", "audit_stats"} {
+		out := quarantineOutput(name, "{}", false)
+		if !strings.Contains(out, "<untrusted-audit-content>") {
+			t.Errorf("%s output not audit-wrapped: %q", name, out)
+		}
 	}
 }
 

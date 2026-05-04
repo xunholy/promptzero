@@ -94,8 +94,6 @@ The **agent layer** ships prompt caching, cost-tier model routing (recon on Haik
 
 Default. Interactive REPL.
 
-<!-- TODO(screenshot): .github/assets/repl.png -->
-
 ```
 promptzero> scan the SD card and show me what signals I have saved
 promptzero> transmit the garage door signal

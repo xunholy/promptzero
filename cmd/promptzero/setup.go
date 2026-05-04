@@ -68,6 +68,13 @@ func printFirstRunHint() {
 	fmt.Fprintln(os.Stderr, "    3. Plug in your Flipper Zero (USB Virtual COM Port mode)")
 	fmt.Fprintln(os.Stderr, "    4. Relaunch `promptzero` and type /help for commands")
 	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "  A few features worth knowing about up-front:")
+	fmt.Fprintln(os.Stderr, "    • /save <name>      — name the session so you can /resume by name later")
+	fmt.Fprintln(os.Stderr, "    • --watch <dir>     — auto-analyse .sub / .nfc / .png files dropped into a folder")
+	fmt.Fprintln(os.Stderr, "    • --read-only       — refuse anything that writes, transmits, or runs (audit-only mode)")
+	fmt.Fprintln(os.Stderr, "    • --persona <name>  — swap the system framing (default | rf-recon | badge-cloner | hw-recon | physical-pentest | defender)")
+	fmt.Fprintln(os.Stderr, "    • --mcp             — expose the Flipper to Claude Desktop / Claude Code as an MCP server")
+	fmt.Fprintln(os.Stderr)
 }
 
 // configTemplate is written by --init when no on-disk example is present.

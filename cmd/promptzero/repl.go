@@ -782,10 +782,19 @@ func enterREPL(deps *REPLDeps) error {
 				})
 				return false
 			}
+			// v0.20.0: drop the transcription into the input buffer
+			// for an explicit second-Enter confirmation. Previously
+			// auto-firing the turn meant a single mis-heard word or
+			// stray Enter sent an unintended request to the model;
+			// the operator now sees the transcribed text and either
+			// edits it or presses Enter again to submit.
 			ed.writeOutput(func() {
-				fmt.Fprintf(os.Stderr, "  %s● You said:%s %s\n", green, reset, text)
+				fmt.Fprintf(os.Stderr, "  %s● Transcribed%s — review and press Enter to submit, edit, or Esc to discard\n",
+					green, reset)
 			})
-			input = text
+			ed.insertPaste(text)
+			ed.render()
+			return false
 		}
 
 		if input == "" {

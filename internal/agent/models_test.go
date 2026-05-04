@@ -17,20 +17,39 @@ func agentForModelTest(base string, p *persona.Persona) *Agent {
 	return a
 }
 
-func TestModelFor_FallsBackToBaseModel(t *testing.T) {
+// TestModelFor_NoPersona_UsesTierDefaults locks the v0.20.0 behaviour:
+// when no persona is configured, classify-tier work goes to Haiku,
+// generate/plan to Sonnet, exploit to Opus. Pre-v0.20.0 every tier
+// short-circuited to the base model — which routed every cheap-tier
+// call to whatever the operator picked as their main model (almost
+// always Opus), an enormous overspend.
+//
+// Unknown tiers still fall through to the base model so a future
+// custom tier ("vision", "research") added by a persona stays safe.
+func TestModelFor_NoPersona_UsesTierDefaults(t *testing.T) {
 	a := agentForModelTest("claude-sonnet-4-6", nil)
-	for _, tier := range []string{TierClassify, TierGenerate, TierPlan, TierExploit, "unknown-tier"} {
-		if got := a.ModelFor(tier); got != "claude-sonnet-4-6" {
-			t.Errorf("ModelFor(%q) = %q, want base model", tier, got)
+	cases := map[string]string{
+		TierClassify:   "claude-haiku-4-5",
+		TierGenerate:   "claude-sonnet-4-6",
+		TierPlan:       "claude-sonnet-4-6",
+		TierExploit:    "claude-opus-4-7",
+		"unknown-tier": "claude-sonnet-4-6", // base model fallback
+	}
+	for tier, want := range cases {
+		if got := a.ModelFor(tier); got != want {
+			t.Errorf("ModelFor(%q) = %q, want %q", tier, got, want)
 		}
 	}
 }
 
 func TestModelFor_PersonaOverrideWins(t *testing.T) {
+	// A persona's Models map takes absolute precedence — even if the
+	// override picks a smaller model than the tier default would.
 	p := &persona.Persona{
 		Name: "red-team-day",
 		Models: map[string]string{
 			TierClassify: "claude-haiku-4-5",
+			TierGenerate: "claude-haiku-4-5", // deliberately picks small
 			TierExploit:  "claude-opus-4-7",
 		},
 	}
@@ -38,10 +57,10 @@ func TestModelFor_PersonaOverrideWins(t *testing.T) {
 
 	cases := map[string]string{
 		TierClassify: "claude-haiku-4-5",  // persona override
-		TierGenerate: "claude-sonnet-4-6", // falls back to base
-		TierPlan:     "claude-sonnet-4-6", // falls back to base
+		TierGenerate: "claude-haiku-4-5",  // persona override
+		TierPlan:     "claude-sonnet-4-6", // tier default (Sonnet)
 		TierExploit:  "claude-opus-4-7",   // persona override
-		"unknown":    "claude-sonnet-4-6", // fallback
+		"unknown":    "claude-sonnet-4-6", // base model fallback
 	}
 	for tier, want := range cases {
 		if got := a.ModelFor(tier); got != want {
@@ -51,11 +70,14 @@ func TestModelFor_PersonaOverrideWins(t *testing.T) {
 }
 
 func TestModelFor_EmptyPersonaEntryFallsBack(t *testing.T) {
-	// An explicit empty string in the map (malformed YAML, user typo)
-	// must not silently wedge the session — fall back to the base model.
+	// An explicit empty string in the persona map (malformed YAML, user
+	// typo) must not silently wedge the session. With v0.20.0 the
+	// fallback now hits the tier-default table BEFORE the base model —
+	// so an empty TierClassify still resolves to Haiku, the right
+	// answer for cheap calls.
 	p := &persona.Persona{Models: map[string]string{TierClassify: ""}}
 	a := agentForModelTest("claude-sonnet-4-6", p)
-	if got := a.ModelFor(TierClassify); got != "claude-sonnet-4-6" {
-		t.Fatalf("empty map entry should fall back; got %q", got)
+	if got := a.ModelFor(TierClassify); got != "claude-haiku-4-5" {
+		t.Fatalf("empty map entry should fall back to tier default Haiku; got %q", got)
 	}
 }

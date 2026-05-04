@@ -1,0 +1,64 @@
+name: Feature request
+description: A new tool, persona, transport, workflow, or capability you'd like PromptZero to support.
+title: "[feat]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Concrete, scoped requests land much faster than open-ended ones.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve
+      description: |
+        What were you trying to do when you reached for this feature? What didn't work, or what was painful?
+      placeholder: |
+        I was trying to handoff a captured PMKID to hashcat, but every step was manual…
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: |
+        What would the feature look like? Be as concrete as you can — a slash command, a tool name, a flag,
+        a new persona YAML, etc. A worked example is gold.
+      placeholder: |
+        New tool: `marauder_handoff_hashcat` — takes a PMKID capture path, converts it to .hc22000, prints the hashcat CLI.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing tools / workflows you tried first, and why they didn't fit.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Where does this fit
+      multiple: true
+      options:
+        - New tool (Spec) in internal/tools/
+        - New persona (YAML)
+        - New workflow (composite)
+        - New transport (Flipper / Marauder / new device)
+        - REPL ergonomics (slash command, key binding)
+        - Web UI
+        - MCP server / federation
+        - Documentation / examples
+        - Other
+
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Authorised-use acknowledgement
+      description: |
+        PromptZero is for authorised security testing, defensive use, education, and CTF. Features that primarily exist to evade detection in attacker workflows are out of scope.
+      options:
+        - label: This feature has a legitimate authorised use case (red team, blue team, education, CTF, hardware bring-up).
+          required: true

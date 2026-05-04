@@ -1,0 +1,13 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/xunholy/promptzero/security/advisories/new
+    about: |
+      Found a security issue? Please use private vulnerability reporting — do NOT
+      open a public issue. See SECURITY.md for the disclosure flow.
+
+  - name: General questions / discussion
+    url: https://github.com/xunholy/promptzero/discussions
+    about: |
+      Open-ended questions, "how do I…", design discussions. The Discussions tab is the
+      better fit than an issue for those.

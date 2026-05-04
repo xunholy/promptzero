@@ -37,11 +37,6 @@ var notWrappedTools = map[string]struct{}{
 	// Pure internal / configuration surfaces.
 	"list_devices": {},
 
-	// Audit log — content comes from our own SQLite store.
-	"audit_query":  {},
-	"audit_export": {},
-	"audit_stats":  {},
-
 	// Generation pipeline — output is our own preview/path text.
 	"generate_evil_portal": {},
 	"generate_badusb":      {},
@@ -63,13 +58,50 @@ var notWrappedTools = map[string]struct{}{
 	"workflow_mousejack":                {},
 }
 
-// isUntrustedHardwareOutput reports whether a tool's successful output
-// should be wrapped in <untrusted-hardware-output> delimiters before it
-// reaches the model. True for every tool not in the notWrappedTools
-// allowlist.
+// auditWrappedTools names tools that read from the audit log. Their
+// output is structurally trusted (it comes from our own SQLite store)
+// but the rows themselves can contain hardware-origin content from
+// prior turns — captured SSIDs, NFC tag URIs, evil-portal harvested
+// credentials, voice transcripts. Without wrapping, an adversarial
+// NDEF payload from a previous session could launder itself into a
+// later turn's instruction stream via an unwrapped audit_query result.
+//
+// Members get wrapped in <untrusted-audit-content> instead of
+// <untrusted-hardware-output> so the model can treat them slightly
+// differently: structured data with possibly-untrusted bytes inside,
+// rather than raw live hardware bytes.
+var auditWrappedTools = map[string]struct{}{
+	"audit_query":  {},
+	"audit_export": {},
+	"audit_stats":  {},
+}
+
+// quarantineKind classifies a tool's quarantine policy. Three kinds:
+// none (notWrappedTools allowlist), audit (auditWrappedTools), and
+// hardware (the default — anything that returns hardware-origin data).
+type quarantineKind int
+
+const (
+	quarantineNone     quarantineKind = iota // pass through, no wrapping
+	quarantineAudit                          // wrap in <untrusted-audit-content>
+	quarantineHardware                       // wrap in <untrusted-hardware-output>
+)
+
+func quarantineKindFor(toolName string) quarantineKind {
+	if _, ok := notWrappedTools[toolName]; ok {
+		return quarantineNone
+	}
+	if _, ok := auditWrappedTools[toolName]; ok {
+		return quarantineAudit
+	}
+	return quarantineHardware
+}
+
+// isUntrustedHardwareOutput is kept for back-compat with quarantine_test.go;
+// reports whether a tool gets the hardware wrapper specifically (audit
+// quarantine doesn't qualify).
 func isUntrustedHardwareOutput(toolName string) bool {
-	_, ok := notWrappedTools[toolName]
-	return !ok
+	return quarantineKindFor(toolName) == quarantineHardware
 }
 
 // sanitizeControlChars strips ANSI CSI escape sequences and non-printable
@@ -101,10 +133,17 @@ func sanitizeControlChars(s string) string {
 func quarantineOutput(toolName, output string, isErr bool) string {
 	_ = isErr // hardware errors carry the same risk as successes; wrap both
 	sanitized := sanitizeControlChars(output)
-	if !isUntrustedHardwareOutput(toolName) {
+	switch quarantineKindFor(toolName) {
+	case quarantineNone:
 		return sanitized
+	case quarantineAudit:
+		// Trim trailing whitespace so the closing tag lands on its own line.
+		sanitized = strings.TrimRight(sanitized, " \t\r\n")
+		return "<untrusted-audit-content>\n" + sanitized + "\n</untrusted-audit-content>"
+	case quarantineHardware:
+		fallthrough
+	default:
+		sanitized = strings.TrimRight(sanitized, " \t\r\n")
+		return "<untrusted-hardware-output>\n" + sanitized + "\n</untrusted-hardware-output>"
 	}
-	// Trim trailing whitespace so the closing tag lands on its own line.
-	sanitized = strings.TrimRight(sanitized, " \t\r\n")
-	return "<untrusted-hardware-output>\n" + sanitized + "\n</untrusted-hardware-output>"
 }
