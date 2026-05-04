@@ -520,7 +520,7 @@ func enterREPL(deps *REPLDeps) error {
 	if term.IsTerminal(stdinFd) {
 		oldState, err := term.MakeRaw(stdinFd)
 		if err != nil {
-			return fmt.Errorf("raw mode: %w", err)
+			return fmt.Errorf("could not put the terminal into raw mode (the REPL needs raw stdin to render the persistent input box): %w — try running in a real TTY (no pipe / no `< file` redirection)", err)
 		}
 		// MakeRaw disables OPOST, which also turns off ONLCR - so a plain \n
 		// in our output moves the cursor down without carriage-returning to

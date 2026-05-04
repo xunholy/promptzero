@@ -21,14 +21,50 @@ serial:
   # transport_url overrides port + baud. Schemes:
   #   serial:///dev/ttyACM0?baud=230400
   #   mock:///dev/pts/5              (test harness pty slave)
-  #   ble://AA:BB:CC:DD:EE:FF        (live; Linux/macOS only — see docs)
+  #   ble://<addr>                   (live; Linux/macOS — not WSL2). The
+  #     <addr> is shape-detected:
+  #       80:E1:26:69:6E:55          hardware MAC (Linux/Windows native)
+  #       e127efc1-05ec-...          CoreBluetooth UUID (macOS; per-Mac)
+  #       Unholy                     advertising LocalName (any OS)
+  #     On macOS, run `promptzero --ble-discover` to find the UUID — the
+  #     OS hides hardware MACs and gives apps a per-Mac UUID instead.
   transport_url: ""
 
 # --- ESP32 Marauder (WiFi + BLE devboard) --------------------------------
 marauder:
   enabled: false                     # flip to true when the devboard is plugged in
-  port: "/dev/ttyUSB0"               # separate USB serial port from the Flipper
+  port: "/dev/ttyUSB0"               # used when bridge=false and transport!="ble" (separate USB cable)
   baud_rate: 115200
+
+  # transport: "ble"                 # uncomment to drive a standalone ESP32-Marauder
+  #                                  # devboard directly over BLE. When set, `port`
+  #                                  # is reinterpreted as the BLE address — a
+  #                                  # hardware MAC on Linux/Windows, a CoreBluetooth
+  #                                  # UUID on macOS (run `--ble-discover`), or a
+  #                                  # device LocalName like "Marauder". This path
+  #                                  # bypasses the Flipper UART bridge entirely;
+  #                                  # mutually exclusive with bridge: true. Override
+  #                                  # per-launch with --marauder-ble <addr>.
+
+  # Marauder stacked on Flipper GPIO header (single USB cable to Flipper).
+  # When bridge=true, PromptZero launches the Flipper's USB-UART Bridge app
+  # and pipes the host serial port through to the Marauder. While bridge
+  # mode is active, all flipper_* tools are disabled (the CLI is gone by
+  # firmware design).
+  bridge: false
+  # Override per firmware: Momentum / Unleashed / RogueMaster all ship the
+  # app as "USB-UART Bridge" today; older OFW builds may expect a different
+  # name. Quotes are part of the CLI verb — keep them.
+  # bridge_command: 'loader open "USB-UART Bridge"'
+  # bridge_settle: 750ms
+  # bridge_port_reopen_timeout: 5s
+
+  # Hybrid mode — Flipper over BLE, Marauder via the USB bridge:
+  # Set serial.transport_url: "ble://AA:BB:CC:DD:EE:FF" AND
+  # marauder.bridge: true AND marauder.port: "/dev/ttyACM0".
+  # This keeps the Flipper CLI alive (over BLE) while the USB cable
+  # carries Marauder traffic. Requires native Linux or macOS — WSL2
+  # does not expose Bluetooth to the Linux guest.
 
 # --- Web UI --------------------------------------------------------------
 web:
@@ -114,3 +150,57 @@ cost:
 # Inline rules can go here, or keep them in examples/rules.yaml and merge
 # with `yq`/`sops` at deploy time. See examples/rules.yaml for the schema.
 rules: []
+
+# --- Outbound MCP federation (v0.6) --------------------------------------
+# Each entry brings one external MCP server's tools into the agent's
+# catalogue under a shared prefix. See docs/integrations/mcp-federation.md
+# for the full reference; commented-out examples below.
+#
+mcp_clients: []
+#  # FuzzingLabs/mcp-security-hub (530★) — nmap/nuclei/sqlmap/ghidra/hashcat
+#  - prefix: secsec
+#    transport: stdio
+#    command: docker
+#    args: [run, --rm, -i, --network=host, ghcr.io/fuzzinglabs/security-hub:latest]
+#    sandbox: docker
+#    risk_default: high
+#    env:
+#      SHODAN_API_KEY: $SHODAN_API_KEY
+#
+#  # mplogas/pm3-mcp — Proxmark3 iceman federation (Picopass, iCLASS, HID Prox)
+#  - prefix: pm3
+#    transport: stdio
+#    command: pm3-mcp
+#    sandbox: none
+#    risk_default: high
+#
+#  # MorDavid/Hashcat-MCP — closes WiFi → cracker chain
+#  - prefix: hcat
+#    transport: stdio
+#    command: docker
+#    args: [run, --rm, -i, --gpus, all, mordavid/hashcat-mcp:latest]
+#    sandbox: docker
+#    risk_default: critical
+#
+#  # MorDavid/BloodHound-MCP-AI (335★) — AD attack-path queries
+#  - prefix: bh
+#    transport: http
+#    url: http://localhost:7474/mcp
+#    headers:
+#      Authorization: Bearer $BLOODHOUND_TOKEN
+#    risk_default: medium
+#
+#  # PortSwigger/mcp-server — official Burp MCP
+#  - prefix: burp
+#    transport: stdio
+#    command: burp-mcp-server
+#    sandbox: firejail
+#    risk_default: medium
+#
+#  # LaurieWired/GhidraMCP — reverse-engineer dumped firmware
+#  - prefix: ghidra
+#    transport: stdio
+#    command: docker
+#    args: [run, --rm, -i, lauriewired/ghidra-mcp:latest]
+#    sandbox: docker
+#    risk_default: low

@@ -33,7 +33,7 @@ PromptZero is a natural language AI operator for the [Flipper Zero](https://flip
 
 ## Overview
 
-- **[What It Does](#what-it-does)** — capabilities at a glance, [tool surface](#160-tools-across-5-subsystems), [agent-layer features](#agent-layer-features-v030)
+- **[What It Does](#what-it-does)** — capabilities at a glance, [tool surface](#268-tools-across-5-subsystems), [agent-layer features](#agent-layer-features-v030)
 - **[Quick Start](#quick-start)** — [prerequisites](#prerequisites) · [install](#install) · [configure](#configure) · [environment variables](#environment-variables) · [examples](#examples) · [run](#run) · [try it](#try-it) · [transport options](#transport-options)
 - **[Modes](#modes)** — [CLI](#cli-default) · [Web UI](#web-ui---web) · [Voice](#voice---voice) · [MCP Server](#mcp-server---mcp)
 - **[Generation Pipeline](#generation-pipeline)** — [payload types](#supported-payload-types) · [multi-provider generation](#multi-provider-generation)
@@ -65,7 +65,15 @@ promptzero> what's this?  [photo of a remote control]
   I can generate a complete remote file. Want me to create it?
 ```
 
-### 268+ Tools Across 5 Subsystems
+### 268 Tools Across 5 Subsystems
+
+The table below summarises the primary subsystems. The remaining tools
+cover workflows, host-side security utilities (hash analysis, port
+scanning, HTTP enumeration), faultier glitching, Bruce/Bus Pirate
+hardware backends, audit query/export, and meta-utilities (device
+discovery, file format read/edit/diff). Run `promptzero --tools-list`
+on an installed binary, or `go run ./cmd/cliprobe -list-tools` from a
+checkout, to see the full enumeration.
 
 | Subsystem | Tools | Capabilities |
 |-----------|-------|-------------|
@@ -157,11 +165,27 @@ replaced atomically.
 ```bash
 git clone https://github.com/xunholy/promptzero.git
 cd promptzero
-task dev:setup   # one-time: install pinned golangci-lint
-task build       # stamps version ldflags from git
+task dev:setup     # one-time: install pinned golangci-lint
+pre-commit install # one-time: register the git hooks CI also runs
+task build         # stamps version ldflags from git
 ```
 
+`pre-commit install` registers the same gofmt/golangci-lint hooks CI runs,
+so a `git commit` fails locally on the same conditions that would fail a
+PR. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full developer flow.
+
 ### Configure
+
+The fastest path is the built-in initialiser — it writes a starter file
+to `~/.promptzero/config.yaml` (the search path the binary uses by
+default) and tells you what to fill in:
+
+```bash
+promptzero --init
+```
+
+If you'd rather edit a file in the repo (e.g. when you're hacking on
+PromptZero itself), copy the example:
 
 ```bash
 cp config.example.yaml config.yaml
@@ -297,7 +321,7 @@ Cross-compiled darwin binaries from a Linux host ship a stub that returns a clea
 - **Throughput is ~10× slower** than USB. A `log_stream` or a long `subghz rx` capture is noticeably less responsive, but every wrapper works — the CLI protocol is identical over the Flipper's serial GATT service.
 - **Range** is Bluetooth-normal (~10 m Class 2 in practice).
 
-All 152 tools work unchanged over BLE — capabilities detection, NFC subshell, loader close-via-back-button, everything. The transport layer is the only thing that changes.
+All Flipper-bound tools work unchanged over BLE — capabilities detection, NFC subshell, loader close-via-back-button, everything. The transport layer is the only thing that changes.
 
 ---
 
