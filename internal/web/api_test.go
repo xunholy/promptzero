@@ -128,8 +128,10 @@ func TestPersonasListReturnsRegistry(t *testing.T) {
 		}
 	}
 
-	// Verify known contracts: "default" has no tool allowlist (unrestricted=true);
-	// "rf-recon" has an explicit allowlist (unrestricted=false).
+	// Verify known contracts. v0.19.0+ all built-in personas are
+	// unrestricted (the tool-allowlist job moved to --read-only as
+	// the single safety rail). User personas loaded from
+	// ~/.promptzero/personas/ may still set Tools for back-compat.
 	byName := make(map[string]map[string]any, len(avail))
 	for _, entry := range avail {
 		e, _ := entry.(map[string]any)
@@ -145,8 +147,8 @@ func TestPersonasListReturnsRegistry(t *testing.T) {
 		t.Errorf("'default' persona not found in available list")
 	}
 	if rf, ok := byName["rf-recon"]; ok {
-		if rf["unrestricted"] != false {
-			t.Errorf("rf-recon persona unrestricted = %v, want false", rf["unrestricted"])
+		if rf["unrestricted"] != true {
+			t.Errorf("rf-recon persona unrestricted = %v, want true (v0.19.0 dropped per-persona tool allowlists in favour of --read-only)", rf["unrestricted"])
 		}
 	} else {
 		t.Errorf("'rf-recon' persona not found in available list")

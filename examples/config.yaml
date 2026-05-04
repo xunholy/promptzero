@@ -100,6 +100,14 @@ web:
 # defender — or any YAML file under ~/.promptzero/personas/ (see examples/personas).
 persona: "default"
 
+# --- Read-only safety rail -----------------------------------------------
+# When true, dispatch refuses any tool whose Spec.Risk is above Low — no
+# writes, no transmits, no execution, no payload generation. The single
+# safety rail in v0.19.0; replaces the old --mode flag (which is
+# deprecated and will be removed in v0.20.0). Override with --read-only
+# on the command line.
+read_only: false
+
 # --- Filesystem-trigger mode (--watch) -----------------------------------
 watch:
   enabled: false                     # gate via --watch CLI flag in most cases

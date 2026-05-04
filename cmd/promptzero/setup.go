@@ -230,7 +230,8 @@ type runFlags struct {
 	yoloMode             bool
 	confirmRisk          string
 	personaName          string
-	modeName             string // --mode
+	modeName             string // --mode (deprecated, see runFlags.readOnly)
+	readOnly             bool   // --read-only
 	watchPaths           stringSlice
 	bleDiscover          bool          // --ble-discover
 	bleDiscoverDuration  time.Duration // --ble-discover-duration
@@ -267,9 +268,9 @@ func parseFlags() *runFlags {
 	flag.StringVar(&f.confirmRisk, "confirm-risk", "", "Confirmation threshold: none|low|medium|high|critical (default: high)")
 	flag.StringVar(&f.personaName, "persona", "", "Operator persona (default: value from config or 'default')")
 	flag.StringVar(&f.modeName, "mode", "",
-		"Operation mode: standard|recon|intel|stealth|assault (default: standard — all groups allowed). "+
-			"Recon = read-only, no RF transmit; Intel = Recon plus host-side analysis; "+
-			"Stealth = minimal RF (Flipper CLI/storage/IR only); Assault = same surface as Standard with an explicit-intent banner.")
+		"DEPRECATED — use --read-only instead. recon|intel|stealth alias to --read-only; standard|assault alias to no-flag. Will be removed in v0.20.0.")
+	flag.BoolVar(&f.readOnly, "read-only", false,
+		"Refuse any tool that writes, transmits, emulates, or executes — only Low-risk reads/queries/scans dispatch. The single safety rail; replaces --mode.")
 	flag.Var(&f.watchPaths, "watch", "Watch a directory for FS events; repeat to watch several")
 	flag.BoolVar(&f.showVersion, "version", false, "Show version")
 	flag.BoolVar(&f.bleDiscover, "ble-discover", false, "Scan for nearby BLE peripherals and print their addresses + names + RSSI (use this to find the right ble:// identifier on macOS where hardware MACs are hidden), then exit.")
@@ -540,7 +541,7 @@ func setupPersona(cfg *config.Config, personaName string, ai *agent.Agent) (*per
 		return nil, nil, fmt.Errorf("unknown persona %q; available: %s", choice, strings.Join(personas.Names(), ", "))
 	}
 	ai.SetPersona(active)
-	scope := fmt.Sprintf("%d tools allowed", len(active.Tools))
+	scope := fmt.Sprintf("%d tools allowed", len(active.Tools)) //nolint:staticcheck // back-compat through v0.19.0
 	if active.IsUnrestricted() {
 		scope = "all tools allowed"
 	}
@@ -580,11 +581,28 @@ func setupRiskGate(cfg *config.Config, confirmRisk string, yolo bool, p *persona
 // behaviour-preserving default. Unknown values log a warning and
 // fall back to Standard rather than aborting startup — operators
 // who typo a mode shouldn't lose their whole session.
+//
+// Deprecated: --mode is being phased out in favour of --read-only
+// (v0.19.0). recon|intel|stealth aliases to read-only; standard and
+// assault are no-ops. v0.20.0 will remove this function.
 func setupMode(cfg *config.Config, modeFlag string, ai *agent.Agent) {
 	raw := cfg.Mode
 	if modeFlag != "" {
 		raw = modeFlag
 	}
+
+	// Deprecation alias: map the read-restrictive modes to --read-only.
+	// We keep ai.SetMode() running so existing callers reading
+	// agent.Mode() don't break; the dispatch path now consults
+	// readOnly first and short-circuits before the mode check.
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "recon", "intel", "stealth":
+		statusWarn(fmt.Sprintf("--mode %s is deprecated; treating as --read-only. Update your config to read_only: true.", raw))
+		ai.SetReadOnly(true)
+	case "assault":
+		statusWarn("--mode assault is deprecated and now a no-op; remove it from your config.")
+	}
+
 	m, err := mode.ParseMode(raw)
 	if err != nil {
 		statusWarn(fmt.Sprintf("%v — falling back to standard", err))
@@ -602,6 +620,20 @@ func setupMode(cfg *config.Config, modeFlag string, ai *agent.Agent) {
 			bold, m.DisplayName(), reset,
 			dim, m.Description(), reset))
 	}
+}
+
+// setupReadOnly applies --read-only / config.read_only to the agent
+// and prints the banner. The single v0.19.0 safety rail. Pairs with
+// (and is checked before) the deprecated setupMode path so an operator
+// who sets both gets read-only behaviour either way.
+func setupReadOnly(cfg *config.Config, flagOn bool, ai *agent.Agent) {
+	on := cfg.ReadOnly || flagOn
+	if !on {
+		return
+	}
+	ai.SetReadOnly(true)
+	statusOK(fmt.Sprintf("%sREAD-ONLY%s %s· no writes, no transmits, no execution — only Low-risk reads dispatch%s",
+		bold+yellow, reset, dim, reset))
 }
 
 // setupSessionStore attaches the on-disk session store and honours
