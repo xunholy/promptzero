@@ -540,6 +540,7 @@ Companion to — not a replacement for — the deep capability catalog under [`d
 | 504 | Retr0-0Sec/Windows_Exfil | https://github.com/Retr0-0Sec/Windows_Exfil | Retr0-0Sec | AttackPoC | JS | ~21 | 2026-02-13 | unspecified | Active | Windows data-collection + exfil PoC via FZ BadUSB | **Refuse**; cross-ref A4 |
 | 505 | Shlucus/FlipperZero-GooglePortal | https://github.com/Shlucus/FlipperZero-GooglePortal | Shlucus | AttackPoC | HTML | ~83 | 2026-04-21 | unspecified | Active | "1:1 realistic Google captive portal" template for EvilPortal | **Refuse** named-brand template per Defensive Spec #3; cross-ref appendix A5 |
 | 506 | InfoSecREDD/BadPS | https://github.com/InfoSecREDD/BadPS | InfoSecREDD | CLI | PowerShell | ~124 | 2026-03-30 | unspecified | Active | Host BadUSB payload dev/test/exec launcher — sibling to row 154 (REPG) | N/A — host harness |
+| 507 | bad-antics/nullsec-flipper-suite | https://github.com/bad-antics/nullsec-flipper-suite | bad-antics | Bundle | (mix) | ~36 | 2026-05-05 | MIT | Active | Static asset bundle: 80 BadUSB payloads, 40 SubGHz captures, 16 IR remotes, blank NFC/RFID/iButton templates, Python/bash upload helpers | Reference-only — opposite philosophy to PromptZero (static library vs LLM generation). MIT permits vendoring the BadUSB set as `internal/eval/testdata/` reference corpus when an eval harness lands; do NOT ship as runtime assets — undermines `generate_*` value prop. |
 
 ## Detection sources
 
