@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -17,33 +18,116 @@ import (
 // A first Ctrl+C cancels the in-flight op; a second within doubleTapWindow
 // restores the terminal, tears the UI down, and exits. This matches the
 // Claude Code / modern-CLI feel.
+//
+// SIGHUP and SIGTERM (added in v0.21.0 per the SRE review) take the
+// hard-exit path immediately — no double-tap. They're the canonical
+// "you're done" signals from a terminal hangup or a kill -TERM, and
+// rolling out the orphaned-tool_use cleanup before the process dies
+// is the operator-friendly behaviour.
 type signalHandler struct {
 	currentCancel atomic.Pointer[context.CancelFunc]
 	lastSIGINT    atomic.Int64
 	uiRef         atomic.Pointer[termUI]
 	stdinRestore  atomic.Pointer[func()]
+	// shutdownHooks are run in registration order on SIGHUP/SIGTERM
+	// or on the second SIGINT. Used by setup.go to wire Marauder
+	// stop-attack calls and audit-log close so the process exits
+	// without leaving the Marauder firmware mid-attack or the audit
+	// DB open.
+	shutdownHooksMu atomic.Pointer[shutdownHookList]
 }
+
+// shutdownHookList is an immutable slice we swap atomically when
+// hooks register. Avoids a sync.Mutex on the hot signal path.
+type shutdownHookList struct{ hooks []func() }
 
 const signalDoubleTapWindow = 2 * time.Second
 
-// install registers the SIGINT handler goroutine and returns a cleanup
-// fn that stops signal delivery. Caller should `defer sh.install()()`.
+// install registers the SIGINT / SIGHUP / SIGTERM handler goroutine
+// and returns a cleanup fn that stops signal delivery. Caller should
+// `defer sh.install()()`.
 func (s *signalHandler) install() func() {
-	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, os.Interrupt)
+	sigCh := make(chan os.Signal, 4)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
 	go s.run(sigCh)
 	return func() { signal.Stop(sigCh) }
 }
 
-// run drains SIGINTs until the channel closes, implementing the
-// cancel-once / exit-on-second-tap behaviour.
+// AddShutdownHook registers a function to run on hard-exit
+// (SIGHUP/SIGTERM/double-Ctrl-C). Hooks fire in registration order
+// before the terminal is restored and the process exits.
+func (s *signalHandler) AddShutdownHook(fn func()) {
+	for {
+		cur := s.shutdownHooksMu.Load()
+		var next *shutdownHookList
+		if cur == nil {
+			next = &shutdownHookList{hooks: []func(){fn}}
+		} else {
+			h := make([]func(), len(cur.hooks)+1)
+			copy(h, cur.hooks)
+			h[len(cur.hooks)] = fn
+			next = &shutdownHookList{hooks: h}
+		}
+		if s.shutdownHooksMu.CompareAndSwap(cur, next) {
+			return
+		}
+	}
+}
+
+// runShutdownHooks executes every registered hook with a brief
+// per-hook timeout so a misbehaving hook can't wedge process exit.
+// Errors from hooks are intentionally swallowed — we're shutting
+// down anyway and have no good place to surface them.
+func (s *signalHandler) runShutdownHooks() {
+	cur := s.shutdownHooksMu.Load()
+	if cur == nil {
+		return
+	}
+	for _, fn := range cur.hooks {
+		done := make(chan struct{})
+		go func(f func()) {
+			defer close(done)
+			defer func() { _ = recover() }() // swallow panic in hook
+			f()
+		}(fn)
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			// Hook took too long — move on. Anything that needs
+			// more than 2s during shutdown is broken.
+		}
+	}
+}
+
+// run drains signals until the channel closes. SIGINT implements the
+// cancel-once / exit-on-second-tap behaviour; SIGHUP/SIGTERM take the
+// immediate hard-exit path with shutdown hooks.
 func (s *signalHandler) run(sigCh <-chan os.Signal) {
-	for range sigCh {
+	for sig := range sigCh {
+		// SIGHUP (terminal hangup) and SIGTERM (kill / process
+		// supervisor) → immediate clean shutdown. No double-tap.
+		if sig == syscall.SIGHUP || sig == syscall.SIGTERM {
+			if cfp := s.currentCancel.Load(); cfp != nil {
+				(*cfp)()
+			}
+			s.runShutdownHooks()
+			if fn := s.stdinRestore.Load(); fn != nil {
+				(*fn)()
+			}
+			if u := s.uiRef.Load(); u != nil {
+				u.teardown()
+			}
+			fmt.Fprintf(os.Stderr, "\n  %sShutdown (%s).%s\n\n", dim, sig, reset)
+			os.Exit(0)
+		}
+
+		// SIGINT path — cancel-once, exit-on-second-tap.
 		now := time.Now().UnixNano()
 		prev := s.lastSIGINT.Swap(now)
 		within := prev != 0 && time.Duration(now-prev) < signalDoubleTapWindow
 
 		if within {
+			s.runShutdownHooks()
 			if fn := s.stdinRestore.Load(); fn != nil {
 				(*fn)()
 			}

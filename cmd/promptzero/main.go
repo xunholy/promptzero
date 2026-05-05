@@ -165,6 +165,7 @@ func run() error {
 	statusOK(fmt.Sprintf("Agent ready %s(model: %s)%s", dim, cfg.Model, reset))
 
 	costTracker := setupCostTracker(cfg, ai, rec)
+	setupBudget(cfg, f.budgetUSD, costTracker)
 	activePersona, personas, err := setupPersona(cfg, f.personaName, ai)
 	if err != nil {
 		return err
@@ -176,6 +177,11 @@ func run() error {
 
 	auditLog, auditClose := setupAuditLog(ai)
 	defer auditClose()
+	// Register audit close as a SIGHUP/SIGTERM shutdown hook so a
+	// terminal hangup or kill -TERM still flushes the SQLite WAL
+	// before the process dies. The deferred close above remains the
+	// happy-path fallback.
+	sh.AddShutdownHook(auditClose)
 
 	wh := setupWebhooks(cfg)
 
@@ -202,6 +208,11 @@ func run() error {
 
 	hasMarauder, marauderClose := setupMarauder(ctx, cfg, ai, rec, flip, f.wifiEnabled)
 	defer marauderClose()
+	// Marauder close is also a hard-shutdown hook so a SIGTERM mid-
+	// attack stops the firmware before the process dies. Without it,
+	// a deauth/beacon-spam started in the session keeps running on
+	// the devboard with no operator to halt it.
+	sh.AddShutdownHook(marauderClose)
 
 	_, bruceClose := setupBruce(ctx, cfg, ai)
 	defer bruceClose()

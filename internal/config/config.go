@@ -200,6 +200,11 @@ type RuleActionConfig struct {
 // internal/cost; entries present here shadow those.
 type CostConfig struct {
 	Rates map[string]CostRateConfig `yaml:"rates,omitempty"`
+	// BudgetUSD caps the session's cumulative cost. The cost tracker
+	// fires a warning at 80% and refuses new turns past 100%. Zero
+	// (the default) disables the budget. The CLI flag --budget
+	// overrides this value. See internal/cost.Tracker.SetBudget.
+	BudgetUSD float64 `yaml:"budget_usd,omitempty"`
 }
 
 // CostRateConfig is one pricing entry. InputPerMTok and OutputPerMTok

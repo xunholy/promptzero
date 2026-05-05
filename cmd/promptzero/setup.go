@@ -237,8 +237,9 @@ type runFlags struct {
 	yoloMode             bool
 	confirmRisk          string
 	personaName          string
-	modeName             string // --mode (deprecated, see runFlags.readOnly)
-	readOnly             bool   // --read-only
+	modeName             string  // --mode (deprecated, see runFlags.readOnly)
+	readOnly             bool    // --read-only
+	budgetUSD            float64 // --budget
 	watchPaths           stringSlice
 	bleDiscover          bool          // --ble-discover
 	bleDiscoverDuration  time.Duration // --ble-discover-duration
@@ -278,6 +279,8 @@ func parseFlags() *runFlags {
 		"DEPRECATED — use --read-only instead. recon|intel|stealth alias to --read-only; standard|assault alias to no-flag. Will be removed in v0.20.0.")
 	flag.BoolVar(&f.readOnly, "read-only", false,
 		"Refuse any tool that writes, transmits, emulates, or executes — only Low-risk reads/queries/scans dispatch. The single safety rail; replaces --mode.")
+	flag.Float64Var(&f.budgetUSD, "budget", 0,
+		"Session USD cap. The cost tracker warns at 80% and refuses new turns past 100%. 0 disables (default). Useful for hobbyist 'try-with-$5' sessions on Opus.")
 	flag.Var(&f.watchPaths, "watch", "Watch a directory for FS events; repeat to watch several")
 	flag.BoolVar(&f.showVersion, "version", false, "Show version")
 	flag.BoolVar(&f.bleDiscover, "ble-discover", false, "Scan for nearby BLE peripherals and print their addresses + names + RSSI (use this to find the right ble:// identifier on macOS where hardware MACs are hidden), then exit.")
@@ -522,7 +525,47 @@ func setupCostTracker(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder) *c
 	ai.SetStreamErrorCallback(func(_ error) {
 		tracker.RecordStreamError()
 	})
+	// v0.21.0: surface per-attempt retries to the operator on stderr.
+	// Lives next to stream-error wiring because the retry path is the
+	// recovery side of the same transient-failure story. Without this
+	// the operator would see the "OFFLINE" banner only after three
+	// errors with no indication PromptZero is actually retrying.
+	ai.SetRetryNotifyCallback(func(n agent.RetryNotice) {
+		statusWarn(fmt.Sprintf("Anthropic transient error (attempt %d/%d) — retrying in %s · %v",
+			n.Attempt, n.MaxAttempts, n.Backoff, n.Err))
+	})
 	return tracker
+}
+
+// setupBudget wires the session-level USD cap from the CLI flag (wins)
+// or the cfg.Cost.BudgetUSD config field. Zero on both sides leaves
+// the tracker without a budget — historic behaviour.
+//
+// Both threshold callbacks log to stderr in operator-friendly tone:
+// 80% nudges the operator to consider a switch; 100% reports the
+// hard stop. Pre-dispatch refusal of new turns past 100% lives in
+// the agent (see SetCostTracker / Run loop) so the tracker stays
+// dependency-free.
+func setupBudget(cfg *config.Config, flagBudget float64, tracker *cost.Tracker) {
+	usdCap := cfg.Cost.BudgetUSD
+	if flagBudget > 0 {
+		usdCap = flagBudget
+	}
+	if usdCap <= 0 {
+		return
+	}
+	statusOK(fmt.Sprintf("Session budget %s($%.2f USD; warns at 80%%, refuses new turns at 100%%)%s",
+		dim, usdCap, reset))
+	tracker.SetBudget(usdCap,
+		func(spent, capUSD float64) {
+			statusWarn(fmt.Sprintf("Session at $%.4f / $%.2f (80%% of budget) — consider /budget bump or wrap up",
+				spent, capUSD))
+		},
+		func(spent, capUSD float64) {
+			statusWarn(fmt.Sprintf("Session at $%.4f / $%.2f (BUDGET EXHAUSTED) — new turns will be refused. Use /budget set $X to extend.",
+				spent, capUSD))
+		},
+	)
 }
 
 // setupPersona loads built-in + user personas, picks the active one per

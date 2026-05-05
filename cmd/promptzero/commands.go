@@ -311,7 +311,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/attack [set|clear] <techniques>%s  ATT&CK technique constraint for the session\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/campaign validate|run <file>%s  Validate or execute a multi-step campaign file\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/rewind [snapshot]%s    Undo SD card writes to a named or latest snapshot\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "    %s/report [session] [save]%s  Markdown engagement report with ATT&CK heatmap\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/report [session] [json] [save]%s  Engagement report with ATT&CK heatmap (md default; json for tooling; save writes to ~/.promptzero/reports/)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/rules%s                 List automation rules and fire counts\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sDevice%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/reconnect%s             Force reconnect to the Flipper (after replug / USB hiccup)\n", cyan, reset)
@@ -879,6 +879,11 @@ func hasDryRunFlag(args []string) bool {
 //	/report                 — render markdown for the current session
 //	/report <session-id>    — render markdown for a specific session
 //	/report <id> save       — write the report to ~/.promptzero/reports/<id>.md
+//	/report json            — render JSON for the current session
+//	/report json save       — write JSON to ~/.promptzero/reports/<id>.json
+//
+// "json" can appear in any position alongside an id and "save"; the
+// argument parser is order-independent.
 func handleReport(deps *REPLDeps, args []string) {
 	if deps.auditLog == nil {
 		fmt.Fprintf(os.Stderr, "  %sreport: audit log not available%s\n", dim, reset)
@@ -887,9 +892,14 @@ func handleReport(deps *REPLDeps, args []string) {
 
 	sessionID := deps.ai.SessionID()
 	save := false
+	jsonOut := false
 	for _, a := range args {
-		if strings.EqualFold(a, "save") {
+		switch strings.ToLower(a) {
+		case "save":
 			save = true
+			continue
+		case "json":
+			jsonOut = true
 			continue
 		}
 		if a != "" {
@@ -908,7 +918,18 @@ func handleReport(deps *REPLDeps, args []string) {
 	}
 
 	summary := report.Summarise(sessionID, entries, attack.NewDefaultIndex())
-	md, err := report.MarkdownRenderer{}.Render(summary)
+
+	var (
+		body []byte
+		ext  string
+	)
+	if jsonOut {
+		body, err = report.JSONRenderer{}.Render(summary)
+		ext = ".json"
+	} else {
+		body, err = report.MarkdownRenderer{}.Render(summary)
+		ext = ".md"
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  %s● report render failed: %v%s\n", red, err, reset)
 		return
@@ -935,18 +956,18 @@ func handleReport(deps *REPLDeps, args []string) {
 			fmt.Fprintf(os.Stderr, "  %s● mkdir reports: %v%s\n", red, err, reset)
 			return
 		}
-		outPath := filepath.Join(dir, sessionID+".md")
-		if err := os.WriteFile(outPath, md, 0o600); err != nil {
+		outPath := filepath.Join(dir, sessionID+ext)
+		if err := os.WriteFile(outPath, body, 0o600); err != nil {
 			fmt.Fprintf(os.Stderr, "  %s● write report: %v%s\n", red, err, reset)
 			return
 		}
-		fmt.Fprintf(os.Stderr, "  %s✓ report saved to %s (%d bytes)%s\n", green, outPath, len(md), reset)
+		fmt.Fprintf(os.Stderr, "  %s✓ report saved to %s (%d bytes)%s\n", green, outPath, len(body), reset)
 		return
 	}
 
 	// Print to stderr so the report is visible above the REPL prompt.
 	// The report is authored — operators can pipe / copy it.
-	_, _ = os.Stderr.Write(md)
+	_, _ = os.Stderr.Write(body)
 }
 
 // isSafeReportID returns true when sessionID is composed only of

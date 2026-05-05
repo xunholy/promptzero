@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -192,5 +193,102 @@ func TestMitreSlug(t *testing.T) {
 		if got := mitreSlug(in); got != want {
 			t.Errorf("mitreSlug(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestHeatmapBar locks the visual contract for the ATT&CK heatmap
+// rendering: filled cells are '█', empty cells are '░', a non-zero
+// count always renders at least one filled cell so it's visible.
+func TestHeatmapBar(t *testing.T) {
+	cases := []struct {
+		n, max, width int
+		want          string
+	}{
+		{0, 10, 5, "░░░░░"},  // zero → all empty
+		{5, 10, 5, "██░░░"},  // half
+		{10, 10, 5, "█████"}, // full
+		{1, 10, 5, "█░░░░"},  // tiny but visible (the floor at 1)
+		{0, 0, 5, ""},        // defensive: zero max returns empty
+		{5, 10, 0, ""},       // defensive: zero width returns empty
+	}
+	for _, c := range cases {
+		if got := heatmapBar(c.n, c.max, c.width); got != c.want {
+			t.Errorf("heatmapBar(%d, %d, %d) = %q, want %q", c.n, c.max, c.width, got, c.want)
+		}
+	}
+}
+
+// TestJSONRenderer_RoundTrip ensures the JSON output is well-formed
+// and contains the structured fields downstream tooling needs. The
+// renderer remaps Summary into a JSON-friendly schema (success and
+// failure counts split rather than the bool-keyed BySuccess map), so
+// we parse into a generic map[string]any to verify shape rather than
+// rebinding to Summary.
+func TestJSONRenderer_RoundTrip(t *testing.T) {
+	s := Summary{
+		SessionID:    "test-session",
+		TotalEntries: 3,
+		BySuccess:    map[bool]int{true: 2, false: 1},
+		ByRisk:       map[string]int{"high": 1, "low": 2},
+		ByTool:       map[string]int{"audit_query": 2, "wifi_scan_ap": 1},
+		ATTACKCoverage: map[string]int{
+			"T1040":     1,
+			"T1557.004": 1,
+		},
+	}
+	out, err := JSONRenderer{}.Render(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("JSON output not parseable: %v\n%s", err, out)
+	}
+	if parsed["session_id"] != "test-session" {
+		t.Errorf("session_id = %v", parsed["session_id"])
+	}
+	if got, _ := parsed["total_entries"].(float64); int(got) != 3 {
+		t.Errorf("total_entries = %v, want 3", parsed["total_entries"])
+	}
+	if got, _ := parsed["success_count"].(float64); int(got) != 2 {
+		t.Errorf("success_count = %v, want 2", parsed["success_count"])
+	}
+	if got, _ := parsed["failure_count"].(float64); int(got) != 1 {
+		t.Errorf("failure_count = %v, want 1", parsed["failure_count"])
+	}
+	cov, _ := parsed["attack_coverage"].(map[string]any)
+	if len(cov) != 2 {
+		t.Errorf("attack_coverage size = %d, want 2", len(cov))
+	}
+}
+
+// TestMarkdownRenderer_HeatmapVisible verifies that a populated
+// session's markdown report includes the heatmap column with at
+// least one filled bar.
+func TestMarkdownRenderer_HeatmapVisible(t *testing.T) {
+	s := Summary{
+		SessionID:    "test",
+		TotalEntries: 1,
+		BySuccess:    map[bool]int{true: 1},
+		ByRisk:       map[string]int{"low": 1},
+		ByTool:       map[string]int{"wifi_scan_ap": 1},
+		ATTACKCoverage: map[string]int{
+			"T1040": 5,
+			"T1018": 1,
+		},
+	}
+	out, err := MarkdownRenderer{}.Render(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out)
+	if !strings.Contains(body, "Frequency") {
+		t.Error("heatmap column header missing")
+	}
+	if !strings.Contains(body, "█") {
+		t.Errorf("heatmap should contain at least one filled bar; output:\n%s", body)
+	}
+	if !strings.Contains(body, "░") {
+		t.Errorf("heatmap should contain at least one empty cell; output:\n%s", body)
 	}
 }
