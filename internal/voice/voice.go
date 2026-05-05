@@ -49,6 +49,14 @@ func New(openAIKey string) *Engine {
 	}
 }
 
+// recordTimeout caps how long a silence-stop recording can run before
+// we kill the `rec` process. Without it, a stuck mic / driver issue
+// could wedge the REPL indefinitely waiting on rec to detect silence
+// that will never arrive. Two minutes is generous for a voice prompt
+// (operator-empath finding: most prompts are 5–15 seconds) and tight
+// enough that a hang surfaces before the operator gives up.
+const recordTimeout = 2 * time.Minute
+
 // Record captures audio from the microphone using sox.
 // Press Ctrl+C or wait for silence to stop.
 func (e *Engine) Record(outPath string) error {
@@ -63,7 +71,9 @@ func (e *Engine) Record(outPath string) error {
 		"1", "1.0", "1%",
 	}
 
-	cmd := exec.CommandContext(context.Background(), "rec", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), recordTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "rec", args...)
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
@@ -78,7 +88,11 @@ func (e *Engine) RecordFixed(outPath string, seconds int) error {
 		"trim", "0", fmt.Sprintf("%d", seconds),
 	}
 
-	cmd := exec.CommandContext(context.Background(), "rec", args...)
+	// Per-call timeout = requested duration + 10s margin so a stuck
+	// rec process doesn't wedge the REPL past the natural window.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds+10)*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "rec", args...)
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }

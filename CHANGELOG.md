@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-05-05
+
+Reliability and reporting release. Closes the remaining
+project-impacting work from the 2026-05-04 multi-angle review:
+the API resilience pass (Tier-2 #15), session budget cap
+(Tier-2 #13), and engagement report export (Tier-2 #16). Marketing
+items (MCP-in-Claude-Desktop reframe, demo GIF, distribution
+push) are tracked as a separate workstream.
+
+### Added
+
+- **API retry + backoff for transient Anthropic failures.**
+  `streamOnceWithRetry` wraps the streaming Messages call with
+  exponential backoff (1s → 2s → 4s, max 30s) for 429 / 500 / 502
+  / 503 / 504 / 529 (Anthropic-overloaded). Permanent errors
+  (4xx other than 429, malformed requests, auth failures)
+  propagate immediately; ctx cancellation aborts mid-backoff. Up
+  to 4 attempts (initial + 3 retries) before surfacing the last
+  transient error. (`internal/agent/retry.go`,
+  `internal/agent/retry_test.go`)
+
+- **Per-attempt retry observer.** New `Agent.SetRetryNotifyCallback`
+  surfaces each backoff to the operator on stderr — "Anthropic
+  transient error (attempt 2/4) — retrying in 2s · 503 service
+  unavailable" — so a recovering API outage doesn't look like a
+  wedged session. Pairs with the existing offline-banner logic.
+  (`internal/agent/retry.go`, `cmd/promptzero/setup.go`)
+
+- **SIGHUP / SIGTERM signal handlers.** A terminal hangup
+  (parent shell closes), `kill -TERM`, or container stop now
+  triggers a clean shutdown: in-flight tool cancelled,
+  registered shutdown hooks run, raw-mode terminal restored, UI
+  torn down. Closes the SRE finding that an unpaired
+  `assistant tool_use` block could survive a SIGHUP and break
+  the next resume with HTTP 400. (`cmd/promptzero/signals.go`)
+
+- **Shutdown hooks** for clean exit.
+  `signalHandler.AddShutdownHook` registers a function to run on
+  hard-exit. `cmd/promptzero/main.go` registers `marauderClose`
+  (so a SIGTERM mid-attack stops the firmware before the
+  process dies — closes the "Marauder keeps attacking after
+  death" finding) and `auditClose` (so the SQLite WAL is
+  flushed before exit). Each hook gets a 2s timeout so a
+  misbehaving hook can't wedge process exit.
+  (`cmd/promptzero/signals.go`, `cmd/promptzero/main.go`)
+
+- **Session USD budget cap.** New `--budget <USD>` flag and
+  `cost.budget_usd:` config field. The cost tracker fires a
+  warn callback at 80% and a hit callback at 100% of the cap
+  (each one-shot per session); operators see the warn / hit
+  banners on stderr, and `tracker.BudgetExceeded()` is exposed
+  for the agent's pre-dispatch refusal of new turns past the
+  cap. Raising the cap mid-session resets the threshold flags
+  so future thresholds re-fire. Five new tests cover the
+  threshold logic. Closes the "hostile to hobbyists" finding
+  from the product strategist review.
+  (`internal/cost/cost.go`, `internal/cost/budget_test.go`,
+  `cmd/promptzero/setup.go`, `internal/config/config.go`)
+
+- **JSON renderer for `/report`.** New `JSONRenderer` produces a
+  structured engagement-report dump (success/failure split,
+  ATT&CK coverage, detector verdicts, per-tool counts, per-risk
+  counts, total duration). Suitable for engagement-tracking
+  systems, custom dashboards, programmatic verification. The
+  in-memory `Summary` shape is unchanged — JSON-friendly schema
+  remap happens inside the renderer. (`internal/report/report.go`,
+  `internal/report/report_test.go`)
+
+- **`/report json [save]`** REPL command. Existing markdown
+  output stays the default; `json` flag swaps the renderer;
+  `save` writes to `~/.promptzero/reports/<id>.json` with the
+  same path-safety check as the markdown export.
+  (`cmd/promptzero/commands.go`)
+
+### Changed
+
+- **Voice recording context timeouts.** `Engine.Record()` now
+  enforces a 2-minute ceiling so a stuck mic / driver issue
+  can't wedge the REPL indefinitely waiting on `rec` to detect
+  silence that will never arrive. `Engine.RecordFixed(seconds)`
+  uses `seconds + 10s` margin. Closes the SRE finding.
+  (`internal/voice/voice.go`)
+
+- **ATT&CK coverage table includes a visual heatmap column.**
+  The markdown renderer now sorts techniques by frequency
+  (highest first) and renders a Unicode bar chart (`█░░`)
+  alongside the count, so "what we did the most of" jumps out
+  of the report at a glance. Productises the audit moat
+  identified by the product strategist. The hashcat-style
+  fixed-width column stays clean across rows.
+  (`internal/report/report.go`)
+
+### Notes
+
+- Validation: vet clean, lint 0 issues, test 54 packages pass /
+  0 fail, govulncheck 0 vulnerabilities, binary +0.06% vs v0.20.
+- This release closes the remaining project-impacting items
+  from the multi-angle review. The strategic / multi-week items
+  (audit-DB at-rest encryption, plugin model for tools,
+  Ollama-only mode) are deferred and require their own design
+  cycles. Marketing items (MCP-in-Claude-Desktop reframe, demo
+  GIF, Reddit / Hackaday / Awesome-Lists distribution push,
+  seeded "good first issue" issues) are intentionally a
+  separate workstream.
+
 ## [0.20.0] - 2026-05-05
 
 Operator-experience release. Acts on the Tier-1 quick wins and

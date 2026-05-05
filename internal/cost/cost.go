@@ -117,6 +117,15 @@ type Tracker struct {
 	lastErrorAt         time.Time
 	offline             bool
 	onOffline           func(bool) // fired on transitions (false→true or true→false)
+
+	// Budget is the optional session-level USD cap. When > 0 the
+	// tracker fires onBudget callbacks at thresholds (warn at 80%,
+	// hard at 100%). Zero means no budget — historic behaviour.
+	budgetUSD    float64
+	budgetWarned bool // 80% threshold notice fired
+	budgetHit    bool // 100% threshold notice fired
+	onBudgetWarn func(spent, cap float64)
+	onBudgetHit  func(spent, cap float64)
 }
 
 // NewTracker builds a Tracker bound to a specific model. The offline
@@ -170,11 +179,71 @@ func (t *Tracker) AddUsageFull(inTokens, outTokens, cacheReadTokens, cacheCreati
 	t.errorRun = 0
 	t.offline = false
 	hook := t.onOffline
+
+	// Budget tracking — snapshot the threshold flags + callbacks
+	// under the lock, fire the callbacks unlocked below.
+	var fireWarn, fireHit bool
+	var spent, cap float64
+	var warnHook, hitHook func(spent, cap float64)
+	if t.budgetUSD > 0 {
+		spent = t.totalUSD
+		cap = t.budgetUSD
+		// 80% warn — once.
+		if !t.budgetWarned && spent >= 0.8*cap {
+			t.budgetWarned = true
+			fireWarn = true
+			warnHook = t.onBudgetWarn
+		}
+		// 100% hit — once.
+		if !t.budgetHit && spent >= cap {
+			t.budgetHit = true
+			fireHit = true
+			hitHook = t.onBudgetHit
+		}
+	}
 	t.mu.Unlock()
 
 	if wasOffline && hook != nil {
 		hook(false)
 	}
+	if fireWarn && warnHook != nil {
+		warnHook(spent, cap)
+	}
+	if fireHit && hitHook != nil {
+		hitHook(spent, cap)
+	}
+}
+
+// SetBudget configures a session USD cap and the callbacks that fire
+// at the 80%-warn and 100%-cap thresholds. usdCap == 0 disables the
+// budget entirely (default). Either callback may be nil.
+//
+// The 80% threshold fires once per session; the 100% threshold fires
+// once. Re-entering thresholds after a budget bump (e.g. operator
+// raises the cap with /budget set) requires resetting the flags via
+// SetBudget — passing usdCap >= current spend resets warned/hit
+// automatically.
+func (t *Tracker) SetBudget(usdCap float64, onWarn, onHit func(spent, cap float64)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.budgetUSD = usdCap
+	t.onBudgetWarn = onWarn
+	t.onBudgetHit = onHit
+	// Reset flags when the operator raises the cap clear of the
+	// current spend — they're saying "I want fresh notifications".
+	if usdCap > t.totalUSD {
+		t.budgetWarned = false
+		t.budgetHit = false
+	}
+}
+
+// BudgetExceeded reports whether the session has crossed the configured
+// 100% cap. Returns false when no budget is set. Used by the agent's
+// pre-dispatch check to refuse new turns once the cap is exhausted.
+func (t *Tracker) BudgetExceeded() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.budgetUSD > 0 && t.totalUSD >= t.budgetUSD
 }
 
 // RecordStreamError notifies the tracker that one Messages.NewStreaming
@@ -212,6 +281,9 @@ type Snapshot struct {
 	CacheCreationTokens int64
 	TotalUSD            float64
 	Offline             bool
+	// BudgetUSD is the configured session cap; 0 means no budget.
+	// /cost and /status render the spent/cap pair when non-zero.
+	BudgetUSD float64
 }
 
 // Snapshot returns the current state for the /cost REPL command and the
@@ -227,6 +299,7 @@ func (t *Tracker) Snapshot() Snapshot {
 		CacheCreationTokens: t.cacheCreationTokens,
 		TotalUSD:            t.totalUSD,
 		Offline:             t.offline,
+		BudgetUSD:           t.budgetUSD,
 	}
 }
 

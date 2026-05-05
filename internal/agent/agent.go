@@ -157,6 +157,7 @@ type Agent struct {
 	textDeltaCb        func(TextDelta)
 	usageCb            func(u Usage)
 	streamErrCb        func(err error)
+	retryNotifyCb      func(RetryNotice) // v0.21.0: per-attempt retry observer for transient API errors
 	confirmCb          ConfirmFunc
 	confirmThreshold   risk.Level
 	confirmIdleTimeout time.Duration
@@ -772,7 +773,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	var pendingRevisions []string
 
 	for {
-		resp, err := a.streamOnce(ctx, sysPrompt, tools)
+		resp, err := a.streamOnceWithRetry(ctx, sysPrompt, tools)
 		if err != nil {
 			return "", fmt.Errorf("claude API: %w", err)
 		}

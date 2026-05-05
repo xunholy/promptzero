@@ -196,6 +196,50 @@ type Renderer interface {
 // is usable; no configuration surface today.
 type MarkdownRenderer struct{}
 
+// JSONRenderer emits a structured JSON dump of the Summary suitable
+// for downstream tooling — engagement-tracking systems, custom
+// dashboards, programmatic verification of session contents. Pretty-
+// printed with two-space indent so the output is human-readable as
+// well. Zero-value is usable.
+type JSONRenderer struct{}
+
+// jsonSummary mirrors Summary but rewrites the boolean-keyed map
+// (BySuccess) into a struct so the encoder accepts it. Keeps the
+// in-memory Summary shape unchanged.
+type jsonSummary struct {
+	SessionID        string                   `json:"session_id"`
+	StartedAt        time.Time                `json:"started_at,omitempty"`
+	EndedAt          time.Time                `json:"ended_at,omitempty"`
+	TotalEntries     int                      `json:"total_entries"`
+	Success          int                      `json:"success_count"`
+	Failure          int                      `json:"failure_count"`
+	ByRisk           map[string]int           `json:"by_risk,omitempty"`
+	ByLevel          map[audit.Level]int      `json:"by_level,omitempty"`
+	ByTool           map[string]int           `json:"by_tool,omitempty"`
+	ATTACKCoverage   map[string]int           `json:"attack_coverage,omitempty"`
+	DetectorVerdicts []DetectorVerdictSummary `json:"detector_verdicts,omitempty"`
+	TotalDurationMs  int64                    `json:"total_duration_ms"`
+}
+
+// Render implements Renderer for JSONRenderer.
+func (JSONRenderer) Render(s Summary) ([]byte, error) {
+	js := jsonSummary{
+		SessionID:        s.SessionID,
+		StartedAt:        s.StartedAt,
+		EndedAt:          s.EndedAt,
+		TotalEntries:     s.TotalEntries,
+		Success:          s.BySuccess[true],
+		Failure:          s.BySuccess[false],
+		ByRisk:           s.ByRisk,
+		ByLevel:          s.ByLevel,
+		ByTool:           s.ByTool,
+		ATTACKCoverage:   s.ATTACKCoverage,
+		DetectorVerdicts: s.DetectorVerdicts,
+		TotalDurationMs:  s.TotalDurationMs,
+	}
+	return json.MarshalIndent(js, "", "  ")
+}
+
 // Render implements Renderer.
 func (MarkdownRenderer) Render(s Summary) ([]byte, error) {
 	var b strings.Builder
@@ -258,18 +302,31 @@ func (MarkdownRenderer) Render(s Summary) ([]byte, error) {
 	}
 	fmt.Fprintf(&b, "\n")
 
-	// ATT&CK coverage.
+	// ATT&CK coverage. v0.21.0 adds a visual heatmap alongside the
+	// table — a bar chart of relative technique frequency makes
+	// "what we did the most of" jump out of the report at a glance.
 	if len(s.ATTACKCoverage) > 0 {
 		fmt.Fprintf(&b, "## MITRE ATT&CK coverage\n\n")
-		fmt.Fprintf(&b, "| Technique | Count |\n|---|---|\n")
 		ids := make([]string, 0, len(s.ATTACKCoverage))
-		for id := range s.ATTACKCoverage {
+		max := 0
+		for id, n := range s.ATTACKCoverage {
 			ids = append(ids, id)
+			if n > max {
+				max = n
+			}
 		}
-		sort.Strings(ids)
+		sort.Slice(ids, func(i, j int) bool {
+			if s.ATTACKCoverage[ids[i]] != s.ATTACKCoverage[ids[j]] {
+				return s.ATTACKCoverage[ids[i]] > s.ATTACKCoverage[ids[j]]
+			}
+			return ids[i] < ids[j]
+		})
+		fmt.Fprintf(&b, "| Technique | Count | Frequency |\n|---|---|---|\n")
 		for _, id := range ids {
-			fmt.Fprintf(&b, "| [`%s`](https://attack.mitre.org/techniques/%s/) | %d |\n",
-				id, mitreSlug(id), s.ATTACKCoverage[id])
+			n := s.ATTACKCoverage[id]
+			bar := heatmapBar(n, max, 20)
+			fmt.Fprintf(&b, "| [`%s`](https://attack.mitre.org/techniques/%s/) | %d | `%s` |\n",
+				id, mitreSlug(id), n, bar)
 		}
 		fmt.Fprintf(&b, "\n")
 	}
@@ -325,6 +382,32 @@ func (MarkdownRenderer) Render(s Summary) ([]byte, error) {
 // appear in tool names / session ids and confuse a renderer. Keeps
 // the implementation small — we're emitting our own content, not
 // user-controlled prose.
+// heatmapBar renders n out of max as a width-character monospace bar
+// using Unicode block fills. width controls the total cell length; the
+// filled portion uses '█', the empty portion uses '░' so the column
+// stays the same width across all rows. max == 0 returns an empty bar
+// (defensive — caller shouldn't call with no data).
+func heatmapBar(n, max, width int) string {
+	if max <= 0 || width <= 0 {
+		return ""
+	}
+	filled := (n * width) / max
+	if filled < 1 && n > 0 {
+		filled = 1 // any non-zero count gets at least one cell so it's visible
+	}
+	if filled > width {
+		filled = width
+	}
+	out := make([]rune, 0, width)
+	for i := 0; i < filled; i++ {
+		out = append(out, '█')
+	}
+	for i := filled; i < width; i++ {
+		out = append(out, '░')
+	}
+	return string(out)
+}
+
 func mdEscape(s string) string {
 	r := strings.NewReplacer("|", "\\|", "`", "\\`")
 	return r.Replace(s)
