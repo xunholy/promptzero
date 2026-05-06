@@ -546,10 +546,11 @@ func setupCostTracker(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder) *c
 //
 // Both threshold callbacks log to stderr in operator-friendly tone:
 // 80% nudges the operator to consider a switch; 100% reports the
-// hard stop. Pre-dispatch refusal of new turns past 100% lives in
-// the agent (see SetCostTracker / Run loop) so the tracker stays
-// dependency-free.
-func setupBudget(cfg *config.Config, flagBudget float64, tracker *cost.Tracker) {
+// hard stop. Pre-dispatch refusal of new turns past 100% is handled
+// by ai.SetBudgetCheckCallback — the agent consults BudgetExceeded()
+// at the top of every Run() invocation and returns ErrBudgetExceeded
+// before any tokens burn.
+func setupBudget(cfg *config.Config, flagBudget float64, ai *agent.Agent, tracker *cost.Tracker) {
 	usdCap := cfg.Cost.BudgetUSD
 	if flagBudget > 0 {
 		usdCap = flagBudget
@@ -569,6 +570,18 @@ func setupBudget(cfg *config.Config, flagBudget float64, tracker *cost.Tracker) 
 				spent, capUSD))
 		},
 	)
+
+	// Wire the pre-flight gate — closes the v0.21 gap where the 100%
+	// callback emitted a warning but did nothing to actually stop
+	// further spend. The callback is a thin predicate: read the
+	// tracker's BudgetExceeded() boolean, return ErrBudgetExceeded
+	// when true. The agent renders the error in the REPL.
+	ai.SetBudgetCheckCallback(func() error {
+		if tracker.BudgetExceeded() {
+			return agent.ErrBudgetExceeded
+		}
+		return nil
+	})
 }
 
 // setupPersona loads built-in + user personas, picks the active one per

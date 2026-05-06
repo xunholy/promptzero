@@ -170,3 +170,19 @@ func (a *Agent) SetRetryNotifyCallback(cb func(RetryNotice)) {
 	defer a.mu.Unlock()
 	a.retryNotifyCb = cb
 }
+
+// SetBudgetCheckCallback installs a pre-flight gate consulted at the
+// start of every Run() turn. The callback returns nil to allow the
+// turn or a non-nil error to refuse it before any tokens burn.
+// Production wiring (cmd/promptzero/setup.go) tests
+// cost.Tracker.BudgetExceeded() and returns ErrBudgetExceeded when
+// the session USD cap has been crossed.
+//
+// Pass nil to clear. Lock-free: stored under a.mu like the other
+// agent callbacks. The callback is invoked while a.mu is held, so
+// it MUST NOT reach back into the agent — keep it a thin predicate.
+func (a *Agent) SetBudgetCheckCallback(cb func() error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.budgetCheckCb = cb
+}

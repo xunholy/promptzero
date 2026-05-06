@@ -57,6 +57,14 @@ var ErrBlockedByMode = errors.New("tool blocked by operation mode")
 // is refused.
 var ErrReadOnly = errors.New("tool blocked: read-only mode (no writes, no transmits, no execution)")
 
+// ErrBudgetExceeded is returned at the top of Run() when the cost
+// tracker's session USD cap has been crossed. The configured warn
+// callback fires at 80% as a courtesy; this sentinel is the hard stop
+// at 100%. Operators raise the cap with /budget set $X to clear the
+// state. Wraps for errors.Is so REPL / web layers can render a
+// dedicated message rather than a generic "claude API: …" line.
+var ErrBudgetExceeded = errors.New("session refused: USD budget exhausted (use /budget set $X to extend)")
+
 // maxHistory is the maximum number of messages retained in the conversation
 // history. When exceeded, the first 2 entries (initial context) are kept and
 // the oldest middle entries are dropped.
@@ -139,25 +147,31 @@ type Agent struct {
 	// partially-advanced history.
 	turnMu sync.Mutex
 
-	mu                 sync.Mutex
-	client             *anthropic.Client
-	flipper            *flipper.Flipper
-	marauder           *marauder.Marauder
-	bruce              *bruce.Client
-	faultier           *faultier.Client
-	buspirate          *buspirate.Client
-	cfg                *config.Config
-	model              string
-	history            []anthropic.MessageParam
-	auditLog           *audit.Log
-	generator          *generate.Generator
-	vision             *vision.Analyzer
-	genLLM             provider.Provider
-	toolStatusCb       func(ToolEvent)
-	textDeltaCb        func(TextDelta)
-	usageCb            func(u Usage)
-	streamErrCb        func(err error)
-	retryNotifyCb      func(RetryNotice) // v0.21.0: per-attempt retry observer for transient API errors
+	mu            sync.Mutex
+	client        *anthropic.Client
+	flipper       *flipper.Flipper
+	marauder      *marauder.Marauder
+	bruce         *bruce.Client
+	faultier      *faultier.Client
+	buspirate     *buspirate.Client
+	cfg           *config.Config
+	model         string
+	history       []anthropic.MessageParam
+	auditLog      *audit.Log
+	generator     *generate.Generator
+	vision        *vision.Analyzer
+	genLLM        provider.Provider
+	toolStatusCb  func(ToolEvent)
+	textDeltaCb   func(TextDelta)
+	usageCb       func(u Usage)
+	streamErrCb   func(err error)
+	retryNotifyCb func(RetryNotice) // v0.21.0: per-attempt retry observer for transient API errors
+	// budgetCheckCb is consulted at the start of every Run() turn.
+	// Non-nil return aborts the turn before any tokens are spent —
+	// closes the v0.21.0 gap where the cost tracker emitted a 100%
+	// notification but did nothing to actually stop further spend.
+	// Production wiring lives in cmd/promptzero/setup.go (setupBudget).
+	budgetCheckCb      func() error
 	confirmCb          ConfirmFunc
 	confirmThreshold   risk.Level
 	confirmIdleTimeout time.Duration
@@ -677,6 +691,20 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	defer a.turnMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	// v0.23 — pre-flight budget gate. The cost tracker fires a warn
+	// callback at 80% and a hit callback at 100%, but pre-this-fix
+	// nothing actually stopped the next turn from spending past the
+	// cap. Check at the top of Run so we refuse before any tokens
+	// burn — the operator either raises the cap (/budget set $X) or
+	// wraps up the session. The check runs under a.mu, but the
+	// callback shouldn't reach back into agent state — it's just a
+	// boolean predicate against the tracker.
+	if a.budgetCheckCb != nil {
+		if err := a.budgetCheckCb(); err != nil {
+			return "", err
+		}
+	}
 
 	// Attach a fresh trace ID (or reuse the caller's) so every log line,
 	// audit row, and tool event emitted inside this turn shares one ID.
