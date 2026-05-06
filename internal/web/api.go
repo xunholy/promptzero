@@ -57,12 +57,6 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/debug", s.requireAuth(s.handleDebug))
 
 	mux.HandleFunc("GET /api/device", s.requireAuth(s.handleDevice))
-	// TODO(SPEC.md §6.3): surface bridge state in /api/device JSON
-	// (`bridge: {active, reason, shared_port}`) and render the
-	// suspended Flipper pill / "via Flipper bridge" Marauder
-	// subtitle in the cockpit. Server-side state is already tracked
-	// via Server.SetBridgeMode; only the JSON wiring + frontend JS
-	// remain.
 
 	mux.HandleFunc("GET /api/fs/list", s.requireAuth(s.handleFSList))
 	mux.HandleFunc("GET /api/fs/read", s.requireAuth(s.handleFSRead))
@@ -708,6 +702,19 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 	if len(storageErrors) > 0 {
 		resp["storage_info_errors"] = storageErrors
 	}
+
+	// Bridge state — surfaces the SetBridgeMode() flag so the cockpit
+	// can render the "via Flipper bridge" Marauder subtitle and the
+	// suspended Flipper pill. Closes the SPEC.md §6.3 / api.go TODO
+	// from earlier; server-side state was already tracked, only the
+	// JSON wiring was missing.
+	bridge := map[string]any{
+		"active": s.bridgeOn.Load(),
+	}
+	if r := s.bridgeReason.Load(); r != nil {
+		bridge["reason"] = *r
+	}
+	resp["bridge"] = bridge
 
 	s.deviceCacheAt = time.Now()
 	s.deviceCacheResp = resp

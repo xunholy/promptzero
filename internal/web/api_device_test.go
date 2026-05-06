@@ -357,3 +357,62 @@ func TestDumpDevicePayloadForHandoff(t *testing.T) {
 	out, _ := json.MarshalIndent(body, "", "  ")
 	t.Logf("\n%s", out)
 }
+
+// TestDevice_BridgeStateInResponse locks the v0.23 contract: the
+// /api/device JSON now surfaces SetBridgeMode() so the cockpit can
+// render the suspended-Flipper pill and the "via Flipper bridge"
+// Marauder subtitle. Closes the SPEC.md §6.3 / api.go TODO.
+//
+// Two cases: bridge inactive (default), bridge active with reason.
+// Reason text is operator-visible — typically "Marauder stacked on
+// GPIO header" or similar — and must round-trip through the JSON.
+func TestDevice_BridgeStateInResponse(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithHandler("device_info", func(args []string) string {
+			return momentumDeviceInfo
+		}),
+	)
+	flip := connectFlipperToMock(t, m)
+
+	// Case 1: bridge not set — JSON should still have the bridge
+	// block with active=false (consumers can rely on the key always
+	// being present rather than undefined).
+	s, ts := apiServer(t, &fakeAgent{})
+	s.SetFlipper(flip)
+
+	_, body := getJSON(t, ts, "/api/device")
+	bridge, ok := body["bridge"].(map[string]any)
+	if !ok {
+		t.Fatalf("bridge block missing from response; body keys=%v", bodyKeys(body))
+	}
+	if bridge["active"] != false {
+		t.Errorf("default bridge.active = %v, want false", bridge["active"])
+	}
+	if _, hasReason := bridge["reason"]; hasReason {
+		t.Errorf("default bridge.reason should be absent, got: %v", bridge["reason"])
+	}
+
+	// Case 2: SetBridgeMode toggled — both fields surface, and the
+	// reason string round-trips byte-identical.
+	const reason = "Marauder stacked on GPIO header — flipper_* tools paused"
+	s.SetBridgeMode(true, reason)
+
+	// Bypass the cache by directly invoking through a fresh request.
+	// The 5s TTL would otherwise serve the stale (active=false) response.
+	s.deviceCacheMu.Lock()
+	s.deviceCacheResp = nil
+	s.deviceCacheAt = time.Time{}
+	s.deviceCacheMu.Unlock()
+
+	_, body = getJSON(t, ts, "/api/device")
+	bridge, ok = body["bridge"].(map[string]any)
+	if !ok {
+		t.Fatalf("bridge block missing after SetBridgeMode; body keys=%v", bodyKeys(body))
+	}
+	if bridge["active"] != true {
+		t.Errorf("after SetBridgeMode(true): bridge.active = %v, want true", bridge["active"])
+	}
+	if got := bridge["reason"]; got != reason {
+		t.Errorf("bridge.reason = %v, want %q", got, reason)
+	}
+}
