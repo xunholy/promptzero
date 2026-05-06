@@ -173,6 +173,9 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 	case "/stats":
 		ed.writeOutput(func() { handleStats(deps, fields[1:]) })
 		return true, false
+	case "/budget":
+		ed.writeOutput(func() { handleBudget(deps, fields[1:]) })
+		return true, false
 	case "/persona":
 		ed.writeOutput(func() { handlePersona(deps.ai, deps.personas, fields[1:]) })
 		return true, false
@@ -301,6 +304,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/export training-set <path>%s  Export audit as JSONL fine-tuning dataset (--format=chat --success-only)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/stats [section]%s       Session cost summary (tokens, spend, cache hit-rate)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/cost%s                  Current cost snapshot\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/budget [set <USD>|off]%s  Show or update session budget cap\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/debug%s                 Diagnostic snapshot (config, transport, agent state)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sOperator%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/persona [name]%s        Show or switch active persona (resets conversation)\n", cyan, reset)
@@ -1833,4 +1837,67 @@ func handleWebhooksCmd(wh webhook.Dispatcher, args []string) {
 				dim, ts, reset, r.Event, icon, r.StatusCode)
 		}
 	}
+}
+
+// handleBudget services the /budget REPL command. Operators bumped the
+// cap mid-session before by exiting and restarting with --budget;
+// after v0.21 the agent enforces the cap at dispatch, so a one-line
+// surface is required.
+//
+//	/budget               — show spend, cap, remaining, percent
+//	/budget set <USD>     — change cap (preserves existing warn/hit cbs)
+//	/budget off           — disable the cap (sets to 0)
+func handleBudget(deps *REPLDeps, args []string) {
+	if deps.costTracker == nil {
+		fmt.Fprintf(os.Stderr, "  %sbudget: cost tracker not installed%s\n", dim, reset)
+		return
+	}
+	if len(args) == 0 {
+		printBudget(deps.costTracker.Snapshot())
+		return
+	}
+	sub := strings.ToLower(args[0])
+	switch sub {
+	case "set":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "  %susage: /budget set <USD>%s\n", dim, reset)
+			return
+		}
+		raw := strings.TrimPrefix(args[1], "$")
+		v, err := strconv.ParseFloat(raw, 64)
+		if err != nil || v < 0 {
+			fmt.Fprintf(os.Stderr, "  %s● budget: %q is not a non-negative number%s\n", red, args[1], reset)
+			return
+		}
+		deps.costTracker.UpdateBudgetCap(v)
+		fmt.Fprintf(os.Stderr, "  %s● budget cap set to $%.2f%s\n", green, v, reset)
+		printBudget(deps.costTracker.Snapshot())
+	case "off", "clear", "disable":
+		deps.costTracker.UpdateBudgetCap(0)
+		fmt.Fprintf(os.Stderr, "  %s● budget cap disabled%s\n", green, reset)
+	default:
+		fmt.Fprintf(os.Stderr, "  %sunknown subcommand %q (expected set|off)%s\n", dim, sub, reset)
+	}
+}
+
+func printBudget(s cost.Snapshot) {
+	if s.BudgetUSD <= 0 {
+		fmt.Fprintf(os.Stderr, "  budget: %sdisabled%s  (spent $%.4f)\n", dim, reset, s.TotalUSD)
+		fmt.Fprintf(os.Stderr, "  %sset one with /budget set <USD>%s\n", dim, reset)
+		return
+	}
+	pct := (s.TotalUSD / s.BudgetUSD) * 100
+	remaining := s.BudgetUSD - s.TotalUSD
+	if remaining < 0 {
+		remaining = 0
+	}
+	bar := green
+	switch {
+	case pct >= 100:
+		bar = red
+	case pct >= 80:
+		bar = yellow
+	}
+	fmt.Fprintf(os.Stderr, "  budget:    %s$%.4f / $%.2f%s  (%.0f%%)\n", bar, s.TotalUSD, s.BudgetUSD, reset, pct)
+	fmt.Fprintf(os.Stderr, "  remaining: $%.4f\n", remaining)
 }

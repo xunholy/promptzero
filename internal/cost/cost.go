@@ -246,6 +246,22 @@ func (t *Tracker) BudgetExceeded() bool {
 	return t.budgetUSD > 0 && t.totalUSD >= t.budgetUSD
 }
 
+// UpdateBudgetCap changes the configured USD cap without touching the
+// warn/hit callbacks (which were wired once at setup time). When the
+// new cap clears the current spend the warned/hit flags reset so a
+// future re-cross fires a fresh notification — matching SetBudget's
+// "operator bumps the cap" behaviour. Setting cap to 0 disables the
+// budget gate entirely. Used by the /budget REPL command.
+func (t *Tracker) UpdateBudgetCap(usdCap float64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.budgetUSD = usdCap
+	if usdCap > t.totalUSD {
+		t.budgetWarned = false
+		t.budgetHit = false
+	}
+}
+
 // RecordStreamError notifies the tracker that one Messages.NewStreaming
 // call failed. Three failures inside errRunWindow flip offline.
 func (t *Tracker) RecordStreamError() {
@@ -328,6 +344,11 @@ func (s Snapshot) Format() string {
 		cache = fmt.Sprintf("  cache_read=%d cache_write=%d hit_rate=%.0f%%",
 			s.CacheReadTokens, s.CacheCreationTokens, s.CacheHitRate()*100)
 	}
-	return fmt.Sprintf("model=%s  input=%d  output=%d  cost=$%.4f%s%s",
-		s.Model, s.InputTokens, s.OutputTokens, s.TotalUSD, cache, banner)
+	budget := ""
+	if s.BudgetUSD > 0 {
+		pct := (s.TotalUSD / s.BudgetUSD) * 100
+		budget = fmt.Sprintf("  budget=$%.2f/$%.2f (%.0f%%)", s.TotalUSD, s.BudgetUSD, pct)
+	}
+	return fmt.Sprintf("model=%s  input=%d  output=%d  cost=$%.4f%s%s%s",
+		s.Model, s.InputTokens, s.OutputTokens, s.TotalUSD, cache, budget, banner)
 }

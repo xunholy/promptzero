@@ -129,3 +129,79 @@ func TestBudget_SnapshotExposesCap(t *testing.T) {
 		t.Errorf("Snapshot.BudgetUSD = %v, want 2.50", got)
 	}
 }
+
+// TestUpdateBudgetCap_ChangesCapPreservesCallbacks asserts that
+// /budget set <USD> bumps the cap and lets the existing warn/hit
+// callbacks (wired once at setup) fire fresh after re-crossing.
+func TestUpdateBudgetCap_ChangesCapPreservesCallbacks(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+	var warns, hits int
+	tr.SetBudget(1.00, func(_, _ float64) { warns++ }, func(_, _ float64) { hits++ })
+
+	tr.AddUsageFull(0, 70000, 0, 0) // crosses both at $1 cap
+	if warns != 1 || hits != 1 {
+		t.Fatalf("first crossing: warns=%d hits=%d", warns, hits)
+	}
+
+	// Operator bumps the cap mid-session via /budget set 5
+	tr.UpdateBudgetCap(5.00)
+	if got := tr.Snapshot().BudgetUSD; got != 5.00 {
+		t.Errorf("BudgetUSD after UpdateBudgetCap = %v, want 5.00", got)
+	}
+	if tr.BudgetExceeded() {
+		t.Error("BudgetExceeded() = true after raising cap above current spend")
+	}
+
+	// New crossing past 80% of the new cap should fire the original
+	// callbacks again — they were not replaced.
+	tr.AddUsageFull(0, 250000, 0, 0)
+	if warns != 2 {
+		t.Errorf("after new-cap re-cross: warns=%d, want 2 (callbacks lost across UpdateBudgetCap?)", warns)
+	}
+}
+
+// TestUpdateBudgetCap_DisableSetsZero verifies /budget off resets the
+// cap to 0 (no budget gate) without touching accumulated spend.
+func TestUpdateBudgetCap_DisableSetsZero(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.SetBudget(1.00, nil, nil)
+	tr.AddUsageFull(0, 80000, 0, 0) // crosses 100% at $1
+	if !tr.BudgetExceeded() {
+		t.Fatal("precondition: BudgetExceeded should be true")
+	}
+	tr.UpdateBudgetCap(0)
+	if tr.BudgetExceeded() {
+		t.Error("BudgetExceeded() = true after disabling cap")
+	}
+	if got := tr.Snapshot().BudgetUSD; got != 0 {
+		t.Errorf("BudgetUSD after disable = %v, want 0", got)
+	}
+}
+
+// TestSnapshot_FormatRendersBudget asserts /cost surfaces the
+// budget=$spent/$cap (pct%) block when a budget is set.
+func TestSnapshot_FormatRendersBudget(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.SetBudget(2.00, nil, nil)
+	tr.AddUsageFull(0, 80000, 0, 0) // ~$1.20 → 60%
+
+	out := tr.Snapshot().Format()
+	if !contains(out, "budget=$") {
+		t.Errorf("Format() = %q, want budget block", out)
+	}
+	if !contains(out, "/$2.00") {
+		t.Errorf("Format() = %q, want cap rendered as $2.00", out)
+	}
+}
+
+// TestSnapshot_FormatOmitsBudgetWhenZero asserts /cost stays terse when
+// no budget is configured (operators that never set --budget).
+func TestSnapshot_FormatOmitsBudgetWhenZero(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.AddUsageFull(0, 1000, 0, 0)
+
+	out := tr.Snapshot().Format()
+	if contains(out, "budget=") {
+		t.Errorf("Format() = %q, should not render budget block when cap is 0", out)
+	}
+}
