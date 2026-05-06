@@ -833,6 +833,34 @@ func enterREPL(deps *REPLDeps) error {
 				}
 				continue
 			}
+			// In reverse-i-search mode, runes / Backspace / Enter / Esc-ish
+			// keys behave differently — they build the query, accept, or
+			// cancel rather than mutate the buffer directly. Routing
+			// these here keeps the normal key flow below uncluttered.
+			if ed.searching {
+				switch k.kind {
+				case keyRune:
+					ed.runeInSearch(k.r)
+					ed.render()
+					continue
+				case keyBackspace:
+					ed.backspaceInSearch()
+					ed.render()
+					continue
+				case keyCtrlR:
+					ed.cycleHistorySearchOlder()
+					ed.render()
+					continue
+				case keyEnter:
+					ed.acceptSearch()
+					ed.render()
+					continue
+				case keyCtrlC, keyCtrlD:
+					ed.cancelSearch()
+					ed.render()
+					continue
+				}
+			}
 			switch k.kind {
 			case keyEOF:
 				return nil
@@ -850,6 +878,15 @@ func enterREPL(deps *REPLDeps) error {
 				}
 			case keyBackspace:
 				ed.backspace()
+				ed.render()
+			case keyCtrlW:
+				ed.deleteWord()
+				ed.render()
+			case keyCtrlK:
+				ed.killToEnd()
+				ed.render()
+			case keyCtrlR:
+				ed.startHistorySearch()
 				ed.render()
 			case keyDelete:
 				ed.deleteForward()

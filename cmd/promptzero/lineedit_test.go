@@ -454,3 +454,189 @@ func TestWriteOutputClosesActiveStream(t *testing.T) {
 		t.Fatalf("writeOutput should clear the streaming flag when it closes an in-flight stream")
 	}
 }
+
+// --- v0.22.0 readline-style keystrokes ----------------------------------
+
+// TestDeleteWord_RemovesWordBackward locks the Ctrl+W contract,
+// matching bash readline `unix-word-rubout`: kill the run of
+// non-whitespace before the cursor (consuming any trailing
+// whitespace at the cursor first if the cursor sits in a space run).
+// Adjacent whitespace BEFORE the killed word is preserved so
+// successive Ctrl+W advances by exactly one word per press.
+func TestDeleteWord_RemovesWordBackward(t *testing.T) {
+	cases := []struct {
+		in      string
+		cursor  int
+		want    string
+		wantCur int
+	}{
+		// Cursor at end of "hello world" → strips "world", keeps " ".
+		{"hello world", 11, "hello ", 6},
+		// Cursor at end of "hello" alone → strips "hello", buffer empty.
+		{"hello", 5, "", 0},
+		// Cursor at column 0 — no-op.
+		{"abc", 0, "abc", 0},
+		// Multiple spaces between words preserved.
+		{"foo   bar", 9, "foo   ", 6},
+		// Tab counts as whitespace, preserved.
+		{"foo\tbar", 7, "foo\t", 4},
+		// Cursor in pure-whitespace tail — consumes the spaces AND
+		// the preceding word.
+		{"hello   ", 8, "", 0},
+	}
+	for _, c := range cases {
+		e := newTestEditor()
+		e.buf = []rune(c.in)
+		e.cursor = c.cursor
+		e.deleteWord()
+		if got := string(e.buf); got != c.want {
+			t.Errorf("deleteWord(%q@%d): buf = %q, want %q", c.in, c.cursor, got, c.want)
+		}
+		if e.cursor != c.wantCur {
+			t.Errorf("deleteWord(%q@%d): cursor = %d, want %d", c.in, c.cursor, e.cursor, c.wantCur)
+		}
+	}
+}
+
+// TestKillToEnd_ClearsTail locks the Ctrl+K contract: cuts from
+// cursor to end of buffer. No-op when already at end.
+func TestKillToEnd_ClearsTail(t *testing.T) {
+	cases := []struct {
+		in     string
+		cursor int
+		want   string
+	}{
+		{"hello world", 5, "hello"},
+		{"abc", 0, ""},
+		{"abc", 3, "abc"}, // already at end → no-op
+	}
+	for _, c := range cases {
+		e := newTestEditor()
+		e.buf = []rune(c.in)
+		e.cursor = c.cursor
+		e.killToEnd()
+		if got := string(e.buf); got != c.want {
+			t.Errorf("killToEnd(%q@%d): buf = %q, want %q", c.in, c.cursor, got, c.want)
+		}
+		if e.cursor != c.cursor {
+			t.Errorf("killToEnd(%q@%d): cursor moved to %d (should stay)", c.in, c.cursor, e.cursor)
+		}
+	}
+}
+
+// TestHistorySearch_FindsMostRecentSubstring locks the Ctrl+R
+// contract: opens search mode, accumulates a substring query, lands
+// on the most-recent matching history entry.
+func TestHistorySearch_FindsMostRecentSubstring(t *testing.T) {
+	e := newTestEditor()
+	e.history = []string{
+		"audit query --limit 5",
+		"wifi scan ap",
+		"generate badusb open run dialog",
+		"audit export",
+		"wifi deauth strongest",
+	}
+
+	e.startHistorySearch()
+	if !e.searching {
+		t.Fatal("startHistorySearch did not enable search mode")
+	}
+
+	// Type "audit" — should match the most recent entry containing it
+	// ("audit export", index 3).
+	for _, r := range "audit" {
+		e.runeInSearch(r)
+	}
+	if e.searchMatch != 3 {
+		t.Errorf("searchMatch = %d, want 3 (audit export)", e.searchMatch)
+	}
+	if string(e.buf) != "audit export" {
+		t.Errorf("buf = %q, want audit export", string(e.buf))
+	}
+
+	// Cycle older — should land on index 0.
+	e.cycleHistorySearchOlder()
+	if e.searchMatch != 0 {
+		t.Errorf("after cycleOlder: searchMatch = %d, want 0", e.searchMatch)
+	}
+	if string(e.buf) != "audit query --limit 5" {
+		t.Errorf("after cycleOlder: buf = %q", string(e.buf))
+	}
+
+	// Accept — search mode off, buffer keeps the matched line.
+	e.acceptSearch()
+	if e.searching {
+		t.Error("acceptSearch should exit search mode")
+	}
+	if string(e.buf) != "audit query --limit 5" {
+		t.Errorf("after accept: buf = %q", string(e.buf))
+	}
+}
+
+// TestHistorySearch_BackspaceShortensQuery covers the editing path
+// — typing too far, deleting characters re-resolves the match.
+func TestHistorySearch_BackspaceShortensQuery(t *testing.T) {
+	e := newTestEditor()
+	e.history = []string{"audit query", "wifi scan"}
+
+	e.startHistorySearch()
+	for _, r := range "audix" {
+		e.runeInSearch(r)
+	}
+	if e.searchMatch != -1 {
+		t.Errorf("query 'audix': searchMatch = %d, want -1 (no match)", e.searchMatch)
+	}
+	e.backspaceInSearch() // back to "audi"
+	if e.searchMatch != 0 {
+		t.Errorf("after backspace: searchMatch = %d, want 0", e.searchMatch)
+	}
+}
+
+// TestHistorySearch_CancelRestoresBuffer ensures Esc-style cancel
+// rolls back to whatever the user was typing before they hit Ctrl+R.
+func TestHistorySearch_CancelRestoresBuffer(t *testing.T) {
+	e := newTestEditor()
+	e.history = []string{"audit query"}
+	e.buf = []rune("partial input")
+	e.cursor = len(e.buf)
+
+	e.startHistorySearch()
+	for _, r := range "audit" {
+		e.runeInSearch(r)
+	}
+	if string(e.buf) != "audit query" {
+		t.Fatalf("after match: buf = %q", string(e.buf))
+	}
+
+	e.cancelSearch()
+	if e.searching {
+		t.Error("cancelSearch should exit search mode")
+	}
+	if string(e.buf) != "partial input" {
+		t.Errorf("after cancel: buf = %q, want partial input", string(e.buf))
+	}
+}
+
+// TestSearchPrompt_RendersStatus covers the prompt-prefix renderer
+// the REPL uses when search mode is active. Failed-match state has
+// a distinct prefix so the operator sees the search isn't landing.
+func TestSearchPrompt_RendersStatus(t *testing.T) {
+	e := newTestEditor()
+	e.history = []string{"audit query"}
+	if e.SearchPrompt() != "" {
+		t.Error("SearchPrompt should be empty when not searching")
+	}
+	e.startHistorySearch()
+	for _, r := range "audit" {
+		e.runeInSearch(r)
+	}
+	if got := e.SearchPrompt(); got != "(reverse-i-search)`audit': " {
+		t.Errorf("SearchPrompt = %q", got)
+	}
+	for _, r := range "xx" {
+		e.runeInSearch(r)
+	}
+	if got := e.SearchPrompt(); got != "(failed reverse-i-search)`auditxx': " {
+		t.Errorf("failed-prompt = %q", got)
+	}
+}

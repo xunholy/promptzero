@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-05-06
+
+Polish release. Lands the Tier-1 quick-wins cluster from the
+2026-05-06 ecosystem-comparison review (themes D + F). Each item is
+small individually; the bundle materially improves the operator
+surface and closes two doc-hygiene items along the way.
+
+### Added
+
+- **Three readline-style keystrokes in the REPL line editor.** Ctrl+W
+  deletes the word backward (matches bash `unix-word-rubout` —
+  preserves leading whitespace so successive presses advance one
+  word per stroke), Ctrl+K kills from cursor to end-of-line, Ctrl+R
+  enters reverse-incremental history search with classic readline
+  prompt rendering ("(reverse-i-search)`query': match"). Six new
+  unit tests cover the contracts including the failed-match prompt
+  variant, query backspace, and Esc-style cancel restoring the
+  pre-search buffer. (`cmd/promptzero/lineedit.go`,
+  `cmd/promptzero/repl.go`, `cmd/promptzero/lineedit_test.go`)
+
+- **"Save PNG" button on the web screen-mirror panel.** One-click
+  download of the current 128×64 frame as PNG; disabled when the
+  canvas is offline. Useful for capturing evidence during an
+  engagement without leaving the web UI.
+  (`internal/web/static/app.js`)
+
+- **Phone-as-remote responsive CSS.** `@media (pointer: coarse)`
+  enforces 44×44 minimum tap targets (WCAG floor + Apple HIG), input
+  font-size ≥16px (suppresses iOS Safari auto-zoom on focus), and
+  `touch-action: none` on the screen-mirror canvas (so a tap-and-drag
+  doesn't scroll the surrounding page). Three small rules ship the
+  phone-as-remote use case without a dedicated mobile build.
+  (`internal/web/static/app.css`)
+
+- **`--web-share` flag.** Prints a copy-pasteable URL with the bearer
+  token embedded so a teammate or the operator's phone can connect
+  to the running `--web` server. Refuses to print when no auth token
+  is set — sharing an unauthenticated URL by QR / DM / pasted-into-
+  Slack is exactly the wrong default. (`cmd/promptzero/setup.go`,
+  `cmd/promptzero/main.go`)
+
+- **MAC-OUI attack-attribution table** in `internal/defense/`. A
+  curated list of OUI prefixes for the SoC families commonly used by
+  Flipper-class attackers (Nordic nRF52, Espressif ESP32, TI CC254x).
+  `LookupOUI(mac)` returns a descriptive label; `IsKnownAttackOUI(mac)`
+  returns the boolean. Used by the defensive classifier to enrich
+  Match descriptions ("BLE spam from Espressif (ESP32 …)" instead of
+  "BLE spam from AC:BC:DE:01:02:03"). Robust to MAC formatting:
+  colons / dashes / dots / spaces / unseparated all canonicalise to
+  the same uppercase 24-bit prefix. Four new tests.
+  (`internal/defense/oui.go`, `internal/defense/oui_test.go`)
+
+- **`badkb_run` Spec.** BadUSB over BLE HID — same DuckyScript syntax
+  and pre-flight validator as `badusb_run`, routed via the BadBT
+  loader app instead of USB HID. Requires Momentum / Unleashed /
+  RogueMaster firmware (stock OFW lacks the BadBT app). Risk: High,
+  same tier as `badusb_run` because the payload-class danger is
+  identical — only the transport changes. Registered with the
+  validator gate so a Critical-finding payload is refused regardless
+  of which transport runs it. (`internal/tools/badusb.go`,
+  `internal/risk/risk.go`)
+
+### Changed
+
+- **Catalogue de-listings.** Removed two ambiguous entries from
+  `docs/awesome-flipper-zero-projects.md` flagged by the
+  ecosystem-comparison review: row 258 (`flippercloud/flipper-mcp`,
+  a SaaS feature-flag service) and row 475 (`DumpySquare/flipperAgents`,
+  a NetScaler/F5 ADC manager). Neither is a Flipper-Zero project;
+  the naming collisions were creating noise in the AIAgent category.
+
+### Notes
+
+- Registry size: 270 → 271 (added `badkb_run`).
+- Validation: vet clean, lint 0 issues, test 54 packages pass /
+  0 fail, govulncheck 0 vulnerabilities, binary +0.1% vs v0.21.
+- One Tier-1 item from the ecosystem review (`proxmark3-to-flipper`
+  vendor + `nfc_import_pm3` Spec) deferred — investigating + vendoring
+  the third-party library is closer to half-day Tier-2 effort and
+  would have padded this PR. Tracked for a follow-up release.
+- The remaining ecosystem-review themes (A: provider-agnostic LLM /
+  WiFi-MCP / autonomous campaign; C: Deps.FlipperB + nfc_relay_run)
+  are each multi-week dedicated releases — see the synthesis at
+  `~/ObsidianVault/agent/reviews/promptzero-2026-05-06-ecosystem/`.
+
 ## [0.21.0] - 2026-05-05
 
 Reliability and reporting release. Closes the remaining

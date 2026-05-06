@@ -1781,3 +1781,34 @@ body[data-marauder-active="1"] .dpad::before {
   }
   .marauder-side-block { min-width: 60px; }
 }
+
+/* ===========================================================================
+   v0.22.0 — phone / tablet ergonomics polish
+   ===========================================================================
+   Phone-as-remote handoff is a real use case (red-team operator wants to drive
+   the Flipper from their pocket while moving). Three small rules buy us most
+   of the way there without a dedicated mobile build:
+
+   1. iOS auto-zoom on form-field focus is suppressed by ensuring all inputs
+      render at >= 16px font-size (Mobile Safari's threshold).
+   2. Tap targets bump to 44×44 minimum on coarse-pointer devices (the WCAG
+      touch-target floor; matches Apple HIG).
+   3. The screen-mirror canvas opts out of touch gestures so a tap-and-drag
+      on the mirror doesn't scroll the surrounding page.
+   =========================================================================== */
+
+@media (pointer: coarse) {
+  /* Tap-target floor for every clickable surface. */
+  button, .screen-btn, .nav-tab, .file-btn, .send-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* iOS Safari zooms on focus when input font-size < 16px. */
+  input, textarea, select {
+    font-size: 16px;
+  }
+  /* The mirror canvas is for displaying, not gesturing. */
+  .screen-canvas {
+    touch-action: none;
+  }
+}
