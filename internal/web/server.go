@@ -194,9 +194,10 @@ type Server struct {
 	marauderOn atomic.Bool
 
 	// bridgeOn is set when the Flipper has been suspended for
-	// USB-UART bridge mode (Marauder stacked on the GPIO header). The
-	// JSON wiring on /api/device + the cockpit pill rendering is
-	// deferred — see SPEC.md §6.3.
+	// USB-UART bridge mode (Marauder stacked on the GPIO header).
+	// Surfaces in the /api/device JSON's `bridge: {active, reason}`
+	// block; the cockpit reads it to render the "via Flipper bridge"
+	// Marauder subtitle and the suspended-Flipper pill.
 	bridgeOn     atomic.Bool
 	bridgeReason atomic.Pointer[string]
 
@@ -447,10 +448,10 @@ func (s *Server) SetMarauder(m marauderClient) { s.marauder = m }
 
 // SetBridgeMode records that the Flipper has been suspended for
 // USB-UART bridge mode (Marauder stacked on Flipper GPIO header). The
-// reason string is operator-visible and surfaces in /status today;
-// JSON-on-the-wire surfacing for the cockpit and the pill rendering
-// in the frontend are deferred — see SPEC.md §6.3 and the TODO in
-// api.go.
+// reason string is operator-visible and surfaces both in /status and
+// in the /api/device JSON's bridge block (where the cockpit picks it
+// up for the suspended-Flipper pill / "via Flipper bridge" Marauder
+// subtitle).
 func (s *Server) SetBridgeMode(active bool, reason string) {
 	s.bridgeOn.Store(active)
 	if active {
