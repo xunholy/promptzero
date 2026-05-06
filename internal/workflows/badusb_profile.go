@@ -63,7 +63,11 @@ func BadUSBTargetProfile(ctx context.Context, deps Deps, params map[string]inter
 	// --- 1. Generate ---
 	var result *generate.Result
 	genPhase := runPhase("generate", "generate_badusb", func() (string, error) {
-		r, err := deps.Generator.BadUSB(ctx, description, targetOS)
+		// Empty keyboardLayout falls back to "us" inside the
+		// Generator. The workflow doesn't currently surface a layout
+		// knob; operators that need non-US should call generate_badusb
+		// directly with keyboard_layout set.
+		r, err := deps.Generator.BadUSB(ctx, description, targetOS, "")
 		if err != nil {
 			return "", err
 		}

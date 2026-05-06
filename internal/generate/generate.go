@@ -94,16 +94,52 @@ REQUIREMENTS:
 
 // --- BadUSB / DuckyScript ---
 
-func (g *Generator) BadUSB(ctx context.Context, description string, targetOS string) (*Result, error) {
+// keyboardLayoutGuidance returns prompt-friendly notes for the model
+// when a non-US layout is requested. Empty string for "us"/"" so the
+// happy-path prompt stays unchanged. Curated list covers the layouts
+// v1nc's CFW + Momentum / Unleashed actually ship .kl files for as
+// of mid-2026; unknown layouts fall back to a generic note.
+func keyboardLayoutGuidance(layout string) string {
+	switch strings.ToLower(strings.TrimSpace(layout)) {
+	case "", "us":
+		return ""
+	case "gb", "uk":
+		return "Target uses the UK (gb) keyboard layout. £/$ swap, @/\" swap, # vs ~ position differs from US. Use ALTCHAR for £ (0163) when needed."
+	case "de":
+		return "Target uses the German (de) keyboard layout. Y/Z are swapped; ä ö ü ß occupy keys US has -, ;, ', /. AltGr modifier required for @ (Alt-Q). Use ALTCHAR for accented characters: ä=0228 ö=0246 ü=0252 ß=0223."
+	case "fr":
+		return "Target uses the French AZERTY (fr) layout. A/Q and W/Z swap; numbers require Shift. AltGr for @ (Alt-0), # (Alt-3). Use ALTCHAR for é=0233 è=0232 à=0224 ç=0231 ù=0249."
+	case "es":
+		return "Target uses the Spanish (es) layout. Tilde dead-key in front of vowels; ñ on the ; key. ALTCHAR for ñ=0241 á=0225 é=0233 í=0237 ó=0243 ú=0250 ¿=0191."
+	case "it":
+		return "Target uses the Italian (it) layout. Accented vowels on the right of L key. ALTCHAR for à=0224 è=0232 ì=0236 ò=0242 ù=0249."
+	case "dk", "no", "sv", "se":
+		return "Target uses a Nordic (dk/no/sv) layout. å, æ/ø/ä/ö occupy the right of L key. ALTCHAR for å=0229 æ=0230 ø=0248 ä=0228 ö=0246."
+	case "pt":
+		return "Target uses the Portuguese (pt) layout. Tilde dead-key. ALTCHAR for ã=0227 õ=0245 ç=0231."
+	case "br":
+		return "Target uses the Brazilian Portuguese (pt-BR) layout. Cedilla on dedicated key, accent dead-keys. ALTCHAR for ã=0227 ç=0231 á=0225."
+	default:
+		return fmt.Sprintf("Target uses the %q keyboard layout. Characters that don't map cleanly to US ASCII should use ALTCHAR <Unicode-decimal> rather than literal STRING.", layout)
+	}
+}
+
+func (g *Generator) BadUSB(ctx context.Context, description string, targetOS string, keyboardLayout string) (*Result, error) {
 	if targetOS == "" {
 		targetOS = "windows"
+	}
+	if keyboardLayout == "" {
+		keyboardLayout = "us"
+	}
+	layoutNote := keyboardLayoutGuidance(keyboardLayout)
+	if layoutNote != "" {
+		layoutNote = "\nKEYBOARD LAYOUT: " + layoutNote + "\n"
 	}
 
 	prompt := fmt.Sprintf(`Generate a Flipper Zero BadUSB (DuckyScript) payload.
 
 DESCRIPTION: %s
-TARGET OS: %s
-
+TARGET OS: %s%s
 REQUIREMENTS:
 - Use valid DuckyScript syntax compatible with Flipper Zero
 - Standard commands: REM, DELAY, STRING, ENTER, GUI, ALT, CTRL, SHIFT, TAB, ESCAPE, UP, DOWN, LEFT, RIGHT, CAPS_LOCK, DELETE, BACKSPACE, END, HOME, INSERT, PAGEUP, PAGEDOWN, PRINTSCREEN, SPACE, F1-F24, MENU
@@ -128,7 +164,7 @@ REQUIREMENTS:
 - Start with appropriate DELAY values for the USB device to be recognized
 - Target the specified OS
 - Be efficient — minimize delays where possible but keep it reliable
-- Return ONLY the DuckyScript, nothing else — no markdown, no explanation`, description, targetOS)
+- Return ONLY the DuckyScript, nothing else — no markdown, no explanation`, description, targetOS, layoutNote)
 
 	resp, fbProvider, err := g.completeWithFallback(ctx,
 		"You are an expert in DuckyScript and USB HID attack payloads for Flipper Zero. You create reliable, efficient scripts. Output raw DuckyScript only.",
