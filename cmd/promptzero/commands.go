@@ -239,6 +239,23 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 			}
 		})
 		return true, false
+	case "/forget":
+		if len(fields) < 2 {
+			ed.writeOutput(func() {
+				fmt.Fprintf(os.Stderr, "  %susage: /forget <session-id>%s\n", dim, reset)
+				fmt.Fprintf(os.Stderr, "  %srun /sessions to see ids%s\n", dim, reset)
+			})
+			return true, false
+		}
+		id := fields[1]
+		ed.writeOutput(func() {
+			if err := deps.ai.DeleteSession(id); err != nil {
+				fmt.Fprintf(os.Stderr, "  %s● forget failed: %v%s\n", red, err, reset)
+			} else {
+				fmt.Fprintf(os.Stderr, "  %s● forgot session %s%s%s (snapshots purged)\n", green, bold, id, reset)
+			}
+		})
+		return true, false
 	case "/validate":
 		if len(fields) < 2 {
 			ed.writeOutput(func() {
@@ -290,6 +307,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/sessions%s              List saved sessions\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/resume <id>%s           Resume a saved session by id\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/save <name>%s           Save current conversation under <name>\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/forget <id>%s           Delete a saved session and purge its snapshots\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sInfo%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/status%s                Connection, capabilities, Flipper telemetry\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/tools [filter]%s        Enumerate registered tools (grouped)\n", cyan, reset)
@@ -1352,6 +1370,7 @@ func printSessions(ai *agent.Agent) {
 			s.UpdatedAt.Local().Format("2006-01-02 15:04"),
 			dim, len(s.Messages), reset)
 	}
+	fmt.Fprintf(os.Stderr, "  %s/resume <id>  /forget <id>%s\n", dim, reset)
 }
 
 // --- /tools ---------------------------------------------------------------

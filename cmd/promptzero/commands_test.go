@@ -83,3 +83,23 @@ func TestHandleValidate_NilFlipper(t *testing.T) {
 
 // Ensure flippermock import stays referenced if the handler type changes.
 var _ flippermock.Handler = func(args []string) string { return "" }
+
+// /forget without an id should print the usage hint via dispatchSlashCommand
+// and not exit the REPL. Exercises the dispatcher path so a future rename
+// of /forget can't silently strand it.
+func TestForget_NoArgs_ShowsUsage(t *testing.T) {
+	deps := &REPLDeps{ed: newLineEditor(&termUI{enabled: false})}
+
+	out := captureStderr(t, func() {
+		handled, exit := dispatchSlashCommand("/forget", deps)
+		if !handled {
+			t.Fatalf("/forget with no args should be handled")
+		}
+		if exit {
+			t.Fatalf("/forget should not trigger REPL exit")
+		}
+	})
+	if !strings.Contains(out, "usage: /forget") {
+		t.Fatalf("usage line missing: %q", out)
+	}
+}
