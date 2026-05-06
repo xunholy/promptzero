@@ -201,6 +201,10 @@ var toolLevels = func() map[string]Level {
 		"ibutton_emulate", "ibutton_write",
 		"gpio_set",
 		"badusb_run",
+		// v0.22.0 — BadUSB over BLE HID. Same payload risk class as
+		// badusb_run; only the transport changes (BLE vs USB), the
+		// validator gate still fires.
+		"badkb_run",
 		"wifi_beacon_spam", "wifi_beacon_random", "wifi_beacon_clone",
 		"wifi_beacon_rickroll", "wifi_beacon_funny",
 		"wifi_probe_flood",

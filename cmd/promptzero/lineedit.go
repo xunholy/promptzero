@@ -28,6 +28,12 @@ const (
 	keyCtrlC
 	keyCtrlD
 	keyCtrlL
+	// v0.22.0 — three readline-style keystrokes catalogued by the
+	// 2026-05-06 ecosystem-comparison review. Each maps to a method
+	// on lineEditor (deleteWord / killToEnd / startHistorySearch).
+	keyCtrlW // delete word backward
+	keyCtrlK // kill to end of line
+	keyCtrlR // reverse-incremental history search
 	keyEOF
 	// keyPaste carries a bracketed-paste payload in text. Literal bytes
 	// (including \r/\n) are preserved so pastes never auto-submit — the
@@ -139,8 +145,17 @@ func readKeys(out chan<- keyEvent) {
 			case 0x0a, 0x0d:
 				out <- keyEvent{kind: keyEnter}
 				i++
+			case 0x0b:
+				out <- keyEvent{kind: keyCtrlK}
+				i++
 			case 0x0c:
 				out <- keyEvent{kind: keyCtrlL}
+				i++
+			case 0x12:
+				out <- keyEvent{kind: keyCtrlR}
+				i++
+			case 0x17:
+				out <- keyEvent{kind: keyCtrlW}
 				i++
 			default:
 				if b < 0x20 {
@@ -252,6 +267,15 @@ type lineEditor struct {
 	historyIdx int    // -1 when not browsing
 	savedEdit  []rune // buffer stashed while browsing history
 
+	// Reverse-incremental history search state (Ctrl+R). v0.22.0.
+	// searching is true between startHistorySearch() and acceptSearch /
+	// cancelSearch. searchQuery accumulates the user's substring; each
+	// rune insertion re-resolves searchMatch. Press Ctrl+R again while
+	// searching to cycle to the next older match.
+	searching   bool
+	searchQuery []rune
+	searchMatch int // history index of current match; -1 when no match
+
 	// Queued prompt — single slot. If the user presses Enter while a turn
 	// is running, the new input replaces whatever is queued. Documented.
 	hasQueued atomic.Bool
@@ -345,6 +369,159 @@ func (e *lineEditor) deleteForward() {
 		return
 	}
 	e.buf = append(e.buf[:e.cursor], e.buf[e.cursor+1:]...)
+}
+
+// deleteWord removes the word to the left of the cursor (Ctrl+W). A
+// "word" is any run of non-whitespace, with adjacent whitespace also
+// trimmed so successive Ctrl+W feels right at command boundaries.
+// No-op when the cursor is at column 0.
+func (e *lineEditor) deleteWord() {
+	e.detachHistory()
+	if e.cursor == 0 {
+		return
+	}
+	end := e.cursor
+	// Walk left over trailing whitespace first.
+	for end > 0 && isWordSpace(e.buf[end-1]) {
+		end--
+	}
+	// Then walk left over the word itself.
+	for end > 0 && !isWordSpace(e.buf[end-1]) {
+		end--
+	}
+	e.buf = append(e.buf[:end], e.buf[e.cursor:]...)
+	e.cursor = end
+}
+
+// killToEnd cuts everything from the cursor to the end of the buffer
+// (Ctrl+K). Operator-friendly: lets you nuke a wrong tail without
+// hammering Backspace.
+func (e *lineEditor) killToEnd() {
+	e.detachHistory()
+	if e.cursor >= len(e.buf) {
+		return
+	}
+	e.buf = e.buf[:e.cursor]
+}
+
+func isWordSpace(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\n' || r == '\r'
+}
+
+// --- reverse-incremental history search (Ctrl+R) ------------------------
+
+// startHistorySearch enters search mode. Stashes the current buffer so
+// cancelSearch can restore it. The search query starts empty —
+// runeInSearch builds it character-by-character, re-resolving the
+// match on every keystroke (classic readline shape).
+func (e *lineEditor) startHistorySearch() {
+	if len(e.history) == 0 {
+		return
+	}
+	if e.searching {
+		// Pressing Ctrl+R while already searching cycles to the next
+		// older match for the current query.
+		e.cycleHistorySearchOlder()
+		return
+	}
+	e.searching = true
+	e.searchQuery = nil
+	e.searchMatch = -1
+	if len(e.savedEdit) == 0 {
+		e.savedEdit = append([]rune(nil), e.buf...)
+	}
+}
+
+// runeInSearch appends one rune to the query and re-resolves the
+// match. Backspace shortens the query by one rune.
+func (e *lineEditor) runeInSearch(r rune) {
+	if !e.searching {
+		return
+	}
+	e.searchQuery = append(e.searchQuery, r)
+	e.resolveSearchMatch(len(e.history) - 1)
+}
+
+func (e *lineEditor) backspaceInSearch() {
+	if !e.searching || len(e.searchQuery) == 0 {
+		return
+	}
+	e.searchQuery = e.searchQuery[:len(e.searchQuery)-1]
+	e.resolveSearchMatch(len(e.history) - 1)
+}
+
+// cycleHistorySearchOlder finds the next older match for the current
+// query. No-op when there's no current match or no older entries.
+func (e *lineEditor) cycleHistorySearchOlder() {
+	if !e.searching || e.searchMatch < 0 {
+		return
+	}
+	e.resolveSearchMatch(e.searchMatch - 1)
+}
+
+// resolveSearchMatch walks history backward from start, looking for
+// the most recent entry containing searchQuery as a substring.
+// Updates searchMatch (-1 when no match) and renders the buffer to
+// the matched entry so it shows in the input slot.
+func (e *lineEditor) resolveSearchMatch(start int) {
+	q := string(e.searchQuery)
+	if q == "" {
+		e.searchMatch = -1
+		return
+	}
+	for i := start; i >= 0; i-- {
+		if strings.Contains(e.history[i], q) {
+			e.searchMatch = i
+			e.buf = []rune(e.history[i])
+			e.cursor = len(e.buf)
+			e.offset = 0
+			return
+		}
+	}
+	e.searchMatch = -1
+}
+
+// acceptSearch commits the matched entry (already in e.buf) as the
+// editing buffer and exits search mode. After accept, normal editing
+// resumes with the matched line as the starting point.
+func (e *lineEditor) acceptSearch() {
+	if !e.searching {
+		return
+	}
+	e.searching = false
+	e.searchQuery = nil
+	e.searchMatch = -1
+	e.savedEdit = nil
+}
+
+// cancelSearch restores the buffer the user was editing before they
+// hit Ctrl+R. Esc / Ctrl+C / Ctrl+G all route here.
+func (e *lineEditor) cancelSearch() {
+	if !e.searching {
+		return
+	}
+	e.buf = append([]rune(nil), e.savedEdit...)
+	e.cursor = len(e.buf)
+	e.offset = 0
+	e.searching = false
+	e.searchQuery = nil
+	e.searchMatch = -1
+	e.savedEdit = nil
+}
+
+// SearchPrompt renders the search-mode prompt prefix the REPL shows
+// in place of the normal "> " when searching. Empty when not in
+// search mode. Exposed so the renderer can splice it without poking
+// at private fields.
+func (e *lineEditor) SearchPrompt() string {
+	if !e.searching {
+		return ""
+	}
+	status := "(reverse-i-search)"
+	if e.searchMatch < 0 && len(e.searchQuery) > 0 {
+		status = "(failed reverse-i-search)"
+	}
+	return fmt.Sprintf("%s`%s': ", status, string(e.searchQuery))
 }
 
 func (e *lineEditor) moveLeft() {

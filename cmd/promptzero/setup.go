@@ -240,6 +240,7 @@ type runFlags struct {
 	modeName             string  // --mode (deprecated, see runFlags.readOnly)
 	readOnly             bool    // --read-only
 	budgetUSD            float64 // --budget
+	webShare             bool    // --web-share — print copy-pasteable URL with the bearer token embedded
 	watchPaths           stringSlice
 	bleDiscover          bool          // --ble-discover
 	bleDiscoverDuration  time.Duration // --ble-discover-duration
@@ -281,6 +282,8 @@ func parseFlags() *runFlags {
 		"Refuse any tool that writes, transmits, emulates, or executes — only Low-risk reads/queries/scans dispatch. The single safety rail; replaces --mode.")
 	flag.Float64Var(&f.budgetUSD, "budget", 0,
 		"Session USD cap. The cost tracker warns at 80% and refuses new turns past 100%. 0 disables (default). Useful for hobbyist 'try-with-$5' sessions on Opus.")
+	flag.BoolVar(&f.webShare, "web-share", false,
+		"Print a copy-pasteable URL embedding the bearer token so a teammate / your phone can connect to the running --web server. Only effective alongside --web. Don't share the URL outside the engagement.")
 	flag.Var(&f.watchPaths, "watch", "Watch a directory for FS events; repeat to watch several")
 	flag.BoolVar(&f.showVersion, "version", false, "Show version")
 	flag.BoolVar(&f.bleDiscover, "ble-discover", false, "Scan for nearby BLE peripherals and print their addresses + names + RSSI (use this to find the right ble:// identifier on macOS where hardware MACs are hidden), then exit.")
@@ -1333,6 +1336,10 @@ type WebDeps struct {
 	Flipper        *flipper.Flipper
 	FlipperOnline  bool
 	MarauderOnline bool
+	// WebShare opts into the v0.22.0 copy-pasteable URL print. Refuses
+	// to print when no auth token is set (exposing an unauthenticated
+	// endpoint by URL share is the wrong default).
+	WebShare bool
 }
 
 // runWebMode binds the HTTP UI on the configured address and serves
@@ -1351,6 +1358,21 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 		statusOK(fmt.Sprintf("Web auth %s(bearer token, %d chars)%s", dim, len(cfg.Web.Token), reset))
 	} else {
 		statusWarn("Web auth disabled — set web.token or PROMPTZERO_WEB_TOKEN")
+	}
+	// v0.22.0 — --web-share prints a single, copy-friendly URL with the
+	// bearer token embedded. The intended use case is "I'm running the
+	// web mode on my laptop and want my phone (or a teammate on the
+	// same WiFi) to connect." Without this, operators have to assemble
+	// the URL by hand from `host:port` + `?token=...`. Refuses to print
+	// when no token is set — exposing an unauthenticated endpoint by
+	// QR-code or DM is exactly the wrong default.
+	if deps.WebShare {
+		if cfg.Web.Token == "" {
+			statusWarn("--web-share refused: no auth token set. Sharing an unauthenticated URL is unsafe.")
+		} else {
+			statusOK(fmt.Sprintf("Web share URL: %shttp://%s/?token=%s%s",
+				bold, addr, cfg.Web.Token, reset))
+		}
 	}
 	// Wire the Phase-14 panel surface. Flipper may be nil when the
 	// operator launched --web without a device attached; Marauder and

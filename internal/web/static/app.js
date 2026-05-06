@@ -3178,6 +3178,24 @@
 
     btnRow.appendChild(startBtn);
     btnRow.appendChild(stopBtn);
+
+    // v0.22.0 — "Save PNG" of the current mirror frame. Useful for
+    // capturing evidence during an engagement; the canvas is already
+    // 128×64 monochrome so the PNG is a few hundred bytes. Disabled
+    // when the canvas is offline (no point exporting a blank).
+    var saveBtn = mkEl('button', 'screen-btn', 'Save PNG');
+    saveBtn.title = 'Download the current screen as a PNG';
+    saveBtn.addEventListener('click', function () {
+      if (!_screenCanvas || _screenCanvas.classList.contains('offline')) return;
+      var link = document.createElement('a');
+      link.download = 'flipper-screen-' + Date.now() + '.png';
+      link.href = _screenCanvas.toDataURL('image/png');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+    btnRow.appendChild(saveBtn);
+
     panel.appendChild(btnRow);
 
     var hint = mkEl('p', 'screen-hint', 'While mirroring, chat and file operations are paused.');

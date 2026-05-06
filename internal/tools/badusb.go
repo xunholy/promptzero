@@ -83,4 +83,41 @@ func init() {
 			return string(out), nil
 		},
 	})
+
+	// v0.22.0 — BadKB / BadBT: same DuckyScript over BLE HID instead
+	// of USB HID. Available on Momentum, Unleashed, RogueMaster (the
+	// stock firmware lacks the BadBT app). Same validator gate as
+	// badusb_run because the payload risk is identical — only the
+	// transport changes. The "thin wrapper" framing from the
+	// 2026-05-06 ecosystem review: shares everything except the
+	// final loader call.
+	Register(Spec{
+		Name: "badkb_run",
+		Description: "Execute a BadUSB/Rubber Ducky script over BLE HID (BadBT/BadKB app). Requires Momentum, Unleashed, or RogueMaster firmware — the stock OFW does not ship the BadBT app. Same DuckyScript syntax and pre-flight validator as badusb_run; just routes the keystrokes over Bluetooth Low Energy instead of USB. Pair the Flipper to the target host first via the BLE settings menu.\n\nExamples:\n" +
+			`- {"file":"/ext/badusb/demo.txt"}  — execute the same payload over BLE`,
+		Schema:    json.RawMessage(`{"type":"object","properties":{"file":{"type":"string","description":"Path to .txt BadUSB/DuckyScript on SD card"}}}`),
+		Required:  []string{"file"},
+		Risk:      risk.High,
+		Group:     GroupFlipperBadUSB,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+			path := str(p, "file")
+			if rep, err := runBadUSBValidator(d, path); err == nil {
+				if rep.Severity == validator.SeverityCritical {
+					if d.Config == nil || !d.Config.Validator.BadUSB.AllowCritical {
+						return "", fmt.Errorf("badkb_run blocked by sandbox validator:\n%s\nSet validator.badusb.allow_critical=true to override, or call badusb_validate to triage", rep.RenderText())
+					}
+				}
+				if rep.Severity == validator.SeverityWarn {
+					if d.Config != nil && d.Config.Validator.BadUSB.WarnAction == "block" {
+						return "", fmt.Errorf("badkb_run blocked (warn-action=block):\n%s", rep.RenderText())
+					}
+				}
+			}
+			// Open the BadBT app via the loader, passing the script
+			// path as the launch argument (same convention as the
+			// stock loader_open path that other Flipper apps follow).
+			return d.Flipper.LoaderOpen("BadBT", path)
+		},
+	})
 }
