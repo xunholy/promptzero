@@ -215,7 +215,7 @@ func TestBadUSB_DefaultsToWindowsTarget(t *testing.T) {
 	llm := &stubProvider{resp: &provider.Response{Content: "DELAY 100\nSTRING hi"}}
 	g := New(llm, nil)
 
-	if _, err := g.BadUSB(context.Background(), "open run dialog", ""); err != nil {
+	if _, err := g.BadUSB(context.Background(), "open run dialog", "", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -235,7 +235,7 @@ func TestBadUSB_CapsAt64KBytes(t *testing.T) {
 	llm := &stubProvider{resp: &provider.Response{Content: huge}}
 	g := New(llm, nil)
 
-	got, err := g.BadUSB(context.Background(), "test", "linux")
+	got, err := g.BadUSB(context.Background(), "test", "linux", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,5 +258,95 @@ func TestPreviewIsBoundedAcrossGenerators(t *testing.T) {
 	}
 	if len(r.Preview) > 510 { // 500 chars + ellipsis
 		t.Errorf("EvilPortal Preview len = %d, want <= 510", len(r.Preview))
+	}
+}
+
+// --- v0.23-keyboard-layout ---------------------------------------------
+
+// TestKeyboardLayoutGuidance_KnownLayoutsHaveNotes locks the
+// curated table — every layout we claim to support in the Spec
+// schema must produce a non-empty guidance string. Empty guidance
+// means the LLM gets no extra context, which silently degrades to
+// US-default behaviour.
+func TestKeyboardLayoutGuidance_KnownLayoutsHaveNotes(t *testing.T) {
+	cases := []string{"gb", "uk", "de", "fr", "es", "it", "dk", "no", "sv", "se", "pt", "br"}
+	for _, layout := range cases {
+		got := keyboardLayoutGuidance(layout)
+		if got == "" {
+			t.Errorf("layout %q: expected non-empty guidance, got empty", layout)
+		}
+	}
+}
+
+// TestKeyboardLayoutGuidance_USIsEmpty is the contract for the
+// happy-path / pre-this-fix shape: empty string and "us" both
+// produce no extra prompt content, so existing payloads that don't
+// pass a layout argument behave identically.
+func TestKeyboardLayoutGuidance_USIsEmpty(t *testing.T) {
+	for _, layout := range []string{"", "us", "US", "  us  "} {
+		if got := keyboardLayoutGuidance(layout); got != "" {
+			t.Errorf("layout %q: expected empty (US default), got %q", layout, got)
+		}
+	}
+}
+
+// TestKeyboardLayoutGuidance_UnknownFallsBackToGeneric verifies the
+// catch-all path — an unknown layout still produces guidance (just
+// generic) so the model gets the signal that non-US encoding is
+// required.
+func TestKeyboardLayoutGuidance_UnknownFallsBackToGeneric(t *testing.T) {
+	got := keyboardLayoutGuidance("xx-yz-not-a-real-layout")
+	if got == "" {
+		t.Fatal("unknown layout should still produce generic guidance")
+	}
+	if !strings.Contains(got, "ALTCHAR") {
+		t.Errorf("generic guidance should mention ALTCHAR; got: %s", got)
+	}
+}
+
+// TestBadUSB_LayoutThreadsIntoPrompt exercises the full path:
+// when a layout is supplied, the LLM call should receive a prompt
+// containing the layout-specific note. We capture the prompt via a
+// fake provider and verify its content.
+func TestBadUSB_LayoutThreadsIntoPrompt(t *testing.T) {
+	llm := &stubProvider{resp: &provider.Response{Content: "DELAY 100\nSTRING test"}}
+	g := New(llm, nil)
+
+	if _, err := g.BadUSB(context.Background(), "type a German phrase", "windows", "de"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(llm.gotMsgs) == 0 {
+		t.Fatal("LLM should have been called")
+	}
+	prompt := llm.gotMsgs[0].Content
+	if !strings.Contains(prompt, "KEYBOARD LAYOUT") {
+		t.Errorf("prompt should include layout heading; got prompt:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "German") {
+		t.Errorf("prompt should mention German layout; got prompt:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "Y/Z") {
+		t.Errorf("prompt should mention Y/Z swap (German layout fact); got prompt:\n%s", prompt)
+	}
+}
+
+// TestBadUSB_USLayoutKeepsPromptUnchanged is the regression guard:
+// when the operator doesn't ask for a non-US layout, the prompt
+// should NOT contain layout boilerplate that would waste tokens on
+// the common case.
+func TestBadUSB_USLayoutKeepsPromptUnchanged(t *testing.T) {
+	llm := &stubProvider{resp: &provider.Response{Content: "DELAY 100\nSTRING test"}}
+	g := New(llm, nil)
+
+	if _, err := g.BadUSB(context.Background(), "say hi", "windows", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(llm.gotMsgs) == 0 {
+		t.Fatal("LLM should have been called")
+	}
+	prompt := llm.gotMsgs[0].Content
+	if strings.Contains(prompt, "KEYBOARD LAYOUT") {
+		t.Errorf("US layout should not add KEYBOARD LAYOUT note to prompt; got:\n%s", prompt)
 	}
 }

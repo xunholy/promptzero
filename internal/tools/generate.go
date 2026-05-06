@@ -63,7 +63,7 @@ func init() {
 		Group:     GroupGen,
 		AgentOnly: true,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			return generatePayloadWithBypass(ctx, d, "evil_portal", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
+			return generatePayloadWithBypass(ctx, d, "evil_portal", str(p, "description"), str(p, "path"), "", "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 		},
 	})
 
@@ -75,6 +75,7 @@ func init() {
 		Schema: json.RawMessage(`{"type":"object","properties":{` +
 			`"description":{"type":"string","description":"What the payload should do. Be specific about the target and goal."},` +
 			`"target_os":{"type":"string","description":"Target OS: windows, macos, linux (default windows)"},` +
+			`"keyboard_layout":{"type":"string","description":"Target keyboard layout (us, gb, de, fr, es, it, dk, no, sv, pt, br) — affects character encoding for non-ASCII text. Default us. Pair with v1nc / Momentum / Unleashed firmware that ships matching .kl layout files."},` +
 			`"deploy":{"type":"boolean","description":"Auto-deploy to Flipper SD card (default true)"},` +
 			`"path":{"type":"string","description":"Custom path on SD card"},` +
 			`"verify_bypass":{"type":"boolean","description":"Bypass the chain-of-verification pre-deploy check. Default false."}` +
@@ -84,7 +85,7 @@ func init() {
 		Group:     GroupGen,
 		AgentOnly: true,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			return generatePayloadWithBypass(ctx, d, "badusb", str(p, "description"), str(p, "path"), str(p, "target_os"), boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
+			return generatePayloadWithBypass(ctx, d, "badusb", str(p, "description"), str(p, "path"), str(p, "target_os"), str(p, "keyboard_layout"), boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 		},
 	})
 
@@ -104,7 +105,7 @@ func init() {
 		Group:     GroupGen,
 		AgentOnly: true,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			return generatePayloadWithBypass(ctx, d, "subghz", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
+			return generatePayloadWithBypass(ctx, d, "subghz", str(p, "description"), str(p, "path"), "", "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 		},
 	})
 
@@ -123,7 +124,7 @@ func init() {
 		Group:     GroupGen,
 		AgentOnly: true,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			return generatePayloadWithBypass(ctx, d, "ir", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
+			return generatePayloadWithBypass(ctx, d, "ir", str(p, "description"), str(p, "path"), "", "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 		},
 	})
 
@@ -142,7 +143,7 @@ func init() {
 		Group:     GroupGen,
 		AgentOnly: true,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			return generatePayloadWithBypass(ctx, d, "nfc", str(p, "description"), str(p, "path"), "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
+			return generatePayloadWithBypass(ctx, d, "nfc", str(p, "description"), str(p, "path"), "", "", boolOr(p, "deploy", true), boolOr(p, "verify_bypass", false))
 		},
 	})
 
@@ -187,7 +188,11 @@ func init() {
 // --- Generation pipeline helpers ---
 
 // generatePayloadWithBypass honours the chain-of-verification (P1-16).
-func generatePayloadWithBypass(ctx context.Context, d *Deps, payloadType, description, path, targetOS string, deploy, bypass bool) (string, error) {
+// keyboardLayout is consumed only by payloadType=="badusb" — empty
+// for every other type. v0.23-keyboard-layout work added it so the
+// generate_badusb Spec can target non-US layouts without requiring a
+// new dispatch path; tests + workflows that don't care pass "".
+func generatePayloadWithBypass(ctx context.Context, d *Deps, payloadType, description, path, targetOS, keyboardLayout string, deploy, bypass bool) (string, error) {
 	if d.Generator == nil {
 		return "", fmt.Errorf("generator not configured — set a generation LLM provider")
 	}
@@ -199,7 +204,11 @@ func generatePayloadWithBypass(ctx context.Context, d *Deps, payloadType, descri
 	case "evil_portal":
 		result, err = d.Generator.EvilPortal(ctx, description)
 	case "badusb":
-		result, err = d.Generator.BadUSB(ctx, description, targetOS)
+		// keyboardLayout is plumbed through from the Spec handler for
+		// generate_badusb. Workflow callers that don't care pass "" —
+		// the Generator falls back to "us" in that case so existing
+		// callers keep their pre-this-fix behaviour.
+		result, err = d.Generator.BadUSB(ctx, description, targetOS, keyboardLayout)
 	case "subghz":
 		result, err = d.Generator.SubGHz(ctx, description)
 	case "ir":
@@ -277,7 +286,7 @@ func runPayload(d *Deps, path, command string) (string, error) {
 // The run step is gated through d.WorkflowConfirm so each payload type
 // (badusb/portal/subghz/nfc/ir) surfaces a typed confirm before execution.
 func generateDeployRun(ctx context.Context, d *Deps, payloadType, description, path, targetOS string) (string, error) {
-	genResult, err := generatePayloadWithBypass(ctx, d, payloadType, description, path, targetOS, true, false)
+	genResult, err := generatePayloadWithBypass(ctx, d, payloadType, description, path, targetOS, "", true, false)
 	if err != nil {
 		return "", err
 	}
