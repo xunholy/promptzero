@@ -95,7 +95,11 @@ jobs:
           ls -lh
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        # v7 (Apr 2026) — first major running on Node 24; v5 was Node 20
+        # and emits a deprecation warning on every release run as
+        # GitHub forces Node 24 as default 2026-06-02 and removes
+        # Node 20 entirely 2026-09-16. Inputs unchanged from v5.
+        uses: actions/upload-artifact@v7
         with:
           name: build-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
@@ -112,7 +116,9 @@ jobs:
           fetch-depth: 0
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v5
+        # v8 (Mar 2026) — pairs with upload-artifact@v7; same Node 24
+        # runtime story. Pattern + merge-multiple inputs unchanged.
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: build-*

@@ -64,7 +64,8 @@ jobs:
 
       - name: Upload report artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        # v7 — Node 24 runtime; see release.yaml for the rationale.
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-diff-${{ steps.report.outputs.report_date || 'latest' }}
           path: docs/coverage/weekly-*.md
