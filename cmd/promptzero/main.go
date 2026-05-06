@@ -165,7 +165,7 @@ func run() error {
 	statusOK(fmt.Sprintf("Agent ready %s(model: %s)%s", dim, cfg.Model, reset))
 
 	costTracker := setupCostTracker(cfg, ai, rec)
-	setupBudget(cfg, f.budgetUSD, costTracker)
+	setupBudget(cfg, f.budgetUSD, ai, costTracker)
 	activePersona, personas, err := setupPersona(cfg, f.personaName, ai)
 	if err != nil {
 		return err
