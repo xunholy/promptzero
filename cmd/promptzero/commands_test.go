@@ -190,6 +190,63 @@ func TestHumanSince(t *testing.T) {
 	}
 }
 
+// TestNormaliseAttackIDs locks the /attack set id-format check.
+// MITRE technique IDs are T followed by 4 digits, optionally
+// .NNN for the sub-technique. The normaliser uppercases and trims
+// whitespace so common operator paste mistakes survive.
+func TestNormaliseAttackIDs(t *testing.T) {
+	t.Run("happy_path", func(t *testing.T) {
+		got, err := normaliseAttackIDs([]string{"T1557.004", "T1499", "T1078"})
+		if err != nil {
+			t.Fatalf("happy path: %v", err)
+		}
+		want := []string{"T1557.004", "T1499", "T1078"}
+		if len(got) != len(want) {
+			t.Fatalf("len = %d, want %d (%v)", len(got), len(want), got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("[%d] = %q, want %q", i, got[i], want[i])
+			}
+		}
+	})
+	t.Run("normalises_case_and_whitespace", func(t *testing.T) {
+		got, err := normaliseAttackIDs([]string{"  t1557.004 ", "t1499"})
+		if err != nil {
+			t.Fatalf("normalise: %v", err)
+		}
+		if got[0] != "T1557.004" || got[1] != "T1499" {
+			t.Errorf("got %v, want [T1557.004 T1499]", got)
+		}
+	})
+	t.Run("skips_empty_entries", func(t *testing.T) {
+		got, err := normaliseAttackIDs([]string{"", "   ", "T1018"})
+		if err != nil {
+			t.Fatalf("skip empties: %v", err)
+		}
+		if len(got) != 1 || got[0] != "T1018" {
+			t.Errorf("got %v, want [T1018]", got)
+		}
+	})
+	t.Run("rejects_malformed", func(t *testing.T) {
+		for _, bad := range []string{
+			"T155", "T15573", "T1557.04", "T1557.0040",
+			"BogusID", "T1557-004", "1557",
+		} {
+			_, err := normaliseAttackIDs([]string{bad})
+			if err == nil {
+				t.Errorf("%q should error", bad)
+			}
+		}
+	})
+	t.Run("all_empty_errors", func(t *testing.T) {
+		_, err := normaliseAttackIDs([]string{"", "  "})
+		if err == nil {
+			t.Error("all-empty input should error")
+		}
+	})
+}
+
 // TestParseAuditFilter_RiskValidation locks the canonical risk-string
 // allowlist. A typo like "danger" or wrong case like "CRITICAL" used
 // to silently match zero rows because SQLite's default LIKE/= is

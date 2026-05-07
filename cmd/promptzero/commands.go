@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -814,6 +815,34 @@ func renderTokenStats(snap cost.Snapshot) {
 //	                          available technique IDs
 //	/attack set T1557.004 T1499   — pin the session to those techniques
 //	/attack clear           — remove the constraint
+//
+// normaliseAttackIDs validates and uppercases ATT&CK technique IDs.
+// MITRE format is `T` + 4 digits, optionally `.` + 3 digits for the
+// sub-technique. Operators sometimes type t1557 lowercase or paste
+// values with surrounding whitespace; this lenient pass tolerates
+// both. Truly malformed input (typos like "T155", "BogusID") gets a
+// clear error rather than producing a constraint that filters out
+// every tool silently.
+var attackIDRE = regexp.MustCompile(`^T\d{4}(\.\d{3})?$`)
+
+func normaliseAttackIDs(in []string) ([]string, error) {
+	out := make([]string, 0, len(in))
+	for _, raw := range in {
+		id := strings.ToUpper(strings.TrimSpace(raw))
+		if id == "" {
+			continue
+		}
+		if !attackIDRE.MatchString(id) {
+			return nil, fmt.Errorf("invalid technique id %q (want format like T1557 or T1557.004)", raw)
+		}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("at least one technique id required")
+	}
+	return out, nil
+}
+
 func handleAttack(deps *REPLDeps, args []string) {
 	if len(args) == 0 {
 		cur := deps.ai.AttackConstraint()
@@ -831,7 +860,12 @@ func handleAttack(deps *REPLDeps, args []string) {
 			fmt.Fprintf(os.Stderr, "  %s● attack set: at least one technique id required%s\n", red, reset)
 			return
 		}
-		deps.ai.SetAttackConstraint(args[1:])
+		ids, err := normaliseAttackIDs(args[1:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s● attack set: %v%s\n", red, err, reset)
+			return
+		}
+		deps.ai.SetAttackConstraint(ids)
 		fmt.Fprintf(os.Stderr, "  %s✓ attack constraint set: %s%s\n", green, strings.Join(deps.ai.AttackConstraint(), ", "), reset)
 	case "clear":
 		deps.ai.SetAttackConstraint(nil)
