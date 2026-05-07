@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-05-08
+
+Observability hardening wave. Four bounded fixes that turn silent
+JSON marshal/encode failures into warn-level logs so misbehaving
+callers stop disappearing into the void.
+
+### Fixed
+
+- **`web.respondJSON` logs encode failures.** The doc comment claimed
+  marshalling failures "log on the server" but the code did
+  `_ = json.NewEncoder(w).Encode(body)`. A handler that accidentally
+  passed a non-encodable type would write headers, fail to write the
+  body, and leave operators with a half-written response and no
+  server-side breadcrumb. (`internal/web/api.go`)
+
+- **`web.broadcast` and `web.sendTo` log marshal failures.** Both
+  silently returned on `json.Marshal` errors, so a non-encodable
+  payload disappeared with no signal — web UI showed nothing, the
+  agent saw success, the operator had no trace. Now logs at warn
+  with the top-level keys (avoiding dumping the full body which
+  could be huge or secret-bearing). The intentional queue-overflow
+  drop in `enqueue` is unchanged. (`internal/web/server.go`)
+
+- **`HandoffArtifact.WithDeviceState` logs marshal failures.** The
+  builder method silently dropped `DeviceStateAtCompact` on marshal
+  errors, so `/session resume` would lose device state context with
+  no signal — caller couldn't tell empty-by-design from
+  marshal-failure. (`internal/agent/handoff.go`)
+
+- **`toolUseInputJSON` logs marshal failures.** Returning nil on
+  failure is the documented graceful behaviour for the session-save
+  helper, but operators reviewing `/sessions` later had no way to
+  tell whether a tool call's Input field was empty by design or
+  dropped during marshal. Now logs the tool name + tool_use ID so
+  the saved-session reviewer has a thread to pull.
+  (`internal/agent/session.go`)
+
 ## [0.28.0] - 2026-05-08
 
 REPL ergonomics + parser correctness wave. Four bounded fixes that
