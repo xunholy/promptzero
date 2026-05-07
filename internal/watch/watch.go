@@ -229,10 +229,15 @@ func (w *Watcher) recordEvent(e Event) {
 	}
 }
 
+// match finds the first rule whose Pattern matches path. The match is
+// case-insensitive: a file dropped as Capture.SUB still matches *.sub.
+// Operators don't always control the case of files written by browsers
+// (.PNG from a screenshot tool), Flipper SD cards (mixed case from
+// some forks), or scripts they didn't write.
 func (w *Watcher) match(path string) (Rule, bool) {
-	base := filepath.Base(path)
+	base := strings.ToLower(filepath.Base(path))
 	for _, r := range w.rules {
-		ok, err := filepath.Match(r.Pattern, base)
+		ok, err := filepath.Match(strings.ToLower(r.Pattern), base)
 		if err == nil && ok {
 			return r, true
 		}
