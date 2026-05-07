@@ -1625,8 +1625,19 @@ func buildRule(rc config.RuleConfig) (rules.Rule, error) {
 		// could be hours after config load. Operator typos (e.g.
 		// `type: webhok`) should fail loudly at startup.
 		switch kind {
-		case rules.ActionWebhook, rules.ActionLog, rules.ActionTool:
-			// ok
+		case rules.ActionWebhook:
+			if strings.TrimSpace(a.Webhook) == "" {
+				return rules.Rule{}, fmt.Errorf("rule %q action[%d] type=webhook: missing 'webhook:' field (the named subscription to fire)",
+					rc.Name, i)
+			}
+		case rules.ActionTool:
+			if strings.TrimSpace(a.Tool) == "" {
+				return rules.Rule{}, fmt.Errorf("rule %q action[%d] type=tool: missing 'tool:' field",
+					rc.Name, i)
+			}
+		case rules.ActionLog:
+			// log actions need no extra fields; message is templated
+			// from params at fire time and may be empty.
 		default:
 			return rules.Rule{}, fmt.Errorf("rule %q action[%d]: unknown type %q (valid: webhook, log, tool)",
 				rc.Name, i, a.Type)
