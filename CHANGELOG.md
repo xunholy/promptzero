@@ -12,7 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Webhook delivery semantics fixed end-to-end. The rules engine's
 `webhook:` action now actually delivers to the named subscription;
 docs no longer ship example event names that fail v0.27's
-validation.
+validation. Also bumps the Go toolchain + `golang.org/x/net` to
+clear four CVEs flagged by govulncheck on the release CI run.
+
+### Security
+
+- **Bumped Go toolchain to 1.25.10 + `golang.org/x/net` to v0.53.0.**
+  govulncheck flagged four pre-existing CVEs whose disclosure
+  landed since the last CI run: GO-2026-4982 / GO-2026-4980
+  (`html/template` XSS bypasses), GO-2026-4971 (`net.Dial` NUL-byte
+  panic on Windows), GO-2026-4918 (HTTP/2 infinite loop on bad
+  SETTINGS frame). All four fixed by the version bumps; no
+  source-level changes required.
 
 ### Fixed
 
