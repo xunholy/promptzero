@@ -165,6 +165,30 @@ func TestBudget_OffDisablesCap(t *testing.T) {
 	}
 }
 
+// TestParseAuditFilter_SinceAfterUntilFails locks the swapped-pair
+// guard. since=1h means "1 hour ago"; until=24h means "24 hours ago".
+// A naïve operator typing them in that order gets a SQL clause that
+// returns 0 rows. parseAuditFilter must reject this combination with
+// a clear message rather than letting /audit find swallow the typo.
+func TestParseAuditFilter_SinceAfterUntilFails(t *testing.T) {
+	_, err := parseAuditFilter([]string{"since=1h", "until=24h"})
+	if err == nil {
+		t.Fatal("expected error for swapped since/until")
+	}
+	if !strings.Contains(err.Error(), "after until") {
+		t.Errorf("expected 'after until' in error, got: %v", err)
+	}
+}
+
+// TestParseAuditFilter_SinceBeforeUntilOK is the happy-path bookend —
+// when the operator orders the bounds correctly the parser returns
+// without complaint.
+func TestParseAuditFilter_SinceBeforeUntilOK(t *testing.T) {
+	if _, err := parseAuditFilter([]string{"since=24h", "until=1h"}); err != nil {
+		t.Errorf("ordered since/until should parse cleanly, got: %v", err)
+	}
+}
+
 // /forget without an id should print the usage hint via dispatchSlashCommand
 // and not exit the REPL. Exercises the dispatcher path so a future rename
 // of /forget can't silently strand it.
