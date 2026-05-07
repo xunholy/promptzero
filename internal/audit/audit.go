@@ -306,6 +306,7 @@ func (l *Log) Query(limit int) ([]Entry, error) {
 		var e Entry
 		var ts string
 		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &e.Success); err != nil {
+			obs.Default().Warn("audit_row_scan_failed", "where", "Query", "err", err)
 			continue
 		}
 		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
@@ -331,6 +332,7 @@ func (l *Log) QueryBySession(sessionID string) ([]Entry, error) {
 		var e Entry
 		var ts string
 		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &e.Success); err != nil {
+			obs.Default().Warn("audit_row_scan_failed", "where", "QueryBySession", "session_id", sessionID, "err", err)
 			continue
 		}
 		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
@@ -433,6 +435,7 @@ func (l *Log) QueryFiltered(f Filter) ([]Entry, error) {
 		var e Entry
 		var ts string
 		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &e.Success); err != nil {
+			obs.Default().Warn("audit_row_scan_failed", "where", "QueryFiltered", "err", err)
 			continue
 		}
 		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
@@ -469,6 +472,7 @@ func (l *Log) TopTools(since time.Time, n int) ([]ToolCount, error) {
 	for rows.Next() {
 		var tc ToolCount
 		if err := rows.Scan(&tc.Tool, &tc.Count); err != nil {
+			obs.Default().Warn("audit_row_scan_failed", "where", "TopTools", "err", err)
 			continue
 		}
 		out = append(out, tc)
@@ -498,6 +502,7 @@ func (l *Log) TopRisks(since time.Time) ([]RiskCount, error) {
 	for rows.Next() {
 		var rc RiskCount
 		if err := rows.Scan(&rc.Risk, &rc.Count); err != nil {
+			obs.Default().Warn("audit_row_scan_failed", "where", "TopRisks", "err", err)
 			continue
 		}
 		out = append(out, rc)
