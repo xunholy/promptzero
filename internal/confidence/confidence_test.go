@@ -71,6 +71,41 @@ func TestEvaluate_PlaceholderTokens(t *testing.T) {
 	}
 }
 
+// TestEvaluate_NewPlaceholderEntries locks the v0.23.x placeholder
+// expansions: angle-bracketed <your_*>/<insert>/<target>/<value>
+// templates, the changeme/insert_here family, all-x runs longer than
+// the canonical "xxx", "???" markers, and the foo/bar/baz canaries
+// developers paste when they don't have a real value yet.
+func TestEvaluate_NewPlaceholderEntries(t *testing.T) {
+	cases := []string{
+		"<your_url>",
+		"<your-target>",
+		"<insert_ip>",
+		"<target>",
+		"<value>",
+		"changeme",
+		"change_me",
+		"insert_here",
+		"xxxxxxxx",
+		"???",
+		"foo",
+		"bar",
+		"baz",
+		"YYYY-MM-DD",
+	}
+	for _, val := range cases {
+		t.Run(val, func(t *testing.T) {
+			r := Evaluate(map[string]any{"target": val}, []string{"target"})
+			if !r.ShouldAbstain() {
+				t.Errorf("value %q: expected abstain, got score=%v", val, r.Score)
+			}
+			if len(r.WeakKeys) != 1 {
+				t.Errorf("value %q: expected one WeakKey, got %v", val, r.WeakKeys)
+			}
+		})
+	}
+}
+
 func TestEvaluate_NonStringValuesAreTrusted(t *testing.T) {
 	// A literal 0 or false is a real choice, not a placeholder.
 	r := Evaluate(map[string]any{"enabled": false, "count": 0}, []string{"enabled", "count"})
