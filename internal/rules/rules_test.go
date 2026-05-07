@@ -42,6 +42,42 @@ func TestMatch_OutputContains(t *testing.T) {
 	}
 }
 
+// TestMatch_Success exercises the tristate: nil Success matches both
+// outcomes, &true matches only success, &false matches only failure.
+// Same shape as audit.Filter.Success so operators can use the rule
+// engine to trigger follow-ups conditional on the previous tool's
+// outcome — e.g. "alert when wifi_handshake_capture fails".
+func TestMatch_Success(t *testing.T) {
+	successEntry := audit.Entry{Tool: "wifi_handshake_capture", Success: true}
+	failureEntry := audit.Entry{Tool: "wifi_handshake_capture", Success: false}
+
+	// nil Success: match both outcomes (legacy behaviour, preserved).
+	mAny := Match{Tool: "wifi_handshake_capture"}
+	if !matches(mAny, successEntry) || !matches(mAny, failureEntry) {
+		t.Error("nil Success should match either outcome")
+	}
+
+	// Success = &true: match only success.
+	tr := true
+	mTrue := Match{Tool: "wifi_handshake_capture", Success: &tr}
+	if !matches(mTrue, successEntry) {
+		t.Error("Success=&true should match a successful entry")
+	}
+	if matches(mTrue, failureEntry) {
+		t.Error("Success=&true should NOT match a failed entry")
+	}
+
+	// Success = &false: match only failure.
+	fa := false
+	mFalse := Match{Tool: "wifi_handshake_capture", Success: &fa}
+	if !matches(mFalse, failureEntry) {
+		t.Error("Success=&false should match a failed entry")
+	}
+	if matches(mFalse, successEntry) {
+		t.Error("Success=&false should NOT match a successful entry")
+	}
+}
+
 func TestEngine_FiresWebhook(t *testing.T) {
 	var (
 		mu    sync.Mutex
