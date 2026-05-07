@@ -203,6 +203,39 @@ func TestExport_UnknownMinLevelRejected(t *testing.T) {
 	}
 }
 
+// TestValidateOptions covers the pre-flight check operators get
+// before Export truncates the destination file. Catches typos in
+// --format / --min-level so a bad option doesn't zap a valid file.
+func TestValidateOptions(t *testing.T) {
+	t.Run("zero_value_ok", func(t *testing.T) {
+		if err := ValidateOptions(Options{}); err != nil {
+			t.Errorf("zero Options should validate: %v", err)
+		}
+	})
+	t.Run("valid_jsonl", func(t *testing.T) {
+		if err := ValidateOptions(Options{Format: FormatJSONL}); err != nil {
+			t.Errorf("FormatJSONL should validate: %v", err)
+		}
+	})
+	t.Run("valid_chat_with_minlevel", func(t *testing.T) {
+		if err := ValidateOptions(Options{Format: FormatChat, MinLevel: audit.LevelWarning}); err != nil {
+			t.Errorf("Chat + warning should validate: %v", err)
+		}
+	})
+	t.Run("rejects_unknown_format", func(t *testing.T) {
+		err := ValidateOptions(Options{Format: "csv"})
+		if err == nil {
+			t.Error("Format=csv should error")
+		}
+	})
+	t.Run("rejects_unknown_minlevel", func(t *testing.T) {
+		err := ValidateOptions(Options{MinLevel: audit.Level("warnig")})
+		if err == nil {
+			t.Error("MinLevel=warnig should error")
+		}
+	})
+}
+
 func TestLevelAtLeast_UnknownGotBelowEverything(t *testing.T) {
 	if levelAtLeast(audit.Level("bogus"), audit.LevelInfo) {
 		t.Error("unknown got should never be >= any known want")
