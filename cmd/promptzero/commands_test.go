@@ -325,6 +325,36 @@ func TestNormaliseAttackIDs(t *testing.T) {
 	})
 }
 
+// TestParseWhen_RejectsNegativeDuration locks the future-timestamp
+// guard. Go's time.ParseDuration accepts "-30m" as a valid negative
+// duration. The old parseWhen happily computed time.Now() - (-30m)
+// = time.Now() + 30m, returning a timestamp in the future. A "since"
+// filter set to a future time matches no past audit rows — silent
+// zero-row response with no signal to the operator that their
+// "negative duration" had no sensible meaning.
+func TestParseWhen_RejectsNegativeDuration(t *testing.T) {
+	for _, in := range []string{"-30m", "-1h", "-2h30m"} {
+		t.Run(in, func(t *testing.T) {
+			_, err := parseWhen(in)
+			if err == nil {
+				t.Errorf("%q should error (negative duration)", in)
+			}
+		})
+	}
+}
+
+// TestParseWhen_AcceptsValid covers the canonical happy paths so a
+// future tightening doesn't accidentally break legitimate input.
+func TestParseWhen_AcceptsValid(t *testing.T) {
+	for _, in := range []string{"30m", "2h", "7d", "1m30s", "2026-05-07T00:00:00Z"} {
+		t.Run(in, func(t *testing.T) {
+			if _, err := parseWhen(in); err != nil {
+				t.Errorf("%q should parse: %v", in, err)
+			}
+		})
+	}
+}
+
 // TestParseAuditFilter_LimitCap rejects an oversized limit. Without
 // the cap an operator typing limit=1000000 (typo or stress) would
 // tie up SQLite for seconds and flood the terminal.
