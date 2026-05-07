@@ -971,6 +971,13 @@ func startWatch(ctx context.Context, deps *REPLDeps, dispatchTurn func(string)) 
 	paths = append(paths, cfg.Watch.Paths...)
 	var rules []watch.Rule
 	for _, r := range cfg.Watch.Rules {
+		if err := watch.ValidatePattern(r.Pattern); err != nil {
+			ed.writeOutput(func() {
+				fmt.Fprintf(os.Stderr, "  %s● watch: skipping rule with malformed pattern %q: %v%s\n",
+					yellow, r.Pattern, err, reset)
+			})
+			continue
+		}
 		rules = append(rules, watch.Rule{Pattern: r.Pattern, Prompt: r.Prompt, Persona: r.Persona})
 	}
 	// Default rule set only applies when the operator asked for --watch

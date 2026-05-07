@@ -229,6 +229,18 @@ func (w *Watcher) recordEvent(e Event) {
 	}
 }
 
+// ValidatePattern returns nil when the pattern is well-formed for
+// filepath.Match, or the underlying ErrBadPattern when not. Useful
+// for config-load-time validation so a typo (e.g. `*[a.sub` with
+// unmatched bracket) fails visibly at startup instead of silently
+// suppressing every event the operator expected.
+func ValidatePattern(pattern string) error {
+	// filepath.Match short-circuits on the empty subject most of the
+	// time, but a malformed pattern still returns ErrBadPattern.
+	_, err := filepath.Match(pattern, "x")
+	return err
+}
+
 // match finds the first rule whose Pattern matches path. The match is
 // case-insensitive: a file dropped as Capture.SUB still matches *.sub.
 // Operators don't always control the case of files written by browsers

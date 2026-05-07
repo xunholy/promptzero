@@ -177,6 +177,34 @@ func TestSubstitute(t *testing.T) {
 	}
 }
 
+// TestValidatePattern locks the config-load-time pattern check.
+// Without this, malformed patterns silently never matched at runtime
+// (filepath.Match returns ErrBadPattern; the watcher's matcher
+// swallowed the error and treated it as no-match). Operators saw
+// "watcher running" and "no events fired" with no signal that their
+// pattern was the problem.
+func TestValidatePattern(t *testing.T) {
+	t.Run("accepts_well_formed", func(t *testing.T) {
+		for _, p := range []string{
+			"*.sub", "*.png", "capture.*", "[abc]*.txt", "[a-z]?.bin",
+			"file?.dat", "exact.txt",
+		} {
+			if err := ValidatePattern(p); err != nil {
+				t.Errorf("%q should validate: %v", p, err)
+			}
+		}
+	})
+	t.Run("rejects_malformed", func(t *testing.T) {
+		// Unmatched bracket and trailing backslash are the canonical
+		// ErrBadPattern triggers documented in the stdlib.
+		for _, p := range []string{"*[a.sub", "[", "foo[bar", "trail\\"} {
+			if err := ValidatePattern(p); err == nil {
+				t.Errorf("%q should error", p)
+			}
+		}
+	})
+}
+
 // TestIgnore_TemplatesAndCase locks the v0.24.x ignore-rule expansions:
 // case-insensitive suffix matching (.SWP / .Bak no longer slip past
 // the lowercase hardcoded list), additional editor temp/backup
