@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-05-08
+
+Webhook delivery semantics fixed end-to-end. The rules engine's
+`webhook:` action now actually delivers to the named subscription;
+docs no longer ship example event names that fail v0.27's
+validation.
+
+### Fixed
+
+- **Rule webhook actions deliver to the named subscription.** Real
+  semantic bug. A rule's `webhook: ops-pager` action used to cast
+  the name to `Event("ops-pager")` and run through the Events
+  allowlist filter — ops-pager didn't receive (Events mismatch);
+  permissive subscriptions received unrelated rule fires. Combined
+  with v0.27's event-name validation (rejects unknown events), the
+  operator could not configure a working rule webhook without
+  bypassing the validator. Added `Dispatcher.FireByName(name,
+  payload)` that targets exactly the named subscription, bypasses
+  the Events filter, and stamps the envelope as `event=rule_fired`.
+  `setupRules` now uses `FireByName`; `EventRuleFired` is in
+  `knownEvents` so subscriptions can opt-in to receive only
+  rule-driven payloads. (`internal/webhook/webhook.go`,
+  `cmd/promptzero/setup.go`)
+
+### Documentation
+
+- **Example config files use canonical event names.** Both
+  `config.example.yaml` and `examples/config.yaml` listed
+  `events: ["risk.exceeded", "tool.completed"]` — neither match any
+  real `Event` constant; both would fail v0.27 validation. Updated
+  to `audit_critical` / `tool_finished` and added a comment block
+  enumerating the full allowlist plus the new `rule_fired` event.
+
 ## [0.30.0] - 2026-05-08
 
 Config-load validation tail. Three bounded fixes that close
