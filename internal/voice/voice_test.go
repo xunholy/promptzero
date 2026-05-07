@@ -1,7 +1,9 @@
 package voice
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,6 +44,49 @@ func TestWhisperTimeoutRespected(t *testing.T) {
 	_, err := e.TranscribeReader(strings.NewReader("audio"), "test.wav")
 	if err == nil {
 		t.Fatal("expected timeout error from hanging Whisper server, got nil")
+	}
+}
+
+// TestTranscribeReaderCtx_CancellationAbortsRequest verifies that
+// cancelling the caller's ctx interrupts a slow Whisper request — what
+// the REPL relies on so Ctrl+C during a stuck transcription returns
+// immediately rather than waiting for the HTTP client's 60s timeout.
+//
+// Server delays its response by 2 seconds; client cancels after 50ms.
+// If TranscribeReaderCtx honours ctx the client returns < 1s; if not
+// the test's deadline catches the regression at the 1s threshold.
+func TestTranscribeReaderCtx_CancellationAbortsRequest(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(2 * time.Second):
+			_ = json.NewEncoder(w).Encode(map[string]string{"text": "too late"})
+		}
+	}))
+	defer ts.Close()
+
+	e := &Engine{
+		apiKey:     "test-key",
+		model:      "whisper-1",
+		whisperURL: ts.URL,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := e.TranscribeReaderCtx(ctx, strings.NewReader("audio"), "test.wav")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected cancellation error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !strings.Contains(err.Error(), "context") {
+		t.Errorf("error should reflect ctx cancellation, got: %v", err)
+	}
+	if elapsed > 1*time.Second {
+		t.Errorf("cancellation took %s, want < 1s — ctx likely not honoured", elapsed)
 	}
 }
 

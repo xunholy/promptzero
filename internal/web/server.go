@@ -1076,7 +1076,7 @@ func (s *Server) handleAudio(ctx context.Context, c *sessionConn, audioBase64 st
 		return
 	}
 
-	text, err := s.voice.TranscribeReader(bytes.NewReader(audioBytes), "recording.webm")
+	text, err := s.voice.TranscribeReaderCtx(ctx, bytes.NewReader(audioBytes), "recording.webm")
 	if err != nil {
 		s.sendTo(c, map[string]any{"type": "error", "content": fmt.Sprintf("transcription failed: %v", err)})
 		return

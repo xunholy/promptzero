@@ -766,7 +766,7 @@ func enterREPL(deps *REPLDeps) error {
 			}
 			defer os.RemoveAll(recDir)
 			tmpFile := filepath.Join(recDir, "voice.wav")
-			if err := voiceEngine.Record(tmpFile); err != nil {
+			if err := voiceEngine.RecordCtx(ctx, tmpFile); err != nil {
 				ed.writeOutput(func() {
 					fmt.Fprintf(os.Stderr, "  %s● Recording error: %v%s\n", red, err, reset)
 				})
@@ -775,7 +775,7 @@ func enterREPL(deps *REPLDeps) error {
 			ed.writeOutput(func() {
 				fmt.Fprintf(os.Stderr, "  %s● Transcribing...%s\n", blue, reset)
 			})
-			text, err := voiceEngine.Transcribe(tmpFile)
+			text, err := voiceEngine.TranscribeCtx(ctx, tmpFile)
 			if err != nil {
 				ed.writeOutput(func() {
 					fmt.Fprintf(os.Stderr, "  %s● Transcription error: %v%s\n", red, err, reset)
