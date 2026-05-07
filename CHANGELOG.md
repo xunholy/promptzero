@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-05-07
+
+Validator + correctness wave. Five hour-bounded commits closing
+real-world failure modes: three more silent-failure patterns the
+EvilPortal validator missed, two campaign-YAML authoring traps that
+slipped to runtime as misleading skips, a snapshot-rotation
+file-removal ordering that could orphan data, end-to-end ctx
+cancellation through the voice flow, and 16+ new LLM placeholder
+patterns the pre-dispatch confidence scorer now catches.
+
+### Fixed
+
+- **EvilPortal silent-failure detection.** Three new critical rules:
+  `ep_multiple_forms` (Marauder picks the first `<form>`
+  indeterminately when more than one is present), `ep_form_onsubmit_blocker`
+  (`onsubmit="return false"` / `event.preventDefault()` blocks
+  default submission so credentials never reach `/get`),
+  `ep_form_multipart` (`enctype="multipart/form-data"` —
+  Marauder's GET handler only parses URL-encoded query strings).
+  All three were "page renders, captures nothing" traps that LLM-
+  generated portals could clear `/validate` with.
+  (`internal/validator/evilportal.go`)
+
+- **Campaign YAML rejects forward depends_on + cycles at validate
+  time.** A step that depended on a successor previously slipped
+  through and skipped at runtime with a misleading "dependency 'x'
+  failed" message. Same for A → B → A cycles. Third validator pass
+  walks each `depends_on` against declaration order; backward
+  references fail the parse. (`internal/campaign/campaign.go`)
+
+- **Snapshot rotation removes data before meta to avoid dangling
+  pointers.** `Rotate()` removed the `.json` first and silently
+  swallowed the error, then the `.bak`. Worst case: meta removal
+  fails, data removal succeeds → orphan meta points at non-existent
+  data; `List()` surfaces the entry, `Restore()` fails. Reordered:
+  data first, meta second; both errors surface. (`internal/snapshot/snapshot.go`)
+
+- **Voice flow honours caller context.** `Record` and `Transcribe`
+  used `context.Background()` internally — a stuck mic driver or
+  hung Whisper request had no cancellation path. New `RecordCtx`,
+  `TranscribeCtx`, `TranscribeReaderCtx` accept a caller ctx; the
+  REPL's voice-mode submit and the web `/api/audio` handler pass
+  their session ctx so Ctrl+C / connection close aborts mid-flight.
+  Old methods become deprecated thin wrappers calling
+  `context.Background`. (`internal/voice/voice.go`,
+  `cmd/promptzero/repl.go`, `internal/web/server.go`)
+
+- **Confidence scorer catches more LLM placeholder templates.**
+  The angle-bracketed `<your_url>`, `<insert_ip>`, `<target>`,
+  `<value>` family; `changeme` / `change_me` / `insert_here`; runs
+  of `xxxx` past the canonical "xxx"; `???`; `foo` / `bar` / `baz`;
+  and datetime templates (`YYYY-MM-DD`, `HH:MM:SS`). 14 new
+  test cases. (`internal/confidence/confidence.go`)
+
 ## [0.23.0] - 2026-05-07
 
 Safety + operator-UX wave. Closes the v0.21 budget-enforcement gap,
