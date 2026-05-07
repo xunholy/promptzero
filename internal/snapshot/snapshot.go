@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -29,6 +30,23 @@ import (
 // snapshotTimeLayout is a filesystem-safe timestamp format. RFC3339's
 // colons break Windows paths, so we use a compact local form.
 const snapshotTimeLayout = "20060102T150405"
+
+// validSessionIDRE constrains session IDs to filesystem-safe identifiers.
+// Required because Store / List / Restore / Purge / Rotate map id ->
+// "<root>/<id>/...": a value containing "../" or "/" would let the
+// caller escape the snapshot root. The agent's auto-generated session
+// IDs and the session.Store's allow-list both match this pattern.
+var validSessionIDRE = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$`)
+
+func validateSessionID(id string) error {
+	if id == "" {
+		return errors.New("snapshot: sessionID required")
+	}
+	if !validSessionIDRE.MatchString(id) {
+		return fmt.Errorf("snapshot: invalid sessionID %q (allowed: letters, digits, _, -, .; max 128 chars; no path separators)", id)
+	}
+	return nil
+}
 
 // Entry is the public metadata record for a saved snapshot. Exposed so
 // /rewind list can render a table without re-parsing filenames.
@@ -73,8 +91,8 @@ func DefaultRoot() (string, error) {
 // (if the SD card held secrets the operator already authorised the
 // agent's reading it).
 func (m *Manager) Store(sessionID, originalPath string, content []byte) (Entry, error) {
-	if sessionID == "" {
-		return Entry{}, errors.New("snapshot: sessionID required")
+	if err := validateSessionID(sessionID); err != nil {
+		return Entry{}, err
 	}
 	if originalPath == "" {
 		return Entry{}, errors.New("snapshot: originalPath required")
@@ -115,6 +133,9 @@ func (m *Manager) Store(sessionID, originalPath string, content []byte) (Entry, 
 // first. Session directories that don't exist yet return an empty
 // slice (not an error) so UI can render "no snapshots" cleanly.
 func (m *Manager) List(sessionID string) ([]Entry, error) {
+	if err := validateSessionID(sessionID); err != nil {
+		return nil, err
+	}
 	dir := filepath.Join(m.root, sessionID)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -149,6 +170,9 @@ func (m *Manager) List(sessionID string) ([]Entry, error) {
 // Returns an error if the ID doesn't exist — callers are expected to
 // pair this with a Flipper write to the entry's OriginalPath.
 func (m *Manager) Restore(sessionID, id string) (Entry, []byte, error) {
+	if err := validateSessionID(sessionID); err != nil {
+		return Entry{}, nil, err
+	}
 	if id == "" {
 		return Entry{}, nil, errors.New("snapshot: id required")
 	}
@@ -175,6 +199,9 @@ func (m *Manager) Restore(sessionID, id string) (Entry, []byte, error) {
 // when a session is explicitly dropped; the per-session dir stays
 // around on normal exit so /rewind still works across restarts.
 func (m *Manager) Purge(sessionID string) error {
+	if err := validateSessionID(sessionID); err != nil {
+		return err
+	}
 	dir := filepath.Join(m.root, sessionID)
 	if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
 		return err
