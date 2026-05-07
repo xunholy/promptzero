@@ -43,6 +43,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -741,6 +742,12 @@ func (s *Server) clearTurn(ts *turnState) {
 func (s *Server) broadcast(m map[string]any) {
 	data, err := json.Marshal(m)
 	if err != nil {
+		// Marshal failures here mean a programmer bug (a non-
+		// encodable type slipped into the payload), not a network
+		// problem. Silent drop hides the bug; warn so the
+		// misbehaving caller is visible.
+		obs.Default().Warn("web_broadcast_marshal_failed",
+			"keys", maybeKeys(m), "err", err)
 		return
 	}
 	s.mu.Lock()
@@ -757,9 +764,23 @@ func (s *Server) broadcast(m map[string]any) {
 func (s *Server) sendTo(c *sessionConn, m map[string]any) {
 	data, err := json.Marshal(m)
 	if err != nil {
+		obs.Default().Warn("web_sendto_marshal_failed",
+			"keys", maybeKeys(m), "err", err)
 		return
 	}
 	enqueue(c, data)
+}
+
+// maybeKeys returns the sorted top-level keys of m for the marshal-
+// failure log. Avoids dumping the full payload (could be huge or
+// secret-bearing) but tells the operator which message shape failed.
+func maybeKeys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // enqueue offers data to the connection's writer. If the queue is full the
