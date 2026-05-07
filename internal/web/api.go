@@ -301,11 +301,29 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		OutputTokens: snap.OutputTokens,
 		USD:          round4(snap.TotalUSD),
 	}}
-	respondJSON(w, http.StatusOK, map[string]any{
+	body := map[string]any{
 		"total":    total,
 		"by_model": byModel,
 		"offline":  snap.Offline,
-	})
+	}
+	// Budget block is omitted when no cap is configured so the
+	// frontend can render "budget: disabled" without disambiguating
+	// 0-the-cap from 0-the-spent. Same shape as the /cost CLI
+	// rendering: cap, spent, remaining (clamped at 0), pct.
+	if snap.BudgetUSD > 0 {
+		spent := snap.TotalUSD
+		remaining := snap.BudgetUSD - spent
+		if remaining < 0 {
+			remaining = 0
+		}
+		body["budget"] = map[string]any{
+			"cap_usd":       round4(snap.BudgetUSD),
+			"spent_usd":     round4(spent),
+			"remaining_usd": round4(remaining),
+			"percent":       round4((spent / snap.BudgetUSD) * 100),
+		}
+	}
+	respondJSON(w, http.StatusOK, body)
 }
 
 // round4 trims noise from the running USD total for display. Cents carry

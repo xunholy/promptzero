@@ -280,6 +280,47 @@ func TestCostSnapshot(t *testing.T) {
 	if len(byModel) != 1 {
 		t.Errorf("by_model len = %d, want 1", len(byModel))
 	}
+	// No budget configured → budget block is omitted (frontend
+	// distinguishes "disabled" from "0/0" by absence).
+	if _, ok := body["budget"]; ok {
+		t.Errorf("budget block should be omitted when no cap is set")
+	}
+}
+
+// TestCostSnapshot_BudgetBlock locks the budget rendering when a cap
+// is configured. The web Cockpit reads cap_usd / spent_usd /
+// remaining_usd / percent so it can paint a progress bar with the
+// same shape as the /cost CLI rendering.
+func TestCostSnapshot_BudgetBlock(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	tr := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.SetBudget(2.00, nil, nil)
+	tr.AddUsageFull(0, 80000, 0, 0) // ~$1.20 spend → 60%
+	s.SetCostTracker(tr)
+
+	code, body := getJSON(t, ts, "/api/cost")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d; body=%v", code, body)
+	}
+	budget, ok := body["budget"].(map[string]any)
+	if !ok {
+		t.Fatalf("budget block missing; body=%v", body)
+	}
+	if cap, _ := budget["cap_usd"].(float64); cap != 2.0 {
+		t.Errorf("cap_usd = %v, want 2.0", budget["cap_usd"])
+	}
+	spent, _ := budget["spent_usd"].(float64)
+	if spent <= 0 || spent > 2.0 {
+		t.Errorf("spent_usd = %v, want 0 < spent <= cap", spent)
+	}
+	remaining, _ := budget["remaining_usd"].(float64)
+	if remaining < 0 {
+		t.Errorf("remaining_usd = %v, must be clamped >= 0", remaining)
+	}
+	pct, _ := budget["percent"].(float64)
+	if pct <= 0 || pct > 100 {
+		t.Errorf("percent = %v, want 0 < pct <= 100 for sub-cap spend", pct)
+	}
 }
 
 // ---------------------------------------------------------------------------
