@@ -166,6 +166,84 @@ func TestBudget_OffDisablesCap(t *testing.T) {
 	}
 }
 
+// TestDispatch_UnknownSlashCommand catches the typo trap. Without
+// the guard the REPL fell through on /budgett (typo of /budget) and
+// sent the literal text to Claude as a question. Now it's caught
+// locally with a hint at /help.
+func TestDispatch_UnknownSlashCommand(t *testing.T) {
+	deps := &REPLDeps{ed: newLineEditor(&termUI{enabled: false})}
+	out := captureStderr(t, func() {
+		handled, exit := dispatchSlashCommand("/budgett", deps)
+		if !handled {
+			t.Fatal("/budgett should be handled (with error message)")
+		}
+		if exit {
+			t.Fatal("/budgett should not exit")
+		}
+	})
+	if !strings.Contains(out, "unknown command") {
+		t.Errorf("expected 'unknown command' in output, got: %q", out)
+	}
+	if !strings.Contains(out, "/help") {
+		t.Errorf("expected '/help' hint in output, got: %q", out)
+	}
+}
+
+// TestDispatch_NonSlashStillPassesThrough confirms a regular prompt
+// (no leading "/") is NOT swallowed by the unknown-command guard.
+// Returning false here is what lets the REPL send the line to Claude.
+func TestDispatch_NonSlashStillPassesThrough(t *testing.T) {
+	deps := &REPLDeps{ed: newLineEditor(&termUI{enabled: false})}
+	handled, _ := dispatchSlashCommand("scan the network", deps)
+	if handled {
+		t.Error("non-slash input should pass through (handled=false)")
+	}
+}
+
+// TestDispatch_PassesThroughIncidentalSlashes covers the boundary
+// between "operator typed a typo" and "operator's prompt happens to
+// start with a slash". File paths, numeric expressions, and dashed
+// strings should pass through untouched so they reach Claude.
+func TestDispatch_PassesThroughIncidentalSlashes(t *testing.T) {
+	deps := &REPLDeps{ed: newLineEditor(&termUI{enabled: false})}
+	for _, in := range []string{"/dev/sda is broken", "/2 of these", "/budget-cap"} {
+		t.Run(in, func(t *testing.T) {
+			handled, _ := dispatchSlashCommand(in, deps)
+			if handled {
+				t.Errorf("%q should pass through, got handled=true", in)
+			}
+		})
+	}
+}
+
+// TestLooksLikeSlashCommand discriminates between operator typos
+// (caught with hint) and incidental leading slashes that should
+// pass through to the agent.
+func TestLooksLikeSlashCommand(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"/budget", true},
+		{"/forget", true},
+		{"/Help", true}, // case-insensitive on the alpha part
+		// Pass-throughs:
+		{"/dev/sda", false},    // unix path — has more slashes
+		{"/2", false},          // numeric — could be "/2 of these"
+		{"/", false},           // bare slash
+		{"/budget-cap", false}, // contains '-'
+		{"hello", false},       // no leading slash
+		{"", false},            // empty
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			if got := looksLikeSlashCommand(c.in); got != c.want {
+				t.Errorf("looksLikeSlashCommand(%q) = %v, want %v", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 // TestHumanSince covers the unit-step ladder for the /rules list
 // "last X ago" annotation. The function drops sub-unit precision so
 // the output stays compact at every scale from sub-second to days.

@@ -268,7 +268,36 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 		ed.writeOutput(func() { handleValidate(deps.flip, path) })
 		return true, false
 	}
+	// Unmatched but shaped like "/<word>" — almost certainly a
+	// slash-command typo. Without this guard the REPL falls through
+	// and sends e.g. "/budgett" verbatim to Claude as a question.
+	// Catch it locally with a hint at /help. We require all-letters
+	// after the leading "/" so a leading file path like /dev/sda or
+	// numeric "/2" still passes through as a regular prompt.
+	if looksLikeSlashCommand(head) {
+		ed.writeOutput(func() {
+			fmt.Fprintf(os.Stderr, "  %s● unknown command %q — type /help for the list%s\n", red, head, reset)
+		})
+		return true, false
+	}
 	return false, false
+}
+
+// looksLikeSlashCommand reports whether s has the shape "/<letters>"
+// — exactly one leading slash and the rest alphabetic. Used by the
+// dispatcher to discriminate between operator typos (catch with a
+// hint) and incidental leading slashes like file paths "/dev/sda" or
+// expressions "/2 of these" that should pass through to the agent.
+func looksLikeSlashCommand(s string) bool {
+	if len(s) < 2 || s[0] != '/' {
+		return false
+	}
+	for _, r := range s[1:] {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+	return true
 }
 
 // handleValidate reads a BadUSB/DuckyScript payload off the Flipper SD card
