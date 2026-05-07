@@ -57,6 +57,7 @@ var knownEvents = map[Event]struct{}{
 	EventAuditCritical:     {},
 	EventSessionStarted:    {},
 	EventSessionEnded:      {},
+	EventRuleFired:         {},
 }
 
 // KnownEventNames returns the canonical list of event names sorted
@@ -94,6 +95,16 @@ type SendResult struct {
 // Fire never blocks (drops with a warning when the queue overflows).
 type Dispatcher interface {
 	Fire(ev Event, payload any)
+	// FireByName delivers a payload to a single subscription identified
+	// by its `name:` field, bypassing the Events allowlist filter that
+	// Fire applies. Used by the rules engine where the operator's intent
+	// (`webhook: ops-pager` in a rule's then-block) is "deliver to this
+	// specific subscription" rather than "broadcast on this event type".
+	// Subscriptions without a matching name are silent — the call is
+	// fire-and-forget like Fire. The synthesised event tag is "rule_fired"
+	// so the receiver can still distinguish rule-driven deliveries from
+	// natural lifecycle events.
+	FireByName(name string, payload any)
 	Close(ctx context.Context) error
 	Subscriptions() []Subscription
 	RecentResults(name string) []SendResult
@@ -117,7 +128,17 @@ type job struct {
 	ev      Event
 	payload any
 	ts      time.Time
+	// targetName, when non-empty, restricts delivery to the single
+	// subscription with that exact name and bypasses the Events
+	// allowlist filter. Set by FireByName for rule-driven deliveries.
+	targetName string
 }
+
+// EventRuleFired is the synthetic event tag the worker stamps on
+// envelopes produced by FireByName. Receivers use it to distinguish
+// rule-driven deliveries (one specific subscription) from natural
+// lifecycle events (fan-out by Events filter).
+const EventRuleFired Event = "rule_fired"
 
 // queueCapacity is the buffered channel size. Bursts beyond this drop with
 // a logged warning — keeps agent callbacks non-blocking under webhook
@@ -259,6 +280,23 @@ func (d *dispatcher) Fire(ev Event, payload any) {
 	}
 }
 
+// FireByName enqueues a delivery targeting the single subscription
+// whose name matches. The Events allowlist on that subscription is
+// bypassed — the rule's intent IS the filter. Subscriptions without
+// a matching name are silent (the call is fire-and-forget).
+func (d *dispatcher) FireByName(name string, payload any) {
+	select {
+	case <-d.closed:
+		return
+	default:
+	}
+	select {
+	case d.queue <- job{ev: EventRuleFired, payload: payload, ts: time.Now().UTC(), targetName: name}:
+	default:
+		obs.Default().Warn("webhook_queue_overflow", "capacity", queueCapacity, "target", name)
+	}
+}
+
 // Close drains the queue and waits for workers to finish. The ctx bounds
 // the drain — a stuck endpoint won't block shutdown forever.
 func (d *dispatcher) Close(ctx context.Context) error {
@@ -332,7 +370,15 @@ func (d *dispatcher) worker() {
 	for j := range d.queue {
 		body := Envelope{Event: j.ev, Timestamp: j.ts, Payload: j.payload}
 		for _, s := range d.subs {
-			if !subscribed(s, j.ev) {
+			// Targeted delivery (FireByName) bypasses the Events
+			// allowlist and matches by subscription name only.
+			// Untargeted (Fire) keeps the historic broadcast-with-
+			// Events-filter semantics.
+			if j.targetName != "" {
+				if s.Name != j.targetName {
+					continue
+				}
+			} else if !subscribed(s, j.ev) {
 				continue
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)

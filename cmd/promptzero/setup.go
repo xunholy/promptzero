@@ -824,8 +824,13 @@ func setupWebhooks(cfg *config.Config) webhook.Dispatcher {
 // before gen).
 func setupRules(cfg *config.Config, wh webhook.Dispatcher, auditLog *audit.Log, rec *obs.Recorder) *rules.Engine {
 	engine := rules.New(rules.Deps{
+		// Rules' `webhook:` field is a subscription NAME, so route by
+		// name (skipping the Events allowlist) rather than the old
+		// behaviour of casting the name to an Event type — which
+		// silently delivered nothing unless the operator happened to
+		// list the rule-name in the subscription's Events filter.
 		WebhookFire: func(name string, payload map[string]any) {
-			wh.Fire(webhook.Event(name), payload)
+			wh.FireByName(name, payload)
 		},
 	})
 	for _, rc := range cfg.Rules {
