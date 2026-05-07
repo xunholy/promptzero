@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -75,7 +76,26 @@ var epBadRules = []rule{
 		severity: SeverityCritical,
 		message:  `input named "pass" — Marauder expects "password" verbatim`,
 	},
+	{
+		id:       "ep_form_onsubmit_blocker",
+		pattern:  regexp.MustCompile(`(?is)<form\b[^>]*\bonsubmit\s*=\s*["'][^"']*(?:return\s+false|preventDefault)`),
+		severity: SeverityCritical,
+		message:  "onsubmit handler blocks default submission — credentials never reach /get",
+	},
+	{
+		id:       "ep_form_multipart",
+		pattern:  regexp.MustCompile(`(?is)<form\b[^>]*\benctype\s*=\s*["']multipart/form-data`),
+		severity: SeverityCritical,
+		message:  `enctype="multipart/form-data" — Marauder's /get handler only parses URL-encoded query strings`,
+	},
 }
+
+// formCountRE is used by the multi-form check inside ValidateEvilPortal.
+// Counted separately from epBadRules because the rule fires on the
+// number of matches rather than the presence of one. The Marauder picks
+// the first form indeterminately when there are multiple — silent
+// breakage when the LLM emits both a login form and a header form.
+var formCountRE = regexp.MustCompile(`(?is)<form\b`)
 
 // epRequiredRules are compiled once at package init. Previously these
 // regexps were declared (and re-compiled) inside ValidateEvilPortal on
@@ -146,6 +166,29 @@ func ValidateEvilPortal(name, html string) Report {
 			Severity: br.severity,
 			Rule:     br.id,
 			Message:  br.message,
+			Line:     lineNo,
+			Excerpt:  excerpt,
+		})
+	}
+
+	// Multi-form check: Marauder picks the first <form> indeterminately
+	// when more than one is present. Common LLM-generation accident is
+	// emitting both a header search form and the credentials form;
+	// either renders fine but only one of them captures.
+	if matches := formCountRE.FindAllStringIndex(html, -1); len(matches) > 1 {
+		idx := matches[1][0] // point at the second <form> as the "extra"
+		lineNo := 1 + strings.Count(html[:idx], "\n")
+		excerpt := ""
+		if lineNo-1 < len(lines) {
+			excerpt = strings.TrimSpace(lines[lineNo-1])
+			if len(excerpt) > 120 {
+				excerpt = excerpt[:120] + "…"
+			}
+		}
+		rep.Findings = append(rep.Findings, Finding{
+			Severity: SeverityCritical,
+			Rule:     "ep_multiple_forms",
+			Message:  fmt.Sprintf("found %d <form> elements — Marauder uses only the first; remove or merge the extras", len(matches)),
 			Line:     lineNo,
 			Excerpt:  excerpt,
 		})
