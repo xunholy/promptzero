@@ -114,12 +114,33 @@ func ParseYAML(data []byte) (*Campaign, error) {
 		seen[s.ID] = true
 	}
 	// Second pass: validate depends_on after all IDs are known.
-	for _, s := range c.Steps {
+	stepIdx := make(map[string]int, len(c.Steps))
+	for i, s := range c.Steps {
+		stepIdx[s.ID] = i
 		if s.DependsOn != "" && !seen[s.DependsOn] {
 			return nil, fmt.Errorf("campaign %q step %q: depends_on %q not declared", c.Name, s.ID, s.DependsOn)
 		}
 		if s.DependsOn == s.ID {
 			return nil, fmt.Errorf("campaign %q step %q: self-dependency", c.Name, s.ID)
+		}
+	}
+
+	// Third pass: declaration-order check. The Runner iterates steps in
+	// declared order; a step that depends on a successor would always
+	// observe a not-yet-run predecessor and skip with a misleading
+	// "dependency failed" reason. Forcing forward references catches the
+	// authoring mistake at validate-time. Cycles fall out of this check
+	// for free: A→B→A means at least one edge points backward in
+	// declaration order, so it trips here regardless of which step
+	// crosses the boundary.
+	for i, s := range c.Steps {
+		if s.DependsOn == "" {
+			continue
+		}
+		predIdx := stepIdx[s.DependsOn]
+		if predIdx >= i {
+			return nil, fmt.Errorf("campaign %q step %q: depends_on %q must be declared before this step (or cycle detected)",
+				c.Name, s.ID, s.DependsOn)
 		}
 	}
 	return &c, nil
