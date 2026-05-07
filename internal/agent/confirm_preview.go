@@ -142,10 +142,7 @@ var previewFieldOrder = []string{
 func formatPreviewValue(key string, v any) string {
 	switch t := v.(type) {
 	case string:
-		if len(t) > 72 {
-			return t[:69] + "…"
-		}
-		return t
+		return truncDisplay(t, 69)
 	case float64:
 		if key == "frequency" && t > 100_000 {
 			return fmt.Sprintf("%d Hz (%.3f MHz)", int64(t), t/1_000_000)
@@ -161,12 +158,27 @@ func formatPreviewValue(key string, v any) string {
 		if err != nil {
 			return ""
 		}
-		out := string(b)
-		if len(out) > 72 {
-			out = out[:69] + "…"
-		}
-		return out
+		return truncDisplay(string(b), 69)
 	}
+}
+
+// truncDisplay returns s clipped to at most n runes, with a trailing
+// ellipsis when truncated. Counts runes (not bytes), so a multi-byte
+// character at the boundary is preserved intact instead of being
+// sliced into invalid UTF-8 — naive s[:n] would corrupt e.g. an
+// emoji that straddled the cut.
+func truncDisplay(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i] + "…"
+		}
+		count++
+	}
+	return s
 }
 
 // renderConfirmBox draws a unicode box around the title + body lines.

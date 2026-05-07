@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/xunholy/promptzero/internal/risk"
 )
@@ -92,6 +93,55 @@ func runeCount(s string) int {
 		n++
 	}
 	return n
+}
+
+// TestTruncDisplay_PreservesMultiByteRunes locks the UTF-8 safety
+// guarantee. Naive byte-slicing s[:n] could split a multi-byte rune
+// (e.g. emoji or accented char straddling position n) and produce
+// invalid UTF-8. truncDisplay counts runes so a boundary character
+// is preserved intact.
+func TestTruncDisplay_PreservesMultiByteRunes(t *testing.T) {
+	t.Run("ascii_under_limit", func(t *testing.T) {
+		if got := truncDisplay("hello", 10); got != "hello" {
+			t.Errorf("truncDisplay = %q, want %q", got, "hello")
+		}
+	})
+	t.Run("ascii_truncates_with_ellipsis", func(t *testing.T) {
+		got := truncDisplay("abcdefghij", 5)
+		if got != "abcde…" {
+			t.Errorf("truncDisplay = %q, want %q", got, "abcde…")
+		}
+	})
+	t.Run("multibyte_at_boundary_intact", func(t *testing.T) {
+		// "café" is 4 runes / 5 bytes (é = 2 bytes). Truncating to
+		// 4 runes must not chop the é mid-rune.
+		got := truncDisplay("café-suffix", 4)
+		want := "café…"
+		if got != want {
+			t.Errorf("truncDisplay = %q (% x), want %q", got, []byte(got), want)
+		}
+		// Verify the result is valid UTF-8 (no replacement runes).
+		if !utf8.ValidString(got) {
+			t.Errorf("output is not valid UTF-8: %q (% x)", got, []byte(got))
+		}
+	})
+	t.Run("emoji_boundary", func(t *testing.T) {
+		// Emoji are 4 bytes each; cut between two emojis preserves
+		// the surviving half intact.
+		got := truncDisplay("🦀🦀🦀🦀", 2)
+		want := "🦀🦀…"
+		if got != want {
+			t.Errorf("truncDisplay = %q, want %q", got, want)
+		}
+		if !utf8.ValidString(got) {
+			t.Errorf("output is not valid UTF-8: %q", got)
+		}
+	})
+	t.Run("zero_n_empty", func(t *testing.T) {
+		if got := truncDisplay("anything", 0); got != "" {
+			t.Errorf("truncDisplay(_, 0) = %q, want empty", got)
+		}
+	})
 }
 
 func TestFormatConfirmPreview_OnlyKnownFieldsSurface(t *testing.T) {
