@@ -5,8 +5,33 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
+
+// validIDRE constrains session ids to filesystem-safe identifiers.
+// Required because the store maps id -> "<dir>/<id>.json" via
+// filepath.Join: an id containing "../" or "/" would otherwise let
+// the caller write outside the session directory.
+//
+// Allowed: letters, digits, underscore, hyphen, period. Length 1-128.
+// Disallowed: leading dot (so the id can't masquerade as a hidden
+// file), path separators, "..", whitespace, every other punctuation.
+var validIDRE = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$`)
+
+// validateID returns nil when id is safe to use as a filesystem path
+// component. Used at Save / Load / Delete entry points so a malicious
+// or accidental traversal attempt fails fast with a clear error
+// rather than escaping into the parent directory.
+func validateID(id string) error {
+	if id == "" {
+		return fmt.Errorf("session id is empty")
+	}
+	if !validIDRE.MatchString(id) {
+		return fmt.Errorf("invalid session id %q (allowed: letters, digits, _, -, .; max 128 chars; no path separators)", id)
+	}
+	return nil
+}
 
 // Message captures one entry of conversation history. Content is a
 // human-readable preview; Raw carries the full JSON of the underlying
@@ -48,6 +73,9 @@ func NewStore(dir string) (*Store, error) {
 }
 
 func (s *Store) Save(state *State) error {
+	if err := validateID(state.ID); err != nil {
+		return err
+	}
 	state.UpdatedAt = time.Now()
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -70,6 +98,9 @@ func (s *Store) Save(state *State) error {
 }
 
 func (s *Store) Load(id string) (*State, error) {
+	if err := validateID(id); err != nil {
+		return nil, err
+	}
 	path := filepath.Join(s.dir, id+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -105,6 +136,9 @@ func (s *Store) List() ([]State, error) {
 }
 
 func (s *Store) Delete(id string) error {
+	if err := validateID(id); err != nil {
+		return err
+	}
 	path := filepath.Join(s.dir, id+".json")
 	return os.Remove(path)
 }
