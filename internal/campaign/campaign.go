@@ -143,6 +143,27 @@ func ParseYAML(data []byte) (*Campaign, error) {
 				c.Name, s.ID, s.DependsOn)
 		}
 	}
+
+	// Fourth pass: validate the optional timeout string parses as a Go
+	// duration when present. The Runner's ParseDuration check silently
+	// falls back to no-timeout on malformed input, so an operator
+	// typing "timeout: 30 seconds" (invalid Go syntax — should be "30s")
+	// got unbounded execution with no warning. Failing at parse time
+	// surfaces the typo before the step actually runs.
+	for _, s := range c.Steps {
+		if s.Timeout == "" {
+			continue
+		}
+		d, err := time.ParseDuration(s.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("campaign %q step %q: invalid timeout %q (want Go duration like \"30s\" or \"2m\"): %w",
+				c.Name, s.ID, s.Timeout, err)
+		}
+		if d <= 0 {
+			return nil, fmt.Errorf("campaign %q step %q: timeout %q must be positive",
+				c.Name, s.ID, s.Timeout)
+		}
+	}
 	return &c, nil
 }
 
