@@ -176,3 +176,37 @@ func TestSubstitute(t *testing.T) {
 		t.Errorf("substitute: %q, want %q", got, want)
 	}
 }
+
+// TestMatch_CaseInsensitive locks the case-insensitive match contract.
+// Browsers, screenshot tools, and some CFW SD-card writers emit mixed-
+// case extensions (.PNG, .SUB, .NFC). The watcher pattern *.sub should
+// catch them all without operators having to enumerate every case
+// variant in their config.
+func TestMatch_CaseInsensitive(t *testing.T) {
+	w := New([]string{"/tmp/x"}, []Rule{
+		{Pattern: "*.sub", Prompt: "decode {{path}}"},
+		{Pattern: "*.PNG", Prompt: "ocr {{path}}"},
+	})
+	cases := []struct {
+		path     string
+		want     bool
+		wantRule string
+	}{
+		{"/tmp/x/capture.sub", true, "*.sub"},
+		{"/tmp/x/capture.SUB", true, "*.sub"},
+		{"/tmp/x/Capture.SuB", true, "*.sub"},
+		{"/tmp/x/screenshot.png", true, "*.PNG"},
+		{"/tmp/x/screenshot.PNG", true, "*.PNG"},
+		{"/tmp/x/file.txt", false, ""},
+	}
+	for _, tc := range cases {
+		got, ok := w.match(tc.path)
+		if ok != tc.want {
+			t.Errorf("match(%q) ok = %v, want %v", tc.path, ok, tc.want)
+			continue
+		}
+		if tc.want && got.Pattern != tc.wantRule {
+			t.Errorf("match(%q) Pattern = %q, want %q", tc.path, got.Pattern, tc.wantRule)
+		}
+	}
+}
