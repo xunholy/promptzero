@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-05-08
+
+Web budget visibility + REPL guardrails. Three small, bounded
+changes that close UX gaps the recent /budget + /audit work
+exposed.
+
+### Added
+
+- **`/api/cost` surfaces a budget block when configured.** The
+  endpoint exposed total + by_model + offline but had no way for
+  the frontend to render the budget bar that the `/cost` CLI
+  shows. New optional `budget` block with `cap_usd`, `spent_usd`,
+  `remaining_usd` (clamped ≥0), and `percent`. Omitted entirely
+  when no cap is set so the frontend can render "budget: disabled"
+  without disambiguating 0/0 from genuine pre-spend state.
+  (`internal/web/api.go`)
+
+### Fixed
+
+- **`/history` and `/audit query` capped at 10000 rows.** Old
+  behaviour trusted any positive integer — `/audit query 1000000`
+  (typo or stress test) could tie up SQLite for seconds and flood
+  the terminal. Soft-cap with a one-line dim notice when clamped;
+  default of 20 (when N≤0 or omitted) unchanged. Mirrors the
+  v0.26 cap on `/audit find limit=`. (`cmd/promptzero/commands.go`)
+
+### Changed
+
+- **Closed stale `TODO(v0.5.1 risk-review)` marker.** The mfoc /
+  mfcuk / mfkey32 risk classification was already encoded in the
+  surrounding comment ("High because recovered keys enable
+  cloning"); the open TODO suggested unfinished work where there
+  was none. Replaced with a "review concluded" note referencing
+  the rationale. (`internal/risk/risk.go`)
+
 ## [0.33.0] - 2026-05-08
 
 Defensive correctness wave. Two bounded fixes that close
