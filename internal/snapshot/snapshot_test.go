@@ -134,6 +134,48 @@ func TestManager_Rotate_KeepsNewest(t *testing.T) {
 	}
 }
 
+// TestManager_Rotate_RemovesBothFiles locks the cleanup invariant —
+// every removed snapshot drops both its .json meta and its .bak data
+// file together. List() only counts .json so a regression where one
+// file was left behind would not show up in the previous test.
+func TestManager_Rotate_RemovesBothFiles(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(root)
+	const session = "sess-rotate-pairs"
+
+	for i := 0; i < 4; i++ {
+		if _, err := m.Store(session, "/ext/file.sub", []byte{byte(i)}); err != nil {
+			t.Fatalf("Store %d: %v", i, err)
+		}
+		time.Sleep(1100 * time.Millisecond)
+	}
+
+	if _, err := m.Rotate(session, 1); err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+
+	dir := filepath.Join(root, session)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	var json, bak int
+	for _, e := range entries {
+		switch {
+		case strings.HasSuffix(e.Name(), ".json"):
+			json++
+		case strings.HasSuffix(e.Name(), ".bak"):
+			bak++
+		default:
+			t.Errorf("unexpected file in session dir: %s", e.Name())
+		}
+	}
+	if json != 1 || bak != 1 {
+		t.Errorf("after Rotate(keep=1) want 1 .json + 1 .bak, got %d/%d (%d total entries)",
+			json, bak, len(entries))
+	}
+}
+
 func TestManager_Rotate_NoOpBelowKeep(t *testing.T) {
 	root := t.TempDir()
 	m := NewManager(root)
