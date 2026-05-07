@@ -1202,7 +1202,13 @@ func parseAuditFilter(tokens []string) (audit.Filter, error) {
 		case "tool":
 			f.Tool = v
 		case "risk":
-			f.Risk = v
+			lv := strings.ToLower(v)
+			switch lv {
+			case "low", "medium", "high", "critical":
+				f.Risk = lv
+			default:
+				return f, fmt.Errorf("risk=%s: want low|medium|high|critical", v)
+			}
 		case "session":
 			f.Session = v
 		case "contains":

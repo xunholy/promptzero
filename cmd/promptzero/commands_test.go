@@ -190,6 +190,42 @@ func TestHumanSince(t *testing.T) {
 	}
 }
 
+// TestParseAuditFilter_RiskValidation locks the canonical risk-string
+// allowlist. A typo like "danger" or wrong case like "CRITICAL" used
+// to silently match zero rows because SQLite's default LIKE/= is
+// case-sensitive against the lowercase stored values. Validate at
+// parse time and lowercase normalise so common variants work.
+func TestParseAuditFilter_RiskValidation(t *testing.T) {
+	t.Run("happy_path_lowercased", func(t *testing.T) {
+		f, err := parseAuditFilter([]string{"risk=Critical"})
+		if err != nil {
+			t.Fatalf("Critical should normalise, got: %v", err)
+		}
+		if f.Risk != "critical" {
+			t.Errorf("Risk = %q, want lowercase 'critical'", f.Risk)
+		}
+	})
+	for _, v := range []string{"low", "medium", "high", "critical"} {
+		t.Run(v, func(t *testing.T) {
+			f, err := parseAuditFilter([]string{"risk=" + v})
+			if err != nil {
+				t.Fatalf("risk=%s should parse, got: %v", v, err)
+			}
+			if f.Risk != v {
+				t.Errorf("Risk = %q, want %q", f.Risk, v)
+			}
+		})
+	}
+	for _, v := range []string{"danger", "moderate", "highest", ""} {
+		t.Run("rejects_"+v, func(t *testing.T) {
+			_, err := parseAuditFilter([]string{"risk=" + v})
+			if err == nil {
+				t.Errorf("risk=%q should error", v)
+			}
+		})
+	}
+}
+
 // TestParseAuditFilter_SinceAfterUntilFails locks the swapped-pair
 // guard. since=1h means "1 hour ago"; until=24h means "24 hours ago".
 // A naïve operator typing them in that order gets a SQL clause that
