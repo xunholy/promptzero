@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // HandoffArtifact is a structured summary of what happened in a session,
@@ -49,9 +50,15 @@ func (h HandoffArtifact) WithDeviceState(state any) HandoffArtifact {
 		h.DeviceStateAtCompact = nil
 		return h
 	}
-	if b, err := json.Marshal(state); err == nil {
-		h.DeviceStateAtCompact = b
+	b, err := json.Marshal(state)
+	if err != nil {
+		// Silent drop loses /session-resume context for future
+		// operators. Warn so a future programmer who attaches a
+		// non-encodable type sees the issue at runtime.
+		obs.Default().Warn("handoff_device_state_marshal_failed", "err", err)
+		return h
 	}
+	h.DeviceStateAtCompact = b
 	return h
 }
 
