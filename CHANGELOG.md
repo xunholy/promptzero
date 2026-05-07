@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-05-07
+
+Continuation of the validation hardening wave: every remaining
+config-load DSL gets stricter parsing, plus defensive thread-safety
+on a registry that's read from HTTP handler goroutines.
+
+### Fixed
+
+- **Campaign `step.timeout` validated at parse time.** The Runner's
+  `time.ParseDuration` check at execution time silently fell back to
+  no-timeout when the value couldn't parse — `timeout: 30 seconds`
+  (English instead of Go syntax) produced unbounded execution with no
+  warning. Fourth pass in `ParseYAML` now requires a positive Go
+  duration. (`internal/campaign/campaign.go`)
+
+- **Watcher rule patterns validated at startup.** A malformed pattern
+  (e.g. `*[a.sub` with unmatched bracket) made `filepath.Match`
+  return `ErrBadPattern` at runtime, which the watcher's matcher
+  silently swallowed as no-match. Operators saw "watcher running"
+  and "no events fired" with no signal that their pattern was the
+  problem. New `watch.ValidatePattern`; `startWatch` skips malformed
+  rules with a yellow warning so one bad rule doesn't strand the rest.
+  (`internal/watch/watch.go`, `cmd/promptzero/repl.go`)
+
+- **Webhook `ValidateSubscription` rejects unknown event names.** The
+  events filter accepted any string from YAML — a typo like
+  `tool_finsished` or wrong case like `TOOL_FINISHED` registered the
+  subscription but never delivered. Validation now restricts to the 7
+  canonical event names with a specific error listing the allowed set.
+  Empty `events:` still means all-events. (`internal/webhook/webhook.go`)
+
+### Changed
+
+- **Persona `Registry` is goroutine-safe.** `byName` was a plain map
+  with no synchronisation. Production reads from REPL + HTTP handler
+  goroutines; today the happens-before is established by spawn order
+  alone, but the new `sync.RWMutex` is defensive against a future
+  hot-reload feature where Load could fire concurrently. Get/Names
+  take RLock, Load takes Lock. New race-detector test covers the
+  contract. (`internal/persona/persona.go`)
+
 ## [0.26.0] - 2026-05-07
 
 Validation hardening wave. Every operator-facing DSL gets stricter
