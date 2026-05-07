@@ -166,7 +166,25 @@ func (t *Tracker) AddUsage(inTokens, outTokens int64) {
 // cache write. Model rates default to uncached input pricing if no
 // cache rate is configured, so the dollar line is always conservative.
 func (t *Tracker) AddUsageFull(inTokens, outTokens, cacheReadTokens, cacheCreationTokens int64) {
-	if inTokens <= 0 && outTokens <= 0 && cacheReadTokens <= 0 && cacheCreationTokens <= 0 {
+	// Clamp individual negative values to 0. The original guard only
+	// no-ops when ALL four are <= 0, so a mixed call like
+	// (-100, 50, 0, 0) would decrement t.inTokens. Token counts come
+	// from the SDK's usage struct and should never be negative, but
+	// a future SDK change or a buggy caller shouldn't be able to
+	// corrupt the running totals.
+	if inTokens < 0 {
+		inTokens = 0
+	}
+	if outTokens < 0 {
+		outTokens = 0
+	}
+	if cacheReadTokens < 0 {
+		cacheReadTokens = 0
+	}
+	if cacheCreationTokens < 0 {
+		cacheCreationTokens = 0
+	}
+	if inTokens == 0 && outTokens == 0 && cacheReadTokens == 0 && cacheCreationTokens == 0 {
 		return
 	}
 	t.mu.Lock()
