@@ -251,6 +251,66 @@ func TestStore_Delete_RemovesFile(t *testing.T) {
 	}
 }
 
+// TestStore_RejectsTraversalIDs locks the path-traversal guard.
+// Without this check Save / Load / Delete with id="../foo" or
+// id="/etc/passwd" would happily resolve outside the session dir
+// (filepath.Join is permissive). Each operation must refuse before
+// touching the filesystem.
+func TestStore_RejectsTraversalIDs(t *testing.T) {
+	s, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := []string{
+		"../foo",
+		"../../etc/passwd",
+		"foo/bar",
+		"foo\\bar",
+		".hidden",                 // leading dot — could mask as a hidden file
+		"name with sp",            // whitespace
+		"",                        // empty (already covered, regression-proof)
+		"name|pipe",               // shell metachar
+		string(make([]byte, 200)), // length cap
+	}
+	for _, id := range bad {
+		t.Run(id, func(t *testing.T) {
+			if err := s.Save(&State{ID: id, CreatedAt: time.Now()}); err == nil {
+				t.Errorf("Save(id=%q) should error", id)
+			}
+			if _, err := s.Load(id); err == nil {
+				t.Errorf("Load(id=%q) should error", id)
+			}
+			if err := s.Delete(id); err == nil {
+				t.Errorf("Delete(id=%q) should error", id)
+			}
+		})
+	}
+}
+
+// TestStore_AcceptsValidIDs covers the happy-path bookend — common
+// session-naming conventions (kebab, snake, dotted, dated) survive.
+func TestStore_AcceptsValidIDs(t *testing.T) {
+	s, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := []string{
+		"recon",
+		"client-alpha",
+		"client_alpha",
+		"engagement-2026-04",
+		"v1.2.3",
+		"a", // single char
+	}
+	for _, id := range good {
+		t.Run(id, func(t *testing.T) {
+			if err := s.Save(&State{ID: id, CreatedAt: time.Now()}); err != nil {
+				t.Errorf("Save(id=%q): %v", id, err)
+			}
+		})
+	}
+}
+
 // TestStore_HandoffSurvivesRoundTrip locks the structured handoff
 // payload's persistence — /session resume relies on this to surface
 // findings without re-walking history.
