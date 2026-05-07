@@ -161,6 +161,43 @@ func TestTracker_AddUsageSkipsZero(t *testing.T) {
 	}
 }
 
+// TestTracker_AddUsageFull_ClampsNegatives locks the input clamp.
+// The original guard only no-op'd when ALL four were <= 0, so a
+// mixed call with one negative could DECREMENT the running total.
+// Each negative is now clamped to 0; positive components still
+// accumulate normally.
+func TestTracker_AddUsageFull_ClampsNegatives(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+	// Seed with valid usage.
+	tr.AddUsageFull(100, 50, 0, 0)
+	want := tr.Snapshot()
+
+	// Try to corrupt: negative input + positive output. Expect
+	// inTokens unchanged (negative clamped), outTokens incremented.
+	tr.AddUsageFull(-1000, 25, 0, 0)
+	got := tr.Snapshot()
+
+	if got.InputTokens != want.InputTokens {
+		t.Errorf("InputTokens = %d, want unchanged %d (negative should clamp)",
+			got.InputTokens, want.InputTokens)
+	}
+	if got.OutputTokens != want.OutputTokens+25 {
+		t.Errorf("OutputTokens = %d, want %d", got.OutputTokens, want.OutputTokens+25)
+	}
+}
+
+// TestTracker_AddUsageFull_AllNegativeNoOp confirms the existing
+// no-op semantics survive: when every component clamps to zero the
+// call is a no-op (no lock acquisition, no callback churn).
+func TestTracker_AddUsageFull_AllNegativeNoOp(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.AddUsageFull(-1, -2, -3, -4)
+	if s := tr.Snapshot(); s.InputTokens != 0 || s.OutputTokens != 0 ||
+		s.CacheReadTokens != 0 || s.CacheCreationTokens != 0 || s.TotalUSD != 0 {
+		t.Errorf("all-negative AddUsageFull should be no-op: %+v", s)
+	}
+}
+
 func TestTracker_OfflineAfterThreeErrors(t *testing.T) {
 	now := time.Now()
 	var (
