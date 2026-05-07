@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-05-07
+
+Ergonomics + observability wave. Five hour-bounded fixes that land
+on real-world operator complaints: the `/audit find` swap-trap, the
+watcher missing files due to case mismatch, browser/editor temp
+files dispatching as if they were content, multi-line output
+corrupting markdown reports, and SQL scan errors going silent.
+
+### Fixed
+
+- **`/audit find` rejects swapped `since`/`until`.** since=1h means
+  "1 hour ago"; until=24h means "24 hours ago". The naïve
+  operator order silently produced a SQL clause that always
+  returned 0 rows (`timestamp >= since AND timestamp <= until`,
+  impossible when swapped). The parser now surfaces the swap with
+  a specific error pointing at the bad bounds.
+  (`cmd/promptzero/commands.go`)
+
+- **Watcher pattern match is case-insensitive.** `Capture.SUB`
+  silently slipped past `*.sub`. Default rules ship lowercase but
+  files dropped from browsers, third-party tools, or some Flipper
+  CFW SD-card writers carry mixed case. `match()` now lowercases
+  both pattern and basename before comparing.
+  (`internal/watch/watch.go`)
+
+- **Watcher ignores expanded + case-insensitive.** Added `.swo`,
+  `.bak`, `.tmp`, `.crdownload`, `.part`, `.partial`,
+  `Thumbs.db`, `desktop.ini` to the ignore list. Suffix checks
+  now match `.SWP`/`.Bak` regardless of case. The inline
+  conditions were refactored into `ignoreSuffixes` slice +
+  `ignoreBasenames` map so future additions are one-liners.
+  (`internal/watch/watch.go`)
+
+- **Report `mdEscape` collapses newlines.** A tool name, verdict,
+  or risk string carrying an embedded `\n` broke every row in the
+  Markdown table — one ill-behaved tool corrupting the whole
+  engagement report. `mdEscape` now flattens `\r\n` / `\n` /
+  `\r` to a single space, matching the per-cell guarantee
+  `shortEvidence` already provides for the evidence column.
+  (`internal/report/report.go`)
+
+- **Audit row-scan failures log at warn instead of silently
+  dropping.** Five SQL row-iteration sites in audit.go used
+  `if err != nil { continue }` to skip rows whose `Scan` failed.
+  Useful as a defensive pattern but it left operators blind to
+  schema-drift or NULL-coercion bugs. Each call site now emits
+  `audit_row_scan_failed` via `obs.Default().Warn` tagged with
+  `where=<func>`. (`internal/audit/audit.go`)
+
 ## [0.24.0] - 2026-05-07
 
 Validator + correctness wave. Five hour-bounded commits closing
