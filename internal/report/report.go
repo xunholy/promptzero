@@ -408,8 +408,22 @@ func heatmapBar(n, max, width int) string {
 	return string(out)
 }
 
+// mdEscape sanitises a string for embedding in a Markdown table cell.
+// Escapes pipe and backtick (table delimiter + inline-code marker) and
+// flattens \r\n / \n / \r to a single space — embedded newlines break
+// every row in a Markdown table because the renderer reads end-of-line
+// as end-of-row. shortEvidence already strips newlines for the
+// evidence column; mdEscape now provides the same guarantee for every
+// other call site (Tool, Verdict, DetectedBy, Risk) where a multi-line
+// payload from a misbehaving tool could otherwise corrupt the report.
 func mdEscape(s string) string {
-	r := strings.NewReplacer("|", "\\|", "`", "\\`")
+	r := strings.NewReplacer(
+		"|", "\\|",
+		"`", "\\`",
+		"\r\n", " ",
+		"\n", " ",
+		"\r", " ",
+	)
 	return r.Replace(s)
 }
 
