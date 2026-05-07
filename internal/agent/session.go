@@ -189,6 +189,12 @@ func toolUseInputJSON(b *anthropic.ToolUseBlockParam) json.RawMessage {
 	}
 	raw, err := json.Marshal(b.Input)
 	if err != nil {
+		// Returning nil is the documented graceful behaviour, but
+		// also log so the saved session's missing input data has a
+		// breadcrumb. Operators reviewing /sessions later won't have
+		// to guess whether the field was empty by design or dropped.
+		obs.Default().Warn("session_tool_input_marshal_failed",
+			"tool", b.Name, "tool_use_id", b.ID, "err", err)
 		return nil
 	}
 	return raw
