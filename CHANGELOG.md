@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-05-07
+
+Safety + operator-UX wave. Closes the v0.21 budget-enforcement gap,
+gives operators an in-REPL surface for budget and saved sessions,
+adds Windows audit-DB locking, hardens the BadUSB validator against
+common LOLBAS techniques, and threads a `success` filter through the
+rules engine. Eleven commits since v0.22.0; no breaking changes.
+
+### Added
+
+- **`/budget` REPL command.** `/budget` shows spend / cap / remaining /
+  percent; `/budget set $X` extends the cap mid-session preserving the
+  warn/hit callbacks wired at startup; `/budget {off,clear,disable}`
+  turns the cap off. `/cost` now also renders the `budget=$spent/$cap
+  (pct%)` block when a cap is set. (`internal/cost/cost.go`,
+  `cmd/promptzero/commands.go`)
+
+- **`/forget <id>` REPL command.** Wires the existing
+  `Agent.DeleteSession` to operators — sessions could be listed,
+  resumed, and saved but not deleted from the REPL. `/sessions` output
+  ends with a `/resume <id>  /forget <id>` discovery hint.
+  (`cmd/promptzero/commands.go`)
+
+- **`keyboard_layout` parameter on `generate_badusb`.** DuckyScript
+  payloads now respect the target's keyboard layout (gb/uk, de, fr,
+  es, it, dk/no/sv/se, pt, br) — previous output was implicitly US
+  and produced wrong characters on non-US targets. Generic fallback
+  guidance for unknown layouts. (`internal/generate/generate.go`,
+  `internal/tools/generate.go`)
+
+- **Bridge state in `/api/device` JSON response.** Adds the
+  `bridge: {active, reason?}` block so the web Cockpit can render a
+  suspended-Flipper pill and the "via Flipper bridge" Marauder
+  subtitle. Closes the SPEC.md §6.3 TODO. (`internal/web/api.go`,
+  `internal/web/server.go`)
+
+- **`Success` filter in rules engine.** `rules.Match` and the YAML
+  `RuleMatchConfig.success` field accept a tristate (omit / true /
+  false), mirroring `audit.Filter.Success`. Operators can now alert
+  on every failed `wifi_handshake_capture` without hand-rolling an
+  output_contains check tied to the tool's specific failure wording.
+  (`internal/rules/rules.go`, `internal/config/config.go`)
+
+### Fixed
+
+- **Budget cap is enforced at dispatch.** v0.21 wired the 80%/100%
+  callbacks as observe-only — the agent emitted a warning and kept
+  spending. Now there's a pre-flight gate at the top of `Run()` that
+  consults `cost.Tracker.BudgetExceeded()` and refuses new turns with
+  the `ErrBudgetExceeded` sentinel error once the cap is reached.
+  Operators bump the cap with `/budget set $X` to resume.
+  (`internal/agent/agent.go`, `internal/agent/retry.go`,
+  `cmd/promptzero/setup.go`)
+
+- **Windows audit-DB file lock.** The Windows side of Finding #16
+  was a stub that succeeded unconditionally — two PromptZero
+  processes pointed at the same audit DB on Windows would race on
+  the SQLite WAL. Implemented via `LockFileEx` with
+  `LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY`, matching
+  the unix flock contract. (`internal/audit/lock_windows.go`)
+
+- **BadUSB validator catches LOLBAS download/exec + Linux destructive
+  patterns.** Eight new critical-severity rules: `dd_block_wipe`,
+  `fork_bomb`, `chmod_777_root`, `certutil_download`,
+  `bitsadmin_download`, `mshta_remote`, `regsvr32_squiblydoo`,
+  `wmic_exec`. Payloads using these techniques previously cleared
+  `/validate` as info-only. (`internal/validator/badusb.go`)
+
+- **Bumped GitHub Actions past Node 20.** `upload-artifact@v5→v7`
+  and `download-artifact@v5→v8` to clear the Node-24 deprecation
+  banners ahead of the 2026-09-16 cutoff.
+  (`.github/workflows/release.yaml`,
+  `.github/workflows/coverage-diff.yaml`)
+
+- **80%-of-budget banner referenced `/budget bump`.** That command
+  doesn't exist — it's `/budget set $X`. Aligned the banner with the
+  rest of the budget surface. (`cmd/promptzero/setup.go`)
+
+### Documentation
+
+- **README REPL slash-command list refreshed.** The list was last
+  touched around v0.19 and had drifted: `/personas` (the actual
+  command is singular `/persona`), no mention of `/budget`,
+  `/forget`, `/sessions`, `/save`, `/resume`, `/audit`, `/history`,
+  `/persona`, `/mode`, `/watch`, `/webhooks`, `/validate`,
+  `/reconnect`, `/status`. Replaced with a five-group bulleted list
+  mirroring `/help`. (`README.md`)
+
 ## [0.22.0] - 2026-05-06
 
 Polish release. Lands the Tier-1 quick-wins cluster from the
