@@ -179,6 +179,10 @@ type Snapshot struct {
 	Enabled     bool
 	Fires       int
 	LastFire    time.Time
+	// Cooldown mirrors Rule.Cooldown so consumers (web API, /rules
+	// list) can render the configured suppression window without
+	// reaching into the registry. Zero means no cooldown.
+	Cooldown time.Duration
 }
 
 // List returns the rule registry as a slice of Snapshots, sorted by name.
@@ -190,6 +194,7 @@ func (e *Engine) List() []Snapshot {
 		out = append(out, Snapshot{
 			Name: name, Description: r.Description,
 			Enabled: r.Enabled, Fires: e.fires[name], LastFire: e.lastFire[name],
+			Cooldown: r.Cooldown,
 		})
 	}
 	// Simple name-order sort without pulling in the sort dep at package level.
