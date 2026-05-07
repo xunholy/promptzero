@@ -978,6 +978,22 @@ func startWatch(ctx context.Context, deps *REPLDeps, dispatchTurn func(string)) 
 			})
 			continue
 		}
+		// Validate the persona reference at startup: a typo'd name
+		// would silently no-op at fire time (the lookup at the
+		// dispatcher uses `p, ok := personas.Get(name); ok`),
+		// leaving the operator wondering why their watch trigger
+		// didn't switch persona. Warn-and-continue so the rule still
+		// fires with the active persona, matching the pattern-check
+		// soft-fail above.
+		if r.Persona != "" && deps.personas != nil {
+			if _, ok := deps.personas.Get(r.Persona); !ok {
+				ed.writeOutput(func() {
+					fmt.Fprintf(os.Stderr,
+						"  %s● watch: rule for %q references unknown persona %q (will fire with active persona)%s\n",
+						yellow, r.Pattern, r.Persona, reset)
+				})
+			}
+		}
 		rules = append(rules, watch.Rule{Pattern: r.Pattern, Prompt: r.Prompt, Persona: r.Persona})
 	}
 	// Default rule set only applies when the operator asked for --watch
