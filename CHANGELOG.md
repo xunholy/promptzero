@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-05-07
+
+Validation hardening wave. Every operator-facing DSL gets stricter
+parsing so typos and traversal attempts fail loudly at parse time
+instead of producing silent zero-row queries or escaping the session
+directory. Web `/api/rules` now exposes the cooldown surface the
+DTO already declared.
+
+### Security
+
+- **Session-store path-traversal protection.** `Store.Save/Load/Delete`
+  used the session id directly in `filepath.Join` with no
+  sanitisation. An id like `../etc/passwd` or `foo/bar` would
+  resolve outside the session directory — a `/save "../../some/path"`
+  from the REPL or a malformed `Load(id)` could read/write under a
+  parent dir. Each entry point now validates against a strict
+  allow-list (`[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}`) before touching
+  the filesystem. The agent's auto-generated `session-NNN` ids
+  match the pattern so no caller needs to change.
+  (`internal/session/session.go`)
+
+### Fixed
+
+- **`/audit find risk=` validates and case-normalises.** Typos
+  (`risk=danger`) and case mismatches (`risk=CRITICAL` against
+  SQLite's lowercase-stored values) used to silently match zero
+  rows. The parser now restricts to `low|medium|high|critical`
+  (case-insensitive) and rejects anything else with the allowed
+  list. (`cmd/promptzero/commands.go`)
+
+- **`/attack set` validates the technique-id format.** Old behaviour
+  passed args verbatim — `t1557`, `T155`, `BogusID` silently
+  filtered every tool out so the operator's session was effectively
+  gated to nothing. The new normaliser uppercases, trims whitespace,
+  drops empty entries, and rejects anything that doesn't match the
+  canonical `T####` or `T####.###` MITRE format.
+  (`cmd/promptzero/commands.go`)
+
+- **Web `/api/rules` populates `cooldown_remaining_ms`.** The DTO
+  declared the field but the handler never wrote to it — every
+  response carried 0 regardless of cooldown state. The web Cockpit
+  now sees `cooldown - (now - lastFire)` for each rule with a
+  non-zero cooldown that has fired at least once. Required adding
+  `Cooldown` to `rules.Snapshot` (was internal to `Engine` only).
+  (`internal/rules/rules.go`, `internal/web/api.go`)
+
+### Added
+
+- **`/rules` list shows last-fire recency.** Operators looking for
+  "which rules are stale" / "did this rule fire after I deployed
+  it" had no signal short of `/audit query` and pattern-matching
+  the detector-verdict blocks. Each line now ends with `, last
+  <duration> ago` when the rule has fired at least once. The
+  `humanSince` helper truncates to a single unit (s/m/h/d) so
+  the line stays compact even for high-fire rules.
+  (`cmd/promptzero/commands.go`)
+
 ## [0.25.0] - 2026-05-07
 
 Ergonomics + observability wave. Five hour-bounded fixes that land
