@@ -1351,6 +1351,13 @@ func parseWhen(s string) (time.Time, error) {
 		}
 	}
 	if d, err := time.ParseDuration(s); err == nil {
+		// Reject negative durations. "since=-30m" produced
+		// time.Now()+30m — a timestamp in the future — which then
+		// matches no past audit rows. The shape "negative duration"
+		// has no sensible reading for since/until ("how long ago").
+		if d < 0 {
+			return time.Time{}, fmt.Errorf("negative duration %q (use e.g. \"30m\" not \"-30m\")", s)
+		}
 		return time.Now().Add(-d), nil
 	}
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
