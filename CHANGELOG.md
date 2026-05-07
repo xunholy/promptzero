@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-05-08
+
+Config-load validation tail. Three bounded fixes that close
+silent-misconfiguration gaps in `/export` and the rules engine.
+
+### Fixed
+
+- **`/export training-set` validates options before truncating the
+  destination.** Old code opened the path with
+  `O_CREATE|O_TRUNC` then called `Export` which rejected unknown
+  formats. An invalid `--format=` or `--min-level=` zero'd a valid
+  pre-existing file before the error fired. New
+  `trainset.ValidateOptions` runs the format/min-level allowlist
+  check without filesystem touch; `handleExport` calls it ahead of
+  the file open. (`internal/trainset/trainset.go`,
+  `cmd/promptzero/commands.go`)
+
+- **Rule engine `buildRule` rejects unknown action types.** A YAML
+  typo like `type: webhok` was passed through to `Engine.fire` which
+  only logged at warn the first time the rule matched an audit
+  event — could be hours after startup. Now restricts
+  `Action.Type` to `webhook|log|tool` at config load with a specific
+  error citing the bad value and the allowed list.
+  (`cmd/promptzero/commands.go`)
+
+- **Rule engine `buildRule` requires kind-specific fields.**
+  Validating the type wasn't enough: `type: webhook` with no
+  `webhook:` field would fire `WebhookFire("", payload)`, which
+  most dispatchers silently drop. Same for `type: tool` with no
+  `tool:` field. Each kind now has its own required-field check
+  with a specific error pointing at the missing key. Log type
+  still allows empty fields (message templated from params).
+  (`cmd/promptzero/commands.go`)
+
 ## [0.29.0] - 2026-05-08
 
 Observability hardening wave. Four bounded fixes that turn silent
