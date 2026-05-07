@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-05-08
+
+Defensive correctness wave. Two bounded fixes that close
+data-integrity gaps reachable from buggy callers or unauthenticated
+paths.
+
+### Security
+
+- **`snapshot.Manager` rejects path-traversal session IDs.** Mirrors
+  v0.26's session-store fix. `Store`, `List`, `Restore`, and `Purge`
+  used the sessionID directly in `filepath.Join` with no
+  sanitisation. The agent's auto-generated IDs are safe by
+  construction and v0.26 added validation to `session.Store`, but
+  the snapshot layer is reachable from any caller (mcpfed, /rewind,
+  future features) — defence in depth requires the boundary check
+  here too. Same allow-list:
+  `^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$`. Tests cover 8 hostile
+  inputs across the 4 entry points (32 assertions).
+  (`internal/snapshot/snapshot.go`)
+
+### Fixed
+
+- **`cost.AddUsageFull` clamps negative token deltas.** The original
+  guard only no-op'd when ALL four counters were ≤0 — a mixed call
+  like `(-1000, 50, 0, 0)` would decrement input tokens while
+  incrementing outputs, corrupting both the running totals and the
+  budget tracking they feed. Each component is now clamped to 0
+  individually before the all-zero check; valid (non-negative)
+  inputs are unchanged. (`internal/cost/cost.go`)
+
 ## [0.32.0] - 2026-05-08
 
 Watcher polish + CI follow-through on the v0.31 toolchain bump.
