@@ -127,6 +127,50 @@ steps:
 	}
 }
 
+// TestParseYAML_RejectsForwardReference catches a step that depends on
+// a step declared later in the file. The Runner iterates in declaration
+// order, so a forward reference would always observe a not-yet-run
+// predecessor and skip with a misleading "dependency failed" reason.
+func TestParseYAML_RejectsForwardReference(t *testing.T) {
+	yamlDoc := `campaign: forward
+steps:
+  - id: first
+    tool: a
+    depends_on: second
+  - id: second
+    tool: b
+`
+	_, err := ParseYAML([]byte(yamlDoc))
+	if err == nil {
+		t.Fatal("forward reference should error")
+	}
+	if !strings.Contains(err.Error(), "before this step") {
+		t.Errorf("expected forward-reference error message, got: %v", err)
+	}
+}
+
+// TestParseYAML_RejectsCycle catches A→B→A. The cycle implies at least
+// one backward edge in declaration order so the forward-reference check
+// trips it regardless of which step crosses the boundary.
+func TestParseYAML_RejectsCycle(t *testing.T) {
+	yamlDoc := `campaign: cycle
+steps:
+  - id: a
+    tool: x
+    depends_on: b
+  - id: b
+    tool: y
+    depends_on: a
+`
+	_, err := ParseYAML([]byte(yamlDoc))
+	if err == nil {
+		t.Fatal("cycle should error")
+	}
+	if !strings.Contains(err.Error(), "before this step") && !strings.Contains(err.Error(), "cycle") {
+		t.Errorf("expected cycle/order error, got: %v", err)
+	}
+}
+
 func TestRunner_HappyPath(t *testing.T) {
 	c, _ := ParseYAML([]byte(dependentCampaignYAML))
 	exec := &stubExecutor{responses: map[string]string{
