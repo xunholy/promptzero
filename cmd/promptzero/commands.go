@@ -546,6 +546,16 @@ func printHistory(auditLog *audit.Log, n int) {
 	if n <= 0 {
 		n = 20
 	}
+	// Cap at the same ceiling as /audit find limit=. Without this an
+	// operator typing /audit query 1000000 would tie up SQLite for
+	// seconds and flood the terminal. The cap is large enough for
+	// any reasonable triage flow; the silent clamp lets a too-big
+	// request still produce output (capped) rather than erroring.
+	if n > maxAuditLimit {
+		fmt.Fprintf(os.Stderr, "  %s(capping at %d, max for /history and /audit query)%s\n",
+			dim, maxAuditLimit, reset)
+		n = maxAuditLimit
+	}
 	entries, err := auditLog.Query(n)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  %s● history error: %v%s\n", red, err, reset)
