@@ -1547,6 +1547,26 @@ func buildRule(rc config.RuleConfig) (rules.Rule, error) {
 	}, nil
 }
 
+// humanSince renders the duration since t in a terse, eyeball-friendly
+// form: "12s", "3m", "2h", "1d". Drops sub-unit precision so the
+// /rules list output stays compact even for rules that fire often.
+// Returns "now" for sub-second intervals.
+func humanSince(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Second:
+		return "now"
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
+}
+
 // handleRulesCmd serves the /rules REPL command: list, pause <name>,
 // resume <name>, test <name>. Writes directly to stderr through the
 // provided style fields so it plays nicely with the line-editor's
@@ -1567,7 +1587,11 @@ func handleRulesCmd(eng *rules.Engine, args []string) {
 			if !s.Enabled {
 				state = yellow + "○" + reset
 			}
-			fmt.Fprintf(os.Stderr, "  %s %s %s(fires=%d)%s", state, s.Name, dim, s.Fires, reset)
+			fmt.Fprintf(os.Stderr, "  %s %s %s(fires=%d", state, s.Name, dim, s.Fires)
+			if !s.LastFire.IsZero() {
+				fmt.Fprintf(os.Stderr, ", last %s ago", humanSince(s.LastFire))
+			}
+			fmt.Fprintf(os.Stderr, ")%s", reset)
 			if s.Description != "" {
 				fmt.Fprintf(os.Stderr, " — %s", s.Description)
 			}

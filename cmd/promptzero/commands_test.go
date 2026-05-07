@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/xunholy/promptzero/internal/cost"
 	flippermock "github.com/xunholy/promptzero/internal/flipper/mock"
@@ -162,6 +163,30 @@ func TestBudget_OffDisablesCap(t *testing.T) {
 				t.Errorf("alias %q: BudgetUSD = %v, want 0", alias, got)
 			}
 		})
+	}
+}
+
+// TestHumanSince covers the unit-step ladder for the /rules list
+// "last X ago" annotation. The function drops sub-unit precision so
+// the output stays compact at every scale from sub-second to days.
+func TestHumanSince(t *testing.T) {
+	cases := []struct {
+		ago  time.Duration
+		want string
+	}{
+		{500 * time.Millisecond, "now"},
+		{12 * time.Second, "12s"},
+		{90 * time.Second, "1m"},
+		{45 * time.Minute, "45m"},
+		{2 * time.Hour, "2h"},
+		{25 * time.Hour, "1d"},
+		{72 * time.Hour, "3d"},
+	}
+	for _, tc := range cases {
+		got := humanSince(time.Now().Add(-tc.ago))
+		if got != tc.want {
+			t.Errorf("humanSince(now-%s) = %q, want %q", tc.ago, got, tc.want)
+		}
 	}
 }
 
