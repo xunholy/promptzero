@@ -23,6 +23,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/cost"
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
 )
@@ -83,13 +84,22 @@ func (s *Server) handleAuthInfo(w http.ResponseWriter, _ *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"required": s.token != ""})
 }
 
-// respondJSON is the common success-path writer. Marshalling failures log
-// on the server but send a generic 500 so the UI never has to parse a
-// half-written body.
+// respondJSON is the common success-path writer. Encode errors are
+// rare in practice (they imply a malformed body shape rather than a
+// network problem) but worth logging when they happen — silent
+// failures here would surface to the operator as a half-written
+// response with no server-side breadcrumb.
+//
+// The header + status are already written before encode runs, so we
+// can't switch to a 500 mid-flight; the next-best thing is a warn
+// log so the misbehaving handler is visible. Callers can avoid the
+// case entirely by passing JSON-friendly types.
 func respondJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		obs.Default().Warn("web_respond_json_encode_failed", "status", status, "err", err)
+	}
 }
 
 // writeError wraps a reason in {"error": "..."} and the given status.
