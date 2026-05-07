@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-05-08
+
+REPL ergonomics + parser correctness wave. Four bounded fixes that
+catch operator typos earlier and harden two latent display/query
+bugs.
+
+### Fixed
+
+- **Typo'd slash commands no longer forwarded to Claude.** A line
+  like `/budgett` (typo of `/budget`) used to fall through the
+  dispatcher and get sent verbatim to Claude as a regular prompt —
+  the model would dutifully try to interpret the broken command,
+  burning a turn for no value. The dispatcher now catches anything
+  shaped like `/<letters>` with a clear "unknown command — type
+  /help" hint. A discriminator preserves pass-through for incidental
+  leading slashes like `/dev/sda`, `/2 of these`, `/budget-cap`.
+  (`cmd/promptzero/commands.go`)
+
+- **`/audit find limit=` capped at 10000 rows.** Old behaviour
+  accepted any positive int — `limit=1000000` (typo or stress test)
+  tied up SQLite for seconds and flooded the terminal with rows the
+  human would never read. Default of 100 unchanged when omitted;
+  operators wanting more should `offset=` paginate.
+  (`cmd/promptzero/commands.go`)
+
+- **`parseWhen` rejects negative durations.** Go's `time.ParseDuration`
+  accepts `-30m` as valid; the old code computed `time.Now() - (-30m)
+  = future timestamp`. `/audit find since=-30m` then matched no past
+  audit rows because the SQL clause was `timestamp >= <future>` —
+  silent zero-row response with no signal that the input had no
+  sensible meaning. Now errors with the correct shape.
+  (`cmd/promptzero/commands.go`)
+
+- **`formatPreviewValue` truncation is UTF-8-safe.** The high-risk
+  confirmation preview clipped long input/output values with naive
+  byte-slicing (`s[:69]`). A multi-byte rune (emoji, accented
+  character) straddling the cut produced invalid UTF-8 — the
+  terminal renders that as U+FFFD. New `truncDisplay` helper counts
+  runes and only cuts at rune boundaries. Tests verify with
+  `utf8.ValidString` so future regressions to byte-slicing are
+  caught. (`internal/agent/confirm_preview.go`)
+
 ## [0.27.0] - 2026-05-07
 
 Continuation of the validation hardening wave: every remaining
