@@ -50,6 +50,23 @@ var placeholders = map[string]struct{}{
 	"none":            {},
 	"n/a":             {},
 	"<unknown>":       {},
+	"changeme":        {},
+	"change_me":       {},
+	"change-me":       {},
+	"insert_here":     {},
+	"insert-here":     {},
+	"<insert>":        {},
+	"<insert_value>":  {},
+	"<your_value>":    {},
+	"<your-value>":    {},
+	"<your_target>":   {},
+	"<target>":        {},
+	"<value>":         {},
+	"yyyy-mm-dd":      {},
+	"hh:mm:ss":        {},
+	"foo":             {},
+	"bar":             {},
+	"baz":             {},
 }
 
 // suspiciousPrefixes catch values that LOOK filled in but actually
@@ -60,6 +77,16 @@ var suspiciousPrefixes = []string{
 	"fixme:", "fixme ", "fixme-", "fixme_",
 	"example.", "example_",
 	"placeholder",
+	// Angle-bracketed templates: <your_url>, <your target>, <insert ip>.
+	// Anything starting with "<your" or "<insert" is overwhelmingly a
+	// template the model emitted because it had no concrete value.
+	"<your", "<insert", "<target", "<value>",
+	// All-x placeholders: xxxx, xxxxx, xxxxxxxx — same intent as the
+	// exact "xxx" entry, but operators sometimes type extra x's so a
+	// prefix match catches the variants.
+	"xxxx",
+	// "?" and "???" used as I-don't-know markers.
+	"???",
 }
 
 // Report captures the outcome of a confidence evaluation.
