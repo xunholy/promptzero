@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"gopkg.in/yaml.v3"
@@ -77,7 +78,14 @@ type Persona struct {
 // Registry holds the set of known personas. Built-ins are merged with any
 // YAML files found under userDir; user YAML with the same name as a built-in
 // wins so operators can override shipped defaults.
+//
+// All methods are goroutine-safe. Production reads happen from REPL +
+// HTTP handler goroutines after Load is called at startup; today
+// writes only happen at startup (so the happens-before is established
+// by the spawn order), but the mutex here is defensive against future
+// hot-reload paths.
 type Registry struct {
+	mu     sync.RWMutex
 	byName map[string]*Persona
 }
 
@@ -106,7 +114,9 @@ func (r *Registry) Load(path string) error {
 	if strings.TrimSpace(p.Name) == "" {
 		return fmt.Errorf("%s: persona missing required 'name' field", path)
 	}
+	r.mu.Lock()
 	r.byName[p.Name] = &p
+	r.mu.Unlock()
 	return nil
 }
 
@@ -140,6 +150,8 @@ func (r *Registry) LoadDir(dir string) error {
 // when the name is unknown — callers should not dereference the pointer in
 // that case.
 func (r *Registry) Get(name string) (*Persona, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	p, ok := r.byName[name]
 	return p, ok
 }
@@ -147,6 +159,8 @@ func (r *Registry) Get(name string) (*Persona, bool) {
 // Names returns the sorted list of registered persona names. Suitable for
 // rendering a picker or building an error message listing valid choices.
 func (r *Registry) Names() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]string, 0, len(r.byName))
 	for name := range r.byName {
 		out = append(out, name)
