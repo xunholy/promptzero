@@ -100,7 +100,13 @@ promptzero> transmit the garage door signal
 promptzero> read the NFC tag on my desk
 ```
 
-Slash commands: `/help`, `/attack`, `/campaign`, `/rewind`, `/report`, `/stats`, `/cost`, `/debug`, `/rules`, `/personas`, `/tools` (with `/tools page <n>` pagination).
+Slash commands (run `/help` for the full list with descriptions):
+
+- **Conversation**: `/help`, `/reset`, `/quit`
+- **Session**: `/sessions`, `/save <name>`, `/resume <id>`, `/forget <id>`
+- **Info**: `/status`, `/tools [filter|page <n>]`, `/history [N]`, `/audit {stats|find|tail|top|session|export}`, `/stats [section]`, `/cost`, `/budget [set <USD>|off]`, `/debug`
+- **Operator**: `/persona [name]`, `/mode [name]`, `/watch [pause|resume]`, `/webhooks [test <name>]`, `/validate <path>`, `/attack {set|clear} <techniques>`, `/campaign {validate|run} <file>`, `/rewind [snapshot]`, `/report [session] [json] [save]`, `/rules`
+- **Device**: `/reconnect`
 
 ### Web UI — `promptzero --web`
 
