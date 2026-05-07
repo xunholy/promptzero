@@ -1617,9 +1617,22 @@ func buildRule(rc config.RuleConfig) (rules.Rule, error) {
 		cooldown = d
 	}
 	actions := make([]rules.Action, 0, len(rc.Then))
-	for _, a := range rc.Then {
+	for i, a := range rc.Then {
+		kind := rules.ActionKind(a.Type)
+		// Validate the kind here rather than letting an unknown
+		// value reach Engine.fire's default branch — fire only logs
+		// at warn the first time the rule matches an event, which
+		// could be hours after config load. Operator typos (e.g.
+		// `type: webhok`) should fail loudly at startup.
+		switch kind {
+		case rules.ActionWebhook, rules.ActionLog, rules.ActionTool:
+			// ok
+		default:
+			return rules.Rule{}, fmt.Errorf("rule %q action[%d]: unknown type %q (valid: webhook, log, tool)",
+				rc.Name, i, a.Type)
+		}
 		actions = append(actions, rules.Action{
-			Kind:    rules.ActionKind(a.Type),
+			Kind:    kind,
 			Webhook: a.Webhook,
 			Tool:    a.Tool,
 			Params:  a.Params,

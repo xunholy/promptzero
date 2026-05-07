@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
 	flippermock "github.com/xunholy/promptzero/internal/flipper/mock"
 	"github.com/xunholy/promptzero/internal/testmocks"
@@ -350,6 +351,47 @@ func TestParseWhen_AcceptsValid(t *testing.T) {
 		t.Run(in, func(t *testing.T) {
 			if _, err := parseWhen(in); err != nil {
 				t.Errorf("%q should parse: %v", in, err)
+			}
+		})
+	}
+}
+
+// TestBuildRule_RejectsUnknownActionType catches the YAML typo
+// before the rule is registered. Without this check the operator's
+// `type: webhok` (typo) would build a rule whose Engine.fire only
+// warns the first time the rule matches an audit event — could be
+// hours after startup. Failing at config-load surfaces the typo
+// immediately.
+func TestBuildRule_RejectsUnknownActionType(t *testing.T) {
+	rc := config.RuleConfig{
+		Name: "test",
+		Then: []config.RuleActionConfig{
+			{Type: "webhok", Webhook: "ops"}, // typo
+		},
+	}
+	_, err := buildRule(rc)
+	if err == nil {
+		t.Fatal("unknown action type should error")
+	}
+	if !strings.Contains(err.Error(), "webhok") {
+		t.Errorf("error should echo the bad value: %v", err)
+	}
+	if !strings.Contains(err.Error(), "valid:") {
+		t.Errorf("error should list valid values: %v", err)
+	}
+}
+
+// TestBuildRule_AcceptsKnownActionTypes covers the canonical set so
+// a future tightening of the check doesn't break legitimate configs.
+func TestBuildRule_AcceptsKnownActionTypes(t *testing.T) {
+	for _, ty := range []string{"webhook", "log", "tool"} {
+		t.Run(ty, func(t *testing.T) {
+			rc := config.RuleConfig{
+				Name: "t",
+				Then: []config.RuleActionConfig{{Type: ty}},
+			}
+			if _, err := buildRule(rc); err != nil {
+				t.Errorf("type=%q should build, got: %v", ty, err)
 			}
 		})
 	}
