@@ -220,11 +220,20 @@ func (m *Manager) Rotate(sessionID string, keep int) (int, error) {
 	for _, e := range toDelete {
 		metaPath := filepath.Join(dir, e.ID+".json")
 		dataPath := filepath.Join(dir, e.ID+".bak")
-		// Best-effort removal — a missing partner file (interrupted
-		// Store call) shouldn't block the rest of the rotation.
-		_ = os.Remove(metaPath)
+		// Order matters: remove data first, then meta. If data removal
+		// fails we leave both files and the snapshot stays restorable.
+		// If we removed meta first and then data failed, List() would
+		// still hide it (no .json) but the data would orphan on disk
+		// invisible to any cleanup. If meta removal then fails after
+		// data succeeded the meta becomes a dangling pointer — List()
+		// reads it and Restore fails — which is the worst-case UX
+		// (snapshot visible but un-restorable). We mitigate by removing
+		// meta after data and checking that error too.
 		if err := os.Remove(dataPath); err != nil && !os.IsNotExist(err) {
 			return deleted, fmt.Errorf("snapshot rotate %s: %w", e.ID, err)
+		}
+		if err := os.Remove(metaPath); err != nil && !os.IsNotExist(err) {
+			return deleted, fmt.Errorf("snapshot rotate %s meta: %w", e.ID, err)
 		}
 		deleted++
 	}
