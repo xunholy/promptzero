@@ -3,6 +3,7 @@ package campaign
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -146,6 +147,53 @@ steps:
 	}
 	if !strings.Contains(err.Error(), "before this step") {
 		t.Errorf("expected forward-reference error message, got: %v", err)
+	}
+}
+
+// TestParseYAML_RejectsMalformedTimeout catches the silent-fallback
+// trap: the Runner's time.ParseDuration check just skipped the
+// timeout when it couldn't parse, so "timeout: 30 seconds" (English)
+// produced unbounded execution with no warning. Validation now fires
+// at parse time so the operator sees the typo.
+func TestParseYAML_RejectsMalformedTimeout(t *testing.T) {
+	cases := []string{
+		"30 seconds", // English instead of Go syntax
+		"5",          // missing unit
+		"-30s",       // negative
+		"0s",         // zero (treated as "no limit" per docs but rejected so non-empty must mean "do enforce")
+		"forever",
+	}
+	for _, bad := range cases {
+		t.Run(bad, func(t *testing.T) {
+			yamlDoc := fmt.Sprintf(`campaign: t
+steps:
+  - id: a
+    tool: x
+    timeout: %q
+`, bad)
+			_, err := ParseYAML([]byte(yamlDoc))
+			if err == nil {
+				t.Errorf("timeout=%q should error", bad)
+			}
+		})
+	}
+}
+
+// TestParseYAML_AcceptsValidTimeout covers happy-path bookend so a
+// future tightening of the rule doesn't break legitimate configs.
+func TestParseYAML_AcceptsValidTimeout(t *testing.T) {
+	for _, good := range []string{"30s", "2m", "1h", "500ms", "1m30s"} {
+		t.Run(good, func(t *testing.T) {
+			yamlDoc := fmt.Sprintf(`campaign: t
+steps:
+  - id: a
+    tool: x
+    timeout: %q
+`, good)
+			if _, err := ParseYAML([]byte(yamlDoc)); err != nil {
+				t.Errorf("timeout=%q should parse: %v", good, err)
+			}
+		})
 	}
 }
 
