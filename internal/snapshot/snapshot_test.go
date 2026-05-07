@@ -242,6 +242,41 @@ func TestManager_Restore_UnknownIDErrors(t *testing.T) {
 	}
 }
 
+// TestManager_RejectsTraversalSessionIDs locks the path-traversal
+// guard. Without this check Store / List / Restore / Purge with an
+// id like "../etc" would resolve outside the snapshot root because
+// filepath.Join is permissive — the operator's session-store-level
+// validation isn't reachable for callers that bypass the agent.
+func TestManager_RejectsTraversalSessionIDs(t *testing.T) {
+	m := NewManager(t.TempDir())
+	bad := []string{
+		"../foo",
+		"../../etc",
+		"foo/bar",
+		"foo\\bar",
+		".hidden",
+		"name with sp",
+		"",
+		"name|pipe",
+	}
+	for _, id := range bad {
+		t.Run(id, func(t *testing.T) {
+			if _, err := m.Store(id, "/ext/x.sub", []byte("x")); err == nil {
+				t.Errorf("Store(id=%q) should error", id)
+			}
+			if _, err := m.List(id); err == nil {
+				t.Errorf("List(id=%q) should error", id)
+			}
+			if _, _, err := m.Restore(id, "any"); err == nil {
+				t.Errorf("Restore(id=%q) should error", id)
+			}
+			if err := m.Purge(id); err == nil {
+				t.Errorf("Purge(id=%q) should error", id)
+			}
+		})
+	}
+}
+
 func TestDefaultRoot_EndsInSnapshots(t *testing.T) {
 	root, err := DefaultRoot()
 	if err != nil {
