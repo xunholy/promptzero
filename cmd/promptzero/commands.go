@@ -762,6 +762,14 @@ func handleExport(auditLog *audit.Log, args []string) {
 			return
 		}
 	}
+	// Validate options BEFORE opening the file. Without this an
+	// invalid --format or --min-level would truncate a valid
+	// pre-existing file before Export rejected the call — the
+	// operator typed a typo and lost their previous training data.
+	if err := trainset.ValidateOptions(opts); err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● export: %v%s\n", red, err, reset)
+		return
+	}
 	// Pull the whole log — operators use this after a session, not
 	// at scale. One million rows is orders of magnitude beyond any
 	// realistic single-session capture; log sizes that approach this

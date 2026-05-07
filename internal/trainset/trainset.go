@@ -99,6 +99,23 @@ var knownLevels = map[audit.Level]int{
 	audit.LevelCritical: 4,
 }
 
+// ValidateOptions checks an Options for shape errors without opening
+// the destination file. Callers should run this before truncating
+// the output target so a typo in --format or --min-level doesn't zap
+// a pre-existing file. Returns nil for valid options including
+// empty defaults (Format="" → FormatJSONL inside Export).
+func ValidateOptions(opts Options) error {
+	if opts.Format != "" && opts.Format != FormatJSONL && opts.Format != FormatChat {
+		return fmt.Errorf("unknown format %q (valid: %s, %s)", opts.Format, FormatJSONL, FormatChat)
+	}
+	if opts.MinLevel != "" {
+		if _, ok := knownLevels[opts.MinLevel]; !ok {
+			return fmt.Errorf("unknown min_level %q (valid: info, action, warning, critical)", opts.MinLevel)
+		}
+	}
+	return nil
+}
+
 // Export writes each filtered entry to w according to opts.Format.
 // Returns the number of rows emitted and the first write/encode error.
 // An unknown opts.MinLevel is rejected upfront rather than silently
