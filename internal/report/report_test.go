@@ -170,10 +170,14 @@ func TestMarkdownRenderer_PopulatedSession(t *testing.T) {
 
 func TestMdEscape(t *testing.T) {
 	cases := map[string]string{
-		"simple":       "simple",
-		"has|pipe":     "has\\|pipe",
-		"has`backtick": "has\\`backtick",
-		"a|b`c":        "a\\|b\\`c",
+		"simple":         "simple",
+		"has|pipe":       "has\\|pipe",
+		"has`backtick":   "has\\`backtick",
+		"a|b`c":          "a\\|b\\`c",
+		"line1\nline2":   "line1 line2",
+		"line1\r\nline2": "line1 line2",
+		"a|b\nc`d\re":    "a\\|b c\\`d e",
+		"trailing\n":     "trailing ",
 	}
 	for in, want := range cases {
 		if got := mdEscape(in); got != want {
