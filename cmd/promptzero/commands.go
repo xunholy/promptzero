@@ -1246,6 +1246,13 @@ func parseAuditFilter(tokens []string) (audit.Filter, error) {
 			return f, fmt.Errorf("unknown key %q", k)
 		}
 	}
+	// Sanity check: since must precede until. The SQL clause is
+	// `timestamp >= since AND timestamp <= until` — a swapped pair
+	// returns 0 rows silently. Surface the typo with a clear error.
+	if !f.Since.IsZero() && !f.Until.IsZero() && f.Since.After(f.Until) {
+		return f, fmt.Errorf("since (%s) is after until (%s) — swap the values",
+			f.Since.Format(time.RFC3339), f.Until.Format(time.RFC3339))
+	}
 	return f, nil
 }
 
