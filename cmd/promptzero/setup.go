@@ -562,7 +562,7 @@ func setupBudget(cfg *config.Config, flagBudget float64, ai *agent.Agent, tracke
 		dim, usdCap, reset))
 	tracker.SetBudget(usdCap,
 		func(spent, capUSD float64) {
-			statusWarn(fmt.Sprintf("Session at $%.4f / $%.2f (80%% of budget) — consider /budget bump or wrap up",
+			statusWarn(fmt.Sprintf("Session at $%.4f / $%.2f (80%% of budget) — consider /budget set $X or wrap up",
 				spent, capUSD))
 		},
 		func(spent, capUSD float64) {

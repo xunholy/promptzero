@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xunholy/promptzero/internal/cost"
 	flippermock "github.com/xunholy/promptzero/internal/flipper/mock"
 	"github.com/xunholy/promptzero/internal/testmocks"
 )
@@ -83,6 +84,86 @@ func TestHandleValidate_NilFlipper(t *testing.T) {
 
 // Ensure flippermock import stays referenced if the handler type changes.
 var _ flippermock.Handler = func(args []string) string { return "" }
+
+// TestBudget_NoArgs_ShowsDisabled verifies /budget with no args and no
+// cap configured renders the "disabled" state with a hint. Locks the
+// printBudget output so a future refactor doesn't strand operators.
+func TestBudget_NoArgs_ShowsDisabled(t *testing.T) {
+	tracker := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	deps := &REPLDeps{
+		ed:          newLineEditor(&termUI{enabled: false}),
+		costTracker: tracker,
+	}
+	out := captureStderr(t, func() {
+		handleBudget(deps, nil)
+	})
+	if !strings.Contains(out, "disabled") {
+		t.Errorf("expected 'disabled' in output, got: %q", out)
+	}
+	if !strings.Contains(out, "/budget set") {
+		t.Errorf("expected hint to /budget set, got: %q", out)
+	}
+}
+
+// TestBudget_SetParsesDollarPrefix accepts both "/budget set 5" and
+// "/budget set $5" so operators don't have to remember which form the
+// command expects.
+func TestBudget_SetParsesDollarPrefix(t *testing.T) {
+	tracker := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	deps := &REPLDeps{
+		ed:          newLineEditor(&termUI{enabled: false}),
+		costTracker: tracker,
+	}
+	out := captureStderr(t, func() {
+		handleBudget(deps, []string{"set", "$2.50"})
+	})
+	if got := tracker.Snapshot().BudgetUSD; got != 2.50 {
+		t.Errorf("BudgetUSD = %v, want 2.50 (dollar prefix should be stripped)", got)
+	}
+	if !strings.Contains(out, "$2.50") {
+		t.Errorf("confirmation should echo the cap, got: %q", out)
+	}
+}
+
+// TestBudget_SetRejectsGarbage covers the parse-failure branch — a
+// non-numeric arg should produce the error message and leave the tracker
+// untouched.
+func TestBudget_SetRejectsGarbage(t *testing.T) {
+	tracker := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	tracker.SetBudget(1.00, nil, nil)
+	deps := &REPLDeps{
+		ed:          newLineEditor(&termUI{enabled: false}),
+		costTracker: tracker,
+	}
+	out := captureStderr(t, func() {
+		handleBudget(deps, []string{"set", "abc"})
+	})
+	if !strings.Contains(out, "not a non-negative number") {
+		t.Errorf("expected parse-error message, got: %q", out)
+	}
+	if got := tracker.Snapshot().BudgetUSD; got != 1.00 {
+		t.Errorf("BudgetUSD = %v, want 1.00 — garbage arg shouldn't mutate cap", got)
+	}
+}
+
+// TestBudget_OffDisablesCap covers the off/clear/disable aliases — all
+// three should set the cap to 0.
+func TestBudget_OffDisablesCap(t *testing.T) {
+	for _, alias := range []string{"off", "clear", "disable"} {
+		t.Run(alias, func(t *testing.T) {
+			tracker := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+			tracker.SetBudget(5.00, nil, nil)
+			deps := &REPLDeps{
+				ed:          newLineEditor(&termUI{enabled: false}),
+				costTracker: tracker,
+			}
+			handleBudget(deps, []string{alias})
+			if got := tracker.Snapshot().BudgetUSD; got != 0 {
+				t.Errorf("alias %q: BudgetUSD = %v, want 0", alias, got)
+			}
+		})
+	}
+}
 
 // /forget without an id should print the usage hint via dispatchSlashCommand
 // and not exit the REPL. Exercises the dispatcher path so a future rename
