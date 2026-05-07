@@ -165,6 +165,67 @@ func TestDispatcher_EventFilter(t *testing.T) {
 	_ = d.Close(context.Background())
 }
 
+// TestDispatcher_FireByNameTargetsSingleSubscription locks the
+// rule-driven delivery semantics: FireByName goes to exactly the
+// named subscription, bypassing its Events allowlist. Covers the
+// case where a rule's `webhook: ops-pager` should reach ops-pager
+// even if its Events filter doesn't list rule_fired.
+func TestDispatcher_FireByNameTargetsSingleSubscription(t *testing.T) {
+	var pagerHits, otherHits atomic.Int32
+	pager := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pagerHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer pager.Close()
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		otherHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer other.Close()
+
+	d := New([]Subscription{
+		// pager listens to a narrow Events filter that does NOT
+		// include rule_fired; FireByName must still deliver.
+		{Name: "ops-pager", URL: pager.URL, Events: []Event{EventAuditCritical}},
+		// "all-events" subscription; must NOT receive a FireByName
+		// targeting ops-pager.
+		{Name: "all", URL: other.URL},
+	})
+
+	d.FireByName("ops-pager", map[string]string{"reason": "rule alert"})
+	waitFor(t, 2*time.Second, func() bool { return pagerHits.Load() == 1 })
+	time.Sleep(50 * time.Millisecond)
+
+	if pagerHits.Load() != 1 {
+		t.Errorf("ops-pager should receive 1 delivery, got %d", pagerHits.Load())
+	}
+	if otherHits.Load() != 0 {
+		t.Errorf("'all' subscription should NOT receive a name-targeted call, got %d", otherHits.Load())
+	}
+	_ = d.Close(context.Background())
+}
+
+// TestDispatcher_FireByNameUnknownSilent verifies the fire-and-forget
+// contract — calling FireByName with no matching subscription is a
+// silent no-op (matches the existing Fire behaviour for an event
+// no subscription listens to).
+func TestDispatcher_FireByNameUnknownSilent(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	d := New([]Subscription{{Name: "exists", URL: srv.URL}})
+	d.FireByName("does-not-exist", map[string]any{"x": 1})
+	time.Sleep(100 * time.Millisecond)
+	if hits.Load() != 0 {
+		t.Errorf("unknown name should deliver to nobody, got %d", hits.Load())
+	}
+	_ = d.Close(context.Background())
+}
+
 func TestDispatcher_CloseDrainsQueue(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
