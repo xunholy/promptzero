@@ -329,14 +329,23 @@ func (s *Server) handleRulesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snaps := s.rulesEngine.List()
+	now := time.Now()
 	out := make([]ruleDTO, 0, len(snaps))
 	for _, snap := range snaps {
+		var remaining int64
+		if snap.Cooldown > 0 && !snap.LastFire.IsZero() {
+			elapsed := now.Sub(snap.LastFire)
+			if elapsed < snap.Cooldown {
+				remaining = (snap.Cooldown - elapsed).Milliseconds()
+			}
+		}
 		out = append(out, ruleDTO{
-			Name:        snap.Name,
-			Description: snap.Description,
-			Enabled:     snap.Enabled,
-			FireCount:   snap.Fires,
-			LastFired:   snap.LastFire,
+			Name:                snap.Name,
+			Description:         snap.Description,
+			Enabled:             snap.Enabled,
+			FireCount:           snap.Fires,
+			LastFired:           snap.LastFire,
+			CooldownRemainingMS: remaining,
 		})
 	}
 	respondJSON(w, http.StatusOK, out)
