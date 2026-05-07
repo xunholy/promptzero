@@ -177,6 +177,47 @@ func TestSubstitute(t *testing.T) {
 	}
 }
 
+// TestIgnore_TemplatesAndCase locks the v0.24.x ignore-rule expansions:
+// case-insensitive suffix matching (.SWP / .Bak no longer slip past
+// the lowercase hardcoded list), additional editor temp/backup
+// patterns (.swo, .bak, .tmp), browser-download partials
+// (.crdownload, .part, .partial), and Windows OS noise files
+// (Thumbs.db, desktop.ini).
+func TestIgnore_TemplatesAndCase(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		// existing rules — confirm regression-free
+		{"/tmp/x/.hidden", true},
+		{"/tmp/x/notes.swp", true},
+		{"/tmp/x/notes~", true},
+		{"/tmp/x/repo/.git/HEAD", true},
+		// case-insensitive suffix variants
+		{"/tmp/x/notes.SWP", true},
+		{"/tmp/x/notes.Swo", true},
+		// new generic backup/temp suffixes
+		{"/tmp/x/draft.bak", true},
+		{"/tmp/x/draft.BAK", true},
+		{"/tmp/x/draft.tmp", true},
+		// browser partials
+		{"/tmp/x/file.crdownload", true},
+		{"/tmp/x/file.part", true},
+		{"/tmp/x/file.partial", true},
+		// Windows noise
+		{"/tmp/x/Thumbs.db", true},
+		{"/tmp/x/desktop.ini", true},
+		// regular files should NOT be ignored
+		{"/tmp/x/capture.sub", false},
+		{"/tmp/x/notes.txt", false},
+	}
+	for _, tc := range cases {
+		if got := ignore(tc.path); got != tc.want {
+			t.Errorf("ignore(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
 // TestMatch_CaseInsensitive locks the case-insensitive match contract.
 // Browsers, screenshot tools, and some CFW SD-card writers emit mixed-
 // case extensions (.PNG, .SUB, .NFC). The watcher pattern *.sub should

@@ -264,17 +264,44 @@ func substitute(tmpl, path string) string {
 
 // ignore filters out dotfiles, editor swap/backup files, and anything
 // under a .git/ directory. Keeps the agent from reacting to noise that
-// humans also ignore.
+// humans also ignore. Suffix and basename checks are case-insensitive
+// so .SWP / .Bak don't slip through on filesystems that preserve
+// arbitrary case.
 func ignore(path string) bool {
 	base := filepath.Base(path)
 	if strings.HasPrefix(base, ".") {
 		return true
 	}
-	if strings.HasSuffix(base, "~") || strings.HasSuffix(base, ".swp") || strings.HasSuffix(base, ".swx") {
+	lower := strings.ToLower(base)
+	for _, suf := range ignoreSuffixes {
+		if strings.HasSuffix(lower, suf) {
+			return true
+		}
+	}
+	if _, hit := ignoreBasenames[lower]; hit {
 		return true
 	}
 	if strings.Contains(path, string(filepath.Separator)+".git"+string(filepath.Separator)) {
 		return true
 	}
 	return false
+}
+
+// ignoreSuffixes are filename suffixes (lowercased) that should never
+// dispatch a watch event. ~ is vi/emacs autosave; .swp/.swx are vim
+// swap files; .bak is a generic backup convention; .tmp is the
+// rename-after-write atomic-save sibling many editors emit.
+var ignoreSuffixes = []string{
+	"~",
+	".swp", ".swx", ".swo",
+	".bak", ".tmp",
+	".crdownload", ".part", ".partial", // browser in-progress downloads
+}
+
+// ignoreBasenames covers exact filenames produced by OS / build tools
+// that operators don't want triggering captures.
+var ignoreBasenames = map[string]struct{}{
+	"thumbs.db":   {}, // Windows thumbnail cache
+	"desktop.ini": {}, // Windows folder config
+	".ds_store":   {}, // already caught by dotfile rule, listed for clarity
 }
