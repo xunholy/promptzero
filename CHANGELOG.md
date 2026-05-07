@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-05-08
+
+Watcher polish + CI follow-through on the v0.31 toolchain bump.
+
+### Fixed
+
+- **Watch rules warn at startup when `persona:` references an unknown
+  name.** A typo'd persona name silently no-op'd at fire time —
+  the rule still fired but with the active persona, not the
+  intended one. Operator never saw a signal that the typo was the
+  reason their watch trigger wasn't switching modes. Now warned at
+  startup alongside the existing pattern check; soft-fail preserved
+  (the rule still fires) so a typo in one rule doesn't strand the
+  others. (`cmd/promptzero/repl.go`)
+
+### Build
+
+- **CI pins Go to 1.25.10 across all workflows.** The `1.25`
+  shorthand resolves to whatever's cached on the runner — today
+  that's 1.25.9, which carries the CVEs cleared in v0.31.0. The
+  go.mod toolchain directive can't help here: setup-go sets
+  `GOTOOLCHAIN=local`, forcing the local Go regardless of the
+  directive. Pinned ci, codeql, release, and coverage-diff to the
+  specific patch so setup-go pulls 1.25.10 explicitly. As future
+  patch releases land we bump the pin.
+  (`.github/workflows/{ci,codeql,release,coverage-diff}.yaml`)
+
 ## [0.31.0] - 2026-05-08
 
 Webhook delivery semantics fixed end-to-end. The rules engine's
