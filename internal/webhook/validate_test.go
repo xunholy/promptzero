@@ -103,3 +103,63 @@ func TestValidateSubscription_RejectsEmptyURL(t *testing.T) {
 		t.Fatal("empty URL must error")
 	}
 }
+
+// TestValidateSubscription_RejectsUnknownEvent locks the typo trap:
+// `events: [tool_finsished]` (typo) used to silently never fire.
+// ValidateSubscription now reports the unknown name with the
+// allowed list so the operator can fix it at config-load time.
+func TestValidateSubscription_RejectsUnknownEvent(t *testing.T) {
+	cases := []Event{
+		"tool_finsished", // typo — missing 'i'
+		"audit_warning",  // not in the canonical set
+		"",               // empty event name
+		"TOOL_FINISHED",  // wrong case
+	}
+	for _, e := range cases {
+		t.Run(string(e), func(t *testing.T) {
+			err := ValidateSubscription(Subscription{
+				Name:   "t",
+				URL:    "https://example.com/hook",
+				Events: []Event{e},
+			})
+			if err == nil {
+				t.Errorf("event %q should error", e)
+			}
+		})
+	}
+}
+
+// TestValidateSubscription_AcceptsKnownEvents covers all 7 canonical
+// values; future additions to the const block must be reflected in
+// knownEvents or this test fails.
+func TestValidateSubscription_AcceptsKnownEvents(t *testing.T) {
+	for _, e := range []Event{
+		EventToolFinished, EventRiskPrompted, EventRiskDenied,
+		EventWorkflowCompleted, EventAuditCritical,
+		EventSessionStarted, EventSessionEnded,
+	} {
+		t.Run(string(e), func(t *testing.T) {
+			err := ValidateSubscription(Subscription{
+				Name:   "t",
+				URL:    "https://example.com/hook",
+				Events: []Event{e},
+			})
+			if err != nil {
+				t.Errorf("event %q should validate, got: %v", e, err)
+			}
+		})
+	}
+}
+
+// TestValidateSubscription_EmptyEventsAllowsAll preserves the
+// existing semantics: a Subscription with no Events filter receives
+// every event, not nothing.
+func TestValidateSubscription_EmptyEventsAllowsAll(t *testing.T) {
+	err := ValidateSubscription(Subscription{
+		Name: "t",
+		URL:  "https://example.com/hook",
+	})
+	if err != nil {
+		t.Errorf("empty Events should validate (means all-events): %v", err)
+	}
+}

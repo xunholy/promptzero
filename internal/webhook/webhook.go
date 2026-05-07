@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,32 @@ const (
 	EventSessionStarted    Event = "session_started"
 	EventSessionEnded      Event = "session_ended"
 )
+
+// knownEvents lists every value Event may take. Used by
+// ValidateSubscription to reject typos in YAML config (e.g.
+// `events: [tool_finsished]`) at load time rather than letting
+// the subscription silently never fire.
+var knownEvents = map[Event]struct{}{
+	EventToolFinished:      {},
+	EventRiskPrompted:      {},
+	EventRiskDenied:        {},
+	EventWorkflowCompleted: {},
+	EventAuditCritical:     {},
+	EventSessionStarted:    {},
+	EventSessionEnded:      {},
+}
+
+// KnownEventNames returns the canonical list of event names sorted
+// alphabetically. Useful for error messages and `/webhooks` help
+// output so operators don't have to grep the source.
+func KnownEventNames() []string {
+	out := make([]string, 0, len(knownEvents))
+	for e := range knownEvents {
+		out = append(out, string(e))
+	}
+	sort.Strings(out)
+	return out
+}
 
 // Subscription is one configured HTTP webhook target. A zero Events slice
 // opts into every event; a non-empty slice is an allowlist.
@@ -139,6 +166,16 @@ func ValidateSubscription(s Subscription) error {
 			"webhook %q: refusing internal/loopback target %q "+
 				"(set PROMPTZERO_WEBHOOK_ALLOW_INTERNAL=1 to override)",
 			s.Name, host)
+	}
+	// Validate the events allowlist. An empty Events slice means
+	// "every event" (existing semantics). A non-empty slice with an
+	// unknown member would silently never fire — better to fail loud
+	// at load time so the operator can fix the typo.
+	for _, e := range s.Events {
+		if _, ok := knownEvents[e]; !ok {
+			return fmt.Errorf("webhook %q: unknown event %q (allowed: %s)",
+				s.Name, e, strings.Join(KnownEventNames(), ", "))
+		}
 	}
 	return nil
 }
