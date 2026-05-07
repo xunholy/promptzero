@@ -325,6 +325,33 @@ func TestNormaliseAttackIDs(t *testing.T) {
 	})
 }
 
+// TestParseAuditFilter_LimitCap rejects an oversized limit. Without
+// the cap an operator typing limit=1000000 (typo or stress) would
+// tie up SQLite for seconds and flood the terminal.
+func TestParseAuditFilter_LimitCap(t *testing.T) {
+	t.Run("at_cap_ok", func(t *testing.T) {
+		f, err := parseAuditFilter([]string{"limit=10000"})
+		if err != nil {
+			t.Errorf("limit=10000 should parse, got: %v", err)
+		}
+		if f.Limit != 10000 {
+			t.Errorf("Limit = %d, want 10000", f.Limit)
+		}
+	})
+	t.Run("over_cap_errors", func(t *testing.T) {
+		_, err := parseAuditFilter([]string{"limit=10001"})
+		if err == nil {
+			t.Error("limit=10001 should error")
+		}
+	})
+	t.Run("way_over_cap_errors", func(t *testing.T) {
+		_, err := parseAuditFilter([]string{"limit=1000000"})
+		if err == nil {
+			t.Error("limit=1000000 should error")
+		}
+	})
+}
+
 // TestParseAuditFilter_RiskValidation locks the canonical risk-string
 // allowlist. A typo like "danger" or wrong case like "CRITICAL" used
 // to silently match zero rows because SQLite's default LIKE/= is

@@ -1249,6 +1249,13 @@ func mergeQuoted(in []string) []string {
 	return out
 }
 
+// maxAuditLimit caps the per-query row count. The audit DB grows
+// without bound across sessions; an operator typing limit=1000000 by
+// accident (or as a stress test) would tie up SQLite for seconds and
+// flood the terminal. 10k is generous for any reasonable triage flow
+// — operators wanting more should use offset to paginate.
+const maxAuditLimit = 10000
+
 // parseAuditFilter turns `k=v` tokens into an audit.Filter. Unknown keys
 // error out so typos don't silently match nothing. Caller should pass
 // tokens already run through mergeQuoted so quoted values survive.
@@ -1303,6 +1310,9 @@ func parseAuditFilter(tokens []string) (audit.Filter, error) {
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 0 {
 				return f, fmt.Errorf("limit=%s: want positive int", v)
+			}
+			if n > maxAuditLimit {
+				return f, fmt.Errorf("limit=%d exceeds max %d", n, maxAuditLimit)
 			}
 			f.Limit = n
 		case "offset":
