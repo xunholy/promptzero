@@ -242,7 +242,12 @@ var toolLevels = func() map[string]Level {
 		// v0.5 security: host-side active recon (same tier as wifi_port_scan)
 		"port_scan_tcp",
 		"http_enum_common",
-		// TODO(v0.5.1 risk-review): mfoc_attack, mfcuk_attack, mfkey32_recover — tasks #7
+		// mfoc_attack, mfcuk_attack, mfkey32_recover review (v0.5.1
+		// task #7) concluded: stay at High. Recovered keys enable
+		// cloning of access credentials — same downstream effect as
+		// nfc_emulate, classified by impact rather than RF emission.
+		// (Lines 226-228 above already register them at High with
+		// the same rationale; this comment closes the open marker.)
 		// v0.16 — RF transmit + state-affecting Flipper primitives that
 		// drive external hardware (5V/3V3 rails) or reach the boot loop
 		// (power off, full backup write).
