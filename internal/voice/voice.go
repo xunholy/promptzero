@@ -57,11 +57,20 @@ func New(openAIKey string) *Engine {
 // enough that a hang surfaces before the operator gives up.
 const recordTimeout = 2 * time.Minute
 
-// Record captures audio from the microphone using sox.
-// Press Ctrl+C or wait for silence to stop.
+// Record captures audio from the microphone using sox. Equivalent to
+// RecordCtx with context.Background(); kept for back-compat.
+//
+// Deprecated: prefer RecordCtx so the REPL's turn ctx can abort a stuck
+// recording (Ctrl+C cancels mid-flight instead of waiting for silence).
 func (e *Engine) Record(outPath string) error {
-	// sox's `rec` command — widely available on Linux/macOS
-	// Records 16kHz mono WAV, stops after 1s of silence
+	return e.RecordCtx(context.Background(), outPath)
+}
+
+// RecordCtx captures audio from the microphone using sox until the
+// silence detector fires or the recordTimeout fallback expires. The
+// caller's ctx is honoured: cancelling it kills the rec process.
+// Records 16kHz mono WAV, stops after 1s of silence.
+func (e *Engine) RecordCtx(ctx context.Context, outPath string) error {
 	args := []string{
 		"-r", "16000",
 		"-c", "1",
@@ -71,9 +80,11 @@ func (e *Engine) Record(outPath string) error {
 		"1", "1.0", "1%",
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), recordTimeout)
+	// Overlay a per-call timeout on the caller's ctx so a hung mic
+	// driver still terminates without the operator hitting Ctrl+C.
+	cctx, cancel := context.WithTimeout(ctx, recordTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "rec", args...)
+	cmd := exec.CommandContext(cctx, "rec", args...)
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
@@ -98,18 +109,36 @@ func (e *Engine) RecordFixed(outPath string, seconds int) error {
 }
 
 // Transcribe sends audio to OpenAI Whisper API and returns the text.
+// Equivalent to TranscribeCtx with context.Background().
+//
+// Deprecated: prefer TranscribeCtx so a network hang can be cancelled.
 func (e *Engine) Transcribe(audioPath string) (string, error) {
+	return e.TranscribeCtx(context.Background(), audioPath)
+}
+
+// TranscribeCtx is the ctx-aware variant of Transcribe.
+func (e *Engine) TranscribeCtx(ctx context.Context, audioPath string) (string, error) {
 	file, err := os.Open(audioPath)
 	if err != nil {
 		return "", fmt.Errorf("opening audio file: %w", err)
 	}
 	defer file.Close()
-
-	return e.TranscribeReader(file, filepath.Base(audioPath))
+	return e.TranscribeReaderCtx(ctx, file, filepath.Base(audioPath))
 }
 
 // TranscribeReader sends audio from a reader to OpenAI Whisper API.
+// Equivalent to TranscribeReaderCtx with context.Background().
+//
+// Deprecated: prefer TranscribeReaderCtx — without a cancellable ctx
+// the only timeout is the HTTP client's Timeout field.
 func (e *Engine) TranscribeReader(audio io.Reader, filename string) (string, error) {
+	return e.TranscribeReaderCtx(context.Background(), audio, filename)
+}
+
+// TranscribeReaderCtx sends audio from a reader to OpenAI Whisper API.
+// Honours ctx — cancelling it aborts the in-flight HTTP request so the
+// REPL can return immediately on Ctrl+C even if the API hangs.
+func (e *Engine) TranscribeReaderCtx(ctx context.Context, audio io.Reader, filename string) (string, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
@@ -129,7 +158,7 @@ func (e *Engine) TranscribeReader(audio io.Reader, filename string) (string, err
 	}
 	writer.Close()
 
-	req, err := http.NewRequest("POST", e.whisperURL, &buf)
+	req, err := http.NewRequestWithContext(ctx, "POST", e.whisperURL, &buf)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
