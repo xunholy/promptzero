@@ -40,6 +40,12 @@ type Match struct {
 	Risk           string
 	Level          string
 	OutputContains string
+	// Success filters by audit Entry.Success. nil matches either; &true
+	// fires only on successful tool calls; &false fires only on
+	// failures. Mirrors audit.Filter.Success — same nil/true/false
+	// tristate so an operator can alert on every failed wifi_deauth or
+	// chain a follow-up only when wifi_handshake_capture succeeds.
+	Success *bool
 }
 
 // ActionKind enumerates the built-in action types. "webhook" fires via
@@ -314,6 +320,9 @@ func matches(m Match, e audit.Entry) bool {
 		return false
 	}
 	if m.OutputContains != "" && !strings.Contains(e.Output, m.OutputContains) {
+		return false
+	}
+	if m.Success != nil && *m.Success != e.Success {
 		return false
 	}
 	return true

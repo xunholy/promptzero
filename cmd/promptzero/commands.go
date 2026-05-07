@@ -1532,6 +1532,7 @@ func buildRule(rc config.RuleConfig) (rules.Rule, error) {
 			Risk:           rc.When.Risk,
 			Level:          rc.When.Level,
 			OutputContains: rc.When.OutputContains,
+			Success:        rc.When.Success,
 		},
 		Actions:  actions,
 		Cooldown: cooldown,

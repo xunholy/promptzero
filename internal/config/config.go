@@ -179,11 +179,18 @@ type RuleConfig struct {
 // RuleMatchConfig defines audit-entry matching. Non-empty fields are
 // ANDed; empty fields are wildcards. Tool supports a trailing "*" glob
 // ("workflow_*") as a common convenience.
+//
+// Success is a tristate: omit the key to match either outcome, set
+// `success: true` to fire only when the tool succeeded, set
+// `success: false` to fire only on failures. Useful for alerts like
+// "tell me when wifi_handshake_capture fails" without hand-rolling an
+// output_contains check.
 type RuleMatchConfig struct {
 	Tool           string `yaml:"tool,omitempty"`
 	Risk           string `yaml:"risk,omitempty"`
 	Level          string `yaml:"level,omitempty"`
 	OutputContains string `yaml:"output_contains,omitempty"`
+	Success        *bool  `yaml:"success,omitempty"`
 }
 
 // RuleActionConfig is one step in a rule's Then list. Type picks the
