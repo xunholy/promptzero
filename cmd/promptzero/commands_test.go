@@ -384,16 +384,55 @@ func TestBuildRule_RejectsUnknownActionType(t *testing.T) {
 // TestBuildRule_AcceptsKnownActionTypes covers the canonical set so
 // a future tightening of the check doesn't break legitimate configs.
 func TestBuildRule_AcceptsKnownActionTypes(t *testing.T) {
-	for _, ty := range []string{"webhook", "log", "tool"} {
-		t.Run(ty, func(t *testing.T) {
+	cases := []config.RuleActionConfig{
+		{Type: "webhook", Webhook: "ops"},
+		{Type: "log"},
+		{Type: "tool", Tool: "wifi_scan_ap"},
+	}
+	for _, a := range cases {
+		t.Run(a.Type, func(t *testing.T) {
 			rc := config.RuleConfig{
 				Name: "t",
-				Then: []config.RuleActionConfig{{Type: ty}},
+				Then: []config.RuleActionConfig{a},
 			}
 			if _, err := buildRule(rc); err != nil {
-				t.Errorf("type=%q should build, got: %v", ty, err)
+				t.Errorf("action %+v should build, got: %v", a, err)
 			}
 		})
+	}
+}
+
+// TestBuildRule_RequiresWebhookFieldForWebhookAction catches the case
+// where the operator wrote `type: webhook` but forgot the `webhook:`
+// field naming the subscription. Old code built the rule and fired
+// with empty webhook name, which most dispatchers silently drop.
+func TestBuildRule_RequiresWebhookFieldForWebhookAction(t *testing.T) {
+	rc := config.RuleConfig{
+		Name: "t",
+		Then: []config.RuleActionConfig{{Type: "webhook"}},
+	}
+	_, err := buildRule(rc)
+	if err == nil {
+		t.Fatal("missing webhook field should error")
+	}
+	if !strings.Contains(err.Error(), "webhook") {
+		t.Errorf("error should mention webhook field: %v", err)
+	}
+}
+
+// TestBuildRule_RequiresToolFieldForToolAction catches the parallel
+// case for type=tool with no tool name.
+func TestBuildRule_RequiresToolFieldForToolAction(t *testing.T) {
+	rc := config.RuleConfig{
+		Name: "t",
+		Then: []config.RuleActionConfig{{Type: "tool"}},
+	}
+	_, err := buildRule(rc)
+	if err == nil {
+		t.Fatal("missing tool field should error")
+	}
+	if !strings.Contains(err.Error(), "tool") {
+		t.Errorf("error should mention tool field: %v", err)
 	}
 }
 
