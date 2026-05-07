@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
@@ -204,6 +205,36 @@ func TestRegistryLoadMissingName(t *testing.T) {
 	if err := r.Load(path); err == nil {
 		t.Errorf("expected error for nameless persona")
 	}
+}
+
+// TestRegistry_ConcurrentReadWrite locks the goroutine-safety
+// guarantee. Run under -race; without the RWMutex this would trip
+// the race detector on a Get/Names while Load is running. Production
+// today only writes at startup but the mutex keeps a future
+// hot-reload feature safe.
+func TestRegistry_ConcurrentReadWrite(t *testing.T) {
+	r := NewRegistry()
+	dir := t.TempDir()
+	tmpYAML := filepath.Join(dir, "concurrent.yaml")
+	if err := os.WriteFile(tmpYAML, []byte("name: hot-reload-test\nsystem_prompt: x\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	done := make(chan struct{})
+	// One reader, one writer racing for ~50ms.
+	go func() {
+		deadline := time.Now().Add(50 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			_ = r.Names()
+			_, _ = r.Get("default")
+		}
+		close(done)
+	}()
+	deadline := time.Now().Add(50 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		_ = r.Load(tmpYAML)
+	}
+	<-done
 }
 
 func TestIsUnrestricted(t *testing.T) {
