@@ -21,6 +21,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // Target is one remembered target row. Identifier is the stable
@@ -155,7 +157,9 @@ func (s *Store) Lookup(identifier, kind string) (Target, bool, error) {
 		return Target{}, false, err
 	}
 	if factsJSON != "" {
-		_ = json.Unmarshal([]byte(factsJSON), &t.Facts)
+		if err := json.Unmarshal([]byte(factsJSON), &t.Facts); err != nil {
+			obs.Default().Warn("targetmem_facts_unmarshal_failed", "where", "Lookup", "identifier", identifier, "kind", kind, "err", err)
+		}
 	}
 	t.FirstSeen, _ = time.Parse(time.RFC3339, firstSeenStr)
 	t.LastSeen, _ = time.Parse(time.RFC3339, lastSeenStr)
@@ -189,7 +193,9 @@ func (s *Store) Recent(n int) ([]Target, error) {
 			return nil, err
 		}
 		if factsJSON != "" {
-			_ = json.Unmarshal([]byte(factsJSON), &t.Facts)
+			if err := json.Unmarshal([]byte(factsJSON), &t.Facts); err != nil {
+				obs.Default().Warn("targetmem_facts_unmarshal_failed", "where", "Recent", "identifier", t.Identifier, "kind", t.Kind, "err", err)
+			}
 		}
 		t.FirstSeen, _ = time.Parse(time.RFC3339, firstSeenStr)
 		t.LastSeen, _ = time.Parse(time.RFC3339, lastSeenStr)
