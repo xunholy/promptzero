@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // deviceStateTimeout caps how long the state-oracle probe can block the
@@ -43,6 +44,12 @@ func buildDeviceStateBlock(parent context.Context, f *flipper.Flipper) string {
 
 	body, err := json.Marshal(st)
 	if err != nil {
+		// Returning "" preserves the documented graceful behaviour
+		// (turn proceeds without device-state annotation), but log
+		// at warn so a future programmer attaching a non-encodable
+		// type to the state struct sees the breadcrumb instead of
+		// silently losing the agent's situational-awareness prefix.
+		obs.Default().Warn("device_state_marshal_failed", "err", err)
 		return ""
 	}
 	var b strings.Builder
