@@ -171,9 +171,18 @@ func (e *Engine) TranscribeReaderCtx(ctx context.Context, audio io.Reader, filen
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Cap the response. Whisper transcriptions of a few minutes of
+	// audio are well under 100 KB; 4 MiB is generous headroom while
+	// protecting against a misconfigured whisperURL pointing at
+	// something that returns multi-GB bodies. The +1 trick lets us
+	// distinguish "exactly cap bytes" from "exceeded".
+	const maxWhisperResponseBytes = 4 << 20
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxWhisperResponseBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("reading response: %w", err)
+	}
+	if int64(len(body)) > maxWhisperResponseBytes {
+		return "", fmt.Errorf("whisper response exceeded %d-byte cap; refusing to buffer", maxWhisperResponseBytes)
 	}
 
 	if resp.StatusCode != http.StatusOK {
