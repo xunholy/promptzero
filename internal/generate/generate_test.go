@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/xunholy/promptzero/internal/provider"
 )
@@ -81,6 +82,29 @@ func TestCapSize_LeavesShortAlone(t *testing.T) {
 	got := capSize("short", 100)
 	if got != "short" {
 		t.Errorf("got %q, want unchanged", got)
+	}
+}
+
+// TestCapSize_UTF8Boundary pins the rune-aware truncation. The
+// previous implementation sliced at byte index max which could
+// split a multi-byte UTF-8 rune in half — the resulting file
+// would have invalid UTF-8 at the tail (rendered as U+FFFD by
+// most parsers, or rejected outright by strict validators).
+// Now capSize walks back to the previous rune start.
+func TestCapSize_UTF8Boundary(t *testing.T) {
+	// Build a string that places "é" (2 bytes 0xc3 0xa9) so the
+	// natural cut at len-1 lands on the continuation byte. Filler
+	// "x" is ASCII (1 byte each).
+	in := strings.Repeat("x", 8) + "é" + strings.Repeat("x", 8)
+	got := capSize(in, 9) // cut would land on byte 9 = 0xa9
+	if !utf8.ValidString(got) {
+		t.Fatalf("capSize produced invalid UTF-8: % x", got)
+	}
+	if len(got) != 8 {
+		t.Errorf("expected walk-back to byte 8 (before é), got len=%d", len(got))
+	}
+	if got != strings.Repeat("x", 8) {
+		t.Errorf("got %q, want 8 'x' filler", got)
 	}
 }
 

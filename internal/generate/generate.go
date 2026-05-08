@@ -393,12 +393,22 @@ func defaultPath(payloadType string) string {
 
 // capSize caps s at max bytes. label is for documentation purposes only.
 // Applied after cleanOutput to bound runaway LLM output before it reaches
-// the Flipper write path or the caller.
+// the Flipper write path or the caller. UTF-8-aware: when the cap lands
+// in the middle of a multi-byte rune we walk back to the previous rune
+// start so the returned string is always valid UTF-8 — important when
+// the content is then JSON-marshaled, parsed by the Flipper, or
+// displayed in a report. Mirrors session.clipTitle and
+// agent.truncatePreview.
 func capSize(s string, max int) string {
-	if len(s) > max {
-		return s[:max]
+	if len(s) <= max {
+		return s
 	}
-	return s
+	cut := max
+	// UTF-8 continuation bytes match 0b10xxxxxx (b&0xC0 == 0x80).
+	for cut > 0 && s[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return s[:cut]
 }
 
 // cleanOutput strips markdown code fences and other wrapping from LLM output.
