@@ -188,7 +188,11 @@ func (l *Log) Record(tool string, input interface{}, output string, risk string,
 // structured log line so observers can correlate the audit row with the
 // REPL turn that produced it.
 func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, output string, risk string, level Level, duration time.Duration, success bool) {
-	inputJSON, _ := json.Marshal(input)
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		obs.Default().Warn("audit_input_marshal_failed", "tool", tool, "err", err)
+		inputJSON = []byte(fmt.Sprintf(`{"_marshal_error":%q}`, err.Error()))
+	}
 
 	// Truncate long outputs for storage
 	if len(output) > 65535 {
@@ -196,7 +200,7 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 	}
 
 	ts := time.Now().UTC()
-	_, err := l.db.Exec(`
+	_, err = l.db.Exec(`
 		INSERT INTO audit_log (timestamp, tool, input, output, risk, level, session_id, duration_ms, success)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ts.Format(time.RFC3339),
