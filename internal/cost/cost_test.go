@@ -276,3 +276,195 @@ func TestTracker_SuccessFlipsBackOnline(t *testing.T) {
 		t.Errorf("transitions=%v want [true false]", transitions)
 	}
 }
+
+// trackerForBudgetTest builds a Tracker preloaded so that 1 input token
+// + 1 output token costs exactly $0.000004 — close to the real Opus
+// rate but small enough to keep the test arithmetic in the hundredths.
+// Returns the tracker so each test can dial in spend by repeating
+// AddUsage. The dollar-per-call helper keeps test math inline.
+func trackerForBudgetTest(t *testing.T) (*Tracker, func(usd float64)) {
+	t.Helper()
+	// Rate: 1.0 input/M, 1.0 output/M. So 1M tokens of each = $2.
+	// 1 token = $1e-6 input + $1e-6 output = $2e-6.
+	pricer := NewPricer(map[string]Rate{
+		"test-model": {InputPerMTok: 1.0, OutputPerMTok: 1.0},
+	})
+	tr := NewTracker(pricer, "test-model", nil)
+	addCents := func(usd float64) {
+		tokens := int64((usd / 2.0) * 1_000_000)
+		tr.AddUsage(tokens, tokens)
+	}
+	return tr, addCents
+}
+
+// TestTracker_BudgetExceeded_NoBudget pins the documented contract:
+// without a budget configured, BudgetExceeded is always false.
+func TestTracker_BudgetExceeded_NoBudget(t *testing.T) {
+	tr, spend := trackerForBudgetTest(t)
+	spend(100.0) // run up the meter
+	if tr.BudgetExceeded() {
+		t.Error("BudgetExceeded should be false when no budget set, even at high spend")
+	}
+}
+
+// TestTracker_BudgetExceeded_AtAndAboveCap covers the gate's two
+// documented true branches: spend at the cap and spend over the cap.
+func TestTracker_BudgetExceeded_AtAndAboveCap(t *testing.T) {
+	tr, spend := trackerForBudgetTest(t)
+	tr.SetBudget(1.00, nil, nil)
+	spend(0.50)
+	if tr.BudgetExceeded() {
+		t.Error("BudgetExceeded false at half spend")
+	}
+	spend(0.50) // total now 1.00 == cap
+	if !tr.BudgetExceeded() {
+		t.Error("BudgetExceeded should be true at exactly the cap")
+	}
+	spend(0.10) // total now 1.10
+	if !tr.BudgetExceeded() {
+		t.Error("BudgetExceeded should be true above the cap")
+	}
+}
+
+// TestTracker_BudgetWarn_FiresOnceAt80Pct exercises the warn-callback
+// path. Crossing 80% fires the warn once; further usage that stays
+// below 100% does not re-fire. Spend up to the cap also fires the
+// hit callback exactly once.
+func TestTracker_BudgetWarn_FiresOnceAt80Pct(t *testing.T) {
+	tr, spend := trackerForBudgetTest(t)
+	var warnFires, hitFires int
+	var mu sync.Mutex
+	tr.SetBudget(1.00,
+		func(spent, cap float64) {
+			mu.Lock()
+			warnFires++
+			mu.Unlock()
+			if spent < 0.79 || spent > 0.91 {
+				t.Errorf("warn fired at unexpected spend=%.4f (cap=%.4f)", spent, cap)
+			}
+		},
+		func(spent, cap float64) {
+			mu.Lock()
+			hitFires++
+			mu.Unlock()
+		},
+	)
+	spend(0.50) // 50%
+	mu.Lock()
+	if warnFires != 0 {
+		t.Errorf("warn fired prematurely at 50%%, fires=%d", warnFires)
+	}
+	mu.Unlock()
+	spend(0.30) // 80%
+	mu.Lock()
+	if warnFires != 1 {
+		t.Errorf("warn should fire exactly once at 80%%, fires=%d", warnFires)
+	}
+	mu.Unlock()
+	spend(0.10) // 90%
+	mu.Lock()
+	if warnFires != 1 {
+		t.Errorf("warn should not re-fire mid-band, fires=%d", warnFires)
+	}
+	mu.Unlock()
+	spend(0.20) // 110% — crossed cap
+	mu.Lock()
+	if hitFires != 1 {
+		t.Errorf("hit should fire exactly once at cap, fires=%d", hitFires)
+	}
+	mu.Unlock()
+	// Further spend stays past cap; hit must not re-fire.
+	spend(0.50)
+	mu.Lock()
+	if hitFires != 1 {
+		t.Errorf("hit should not re-fire past cap, fires=%d", hitFires)
+	}
+	mu.Unlock()
+}
+
+// TestTracker_UpdateBudgetCap_RaisingResetsFlags exercises the
+// "operator bumps /budget set" workflow: warn+hit fire once at the
+// initial cap; raising the cap clear of current spend resets both
+// flags so future re-crossings fire fresh notifications.
+func TestTracker_UpdateBudgetCap_RaisingResetsFlags(t *testing.T) {
+	tr, spend := trackerForBudgetTest(t)
+	var warnFires, hitFires int
+	var mu sync.Mutex
+	tr.SetBudget(1.00,
+		func(spent, cap float64) { mu.Lock(); warnFires++; mu.Unlock() },
+		func(spent, cap float64) { mu.Lock(); hitFires++; mu.Unlock() },
+	)
+	spend(1.10) // cross 80% and 100% in one shot
+	mu.Lock()
+	if warnFires != 1 || hitFires != 1 {
+		t.Fatalf("initial fires: warn=%d hit=%d, want 1/1", warnFires, hitFires)
+	}
+	mu.Unlock()
+	// Operator bumps the cap to $5; spend is $1.10 well under, flags reset.
+	tr.UpdateBudgetCap(5.00)
+	if tr.BudgetExceeded() {
+		t.Error("BudgetExceeded should clear after cap bump above current spend")
+	}
+	spend(3.00) // now $4.10 = 82% of $5
+	mu.Lock()
+	if warnFires != 2 {
+		t.Errorf("warn should fire again after cap raise, fires=%d", warnFires)
+	}
+	mu.Unlock()
+	spend(1.00) // now $5.10, over cap
+	mu.Lock()
+	if hitFires != 2 {
+		t.Errorf("hit should fire again after cap raise, fires=%d", hitFires)
+	}
+	mu.Unlock()
+}
+
+// TestTracker_UpdateBudgetCap_LoweringDoesNotResetFlags pins the
+// inverse: dropping the cap below current spend (or anywhere that
+// keeps spend ≥ cap) must NOT reset the flags — that would re-fire
+// the hit notification on every dispatch.
+func TestTracker_UpdateBudgetCap_LoweringDoesNotResetFlags(t *testing.T) {
+	tr, spend := trackerForBudgetTest(t)
+	var warnFires, hitFires int
+	var mu sync.Mutex
+	tr.SetBudget(2.00,
+		func(spent, cap float64) { mu.Lock(); warnFires++; mu.Unlock() },
+		func(spent, cap float64) { mu.Lock(); hitFires++; mu.Unlock() },
+	)
+	spend(2.10) // cross both thresholds
+	mu.Lock()
+	first := hitFires
+	mu.Unlock()
+	// Now drop the cap to $1 — current spend $2.10 is way over.
+	tr.UpdateBudgetCap(1.00)
+	// AddUsage of zero won't recompute, but our spender adds tokens.
+	spend(0.10)
+	mu.Lock()
+	if hitFires != first {
+		t.Errorf("hit re-fired on cap drop, fires went %d -> %d", first, hitFires)
+	}
+	mu.Unlock()
+}
+
+// TestTracker_SetBudget_DisableViaZero confirms passing usdCap=0
+// turns the gate off entirely — the snapshot's BudgetExceeded
+// returns false and no callbacks fire.
+func TestTracker_SetBudget_DisableViaZero(t *testing.T) {
+	tr, spend := trackerForBudgetTest(t)
+	var fired bool
+	var mu sync.Mutex
+	tr.SetBudget(1.00,
+		func(spent, cap float64) { mu.Lock(); fired = true; mu.Unlock() },
+		func(spent, cap float64) { mu.Lock(); fired = true; mu.Unlock() },
+	)
+	tr.SetBudget(0, nil, nil)
+	spend(100.0)
+	if tr.BudgetExceeded() {
+		t.Error("BudgetExceeded should return false after SetBudget(0, ...)")
+	}
+	mu.Lock()
+	if fired {
+		t.Error("callbacks should not fire after budget disabled")
+	}
+	mu.Unlock()
+}
