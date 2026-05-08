@@ -78,6 +78,45 @@ func TestClientConfigResolveEnv(t *testing.T) {
 	}
 }
 
+// TestClientConfigResolveEnv_DeterministicOrder pins the
+// iteration-order fix: resolveEnv used to range over c.Env directly,
+// so the returned []string came out in a different order every call.
+// Visible in `ps` listings of spawned MCP child processes and would
+// break any future test that asserts exec.Cmd.Env shape. The fix
+// sorts keys alphabetically; this test runs many iterations and
+// confirms the slice is byte-identical between calls.
+func TestClientConfigResolveEnv_DeterministicOrder(t *testing.T) {
+	cfg := ClientConfig{
+		Env: map[string]string{
+			"ZED":     "9",
+			"ALPHA":   "1",
+			"MIKE":    "5",
+			"CHARLIE": "3",
+			"BRAVO":   "2",
+		},
+	}
+	first := cfg.resolveEnv()
+	for i := 0; i < 50; i++ {
+		next := cfg.resolveEnv()
+		if len(next) != len(first) {
+			t.Fatalf("len mismatch: first=%d, run %d=%d", len(first), i+1, len(next))
+		}
+		for j := range first {
+			if next[j] != first[j] {
+				t.Fatalf("non-deterministic at index %d on run %d:\n  first: %v\n  next:  %v",
+					j, i+1, first, next)
+			}
+		}
+	}
+	// Spot-check that the order is alphabetical by key.
+	wantOrder := []string{"ALPHA=1", "BRAVO=2", "CHARLIE=3", "MIKE=5", "ZED=9"}
+	for i, want := range wantOrder {
+		if first[i] != want {
+			t.Errorf("first[%d] = %q, want %q (full: %v)", i, first[i], want, first)
+		}
+	}
+}
+
 func splitKV(kv string) (string, string, bool) {
 	for i := 0; i < len(kv); i++ {
 		if kv[i] == '=' {
