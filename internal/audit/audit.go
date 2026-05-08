@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -288,7 +289,9 @@ func (l *Log) notify(e Entry) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					obs.Default().Error("audit_observer_panicked", "recovered", fmt.Sprintf("%v", r))
+					obs.Default().Error("audit_observer_panicked",
+						"recovered", fmt.Sprintf("%v", r),
+						"stack", string(debug.Stack()))
 				}
 			}()
 			fn(e)
