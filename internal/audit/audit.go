@@ -195,9 +195,18 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 		inputJSON = []byte(fmt.Sprintf(`{"_marshal_error":%q}`, err.Error()))
 	}
 
-	// Truncate long outputs for storage
+	// Truncate long outputs for storage. UTF-8-aware: when the cap
+	// lands in the middle of a multi-byte rune we walk back to the
+	// previous rune start so the audit row stays valid UTF-8 — the
+	// web UI and /report renderer otherwise show U+FFFD or reject
+	// the row outright. Mirrors the discipline in
+	// session.clipTitle / generate.capSize / agent.truncatePreview.
 	if len(output) > 65535 {
-		output = output[:65535] + "... [truncated]"
+		cut := 65535
+		for cut > 0 && output[cut]&0xC0 == 0x80 {
+			cut--
+		}
+		output = output[:cut] + "... [truncated]"
 	}
 
 	ts := time.Now().UTC()
