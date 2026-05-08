@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-05-09
+
+Three small cohesive themes across seven commits: finishing the
+v0.40 UTF-8-truncation pass, eliminating same-second collisions
+in time-based ID generation, and bounding LLM-supplied limit
+parameters on the audit / corpora / targetmem read paths.
+
+### Fixed
+
+- **3 more byte-index truncation sites walk back from UTF-8
+  boundaries** — `report.shortEvidence` (verdict-evidence cell
+  in /report), and two excerpt truncations in
+  `validator/evilportal.go`. Same `b&0xC0 == 0x80` discipline
+  as v0.40's clipTitle / capSize / audit.RecordCtx /
+  verifyPayload. (`internal/report/report.go`,
+  `internal/validator/evilportal.go`)
+
+- **`generate.NewEvilPortal` html cap routes through capSize.**
+  Was an inline `html[:20000]` slice; now delegates to the
+  package's UTF-8-aware capSize helper from v0.40.
+  (`internal/generate/generate.go`)
+
+- **Session IDs use UnixNano so quick rotations don't collide.**
+  Three sites generated session IDs as `session-<unix-seconds>`:
+  `agent.SetSessionStore`, `agent.NewSession`, `audit.Open`. Two
+  consecutive `NewSession()` calls in the same wall-clock second
+  produced the same ID; since session.Save uses the ID as the
+  filesystem path component, the second session would overwrite
+  the first on disk. Same shape on the audit-log side.
+  Switched all three to `UnixNano`. New regression test runs 50
+  rapid `NewSession()` calls and asserts every ID is unique.
+  (`internal/agent/session.go`, `internal/audit/audit.go`)
+
+- **Workflow capture filenames use UnixNano.** Same fix shape
+  in two more sites: `rolljam` press1/press2 SD captures and
+  `garage_door` per-frequency triage captures. Two rapid runs
+  in the same second would otherwise overwrite each other's
+  saved data on the SD card.
+  (`internal/workflows/rolljam.go`, `internal/workflows/garage_door.go`)
+
+- **`audit_query` LLM-callable tool now caps `limit` at
+  `MaxQueryLimit`.** REPL slash commands already capped at
+  10000 to keep an operator typo from flooding SQLite, but the
+  LLM-callable tool path didn't — `limit=999999` would load the
+  whole audit DB into the tool-result block. Promoted
+  `MaxQueryLimit` to an exported `internal/audit` constant; both
+  surfaces now share it. (`internal/tools/audit.go`,
+  `internal/audit/audit.go`)
+
+- **Three corpora-search tools cap their `limit` param.**
+  `ir_irdb_lookup`, `evil_portal_template_pick`, and
+  `badusb_payload_search` accepted unbounded limits — an LLM
+  call with `limit=1000000` would walk the entire operator
+  corpus and serialise a multi-MB JSON. New
+  `corpusMaxResults = 1000` constant + centralised
+  `clampCorpusLimit` helper. (`internal/tools/corpora.go`)
+
+- **`targetmem.Store.Recent(n)` caps at `MaxRecent`.** Clamping
+  inside the Store so both REPL and tool paths inherit the
+  bound without per-callsite duplication. New regression test
+  seeds MaxRecent+5 rows + asks for 999999 + asserts the
+  result length is exactly MaxRecent.
+  (`internal/targetmem/targetmem.go`)
+
 ## [0.40.0] - 2026-05-09
 
 UTF-8 + escape-sequence safety pass. Six commits, two themes:
