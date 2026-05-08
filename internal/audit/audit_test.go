@@ -308,3 +308,25 @@ func TestRequireOpen(t *testing.T) {
 		})
 	}
 }
+
+// TestObserverPanicDoesNotCrashRecord pins the deferred-recover guard
+// inside notify(): a buggy observer that panics must not propagate
+// the panic up through Record and crash the agent's tool-dispatch
+// goroutine. Wires two observers — one panics, one runs after — and
+// confirms the second still fires when the first goes off.
+func TestObserverPanicDoesNotCrashRecord(t *testing.T) {
+	log := openTestLog(t)
+	var afterPanicRan bool
+	log.AddObserver(func(_ Entry) {
+		panic("test-observer-panic-marker")
+	})
+	log.AddObserver(func(_ Entry) {
+		afterPanicRan = true
+	})
+	// If notify lets the panic escape, this Record call panics the
+	// goroutine and the test fails with "test panicked".
+	log.Record("panic_test", map[string]string{"x": "y"}, "ok", "low", LevelInfo, 0, true)
+	if !afterPanicRan {
+		t.Error("observer registered after a panicking observer should still run")
+	}
+}
