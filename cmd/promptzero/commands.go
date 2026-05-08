@@ -551,10 +551,10 @@ func printHistory(auditLog *audit.Log, n int) {
 	// seconds and flood the terminal. The cap is large enough for
 	// any reasonable triage flow; the silent clamp lets a too-big
 	// request still produce output (capped) rather than erroring.
-	if n > maxAuditLimit {
+	if n > audit.MaxQueryLimit {
 		fmt.Fprintf(os.Stderr, "  %s(capping at %d, max for /history and /audit query)%s\n",
-			dim, maxAuditLimit, reset)
-		n = maxAuditLimit
+			dim, audit.MaxQueryLimit, reset)
+		n = audit.MaxQueryLimit
 	}
 	entries, err := auditLog.Query(n)
 	if err != nil {
@@ -1267,13 +1267,6 @@ func mergeQuoted(in []string) []string {
 	return out
 }
 
-// maxAuditLimit caps the per-query row count. The audit DB grows
-// without bound across sessions; an operator typing limit=1000000 by
-// accident (or as a stress test) would tie up SQLite for seconds and
-// flood the terminal. 10k is generous for any reasonable triage flow
-// — operators wanting more should use offset to paginate.
-const maxAuditLimit = 10000
-
 // parseAuditFilter turns `k=v` tokens into an audit.Filter. Unknown keys
 // error out so typos don't silently match nothing. Caller should pass
 // tokens already run through mergeQuoted so quoted values survive.
@@ -1329,8 +1322,8 @@ func parseAuditFilter(tokens []string) (audit.Filter, error) {
 			if err != nil || n < 0 {
 				return f, fmt.Errorf("limit=%s: want positive int", v)
 			}
-			if n > maxAuditLimit {
-				return f, fmt.Errorf("limit=%d exceeds max %d", n, maxAuditLimit)
+			if n > audit.MaxQueryLimit {
+				return f, fmt.Errorf("limit=%d exceeds max %d", n, audit.MaxQueryLimit)
 			}
 			f.Limit = n
 		case "offset":
