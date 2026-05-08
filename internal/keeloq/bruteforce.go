@@ -70,6 +70,14 @@ const cancelCheckInterval = 1 << 13 // 8192 iterations
 // cancelCheckInterval.
 const progressInterval = 1 << 20 // ~1M keys per worker
 
+// maxBruteForceWorkers caps how many goroutines BruteForce will
+// spawn even if the caller asks for more. The cracking loop is
+// CPU-bound; throughput plateaus at NumCPU and goes negative as
+// the runtime fights for cache lines. 64 is generous for any
+// modern host (the largest sensible NumCPU is ~256 on top-tier
+// CPUs but the per-key check saturates long before).
+const maxBruteForceWorkers = 64
+
 // BruteForce searches the keyspace [cfg.KeyspaceMin, cfg.KeyspaceMax) for a
 // key K such that Encrypt(cfg.KnownPlaintext, K) == cfg.KnownCiphertext.
 // It returns the first matching key found, true, nil on success.
@@ -87,6 +95,13 @@ func BruteForce(ctx context.Context, cfg BruteForceConfig) (uint64, bool, error)
 	workers := cfg.Workers
 	if workers <= 0 {
 		workers = runtime.NumCPU()
+	}
+	// Hard upper cap so a caller passing workers=10000 (operator
+	// typo, malicious LLM tool call) can't spawn that many
+	// goroutines for no throughput gain — the BruteForce work is
+	// CPU-bound and saturates well below NumCPU on any modern host.
+	if workers > maxBruteForceWorkers {
+		workers = maxBruteForceWorkers
 	}
 
 	total := cfg.KeyspaceMax - cfg.KeyspaceMin
