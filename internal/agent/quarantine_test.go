@@ -30,6 +30,79 @@ func TestSanitizeControlChars_StripsControlBytes(t *testing.T) {
 	}
 }
 
+// TestSanitizeControlChars_StripsOSC pins the OSC quarantine fix.
+// The original implementation only stripped lone ESC bytes via
+// otherControlsRE — the body of an OSC sequence (ESC ] ... BEL)
+// would survive as readable text. Now the full sequence is removed,
+// so an attacker-controlled tag URI / SSID / NDEF record can't
+// smuggle "title-set" or "hyperlink" payloads through the
+// quarantine layer.
+func TestSanitizeControlChars_StripsOSC(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "osc_set_title_bel",
+			// OSC 0;<title>BEL — sets terminal window title
+			in:   "before\x1b]0;malicious-title\x07after",
+			want: "beforeafter",
+		},
+		{
+			name: "osc_hyperlink_st",
+			// OSC 8;;<url>ST text OSC 8;;ST — embeds a clickable link
+			in:   "click \x1b]8;;https://evil.example\x1b\\here\x1b]8;;\x1b\\!",
+			want: "click here!",
+		},
+		{
+			name: "dcs_sequence",
+			// DCS payload — ESC P ... ESC \
+			in:   "ok\x1bPdcs-payload\x1b\\done",
+			want: "okdone",
+		},
+		{
+			name: "apc_sequence",
+			// APC — application-program command
+			in:   "x\x1b_application-payload\x1b\\y",
+			want: "xy",
+		},
+		{
+			name: "pm_sequence",
+			// PM — privacy message
+			in:   "a\x1b^pm-data\x1b\\b",
+			want: "ab",
+		},
+		{
+			name: "sos_sequence",
+			// SOS — start of string
+			in:   "p\x1bXsos-data\x1b\\q",
+			want: "pq",
+		},
+		{
+			name: "unterminated_osc_falls_back_to_byte_stripper",
+			// No BEL or ST: the C1 regex doesn't match, but
+			// otherControlsRE still strips the ESC — body survives
+			// as plain text (degraded but harmless).
+			in:   "before\x1b]0;no-terminatorafter",
+			want: "before]0;no-terminatorafter",
+		},
+		{
+			name: "csi_then_osc_both_stripped",
+			in:   "\x1b[31mred\x1b[0m \x1b]0;title\x07 plain",
+			want: "red  plain",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := sanitizeControlChars(c.in)
+			if got != c.want {
+				t.Errorf("sanitizeControlChars(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func TestIsUntrustedHardwareOutput(t *testing.T) {
 	cases := []struct {
 		name string
