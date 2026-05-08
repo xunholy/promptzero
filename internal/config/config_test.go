@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -77,5 +79,148 @@ func TestConfig_StringShortKeyRedacted(t *testing.T) {
 	// Must not leak the short key verbatim
 	if strings.Contains(v, "short") {
 		t.Errorf("%%v leaked short APIKey: %s", v)
+	}
+}
+
+func TestLoad_DefaultsWhenFileMissing(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("PROMPTZERO_WEB_TOKEN", "")
+	cfg, err := Load(filepath.Join(dir, "does-not-exist.yaml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Model != "claude-opus-4-7" {
+		t.Errorf("default Model = %q, want claude-opus-4-7", cfg.Model)
+	}
+	if cfg.Serial.Port != "/dev/ttyACM0" {
+		t.Errorf("default Serial.Port = %q", cfg.Serial.Port)
+	}
+	if cfg.Serial.BaudRate != 230400 {
+		t.Errorf("default Serial.BaudRate = %d, want 230400", cfg.Serial.BaudRate)
+	}
+	if cfg.Marauder.BaudRate != 115200 {
+		t.Errorf("default Marauder.BaudRate = %d, want 115200", cfg.Marauder.BaudRate)
+	}
+	if cfg.Web.Port != 8080 {
+		t.Errorf("default Web.Port = %d, want 8080", cfg.Web.Port)
+	}
+	if cfg.Observability.LogLevel != "info" {
+		t.Errorf("default LogLevel = %q, want info", cfg.Observability.LogLevel)
+	}
+	if !cfg.Observability.MetricsEnabled {
+		t.Error("MetricsEnabled should default to true")
+	}
+}
+
+func TestLoad_ParsesYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	body := `
+model: claude-sonnet-4-6
+serial:
+  port: /dev/ttyUSB0
+  baud_rate: 921600
+web:
+  port: 9999
+`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Model != "claude-sonnet-4-6" {
+		t.Errorf("Model = %q, want claude-sonnet-4-6", cfg.Model)
+	}
+	if cfg.Serial.Port != "/dev/ttyUSB0" {
+		t.Errorf("Serial.Port = %q", cfg.Serial.Port)
+	}
+	if cfg.Serial.BaudRate != 921600 {
+		t.Errorf("Serial.BaudRate = %d", cfg.Serial.BaudRate)
+	}
+	if cfg.Web.Port != 9999 {
+		t.Errorf("Web.Port = %d", cfg.Web.Port)
+	}
+	// Marauder defaults survive when not in YAML.
+	if cfg.Marauder.BaudRate != 115200 {
+		t.Errorf("Marauder.BaudRate = %d, want default 115200", cfg.Marauder.BaudRate)
+	}
+}
+
+func TestLoad_RejectsMalformedYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.yaml")
+	if err := os.WriteFile(path, []byte("model: [unclosed"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for malformed YAML")
+	}
+	if !strings.Contains(err.Error(), "parsing config") {
+		t.Errorf("error %q should mention 'parsing config'", err.Error())
+	}
+}
+
+func TestLoad_FallsBackToHomeDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	pzDir := filepath.Join(home, ".promptzero")
+	if err := os.MkdirAll(pzDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pzDir, "config.yaml"),
+		[]byte("model: claude-haiku-4-5\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	cfg, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Model != "claude-haiku-4-5" {
+		t.Errorf("expected fallback to ~/.promptzero/config.yaml, got Model=%q", cfg.Model)
+	}
+}
+
+func TestLoad_EnvVarsOverrideConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	body := "api_key: from-config\nopenai_key: from-config-openai\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", dir)
+	t.Setenv("ANTHROPIC_API_KEY", "from-env-anthropic")
+	t.Setenv("OPENAI_API_KEY", "from-env-openai")
+	t.Setenv("PROMPTZERO_WEB_TOKEN", "from-env-token")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.APIKey != "from-env-anthropic" {
+		t.Errorf("ANTHROPIC_API_KEY did not override config: %q", cfg.APIKey)
+	}
+	if cfg.OpenAIKey != "from-env-openai" {
+		t.Errorf("OPENAI_API_KEY did not override config: %q", cfg.OpenAIKey)
+	}
+	if cfg.Web.Token != "from-env-token" {
+		t.Errorf("PROMPTZERO_WEB_TOKEN did not override: %q", cfg.Web.Token)
+	}
+}
+
+func TestRequireAPIKey(t *testing.T) {
+	cfg := &Config{}
+	if err := cfg.RequireAPIKey(); err == nil {
+		t.Error("RequireAPIKey should error when APIKey is empty")
+	}
+	cfg.APIKey = "sk-ant-something"
+	if err := cfg.RequireAPIKey(); err != nil {
+		t.Errorf("RequireAPIKey should pass with key set: %v", err)
 	}
 }
