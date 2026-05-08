@@ -551,6 +551,19 @@ func setupCostTracker(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder) *c
 // at the top of every Run() invocation and returns ErrBudgetExceeded
 // before any tokens burn.
 func setupBudget(cfg *config.Config, flagBudget float64, ai *agent.Agent, tracker *cost.Tracker) {
+	// Reject obviously-wrong flag inputs at setup. A negative flag
+	// value used to fall through to the cfg path silently — the
+	// operator typed --budget=-5 expecting a $5 cap and got
+	// "no budget configured" with no warning. Same for negative
+	// cfg.Cost.BudgetUSD (typo'd YAML).
+	if flagBudget < 0 {
+		statusWarn(fmt.Sprintf("--budget=%.2f is negative; ignoring (must be > 0)", flagBudget))
+		flagBudget = 0
+	}
+	if cfg.Cost.BudgetUSD < 0 {
+		statusWarn(fmt.Sprintf("cost.budget_usd=%.2f is negative; ignoring (must be > 0)", cfg.Cost.BudgetUSD))
+		cfg.Cost.BudgetUSD = 0
+	}
 	usdCap := cfg.Cost.BudgetUSD
 	if flagBudget > 0 {
 		usdCap = flagBudget
