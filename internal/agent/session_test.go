@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/session"
@@ -187,6 +188,34 @@ func TestDeriveTitle_TruncatesAndSkipsHandoff(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestClipTitle_UTF8Boundary pins the rune-aware truncation. The
+// previous implementation sliced at byte index titleMaxLen-1 which
+// could split a multi-byte UTF-8 rune in half, producing invalid
+// UTF-8 in the sidebar (renderers display U+FFFD or drop the
+// fragment). Now clipTitle walks back to the previous rune start.
+func TestClipTitle_UTF8Boundary(t *testing.T) {
+	// Build a string that places a multi-byte rune (é = 2 bytes
+	// 0xc3 0xa9) so the byte at the natural cut is a continuation
+	// byte. Filler "x" is ASCII (1 byte each); place the é so that
+	// the cut at titleMaxLen-1 lands on the second byte of the rune.
+	filler := strings.Repeat("x", titleMaxLen-2)
+	in := filler + "é-tail-content-that-pushes-past-the-cap"
+	got := clipTitle(in)
+	// Must be valid UTF-8 — no continuation byte at the boundary.
+	if !utf8.ValidString(got) {
+		t.Fatalf("clipTitle produced invalid UTF-8: %q", got)
+	}
+	// Must end with the ellipsis.
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("clipTitle should end with ellipsis: %q", got)
+	}
+	// The é rune (2 bytes) at the boundary must be excluded entirely
+	// — we walk back from the cut to a rune start.
+	if strings.HasSuffix(strings.TrimSuffix(got, "…"), "\xc3") {
+		t.Errorf("clipTitle left a dangling lead byte: % x", got)
 	}
 }
 
