@@ -337,6 +337,14 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 	if workers < 1 {
 		workers = 1
 	}
+	// Hard upper cap so an LLM tool call asking for workers=10000
+	// can't spawn that many goroutines. 64 is generous: the largest
+	// reasonable NumCPU is ~256 on top-tier CPUs but the channel +
+	// HMAC pipeline saturates well before that.
+	const maxHashCrackWorkers = 64
+	if workers > maxHashCrackWorkers {
+		workers = maxHashCrackWorkers
+	}
 
 	// --- Open wordlist ---
 	var wordReader io.ReadCloser
