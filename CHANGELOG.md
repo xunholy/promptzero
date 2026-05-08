@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-05-09
+
+Bug-fix + validator + test-coverage release. Headline is a real
+operator-impacting bug in `/discover apps`; everything else
+hardens or extends what v0.38.0 already shipped.
+
+### Fixed
+
+- **`/discover apps` returned no FAPs and garbage signal-file
+  names.** Two parser bugs in `discover.ScanApps`:
+  1. The FAP-scan branch matched `HasSuffix(line, ".fap")`, but
+     `StorageList` output is `\t[F] mfkey32.fap 12345b` — every
+     line ends in `<size>b`, never `.fap`. Result: zero FAPs
+     ever returned, regardless of what was on the SD card.
+  2. The signal-scan branch grabbed the whole trimmed line as
+     the App.Name field, so a Sub-GHz capture appeared as
+     `Name="[F] capture.sub 4096b"` and the constructed Path was
+     also broken.
+
+  Adds `parseStorageListFile` with quote-aware tail-stripping (a
+  filename ending in literal "b" or containing internal spaces
+  survives the strip) and 11 regression cases pinning every
+  branch. (`internal/discover/discover.go`)
+
+- **`mcpfed.ClientConfig.resolveEnv` returned non-deterministic
+  child env.** Iterated `c.Env` via map randomisation, so the
+  `[]string` passed to `exec.Cmd.Env` for spawned MCP child
+  processes came out in a different order every call. Visible
+  in `ps` listings; would defeat any future test asserting
+  child env shape. Sorts keys alphabetically — same pattern
+  applied to `containerbridge.buildDockerArgs` in v0.38.
+  (`internal/mcpfed/config.go`)
+
+- **`discover.ScanApps` returned non-deterministic slice.** The
+  signal-library scan iterated a `map[string]string` of
+  directory→type pairs, so even after FormatApps's
+  alphabetical-by-Type sort the *raw* slice was shuffled each
+  call. Replaced with an explicit alphabetical-by-type slice.
+  (`internal/discover/discover.go`)
+
+- **Two confirm-prompt sites in agent.go silently swallowed
+  marshal errors.** `RunTool`'s confirm gate and
+  `workflowConfirmHook` used `_ := json.Marshal(...)` so a
+  non-marshalable param made the operator approve a black box.
+  Now both warn via `obs.Default()` and substitute a
+  `{"_marshal_error":"..."}` placeholder so the prompt always
+  shows what's happening. (`internal/agent/agent.go`)
+
+### Added
+
+- **5 new BadUSB validator rules covering persistence + deeper
+  credential-dump techniques** — extends the v0.37 catalogue:
+  - `reg_save_sam_hive` (T1003.002): `reg save HKLM\\SAM` and
+    paired SYSTEM / SECURITY hives (offline SAM cracking).
+  - `net_user_add` (T1136.001): local backup-account creation.
+  - `net_localgroup_admin` (T1078.003): privilege escalation
+    via `net localgroup administrators <name> /add`.
+  - `ssh_authorized_keys_append` (T1098.004): `>> ~/.ssh/
+    authorized_keys` Linux SSH backdoor.
+  - `sudoers_nopasswd_append` (T1548.003): `NOPASSWD:ALL`
+    line in any context.
+
+  Each rule is tagged with its MITRE technique ID in the
+  operator-facing message. (`internal/validator/badusb.go`)
+
+### Tested
+
+- **`cost.Tracker` budget API** got its first 6 unit tests:
+  no-budget passthrough, at-cap and above-cap detection, the
+  once-only warn/hit fire-and-don't-re-fire contract,
+  raising-resets-flags / lowering-doesn't-reset, and the
+  `SetBudget(0)` disable path. The budget gate is checked at
+  the top of every agent turn — running it through unit tests
+  removed the only load-bearing surface that had no direct
+  coverage. (`internal/cost/cost_test.go`)
+
+- **`cmd/promptzero/discover.go` pure helpers** — 7 tests for
+  `pickFlipperCandidate`, `containsFold`, `toLower`, `truncate`,
+  `divider`. (`cmd/promptzero/discover_test.go`)
+
 ## [0.38.0] - 2026-05-08
 
 Defensive correctness pass — three cohesive themes across nine
