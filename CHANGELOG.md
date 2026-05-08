@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-05-08
+
+Startup-validation polish. Two bounded fixes that close silent
+fallbacks in the persona and budget config paths.
+
+### Fixed
+
+- **Persona's typo'd `default_risk_threshold` produces a startup
+  warning.** `resolveConfirmRisk` returns an error for unknown risk
+  levels, but `setupRiskGate` silently dropped that error for the
+  persona path. An operator typing `default_risk_threshold: critcal`
+  (typo) got the global default with no signal. Now surfaced via
+  `statusWarn` naming the persona and the bad value.
+  (`cmd/promptzero/setup.go`)
+
+- **Negative `--budget` / `cost.budget_usd` produces a startup
+  warning.** Old code's `if flagBudget > 0` check let a negative
+  value fall through silently — operator typing `--budget=-50`
+  (typo) expected a $50 cap and got "no budget configured". Both
+  flag and cfg fields now validate up front: negative values warn
+  and clamp to 0 (which the existing `usdCap <= 0` check treats as
+  "no budget"). (`cmd/promptzero/setup.go`)
+
 ## [0.34.0] - 2026-05-08
 
 Web budget visibility + REPL guardrails. Three small, bounded
