@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestParseVerificationVerdict_CleanJSON(t *testing.T) {
@@ -86,6 +87,45 @@ func TestParseVerificationVerdict_BraceInsideString(t *testing.T) {
 	if !strings.Contains(v.Recommendation, "{") {
 		t.Errorf("recommendation truncated: %q", v.Recommendation)
 	}
+}
+
+// TestTruncateForVerifier covers the verifier input-truncation
+// helper. verifyPayload uses this to cap content sent to the LLM
+// verifier; without UTF-8-aware walk-back, content with a
+// multi-byte rune at the boundary would arrive at the verifier
+// as a half-rune trailing into the truncation marker. Mirrors
+// the boundary tests for clipTitle / capSize / audit.RecordCtx.
+func TestTruncateForVerifier(t *testing.T) {
+	t.Run("short_passthrough", func(t *testing.T) {
+		got := truncateForVerifier("hello", 100)
+		if got != "hello" {
+			t.Errorf("short input passthrough = %q", got)
+		}
+	})
+	t.Run("ascii_cuts_at_max", func(t *testing.T) {
+		in := strings.Repeat("a", 100)
+		got := truncateForVerifier(in, 10)
+		want := strings.Repeat("a", 10) + "\n…(truncated)"
+		if got != want {
+			t.Errorf("ASCII cut = %q, want %q", got, want)
+		}
+	})
+	t.Run("walks_back_from_continuation_byte", func(t *testing.T) {
+		// Place "é" (0xc3 0xa9) so byte 9 lands on the
+		// continuation byte 0xa9.
+		in := strings.Repeat("x", 8) + "é" + strings.Repeat("x", 8)
+		got := truncateForVerifier(in, 9)
+		if !utf8.ValidString(got) {
+			t.Fatalf("output is invalid UTF-8: % x", got)
+		}
+		if !strings.HasSuffix(got, "\n…(truncated)") {
+			t.Errorf("missing truncation marker: %q", got)
+		}
+		// Walked back to byte 8 (before é).
+		if !strings.HasPrefix(got, strings.Repeat("x", 8)+"\n") {
+			t.Errorf("walk-back produced %q, want 8 'x' filler then marker", got)
+		}
+	})
 }
 
 func TestExtractJSONObject_NoBraces(t *testing.T) {
