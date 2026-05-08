@@ -19,6 +19,7 @@ package eval
 
 import (
 	"fmt"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -136,7 +137,10 @@ func (r *Runner) runOne(s Scenario) (result Result) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			result.Pass = false
-			result.Err = fmt.Errorf("panic: %v", rec)
+			// Include the stack trace so operators reading the eval
+			// summary can navigate to the panic site inside the
+			// scenario without re-running with GOTRACEBACK=all.
+			result.Err = fmt.Errorf("panic: %v\nstack:\n%s", rec, debug.Stack())
 		}
 		result.Duration = time.Since(start)
 	}()

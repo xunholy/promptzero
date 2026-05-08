@@ -73,6 +73,11 @@ func TestRunner_RecoversFromPanic(t *testing.T) {
 	if results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "panic") {
 		t.Errorf("panic not surfaced in Err: %v", results[0].Err)
 	}
+	// Stack trace is included so operators can navigate to the
+	// panic site without re-running with GOTRACEBACK=all.
+	if results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "stack:") {
+		t.Errorf("panic Err missing stack trace: %v", results[0].Err)
+	}
 	if !results[1].Pass {
 		t.Error("post-panic scenario should still run and pass")
 	}
