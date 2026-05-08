@@ -126,11 +126,11 @@ func TestExtractJSONObject(t *testing.T) {
 		{`{"a":1}`, `{"a":1}`, true},
 		{`prefix {"a":1} suffix`, `{"a":1}`, true},
 		{`{"a":{"b":2}}`, `{"a":{"b":2}}`, true},
-		{`{"a":"}"}`, `{"a":"}"}`, true},                        // brace inside string ignored
-		{`{"a":"\"}"}`, `{"a":"\"}"}`, true},                    // escaped quote then brace inside string
-		{`no braces here`, ``, false},                           // no '{'
-		{`{unbalanced`, ``, false},                              // never closes
-		{`text {"first":1} {"second":2}`, `{"first":1}`, true},  // first object only
+		{`{"a":"}"}`, `{"a":"}"}`, true},                       // brace inside string ignored
+		{`{"a":"\"}"}`, `{"a":"\"}"}`, true},                   // escaped quote then brace inside string
+		{`no braces here`, ``, false},                          // no '{'
+		{`{unbalanced`, ``, false},                             // never closes
+		{`text {"first":1} {"second":2}`, `{"first":1}`, true}, // first object only
 	}
 	for _, tc := range cases {
 		got, ok := extractJSONObject(tc.in)
