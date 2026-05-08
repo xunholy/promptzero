@@ -135,6 +135,47 @@ func TestRecent(t *testing.T) {
 	}
 }
 
+// TestRecent_CapsAtMaxRecent pins the upper-bound clamp on Recent(n).
+// Without the cap an LLM tool call asking for limit=1000000 would
+// scan the entire targets table and serialise a multi-MB JSON tool
+// result. Seed MaxRecent+5 rows, ask for 999999, confirm the result
+// length is exactly MaxRecent.
+func TestRecent_CapsAtMaxRecent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow; seeds 1005 rows — rerun without -short")
+	}
+	s := newTestStore(t)
+	// Seed MaxRecent+5 rows so the cap fires.
+	for i := 0; i < MaxRecent+5; i++ {
+		if err := s.Remember(Target{
+			Identifier: "t-" + strings.Repeat("0", 4-len(strings.TrimLeft(intToStr(i), "0"))) + intToStr(i),
+			Kind:       KindBSSID,
+		}); err != nil {
+			t.Fatalf("Remember %d: %v", i, err)
+		}
+	}
+	recent, err := s.Recent(999999)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	if len(recent) != MaxRecent {
+		t.Errorf("len(recent) = %d, want MaxRecent = %d", len(recent), MaxRecent)
+	}
+}
+
+func intToStr(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	const digits = "0123456789"
+	var buf []byte
+	for i > 0 {
+		buf = append([]byte{digits[i%10]}, buf...)
+		i /= 10
+	}
+	return string(buf)
+}
+
 // TestLookup_CorruptFactsJSON confirms that a row with malformed
 // facts JSON (e.g. due to an external edit or schema drift) doesn't
 // fail the whole lookup — the row is returned with empty Facts and
