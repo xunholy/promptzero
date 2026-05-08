@@ -2,6 +2,7 @@ package audit
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -187,6 +188,29 @@ func TestQueryFilteredLimitOffset(t *testing.T) {
 	}
 	if page1[0].ID == page2[0].ID {
 		t.Errorf("offset did not advance (page1.ID=%d page2.ID=%d)", page1[0].ID, page2[0].ID)
+	}
+}
+
+// TestRecordUnmarshallableInput verifies that when the caller passes input
+// that fails to JSON-marshal (e.g. contains a channel), Record still writes
+// a row with a marshal-error placeholder rather than swallowing the failure
+// and emitting an empty input field.
+func TestRecordUnmarshallableInput(t *testing.T) {
+	log := openTestLog(t)
+	bad := map[string]any{"ch": make(chan int)}
+	log.Record("test_tool", bad, "ok", "low", LevelInfo, 0, true)
+	got, err := log.QueryFiltered(Filter{Tool: "test_tool"})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(got))
+	}
+	if got[0].Input == "" {
+		t.Errorf("Input is empty; want marshal-error placeholder")
+	}
+	if !strings.Contains(got[0].Input, "_marshal_error") {
+		t.Errorf("Input = %q; want substring _marshal_error", got[0].Input)
 	}
 }
 
