@@ -18,6 +18,18 @@ import (
 	"github.com/xunholy/promptzero/internal/risk"
 )
 
+// MaxQueryLimit caps the per-call row count returned by Query and
+// QueryFiltered. The audit DB grows without bound across sessions;
+// a caller asking for limit=1000000 (operator typo, malicious LLM
+// tool call, stress test) would tie up SQLite for seconds and
+// flood downstream consumers. 10k is generous for any reasonable
+// triage flow — callers wanting more should paginate via Offset.
+//
+// Both the REPL slash commands (/audit query, /history) and the
+// audit_query tool consult this cap so the cap can't be bypassed
+// by routing through a different surface.
+const MaxQueryLimit = 10000
+
 type Level string
 
 const (

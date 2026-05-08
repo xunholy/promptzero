@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/risk"
 )
 
@@ -28,7 +29,15 @@ func init() {
 			if d.Audit == nil {
 				return "Audit logging not enabled", nil
 			}
-			entries, err := d.Audit.Query(intOr(p, "limit", 20))
+			limit := intOr(p, "limit", 20)
+			// Soft-cap the limit so an LLM tool call with
+			// limit=999999 can't tie up SQLite or flood the
+			// agent's tool-result with the whole audit DB. Same
+			// ceiling as the REPL's /audit query command.
+			if limit > audit.MaxQueryLimit {
+				limit = audit.MaxQueryLimit
+			}
+			entries, err := d.Audit.Query(limit)
 			if err != nil {
 				return "", err
 			}
