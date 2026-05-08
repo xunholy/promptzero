@@ -1056,7 +1056,17 @@ func httpEnumCommonHandler(ctx context.Context, _ *Deps, p map[string]any) (stri
 				status := resp.StatusCode
 				resp.Body.Close()
 				if matchCodes[status] {
-					resultCh <- scanResult{path: "/" + path, status: status, size: size}
+					// Honour ctx cancellation on the send so a slow
+					// consumer (or a buffer overflow) doesn't wedge
+					// workers indefinitely. Without this, > 256
+					// matches would fill resultCh, block all
+					// workers on send, and prevent wg.Wait() from
+					// ever returning — even when ctx cancels.
+					select {
+					case resultCh <- scanResult{path: "/" + path, status: status, size: size}:
+					case <-ctx.Done():
+						return
+					}
 				}
 			}
 		}()
