@@ -194,6 +194,30 @@ var rules = []rule{
 		"mimikatz sekurlsa::logonpasswords  — LSASS credential dump (T1003.001)"},
 	{"mimikatz_dcsync", regexp.MustCompile(`(?i)\blsadump::dcsync\b`), SeverityCritical,
 		"mimikatz lsadump::dcsync  — domain credential extraction (T1003.006)"},
+
+	// Credential dumping — Windows registry hive saves (T1003.002).
+	// `reg save HKLM\SAM` exfils the SAM database; SYSTEM/SECURITY are
+	// needed to decrypt the SAM offline (impacket-secretsdump etc.).
+	{"reg_save_sam_hive", regexp.MustCompile(`(?i)\breg\s+save\s+HKLM\\(?:SAM|SYSTEM|SECURITY)\b`), SeverityCritical,
+		"reg save HKLM\\<HIVE>  — registry hive dump for offline SAM cracking (T1003.002)"},
+
+	// Account creation — local admin via `net user /add` followed by
+	// `net localgroup administrators add` (T1136.001 Local Account).
+	// Common in BadUSB to leave a backup login when malware persists.
+	{"net_user_add", regexp.MustCompile(`(?i)\bnet\s+user\s+\S+\s+\S+\s+/add\b`), SeverityCritical,
+		"net user <name> <password> /add  — local account creation (T1136.001)"},
+	{"net_localgroup_admin", regexp.MustCompile(`(?i)\bnet\s+localgroup\s+administrators\b\s+\S+\s+/add\b`), SeverityCritical,
+		"net localgroup administrators <name> /add  — privilege escalation (T1078.003)"},
+
+	// SSH authorized_keys backdoor — `echo <pubkey> >> ~/.ssh/authorized_keys`
+	// is the canonical Linux persistence trick (T1098.004).
+	{"ssh_authorized_keys_append", regexp.MustCompile(`(?i)>>\s*\S*\.ssh/authorized_keys\b`), SeverityCritical,
+		"appends to ~/.ssh/authorized_keys  — SSH backdoor (T1098.004)"},
+
+	// /etc/sudoers modification via echo / cat / tee — operator implants
+	// a NOPASSWD line for an attacker-controlled account (T1548.003).
+	{"sudoers_nopasswd_append", regexp.MustCompile(`(?i)NOPASSWD\s*:\s*ALL\b`), SeverityCritical,
+		"NOPASSWD:ALL line  — passwordless sudo elevation (T1548.003)"},
 }
 
 // Validate parses a DuckyScript payload and returns the Report. Pass the

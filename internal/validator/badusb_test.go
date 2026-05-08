@@ -157,6 +157,14 @@ func TestValidate_DefenseEvasionAndCredDump(t *testing.T) {
 		{"ufw_disable", `STRING ufw disable`, SeverityWarn},
 		{"mimikatz_logonpasswords", `STRING privilege::debug; sekurlsa::logonpasswords`, SeverityCritical},
 		{"mimikatz_dcsync", `STRING lsadump::dcsync /user:Administrator`, SeverityCritical},
+		{"reg_save_sam_hive", `STRING reg save HKLM\SAM C:\sam.hive`, SeverityCritical},
+		{"reg_save_sam_hive", `STRING reg save HKLM\SYSTEM C:\sys.hive`, SeverityCritical},
+		{"reg_save_sam_hive", `STRING reg save HKLM\SECURITY C:\sec.hive`, SeverityCritical},
+		{"net_user_add", `STRING net user backdoor P@ssw0rd /add`, SeverityCritical},
+		{"net_localgroup_admin", `STRING net localgroup administrators backdoor /add`, SeverityCritical},
+		{"ssh_authorized_keys_append", `STRING echo ssh-ed25519 AAAA... attacker@evil >> ~/.ssh/authorized_keys`, SeverityCritical},
+		{"ssh_authorized_keys_append", `STRING cat /tmp/key.pub >> /root/.ssh/authorized_keys`, SeverityCritical},
+		{"sudoers_nopasswd_append", `STRING echo "evil ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers`, SeverityCritical},
 	}
 	for _, tc := range cases {
 		t.Run(tc.rule, func(t *testing.T) {
