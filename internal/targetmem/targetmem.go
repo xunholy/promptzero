@@ -47,6 +47,13 @@ const (
 	KindIButton  = "ibutton"
 )
 
+// MaxRecent caps the per-call row count returned by Recent. The
+// targets table grows without bound across sessions; a Recent(1000000)
+// call (operator typo, malicious LLM tool call) would tie up SQLite
+// and serialise a multi-MB JSON. 1000 is generous for any reasonable
+// recall flow.
+const MaxRecent = 1000
+
 // Store is the persistent target memory. Safe for concurrent use;
 // a single SQLite connection is serialised internally.
 type Store struct {
@@ -168,10 +175,15 @@ func (s *Store) Lookup(identifier, kind string) (Target, bool, error) {
 
 // Recent returns the N most recently observed targets, newest first.
 // Useful for the /targets REPL command and for the agent's session-
-// start known-targets context block.
+// start known-targets context block. n is bounded by MaxRecent so an
+// LLM tool call asking for 1000000 can't push the entire targets
+// table into a JSON tool-result.
 func (s *Store) Recent(n int) ([]Target, error) {
 	if n <= 0 {
 		n = 20
+	}
+	if n > MaxRecent {
+		n = MaxRecent
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
