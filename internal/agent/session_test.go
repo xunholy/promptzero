@@ -234,6 +234,25 @@ func TestNewSession_ClearsHistoryAndRotatesID(t *testing.T) {
 	}
 }
 
+// TestNewSession_DoesNotCollideOnRapidCalls covers the
+// same-second-collision regression: when sessionID was generated
+// from time.Now().Unix() (seconds), two consecutive NewSession()
+// calls in the same wall-clock second produced the same id and
+// would overwrite each other's saved state on disk. UnixNano
+// brings collision risk to effectively zero.
+func TestNewSession_DoesNotCollideOnRapidCalls(t *testing.T) {
+	a := &Agent{}
+	const n = 50
+	seen := map[string]struct{}{}
+	for i := 0; i < n; i++ {
+		id := a.NewSession()
+		if _, dup := seen[id]; dup {
+			t.Fatalf("collision on iteration %d: id=%q", i, id)
+		}
+		seen[id] = struct{}{}
+	}
+}
+
 // The agent prepends <ui-context .../> and <device-state>...</device-state>
 // blocks to user input as turn grounding. Title derivation must skip
 // these so the sidebar shows the operator's prompt, not the JSON dump.
