@@ -418,7 +418,17 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 
 				for lh, orig := range targets {
 					if checkHash(algo, word, lh, orig) {
-						resultCh <- crackResult{lowerHash: lh, plaintext: word}
+						// Honour ctx cancellation on the send — multiple
+						// workers can race to find the same hash before
+						// the delete-from-remaining lands, producing
+						// duplicate sends. If W > buffer capacity the
+						// surplus blocks; without the ctx select that
+						// blocks wg.Wait forever even on cancel.
+						select {
+						case resultCh <- crackResult{lowerHash: lh, plaintext: word}:
+						case <-ctx.Done():
+							return
+						}
 						remainMu.Lock()
 						delete(remaining, lh)
 						remainMu.Unlock()
