@@ -165,6 +165,35 @@ var rules = []rule{
 		"wmic process call create  — lateral execution"},
 	{"ssh_keydump", regexp.MustCompile(`(?i)(?:cat|type)\s+.*\.ssh/(?:id_rsa|id_ed25519)\b`), SeverityWarn,
 		"reads SSH private key"},
+
+	// Defense evasion — log clearing (T1070.001 / T1070.002). Common in
+	// BadUSB to cover tracks before the operator unplugs.
+	{"clear_eventlog_wevtutil", regexp.MustCompile(`(?i)\bwevtutil\b\s+cl\b`), SeverityCritical,
+		"wevtutil cl  — clears Windows event logs (T1070.001)"},
+	{"clear_eventlog_ps", regexp.MustCompile(`(?i)\bClear-EventLog\b`), SeverityCritical,
+		"Clear-EventLog  — clears Windows event logs (T1070.001)"},
+
+	// Obfuscation — PowerShell encoded commands (T1027 / T1059.001).
+	// `powershell -enc <base64>` hides the actual command from
+	// shoulder-surfing and basic string-grep telemetry.
+	{"powershell_enc", regexp.MustCompile(`(?i)\bpowershell(?:\.exe)?\b[^|;\n]*\s-(?:e|en|enc|enco|encod|encode|encoded|encodedc|encodedco|encodedcom|encodedcomm|encodedcomma|encodedcomman|encodedcommand|ec)\s+[A-Za-z0-9+/=]{12,}`), SeverityCritical,
+		"powershell -EncodedCommand  — base64-obfuscated payload (T1027/T1059.001)"},
+
+	// Defense evasion — Linux firewall flush. Distinct from disabling
+	// since `-F` is sometimes legitimate, but in a BadUSB context it
+	// is almost always part of clearing the way for follow-on traffic.
+	{"iptables_flush", regexp.MustCompile(`(?i)\biptables\b\s+(?:-F|--flush)\b`), SeverityWarn,
+		"iptables -F  — flushes Linux firewall rules (T1562.004)"},
+	{"ufw_disable", regexp.MustCompile(`(?i)\bufw\b\s+disable\b`), SeverityWarn,
+		"ufw disable  — disables Linux firewall (T1562.004)"},
+
+	// Credential dumping — Mimikatz module strings (T1003.001). Operators
+	// using a launcher won't always type the exe name, but the function
+	// names are extremely high-signal.
+	{"mimikatz_logonpasswords", regexp.MustCompile(`(?i)\bsekurlsa::logonpasswords\b`), SeverityCritical,
+		"mimikatz sekurlsa::logonpasswords  — LSASS credential dump (T1003.001)"},
+	{"mimikatz_dcsync", regexp.MustCompile(`(?i)\blsadump::dcsync\b`), SeverityCritical,
+		"mimikatz lsadump::dcsync  — domain credential extraction (T1003.006)"},
 }
 
 // Validate parses a DuckyScript payload and returns the Report. Pass the

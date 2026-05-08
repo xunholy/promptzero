@@ -137,6 +137,46 @@ func TestValidate_LOLBASRules(t *testing.T) {
 	}
 }
 
+// TestValidate_DefenseEvasionAndCredDump exercises the rules added for
+// Windows event-log clearing, PowerShell -EncodedCommand, Linux firewall
+// flush, and Mimikatz credential dumping. All four are common BadUSB
+// signals that previously slipped past the validator entirely.
+func TestValidate_DefenseEvasionAndCredDump(t *testing.T) {
+	cases := []struct {
+		rule string
+		line string
+		want Severity
+	}{
+		{"clear_eventlog_wevtutil", `STRING wevtutil cl Security`, SeverityCritical},
+		{"clear_eventlog_wevtutil", `STRING wevtutil cl System`, SeverityCritical},
+		{"clear_eventlog_ps", `STRING Clear-EventLog -LogName Security`, SeverityCritical},
+		{"powershell_enc", `STRING powershell -enc SQBuAHYAbwBrAGUALQBFAHgAcAByAGUAcwBzAGkAbwBuAA==`, SeverityCritical},
+		{"powershell_enc", `STRING powershell.exe -EncodedCommand SQBuAHYAbwBrAGUA`, SeverityCritical},
+		{"iptables_flush", `STRING iptables -F`, SeverityWarn},
+		{"iptables_flush", `STRING iptables --flush`, SeverityWarn},
+		{"ufw_disable", `STRING ufw disable`, SeverityWarn},
+		{"mimikatz_logonpasswords", `STRING privilege::debug; sekurlsa::logonpasswords`, SeverityCritical},
+		{"mimikatz_dcsync", `STRING lsadump::dcsync /user:Administrator`, SeverityCritical},
+	}
+	for _, tc := range cases {
+		t.Run(tc.rule, func(t *testing.T) {
+			rep := Validate("evade.txt", tc.line+"\n")
+			if rep.Severity != tc.want {
+				t.Fatalf("severity=%v want %v (findings=%+v)", rep.Severity, tc.want, rep.Findings)
+			}
+			found := false
+			for _, f := range rep.Findings {
+				if f.Rule == tc.rule {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected rule %q in findings, got %+v", tc.rule, rep.Findings)
+			}
+		})
+	}
+}
+
 // TestValidate_BlockDeviceWipe locks the dd-to-block-device guard. A
 // payload that types `dd if=/dev/zero of=/dev/sda` is functionally
 // equivalent to mkfs on the primary disk — same critical tier.
