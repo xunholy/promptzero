@@ -31,6 +31,29 @@ type Provider interface {
 
 var httpClient = &http.Client{Timeout: 5 * time.Minute}
 
+// maxResponseBytes caps how much an HTTP-based provider response we'll
+// buffer in memory before giving up. Real LLM completions are well
+// under 1 MB; the cap is generous to avoid clipping legitimate large
+// outputs while protecting against a misconfigured baseURL pointing
+// at a file server or a multi-GB error page from a CDN.
+const maxResponseBytes = 16 << 20 // 16 MiB
+
+// readCappedBody reads at most maxResponseBytes from body. Returns an
+// explicit error when the cap is hit so the caller can surface a clear
+// "response too large" message rather than silently truncating into a
+// JSON parse error downstream.
+func readCappedBody(body io.Reader, name string) ([]byte, error) {
+	r := io.LimitReader(body, maxResponseBytes+1)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s response: %w", name, err)
+	}
+	if int64(len(data)) > maxResponseBytes {
+		return nil, fmt.Errorf("%s response exceeded %d-byte cap; refusing to buffer in memory", name, maxResponseBytes)
+	}
+	return data, nil
+}
+
 // --- Claude ---
 
 type Claude struct {
@@ -122,9 +145,9 @@ func (o *Ollama) Complete(ctx context.Context, system string, messages []Message
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := readCappedBody(resp.Body, "ollama")
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return nil, err
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(data))
@@ -200,9 +223,9 @@ func (o *OpenAICompat) Complete(ctx context.Context, system string, messages []M
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := readCappedBody(resp.Body, o.name)
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return nil, err
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("%s error %d: %s", o.name, resp.StatusCode, string(data))
