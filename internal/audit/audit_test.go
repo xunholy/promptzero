@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/xunholy/promptzero/internal/risk"
 )
@@ -211,6 +212,35 @@ func TestRecordUnmarshallableInput(t *testing.T) {
 	}
 	if !strings.Contains(got[0].Input, "_marshal_error") {
 		t.Errorf("Input = %q; want substring _marshal_error", got[0].Input)
+	}
+}
+
+// TestRecord_UTF8TruncateBoundary verifies that when output exceeds
+// the 65535-byte storage cap, the truncation walks back to the
+// previous rune boundary instead of splitting a multi-byte UTF-8
+// sequence. Without the walk-back, the stored row contained
+// invalid UTF-8 at the cut and the web UI / /report renderer
+// would show U+FFFD.
+func TestRecord_UTF8TruncateBoundary(t *testing.T) {
+	log := openTestLog(t)
+	// Build output that places a 2-byte rune (é = 0xc3 0xa9) so
+	// that byte 65535 lands on the continuation byte 0xa9.
+	prefix := strings.Repeat("a", 65534)
+	out := prefix + "é" + strings.Repeat("z", 100) // total 65636 bytes
+	log.Record("test", map[string]string{}, out, "low", LevelInfo, 0, true)
+	got, err := log.QueryFiltered(Filter{Tool: "test"})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d rows, want 1", len(got))
+	}
+	stored := got[0].Output
+	if !utf8.ValidString(stored) {
+		t.Fatalf("stored output is invalid UTF-8 (rune split at boundary)")
+	}
+	if !strings.HasSuffix(stored, "... [truncated]") {
+		t.Errorf("stored output should end with truncation marker, got tail %q", stored[len(stored)-30:])
 	}
 }
 
