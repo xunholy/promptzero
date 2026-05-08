@@ -39,7 +39,9 @@ func (a *Agent) SetSessionStore(s *session.Store) {
 	defer a.mu.Unlock()
 	a.sessionStore = s
 	if a.sessionID == "" {
-		a.sessionID = fmt.Sprintf("session-%d", time.Now().Unix())
+		// UnixNano so quick SetSessionStore/NewSession cycles in
+		// the same second don't collide on the file path.
+		a.sessionID = fmt.Sprintf("session-%d", time.Now().UnixNano())
 	}
 }
 
@@ -227,7 +229,9 @@ func (a *Agent) NewSession() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.history = nil
-	a.sessionID = fmt.Sprintf("session-%d", time.Now().Unix())
+	// UnixNano so two NewSession() calls in the same second don't
+	// produce the same id and overwrite each other's saved state.
+	a.sessionID = fmt.Sprintf("session-%d", time.Now().UnixNano())
 	return a.sessionID
 }
 

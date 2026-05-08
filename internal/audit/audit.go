@@ -154,8 +154,12 @@ func Open(dbPath string) (*Log, error) {
 	}
 
 	return &Log{
-		db:        db,
-		sessionID: fmt.Sprintf("session-%d", time.Now().Unix()),
+		db: db,
+		// UnixNano avoids same-second collisions when an operator
+		// reopens the audit log inside a tight loop (quick `Open` →
+		// `Close` → `Open` could otherwise reuse the same sessionID
+		// and braid two sessions' rows together).
+		sessionID: fmt.Sprintf("session-%d", time.Now().UnixNano()),
 		path:      actualPath,
 		lockFile:  lockFile,
 	}, nil
