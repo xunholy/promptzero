@@ -5,6 +5,40 @@ import (
 	"testing"
 )
 
+// TestParseStorageListFile pins the line-format parser. Real firmware
+// emits "\t[F] <name> <size>b" for files and "\t[D] <name>" for
+// directories — the previous discover.go code matched against
+// HasSuffix(line, ".fap") which never fired against the real format,
+// so ScanApps silently returned no FAPs. This test prevents regression
+// to that bug.
+func TestParseStorageListFile(t *testing.T) {
+	cases := []struct {
+		line    string
+		want    string
+		wantOK  bool
+		comment string
+	}{
+		{"\t[F] mfkey32.fap 12345b", "mfkey32.fap", true, "real firmware file line"},
+		{"\t[F] capture.sub 4096b", "capture.sub", true, "subghz capture"},
+		{"\t[D] subdir", "", false, "directory must be skipped"},
+		{"", "", false, "empty line"},
+		{"\t   ", "", false, "whitespace-only"},
+		{"\t[F] no_size", "no_size", true, "missing size suffix tolerated"},
+		{"raw_line_no_marker", "raw_line_no_marker", true, "unmarked line passes through"},
+		{"\t[F] file with spaces.txt 1024b", "file with spaces.txt", true, "name with internal spaces"},
+		{"\t[F] sneaky_5b 99b", "sneaky_5b", true, "filename ending in 'b' must not be confused with size"},
+		{"\t[F] 0b 0b", "0b", true, "zero-byte file with 0-byte size"},
+		{"\t[F] file.txt notasize", "file.txt notasize", true, "non-digit tail is part of filename"},
+	}
+	for _, c := range cases {
+		got, ok := parseStorageListFile(c.line)
+		if got != c.want || ok != c.wantOK {
+			t.Errorf("parseStorageListFile(%q) = (%q,%v) want (%q,%v) — %s",
+				c.line, got, ok, c.want, c.wantOK, c.comment)
+		}
+	}
+}
+
 // TestFormatApps_Empty pins the friendly message when nothing was
 // found. Operators interpret an empty SD card via this string.
 func TestFormatApps_Empty(t *testing.T) {
