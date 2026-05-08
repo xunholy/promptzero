@@ -80,9 +80,10 @@ REQUIREMENTS:
 
 	html := cleanOutput(resp.Content, "html")
 
-	if len(html) > 20000 {
-		html = html[:20000]
-	}
+	// 20 KB cap on the captive-portal payload. capSize is
+	// UTF-8-aware: a multi-byte rune at the boundary doesn't get
+	// split, so the served portal stays valid UTF-8.
+	html = capSize(html, 20000)
 
 	return &Result{
 		Type:     "evil_portal",
