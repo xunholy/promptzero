@@ -171,3 +171,26 @@ func TestBadUSBPayloadSearch(t *testing.T) {
 		t.Errorf("target_os-filtered hit_count = %d, want 1", got)
 	}
 }
+
+// TestClampCorpusLimit pins the cap helper used by all three
+// corpora-search Specs. Without the cap an LLM tool call asking
+// for limit=1000000 would walk the entire corpus and serialise a
+// multi-MB JSON into the tool-result block.
+func TestClampCorpusLimit(t *testing.T) {
+	cases := []struct {
+		in, want int
+	}{
+		{0, 0},
+		{50, 50},
+		{1000, 1000},   // exactly cap
+		{1001, 1000},   // one above
+		{999999, 1000}, // typical adversarial value
+		{-5, -5},       // negative passes through; callers handle
+	}
+	for _, c := range cases {
+		got := clampCorpusLimit(c.in)
+		if got != c.want {
+			t.Errorf("clampCorpusLimit(%d) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}

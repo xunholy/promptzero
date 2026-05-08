@@ -38,6 +38,25 @@ import (
 	"github.com/xunholy/promptzero/internal/risk"
 )
 
+// corpusMaxResults caps how many hits any corpora-search Spec
+// (ir_irdb_lookup, evil_portal_template_pick, badusb_payload_search)
+// will return per call. Without the cap an LLM tool call with
+// limit=1000000 would walk the entire corpus and serialise a
+// multi-MB JSON into the tool-result block — eating context budget
+// and potentially OOM'ing the agent on large operator trees.
+// 1000 is generous for any reasonable triage flow.
+const corpusMaxResults = 1000
+
+// clampCorpusLimit applies the corpora-search row cap. Centralised
+// so the three corpora tools stay consistent and the constant has a
+// single source of truth.
+func clampCorpusLimit(n int) int {
+	if n > corpusMaxResults {
+		return corpusMaxResults
+	}
+	return n
+}
+
 func init() { //nolint:gochecknoinits
 	Register(irIRDBLookupSpec)
 	Register(evilPortalTemplatePickSpec)
@@ -79,7 +98,7 @@ func irIRDBLookupHandler(_ context.Context, _ *Deps, args map[string]any) (strin
 		return "", fmt.Errorf("ir_irdb_lookup: manufacturer is required")
 	}
 	device := strings.ToLower(strings.TrimSpace(str(args, "device")))
-	limit := intOr(args, "limit", 50)
+	limit := clampCorpusLimit(intOr(args, "limit", 50))
 
 	type hit struct {
 		Path         string `json:"path"`
@@ -179,7 +198,7 @@ func evilPortalTemplatePickHandler(_ context.Context, _ *Deps, args map[string]a
 	}
 	brand := strings.ToLower(strings.TrimSpace(str(args, "brand")))
 	lang := strings.ToLower(strings.TrimSpace(str(args, "language")))
-	limit := intOr(args, "limit", 30)
+	limit := clampCorpusLimit(intOr(args, "limit", 30))
 
 	type hit struct {
 		Path     string `json:"path"`
@@ -316,7 +335,7 @@ func badusbPayloadSearchHandler(_ context.Context, _ *Deps, args map[string]any)
 	}
 	keywords := strings.Fields(goal)
 	osFilter := strings.ToLower(strings.TrimSpace(str(args, "target_os")))
-	limit := intOr(args, "limit", 20)
+	limit := clampCorpusLimit(intOr(args, "limit", 20))
 
 	type hit struct {
 		Path    string   `json:"path"`
