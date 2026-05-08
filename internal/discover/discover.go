@@ -37,18 +37,23 @@ func ScanApps(f *flipper.Flipper) ([]App, error) {
 		}
 	}
 
-	// Scan signal libraries
-	signalDirs := map[string]string{
-		"/ext/subghz":   "subghz",
-		"/ext/infrared": "ir",
-		"/ext/nfc":      "nfc",
-		"/ext/lfrfid":   "rfid",
-		"/ext/ibutton":  "ibutton",
-		"/ext/badusb":   "badusb",
+	// Scan signal libraries. Pairs are kept in a slice rather than a map
+	// so the iteration order is fixed — without this, ScanApps's
+	// returned []App appeared in a different order every call (Go map
+	// iteration is randomised). FormatApps sorted by Type so the
+	// human-facing output looked stable, but any other caller of the
+	// raw slice saw shuffle-per-run.
+	signalDirs := []struct{ dir, sigType string }{
+		{"/ext/badusb", "badusb"},
+		{"/ext/ibutton", "ibutton"},
+		{"/ext/infrared", "ir"},
+		{"/ext/lfrfid", "rfid"},
+		{"/ext/nfc", "nfc"},
+		{"/ext/subghz", "subghz"},
 	}
 
-	for dir, sigType := range signalDirs {
-		out, err := f.StorageList(dir)
+	for _, sd := range signalDirs {
+		out, err := f.StorageList(sd.dir)
 		if err != nil {
 			continue
 		}
@@ -59,8 +64,8 @@ func ScanApps(f *flipper.Flipper) ([]App, error) {
 			}
 			apps = append(apps, App{
 				Name: line,
-				Path: dir + "/" + line,
-				Type: sigType,
+				Path: sd.dir + "/" + line,
+				Type: sd.sigType,
 			})
 		}
 	}
