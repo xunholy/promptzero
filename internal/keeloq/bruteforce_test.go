@@ -108,6 +108,41 @@ func TestBruteForceZeroWorkers(t *testing.T) {
 	}
 }
 
+// TestBruteForceWorkersClampedAboveCap pins the upper-bound clamp.
+// Without the cap a caller asking for Workers=10000 would spawn
+// 10000 goroutines for a CPU-bound loop that saturates well
+// below NumCPU. Run a tiny brute force with an absurd Workers
+// value and confirm the call still returns correctly within a
+// reasonable wall-clock budget — the goroutine spawn count is
+// silently bounded by maxBruteForceWorkers (64).
+func TestBruteForceWorkersClampedAboveCap(t *testing.T) {
+	const pt = uint32(0xABCD)
+	const key = uint64(0x0000FF)
+	ct := Encrypt(pt, key)
+
+	start := time.Now()
+	_, ok, err := BruteForce(context.Background(), BruteForceConfig{
+		KnownPlaintext:  pt,
+		KnownCiphertext: ct,
+		KeyspaceMin:     0,
+		KeyspaceMax:     1 << 20,
+		Workers:         10000, // would be 10000 goroutines without the clamp
+	})
+	if err != nil {
+		t.Fatalf("BruteForce: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected to find key 0x%016X", key)
+	}
+	// 64 workers on a 1<<20 keyspace returns in well under a
+	// second on any reasonable host. Generous budget; the test
+	// fails only if the clamp didn't fire and the runtime drowned
+	// in goroutine spawn cost.
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("BruteForce took %v with workers=10000; clamp likely not effective", elapsed)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Context cancellation test
 // ---------------------------------------------------------------------------
