@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-05-09
+
+UTF-8 + escape-sequence safety pass. Six commits, two themes:
+
+1. Every `[:n]` byte-index truncation site in the codebase now
+   walks back from UTF-8 continuation bytes so the output stays
+   valid UTF-8 even when a multi-byte rune lands at the boundary.
+2. The quarantine sanitiser now strips C1 escape-sequence bodies
+   (OSC / DCS / PM / APC / SOS), not just the leading ESC byte.
+
+### Fixed
+
+- **Quarantine: OSC/DCS/PM/APC/SOS bodies were leaking through.**
+  `sanitizeControlChars` stripped CSI escapes (`ESC [` colour /
+  cursor sequences) and lone ESC bytes via the catch-all
+  `otherControlsRE`, but the body of an OSC sequence
+  (`ESC ] 0;<title>BEL`) would survive as readable text. Risks:
+  attacker-controlled SSIDs, NFC tag URIs, or NDEF records
+  flowing through quarantine could embed terminal-title-set or
+  hyperlink payloads (OSC 8). Added `ansiC1RE` matching
+  `ESC [\]PX^_]<body>(BEL|ST)` — runs before the byte stripper
+  so the leading ESC is still present when the regex sees it.
+  8 sub-cases pin the contract: title-set, hyperlink, DCS, APC,
+  PM, SOS, unterminated fallback, mixed CSI+OSC.
+  (`internal/agent/quarantine.go`)
+
+- **`session.clipTitle` truncation split multi-byte runes.**
+  Sliced sidebar titles by byte index, so a title with a
+  multi-byte rune at the boundary produced invalid UTF-8 (renders
+  as U+FFFD or drops the fragment in the operator's sidebar).
+  Now walks back while the byte at the cut is a continuation
+  byte (`b&0xC0 == 0x80`). ASCII inputs cut at exactly the cap.
+  Mirrors the discipline already in `agent.truncateExcerpt`.
+  (`internal/agent/session.go`)
+
+- **`generate.capSize` truncation split multi-byte runes.**
+  Bounds runaway LLM-generated content (DuckyScript payloads,
+  captive-portal HTML) before it gets written to the Flipper.
+  Same byte-level slice as clipTitle; same fix.
+  (`internal/generate/generate.go`)
+
+- **`audit.RecordCtx` output truncation split multi-byte runes.**
+  Tool output > 65535 bytes was truncated by byte; if the cut
+  landed on a multi-byte rune the stored audit row was invalid
+  UTF-8 — the web UI / `/report` renderer would show U+FFFD or
+  reject the row. (`internal/audit/audit.go`)
+
+- **`agent.verifyPayload` input truncation split multi-byte
+  runes.** 4000-byte cap on content sent to the LLM verifier;
+  half-runes leaked into the verifier prompt. Refactored into a
+  testable `truncateForVerifier` helper with the same walk-back.
+  (`internal/agent/verify.go`)
+
+### Tested
+
+- **`config.Load` got its first 6 unit tests** — defaults when
+  file missing, YAML parsing, malformed-YAML rejection,
+  `~/.promptzero/config.yaml` fallback, env-var override
+  (ANTHROPIC/OPENAI/WEB_TOKEN), and `RequireAPIKey`. The Load
+  function is on every startup path but had zero direct
+  coverage. (`internal/config/config_test.go`)
+
+- **Each of the four UTF-8 truncation fixes adds a dedicated
+  regression test** — places "é" (0xc3 0xa9) so that a natural
+  byte-index cut would land on the continuation byte 0xa9 and
+  asserts `utf8.ValidString(got)` plus the documented
+  walk-back behaviour. ASCII paths pass byte-for-byte unchanged.
+
 ## [0.39.0] - 2026-05-09
 
 Bug-fix + validator + test-coverage release. Headline is a real
