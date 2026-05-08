@@ -118,7 +118,17 @@ func parseVerdict(raw string) Verdict {
 	}
 	var v Verdict
 	if err := json.Unmarshal([]byte(trimmed), &v); err != nil {
-		return Verdict{Verdict: VerdictUnknown, Evidence: "judge response was not JSON"}
+		// Fallback: judges sometimes emit valid JSON wrapped in prose
+		// ("Based on the output: {...}\nReasoning: ..."). Extract the
+		// first balanced {...} block and retry. Cheap brace-balance
+		// scan; quote-aware so braces inside strings don't confuse it.
+		if block, ok := extractJSONObject(trimmed); ok {
+			if err := json.Unmarshal([]byte(block), &v); err != nil {
+				return Verdict{Verdict: VerdictUnknown, Evidence: "judge response was not JSON"}
+			}
+		} else {
+			return Verdict{Verdict: VerdictUnknown, Evidence: "judge response was not JSON"}
+		}
 	}
 	if v.Verdict == "" {
 		v.Verdict = VerdictUnknown
@@ -132,6 +142,52 @@ func parseVerdict(raw string) Verdict {
 		v.Confidence = 1
 	}
 	return v
+}
+
+// extractJSONObject walks s left-to-right, finds the first '{' that
+// starts a balanced object, and returns that substring. Quote-aware:
+// braces inside JSON string literals don't affect the depth counter,
+// and a backslash escapes the next character inside a string. Returns
+// (substring, true) on success, ("", false) when no balanced object
+// begins after the first '{'. Used as a tolerant-mode fallback for
+// LLM judge responses that wrap their JSON in prose.
+func extractJSONObject(s string) (string, bool) {
+	start := strings.IndexByte(s, '{')
+	if start < 0 {
+		return "", false
+	}
+	depth := 0
+	inStr := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if inStr {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if c == '\\' {
+				escaped = true
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return s[start : i+1], true
+			}
+		}
+	}
+	return "", false
 }
 
 // Built-in detector prompts. Each is a compact, Haiku-friendly

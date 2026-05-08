@@ -71,6 +71,75 @@ func TestLLMDetector_StripsMarkdownFences(t *testing.T) {
 	}
 }
 
+// TestLLMDetector_ExtractsJSONFromProse covers the tolerant fallback
+// path: judges sometimes return a valid JSON object embedded in
+// surrounding prose ("Based on the output: {...}\n\nReasoning: ...").
+// The strict json.Unmarshal call rejects that whole-string blob; the
+// fallback should isolate the first balanced object and parse it.
+func TestLLMDetector_ExtractsJSONFromProse(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "prose_prefix",
+			raw:  `Based on the output: {"verdict":"success","confidence":0.8,"evidence":"frames sent"}`,
+			want: VerdictSuccess,
+		},
+		{
+			name: "prose_suffix",
+			raw:  `{"verdict":"failure","confidence":0.7,"evidence":"no PMKID"}\n\nThat's my analysis.`,
+			want: VerdictFailure,
+		},
+		{
+			name: "prose_both_sides",
+			raw:  "Looking at the data...\n{\"verdict\":\"suspicious\",\"confidence\":0.6,\"evidence\":\"empty output template\"}\n\nRecommend re-running.",
+			want: VerdictSuspicious,
+		},
+		{
+			name: "braces_inside_evidence_string",
+			raw:  `Reasoning here. {"verdict":"success","confidence":0.9,"evidence":"target ack {ok}"}`,
+			want: VerdictSuccess,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDeauthSuccessDetector(judgeStub(tc.raw))
+			v, err := d.Evaluate(context.Background(), "wifi_deauth", `{}`, "ok")
+			if err != nil {
+				t.Fatalf("Evaluate: %v", err)
+			}
+			if v.Verdict != tc.want {
+				t.Errorf("Verdict = %q, want %q (raw=%q)", v.Verdict, tc.want, tc.raw)
+			}
+		})
+	}
+}
+
+func TestExtractJSONObject(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{`{"a":1}`, `{"a":1}`, true},
+		{`prefix {"a":1} suffix`, `{"a":1}`, true},
+		{`{"a":{"b":2}}`, `{"a":{"b":2}}`, true},
+		{`{"a":"}"}`, `{"a":"}"}`, true},                        // brace inside string ignored
+		{`{"a":"\"}"}`, `{"a":"\"}"}`, true},                    // escaped quote then brace inside string
+		{`no braces here`, ``, false},                           // no '{'
+		{`{unbalanced`, ``, false},                              // never closes
+		{`text {"first":1} {"second":2}`, `{"first":1}`, true},  // first object only
+	}
+	for _, tc := range cases {
+		got, ok := extractJSONObject(tc.in)
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("extractJSONObject(%q) = %q,%v want %q,%v", tc.in, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
 func TestLLMDetector_NonJSONFallsBackToUnknown(t *testing.T) {
 	// A chatty judge that forgets to emit JSON must not crash the
 	// caller. The Verdict downgrades to unknown so follow-up logic
