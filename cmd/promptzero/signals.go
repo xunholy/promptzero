@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // signalHandler owns the atomic pointers the Ctrl+C goroutine needs: the
@@ -87,7 +90,16 @@ func (s *signalHandler) runShutdownHooks() {
 		done := make(chan struct{})
 		go func(f func()) {
 			defer close(done)
-			defer func() { _ = recover() }() // swallow panic in hook
+			defer func() {
+				if r := recover(); r != nil {
+					// Surface the panic via obs so a buggy shutdown
+					// hook is visible in the operator's log even
+					// though we proceed with shutdown anyway.
+					obs.Default().Error("shutdown_hook_panicked",
+						"recovered", fmt.Sprintf("%v", r),
+						"stack", string(debug.Stack()))
+				}
+			}()
 			f()
 		}(fn)
 		select {
