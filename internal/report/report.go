@@ -435,11 +435,19 @@ func mitreSlug(id string) string {
 
 // shortEvidence truncates a verdict's evidence string to a single
 // short clause so the detector-verdict table stays readable. Keeps
-// the first sentence up to 120 characters.
+// the first sentence up to 120 bytes. UTF-8-aware: when the cut
+// lands on a multi-byte rune we walk back to the previous rune
+// start so the rendered cell is always valid UTF-8 (no U+FFFD or
+// dropped fragments). Mirrors the discipline in
+// session.clipTitle / generate.capSize / audit.RecordCtx.
 func shortEvidence(s string) string {
 	s = strings.TrimSpace(s)
 	if len(s) > 120 {
-		s = s[:117] + "…"
+		cut := 117
+		for cut > 0 && s[cut]&0xC0 == 0x80 {
+			cut--
+		}
+		s = s[:cut] + "…"
 	}
 	s = strings.ReplaceAll(s, "\n", " ")
 	return s
