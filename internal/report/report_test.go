@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
@@ -294,5 +295,41 @@ func TestMarkdownRenderer_HeatmapVisible(t *testing.T) {
 	}
 	if !strings.Contains(body, "░") {
 		t.Errorf("heatmap should contain at least one empty cell; output:\n%s", body)
+	}
+}
+
+// TestShortEvidence_UTF8Boundary pins the rune-aware truncation in
+// shortEvidence — verdict-evidence strings rendered in the
+// /report detector-verdict table. Previously a multi-byte rune at
+// byte 117 would get split and the markdown cell would render
+// U+FFFD or drop the fragment.
+func TestShortEvidence_UTF8Boundary(t *testing.T) {
+	// Place "é" (0xc3 0xa9) so byte 117 lands on the continuation
+	// byte 0xa9. 116 ASCII chars + "é" + tail.
+	in := strings.Repeat("a", 116) + "é" + strings.Repeat("b", 50)
+	got := shortEvidence(in)
+	if !utf8.ValidString(got) {
+		t.Fatalf("shortEvidence produced invalid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("expected ellipsis suffix, got %q", got)
+	}
+	// Walked back to byte 116 (before the é).
+	if !strings.HasPrefix(got, strings.Repeat("a", 116)) {
+		t.Errorf("walk-back should preserve 116 'a' filler, got %q", got)
+	}
+}
+
+func TestShortEvidence_CollapsesNewlines(t *testing.T) {
+	got := shortEvidence("line one\nline two\nline three")
+	if strings.Contains(got, "\n") {
+		t.Errorf("newlines should collapse to spaces, got %q", got)
+	}
+}
+
+func TestShortEvidence_TrimsAndShortPassthrough(t *testing.T) {
+	got := shortEvidence("  short  ")
+	if got != "short" {
+		t.Errorf("expected trim, got %q", got)
 	}
 }

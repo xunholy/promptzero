@@ -159,7 +159,14 @@ func ValidateEvilPortal(name, html string) Report {
 		if lineNo-1 < len(lines) {
 			excerpt = strings.TrimSpace(lines[lineNo-1])
 			if len(excerpt) > 120 {
-				excerpt = excerpt[:120] + "…"
+				// UTF-8-aware: walk back from continuation bytes
+				// so a multi-byte rune at the boundary doesn't get
+				// split. Mirrors session.clipTitle / generate.capSize.
+				cut := 120
+				for cut > 0 && excerpt[cut]&0xC0 == 0x80 {
+					cut--
+				}
+				excerpt = excerpt[:cut] + "…"
 			}
 		}
 		rep.Findings = append(rep.Findings, Finding{
@@ -182,7 +189,14 @@ func ValidateEvilPortal(name, html string) Report {
 		if lineNo-1 < len(lines) {
 			excerpt = strings.TrimSpace(lines[lineNo-1])
 			if len(excerpt) > 120 {
-				excerpt = excerpt[:120] + "…"
+				// UTF-8-aware: walk back from continuation bytes
+				// so a multi-byte rune at the boundary doesn't get
+				// split. Mirrors session.clipTitle / generate.capSize.
+				cut := 120
+				for cut > 0 && excerpt[cut]&0xC0 == 0x80 {
+					cut--
+				}
+				excerpt = excerpt[:cut] + "…"
 			}
 		}
 		rep.Findings = append(rep.Findings, Finding{
