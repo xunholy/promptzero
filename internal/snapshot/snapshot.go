@@ -25,6 +25,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // snapshotTimeLayout is a filesystem-safe timestamp format. RFC3339's
@@ -165,12 +167,17 @@ func (m *Manager) List(sessionID string) ([]Entry, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		metaPath := filepath.Join(dir, e.Name())
+		raw, err := os.ReadFile(metaPath)
 		if err != nil {
-			continue // skip individual unreadable entries rather than failing the whole list
+			// Skip individual unreadable entries rather than failing the whole
+			// list; surface the failure so a corrupt meta file is visible.
+			obs.Default().Warn("snapshot_meta_read_failed", "session_id", sessionID, "file", e.Name(), "err", err)
+			continue
 		}
 		var entry Entry
 		if err := json.Unmarshal(raw, &entry); err != nil {
+			obs.Default().Warn("snapshot_meta_parse_failed", "session_id", sessionID, "file", e.Name(), "err", err)
 			continue
 		}
 		entry.DataFile = filepath.Join(dir, entry.ID+".bak")

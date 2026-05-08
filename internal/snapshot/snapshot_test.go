@@ -82,6 +82,30 @@ func TestManager_List_MissingSessionIsEmpty(t *testing.T) {
 	}
 }
 
+// TestManager_List_SkipsCorruptMeta verifies that a corrupt meta
+// file in the session directory doesn't fail the whole listing —
+// the bad row is skipped and well-formed entries are still
+// returned. Mirrors the Recent/Lookup tolerance in targetmem.
+func TestManager_List_SkipsCorruptMeta(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(root)
+	if _, err := m.Store("sess-corrupt", "/ext/a.sub", []byte("good")); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	// Inject a malformed .json sibling.
+	dir := filepath.Join(root, "sess-corrupt")
+	if err := os.WriteFile(filepath.Join(dir, "20260101T000000-cafebabe.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatalf("seed corrupt: %v", err)
+	}
+	entries, err := m.List("sess-corrupt")
+	if err != nil {
+		t.Fatalf("List: %v (corrupt meta should not fail listing)", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1 (the good row)", len(entries))
+	}
+}
+
 func TestManager_Purge(t *testing.T) {
 	root := t.TempDir()
 	m := NewManager(root)
