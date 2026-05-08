@@ -283,6 +283,58 @@ func TestHTTPInvalidURL(t *testing.T) {
 	}
 }
 
+// TestHTTPRecvResponseSizeCap exercises the load-bearing safety
+// check: a misbehaving / compromised proxy that ignores the
+// `?max=batch` hint and returns a giant body must not buffer
+// without bound into t.pending. The cap fires at
+// maxHTTPRecvResponseBytes and the caller sees a clear refusal.
+func TestHTTPRecvResponseSizeCap(t *testing.T) {
+	mux := http.NewServeMux()
+	// Probe must succeed so Dial doesn't reject the transport before
+	// our oversized recv ever fires.
+	probed := false
+	mux.HandleFunc("/uart/recv", func(w http.ResponseWriter, r *http.Request) {
+		if !probed {
+			probed = true
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Stream maxHTTPRecvResponseBytes+1024 bytes so the cap fires.
+		buf := make([]byte, 4096)
+		for i := range buf {
+			buf[i] = 'A'
+		}
+		written := 0
+		for written < maxHTTPRecvResponseBytes+1024 {
+			n, err := w.Write(buf)
+			if err != nil {
+				return
+			}
+			written += n
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	tr, err := Open(srv.URL)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer tr.Close()
+	if err := tr.Dial(context.Background()); err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+
+	buf := make([]byte, 4096)
+	_, err = tr.Read(buf)
+	if err == nil {
+		t.Fatal("expected error on oversized recv body")
+	}
+	if !strings.Contains(err.Error(), "exceeded") {
+		t.Errorf("error %q should mention size cap", err.Error())
+	}
+}
+
 func TestHTTPRejectsUnknownStatus(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/uart/recv", func(w http.ResponseWriter, _ *http.Request) {

@@ -55,6 +55,14 @@ const (
 	defaultHTTPRecvPath    = "/uart/recv"
 	defaultHTTPReadTimeout = 500 * time.Millisecond
 	defaultHTTPRecvBatch   = 4096
+
+	// maxHTTPRecvResponseBytes caps a single recv() body. The server
+	// is asked to return at most `batch` bytes (default 4 KiB,
+	// configurable via ?batch=N up to this ceiling) — but a misbehaving
+	// or compromised proxy could return more. The cap is well above
+	// any plausible per-chunk size while preventing an unbounded body
+	// from buffering into t.pending on a single recv call.
+	maxHTTPRecvResponseBytes = 16 << 20 // 16 MiB
 )
 
 func init() { //nolint:gochecknoinits
@@ -250,9 +258,12 @@ func (t *httpTransport) Read(p []byte) (int, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxHTTPRecvResponseBytes+1))
 	if err != nil {
 		return 0, fmt.Errorf("transport: http recv body: %w", err)
+	}
+	if int64(len(body)) > maxHTTPRecvResponseBytes {
+		return 0, fmt.Errorf("transport: http recv response exceeded %d-byte cap; refusing to buffer", maxHTTPRecvResponseBytes)
 	}
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusNoContent:
