@@ -14,6 +14,53 @@ type App struct {
 	Type string `json:"type"`
 }
 
+// parseStorageListFile extracts the file basename from a single
+// `storage list` output line. The firmware (per
+// internal/flipper/commands.go) emits:
+//
+//	"\t[F] <name> <size>b"   for files
+//	"\t[D] <name>"            for directories
+//
+// Returns ("", false) for directory entries, blank lines, and
+// malformed input so callers can `continue` past them. For valid
+// file lines the [F] marker is stripped and the trailing
+// " <size>b" is dropped, so the returned name is just the
+// filename.
+func parseStorageListFile(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "[D]") {
+		return "", false
+	}
+	if !strings.HasPrefix(line, "[F] ") {
+		// Tolerate a future firmware that drops the marker, or pre-
+		// formatted lines from RPC builders. Return the trimmed line
+		// so callers stay compatible.
+		return line, true
+	}
+	rest := strings.TrimPrefix(line, "[F] ")
+	// Drop the trailing " <size>b". Look from the right so a
+	// filename containing spaces (rare but legal) survives. Confirm
+	// the tail looks like digits-then-b before stripping; otherwise
+	// it might be part of the filename.
+	if idx := strings.LastIndex(rest, " "); idx > 0 {
+		tail := rest[idx+1:]
+		if strings.HasSuffix(tail, "b") {
+			digits := strings.TrimSuffix(tail, "b")
+			allDigits := digits != ""
+			for _, r := range digits {
+				if r < '0' || r > '9' {
+					allDigits = false
+					break
+				}
+			}
+			if allDigits {
+				rest = rest[:idx]
+			}
+		}
+	}
+	return rest, true
+}
+
 // ScanApps discovers FAP applications and signal files on the Flipper SD card.
 func ScanApps(f *flipper.Flipper) ([]App, error) {
 	var apps []App
@@ -26,11 +73,14 @@ func ScanApps(f *flipper.Flipper) ([]App, error) {
 			continue
 		}
 		for _, line := range strings.Split(out, "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasSuffix(line, ".fap") {
+			name, ok := parseStorageListFile(line)
+			if !ok {
+				continue
+			}
+			if strings.HasSuffix(name, ".fap") {
 				apps = append(apps, App{
-					Name: strings.TrimSuffix(line, ".fap"),
-					Path: dir + "/" + line,
+					Name: strings.TrimSuffix(name, ".fap"),
+					Path: dir + "/" + name,
 					Type: "fap",
 				})
 			}
@@ -58,13 +108,13 @@ func ScanApps(f *flipper.Flipper) ([]App, error) {
 			continue
 		}
 		for _, line := range strings.Split(out, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "[D]") {
+			name, ok := parseStorageListFile(line)
+			if !ok {
 				continue
 			}
 			apps = append(apps, App{
-				Name: line,
-				Path: sd.dir + "/" + line,
+				Name: name,
+				Path: sd.dir + "/" + name,
 				Type: sd.sigType,
 			})
 		}
