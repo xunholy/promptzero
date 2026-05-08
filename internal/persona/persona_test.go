@@ -195,6 +195,39 @@ func TestRegistryLoadDirMergesAll(t *testing.T) {
 	}
 }
 
+// TestRegistryLoadDirSkipsBadFile confirms that a single malformed
+// persona doesn't cost the operator their other valid personas.
+// Previously LoadDir bailed on the first error, so one syntax error
+// in ~/.promptzero/personas/foo.yaml would silently disable every
+// other file in the directory.
+func TestRegistryLoadDirSkipsBadFile(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"good.yaml":     "name: good\nsystem_prompt: ok\n",
+		"broken.yaml":   "name: broken\nsystem_prompt: [unclosed\n",
+		"nameless.yaml": "description: no name field\n",
+		"alsogood.yaml": "name: alsogood\nsystem_prompt: ok\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	r := NewRegistry()
+	if err := r.LoadDir(dir); err != nil {
+		t.Fatalf("LoadDir should not return an error when individual files fail: %v", err)
+	}
+	if _, ok := r.Get("good"); !ok {
+		t.Errorf("good.yaml not loaded — bad sibling should not block")
+	}
+	if _, ok := r.Get("alsogood"); !ok {
+		t.Errorf("alsogood.yaml not loaded — bad sibling should not block")
+	}
+	if _, ok := r.Get("broken"); ok {
+		t.Errorf("broken.yaml should not register a persona")
+	}
+}
+
 func TestRegistryLoadMissingName(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.yaml")

@@ -20,6 +20,8 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"gopkg.in/yaml.v3"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // Persona describes a single operator mode. Name is the switch-key used at
@@ -123,6 +125,12 @@ func (r *Registry) Load(path string) error {
 // LoadDir walks dir for *.yaml / *.yml files and Loads each one. Missing
 // directories return nil so a fresh install without a personas/ dir is
 // treated as "built-ins only" rather than an error.
+//
+// One malformed file no longer aborts the whole load: previously a single
+// bad YAML would lose every other valid persona in the directory, since
+// the for-loop returned on first error. Now a per-file failure is logged
+// via obs.Default().Warn and the loop continues, matching the resilience
+// pattern in session.List / snapshot.List / targetmem.Recent.
 func (r *Registry) LoadDir(dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -139,8 +147,10 @@ func (r *Registry) LoadDir(dir string) error {
 		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
 			continue
 		}
-		if err := r.Load(filepath.Join(dir, name)); err != nil {
-			return err
+		path := filepath.Join(dir, name)
+		if err := r.Load(path); err != nil {
+			obs.Default().Warn("persona_load_failed", "file", name, "err", err)
+			continue
 		}
 	}
 	return nil
