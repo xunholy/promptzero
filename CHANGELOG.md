@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-05-08
+
+Resilience + observability pass with new safety-rail rules. Two
+new BadUSB validator rule families (defense evasion + credential
+dumping), tolerant judge-output parsing, panic-recovery stack
+traces, plus four "one bad row shouldn't break the whole listing"
+fixes across the persona / session / snapshot / audit paths.
+
+### Added
+
+- **8 new BadUSB validator rules.** Defense evasion: `wevtutil cl`
+  (Windows event-log clear, T1070.001), `Clear-EventLog` (same),
+  `iptables -F` and `ufw disable` (Linux firewall flush, T1562.004).
+  Obfuscation: `powershell -EncodedCommand` (T1027/T1059.001 — the
+  base64-obfuscated payload pattern that's everywhere in real-world
+  BadUSB scripts). Credential dumping: `sekurlsa::logonpasswords`
+  (T1003.001) and `lsadump::dcsync` (T1003.006). Each rule is
+  tagged with its MITRE technique ID in the user-facing message
+  so the report is operator-readable.
+  (`internal/validator/badusb.go`)
+
+- **`obs.SafeGo` includes a stack trace in panic-recovery logs.**
+  Every long-lived goroutine in PromptZero (rules dispatch, agent
+  callbacks, ws.writer + ws.heartbeat, MCP federation, etc.) was
+  already wrapped in SafeGo for crash safety, but the recovery log
+  carried only the goroutine name and the recovered value — no
+  stack — so debugging a real panic meant re-running with
+  `GOTRACEBACK=all`. Now the log line carries `runtime/debug.Stack()`
+  under the `stack` key. No API change; every call site picks up
+  the new behaviour automatically. (`internal/obs/safego.go`)
+
+### Fixed
+
+- **`rules.parseVerdict` tolerates prose-wrapped JSON.** LLM judges
+  sometimes return `Based on the output: {...}\n\nReasoning: ...`
+  — valid JSON wrapped in prose. The strict json.Unmarshal call
+  rejected the whole blob and the verdict downgraded to Unknown,
+  losing the actual judgement. Now falls back to a quote-aware
+  brace-balance scan that extracts the first `{...}` block and
+  retries. Pure-prose responses (no object at all) still fall
+  through to Unknown — existing TestLLMDetector_NonJSONFallsBack
+  remains green. (`internal/rules/detector.go`)
+
+- **`persona.LoadDir` doesn't lose siblings on one bad YAML.**
+  Returned on first error, so a single malformed file in
+  ~/.promptzero/personas/ silently disabled every other valid
+  persona — operator's --persona switch would just stop finding
+  profiles they knew they wrote. Now logs via `obs.Default().Warn`
+  with the filename and underlying error, then continues to the
+  next file. (`internal/persona/persona.go`)
+
+- **`session.Store.List` logs failed loads.** Silently dropped any
+  session whose Load failed, so a corrupt JSON file disappeared
+  from /session list with no signal. Now per-file failures are
+  logged via `obs.Default().Warn`; the skip behaviour is unchanged.
+  Existing TestStore_List_SkipsCorruptEntry still passes.
+  (`internal/session/session.go`)
+
+- **`snapshot.Manager.List` logs corrupt meta files.** Skipped
+  unreadable / unparseable .json meta files so a single corrupt
+  row didn't break /rewind listing — but operators looking for
+  why a snapshot they created was missing had no log line to point
+  at the on-disk-but-broken file. Now both branches emit
+  `obs.Default().Warn` with session_id + filename before
+  continuing. (`internal/snapshot/snapshot.go`)
+
+- **CI hotfix: gofmt detector_test.go.** Three CI runs failed in
+  succession on a single comment-alignment issue I introduced in
+  v0.37.0's tolerant-JSON test. Fixed via gofmt; root cause was
+  that local validation was `go test` + `go vet` only, neither of
+  which catches gofmt. Saved as a feedback memory so future loop
+  iterations always run `task lint` before pushing.
+  (`internal/rules/detector_test.go`)
+
+### Tested
+
+- **Coverage for `cmd/promptzero/upgrade.go` helpers.** Added 7
+  hermetic unit tests for the security-load-bearing functions
+  the upgrade path leans on (`normaliseTag`, `lookupChecksum`,
+  `sha256File`, `extractTarGzEntry`), including zip-slip guards
+  on absolute paths and `..` traversal. The helpers had no test
+  coverage despite controlling what binary replaces the running
+  one. (`cmd/promptzero/upgrade_test.go`)
+
+- **Coverage for `workflows/mousejack.go`.** Was the only
+  workflow without a *_test.go file. Adds four tests covering
+  both refusal branches (nil Flipper, missing name, missing
+  script) and the launch-false happy path that builds + writes
+  the payload without launching the FAP.
+  (`internal/workflows/mousejack_test.go`)
+
 ## [0.36.0] - 2026-05-08
 
 Observability discipline pass — five small fixes that turn silent
