@@ -320,7 +320,11 @@ func (t *httpTransport) Write(p []byte) (int, error) {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		return len(p), nil
 	default:
-		body, _ := io.ReadAll(resp.Body)
+		// snippet() will trim to 256 bytes anyway; cap the read at
+		// 8 KiB so a hostile / misbehaving server returning a giant
+		// error page can't blow memory just to produce an error
+		// message we then truncate.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
 		return 0, fmt.Errorf("transport: http send returned HTTP %d: %s", resp.StatusCode, snippet(body))
 	}
 }
