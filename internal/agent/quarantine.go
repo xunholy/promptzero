@@ -14,6 +14,19 @@ import (
 // (this one runs on *every* tool output, not just Flipper serial).
 var ansiCSIRE = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
 
+// ansiC1RE catches C1 control strings that aren't CSI: OSC (ESC ]),
+// DCS (ESC P), SOS (ESC X), PM (ESC ^), and APC (ESC _). These can
+// (a) set a terminal window title from attacker-controlled text
+// (OSC 0;<title>BEL), (b) carry hyperlinks (OSC 8;...;url ST text
+// OSC 8;;ST) — where the url could be malicious — or (c) just emit
+// arbitrary bytes a human reading raw output won't realise belong to
+// a control string. The regex strips the full sequence including the
+// payload, so the body never leaks to the model / audit / human log
+// reader. Without it, the original implementation only stripped the
+// leading ESC byte via otherControlsRE — leaving the payload as
+// readable text. Terminator can be BEL (\x07) or ST (ESC \\).
+var ansiC1RE = regexp.MustCompile(`\x1b[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)`)
+
 // Non-printable control bytes stripped after ANSI: NUL through BEL/BS,
 // vertical tab, form feed, SO through US, and DEL. Newline (\x0a),
 // carriage return (\x0d), and tab (\x09) are preserved — Flipper and
@@ -110,6 +123,11 @@ func isUntrustedHardwareOutput(toolName string) bool {
 // without risk of terminal-control games or visual spoofing.
 func sanitizeControlChars(s string) string {
 	s = ansiCSIRE.ReplaceAllString(s, "")
+	// Run ansiC1RE before otherControlsRE so the leading ESC byte
+	// is still present when the C1 regex matches. Without this
+	// order the byte-stripper would consume \x1b first and the C1
+	// body would survive as plain text.
+	s = ansiC1RE.ReplaceAllString(s, "")
 	s = otherControlsRE.ReplaceAllString(s, "")
 	return s
 }
