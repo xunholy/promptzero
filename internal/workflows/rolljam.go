@@ -56,7 +56,9 @@ func RolljamLabDemo(ctx context.Context, deps Deps, params map[string]interface{
 	}
 
 	dur := time.Duration(perPress) * time.Second
-	ts := time.Now().Unix()
+	// UnixNano so two rolljam runs in the same second don't
+	// overwrite each other's saved captures.
+	ts := time.Now().UnixNano()
 
 	press1 := fmt.Sprintf("%s/rolljam_%d_press1.sub", outputDir, ts)
 	press2 := fmt.Sprintf("%s/rolljam_%d_press2.sub", outputDir, ts)

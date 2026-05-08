@@ -54,7 +54,9 @@ func GarageDoorTriage(ctx context.Context, deps Deps, params map[string]interfac
 		freq := freq
 
 		// --- RX on this frequency ---
-		ts := time.Now().Unix()
+		// UnixNano so rapid same-freq scans don't overwrite an
+		// earlier capture.
+		ts := time.Now().UnixNano()
 		capturePath := fmt.Sprintf("/ext/subghz/triage_%d_%d.sub", freq, ts)
 		rxPhase := runPhase(fmt.Sprintf("rx_%d", freq), "subghz_rx_raw", func() (string, error) {
 			out, err := deps.Flipper.SubGHzRxRaw(uint32(freq), dur)
