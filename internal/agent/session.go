@@ -574,13 +574,23 @@ func DeriveTitleFromMessages(msgs []session.Message) string {
 
 // clipTitle is the shared title-shaping helper: strip newlines / runs of
 // whitespace, then truncate to titleMaxLen with an ellipsis so long
-// prompts don't overflow the sidebar.
+// prompts don't overflow the sidebar. UTF-8-aware: when the cap lands
+// in the middle of a multi-byte rune we walk back to the previous rune
+// start so the returned string is always valid UTF-8 (no replacement
+// glyphs in the sidebar). Mirrors the discipline in
+// toolerror.truncateExcerpt.
 func clipTitle(text string) string {
 	text = strings.Join(strings.Fields(text), " ")
-	if len(text) > titleMaxLen {
-		text = text[:titleMaxLen-1] + "…"
+	if len(text) <= titleMaxLen {
+		return text
 	}
-	return text
+	cut := titleMaxLen - 1
+	// UTF-8 continuation bytes match 0b10xxxxxx (b&0xC0 == 0x80).
+	// Walk left until we hit a leading byte (or hit zero).
+	for cut > 0 && text[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return text[:cut] + "…"
 }
 
 // contextPrefixTags lists the XML-style wrapper tags the agent injects
