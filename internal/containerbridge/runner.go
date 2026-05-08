@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 )
@@ -120,40 +121,7 @@ func Run(ctx context.Context, cfg Config) (RunResult, error) {
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	args := []string{"run", "--rm", "-i"}
-
-	network := cfg.Network
-	if network == "" {
-		network = "none"
-	}
-	args = append(args, "--network", network)
-
-	if cfg.ReadOnlyRootfs {
-		args = append(args, "--read-only", "--tmpfs", "/tmp:rw,exec")
-	}
-	if cfg.User != "" {
-		args = append(args, "--user", cfg.User)
-	}
-	if cfg.WorkDir != "" {
-		args = append(args, "--workdir", cfg.WorkDir)
-	}
-	if cfg.AllocateTTY {
-		args = append(args, "-t")
-	}
-	for _, m := range cfg.Mounts {
-		spec := m.HostPath + ":" + m.ContainerPath
-		if m.ReadOnly {
-			spec += ":ro"
-		}
-		args = append(args, "-v", spec)
-	}
-	for k, v := range cfg.Env {
-		args = append(args, "-e", k+"="+v)
-	}
-	args = append(args, cfg.Image)
-	args = append(args, cfg.Args...)
-
-	cmd := exec.CommandContext(runCtx, "docker", args...)
+	cmd := exec.CommandContext(runCtx, "docker", buildDockerArgs(cfg)...)
 	if cfg.Stdin != nil {
 		cmd.Stdin = cfg.Stdin
 	}
@@ -186,6 +154,54 @@ func Run(ctx context.Context, cfg Config) (RunResult, error) {
 		res.ExitCode = -1
 		return res, fmt.Errorf("containerbridge: docker run: %w", err)
 	}
+}
+
+// buildDockerArgs builds the argv passed to `docker` for cfg. Extracted
+// so tests can pin the wire shape without spawning docker. Iteration
+// order over cfg.Env is deterministic — keys are sorted alphabetically
+// so the resulting -e flags come out in the same order every call.
+// Without the sort, Go's randomised map iteration would emit a
+// different argv each run, making `ps` / audit logs noisy and breaking
+// any test that asserted the exact shape.
+func buildDockerArgs(cfg Config) []string {
+	args := []string{"run", "--rm", "-i"}
+
+	network := cfg.Network
+	if network == "" {
+		network = "none"
+	}
+	args = append(args, "--network", network)
+
+	if cfg.ReadOnlyRootfs {
+		args = append(args, "--read-only", "--tmpfs", "/tmp:rw,exec")
+	}
+	if cfg.User != "" {
+		args = append(args, "--user", cfg.User)
+	}
+	if cfg.WorkDir != "" {
+		args = append(args, "--workdir", cfg.WorkDir)
+	}
+	if cfg.AllocateTTY {
+		args = append(args, "-t")
+	}
+	for _, m := range cfg.Mounts {
+		spec := m.HostPath + ":" + m.ContainerPath
+		if m.ReadOnly {
+			spec += ":ro"
+		}
+		args = append(args, "-v", spec)
+	}
+	envKeys := make([]string, 0, len(cfg.Env))
+	for k := range cfg.Env {
+		envKeys = append(envKeys, k)
+	}
+	sort.Strings(envKeys)
+	for _, k := range envKeys {
+		args = append(args, "-e", k+"="+cfg.Env[k])
+	}
+	args = append(args, cfg.Image)
+	args = append(args, cfg.Args...)
+	return args
 }
 
 // availableDockerOnce caches the docker-binary lookup. Defined as a
