@@ -242,6 +242,29 @@ func TestManager_Restore_UnknownIDErrors(t *testing.T) {
 	}
 }
 
+// TestManager_RejectsTraversalSnapshotID closes the second-leg
+// filepath.Join. Even if sessionID is sanitised, a malicious id
+// like "../foo" passed to Restore would resolve to
+// <root>/<session>/../foo.json — escaping the session dir.
+func TestManager_RejectsTraversalSnapshotID(t *testing.T) {
+	m := NewManager(t.TempDir())
+	bad := []string{
+		"../foo",
+		"../../etc/passwd",
+		"foo/bar",
+		".hidden",
+		"name with sp",
+		"",
+	}
+	for _, id := range bad {
+		t.Run(id, func(t *testing.T) {
+			if _, _, err := m.Restore("validsession", id); err == nil {
+				t.Errorf("Restore(id=%q) should error", id)
+			}
+		})
+	}
+}
+
 // TestManager_RejectsTraversalSessionIDs locks the path-traversal
 // guard. Without this check Store / List / Restore / Purge with an
 // id like "../etc" would resolve outside the snapshot root because
