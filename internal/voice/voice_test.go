@@ -115,3 +115,41 @@ func TestTranscribeReaderParsesResponse(t *testing.T) {
 		t.Errorf("text = %q, want %q", text, "hello world")
 	}
 }
+
+// TestTranscribeReaderResponseSizeCap is the load-bearing safety
+// check: a misconfigured whisperURL pointing at something that
+// returns a giant body must not exhaust memory. The cap fires at
+// 4 MiB and surfaces a clear refusal — operators see the size
+// limit, not a JSON parse error from a half-buffered blob.
+func TestTranscribeReaderResponseSizeCap(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Stream 5 MiB so the 4 MiB cap definitely fires.
+		buf := make([]byte, 4096)
+		for i := range buf {
+			buf[i] = 'A'
+		}
+		written := 0
+		for written < 5<<20 {
+			n, err := w.Write(buf)
+			if err != nil {
+				return
+			}
+			written += n
+		}
+	}))
+	defer ts.Close()
+
+	e := &Engine{
+		apiKey:     "test-key",
+		model:      "whisper-1",
+		whisperURL: ts.URL,
+	}
+
+	_, err := e.TranscribeReader(strings.NewReader("audio data"), "test.wav")
+	if err == nil {
+		t.Fatal("expected error on oversized whisper response")
+	}
+	if !strings.Contains(err.Error(), "exceeded") {
+		t.Errorf("error %q should mention size cap", err.Error())
+	}
+}
