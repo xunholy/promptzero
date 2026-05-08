@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-05-08
+
+Observability discipline pass — five small fixes that turn silent
+error handling in the audit, snapshot, agent, and target-memory
+paths into warn-and-recover. None change behaviour for the happy
+path; they make corrupted inputs visible instead of vanishing.
+
+### Fixed
+
+- **`audit.RecordCtx` logs + recovers from input-marshal failures.**
+  An unmarshallable tool input (channel, function, NaN, circular
+  ref) used to produce an audit row with empty `input` and no
+  signal. Now warns via `obs.Default()` and writes a
+  `{"_marshal_error":"…"}` placeholder so the row stays parseable.
+  (`internal/audit/audit.go`)
+
+- **`audit.QuerySince` logs scan failures.** Every other audit
+  query site (`Query`, `QueryBySession`, `QueryFiltered`,
+  `TopTools`, `TopRisks`) emitted a warn before continuing past a
+  bad row. `QuerySince` — which feeds the `/audit tail` live
+  stream and the rules engine — silently dropped them. Now
+  consistent. (`internal/audit/audit.go`)
+
+- **`snapshot.Restore` validates the snapshot id.** Restore
+  accepted any string and concatenated it into a filesystem path,
+  so a caller bug or a malicious id (`../etc/passwd`,
+  `..\\..\\foo`) could escape the snapshot directory. Now uses
+  the same allow-list regex as `session` — letters, digits, `_`,
+  `-`, `.`, max 128 chars, no path separators. Returns a typed
+  error with the offending id quoted.
+  (`internal/snapshot/snapshot.go`)
+
+- **`agent.buildDeviceStateBlock` logs marshal failures.** When
+  the device state block's `json.Marshal` failed it returned `""`
+  silently, dropping the device-context preamble for that turn
+  with no signal. Now warns via `obs.Default()` before falling
+  back to empty. (`internal/agent/state_prompt.go`)
+
+- **`targetmem` Lookup/Recent log facts-unmarshal failures.**
+  Both sites silently swallowed `json.Unmarshal` errors on the
+  `facts` column, so a corrupt or schema-incompatible row would
+  return a `Target` with `Facts=nil` and no signal. Now logs via
+  `obs.Default().Warn` with the row's identifier+kind+caller while
+  still returning the row intact, so a single bad row doesn't
+  break the whole listing. (`internal/targetmem/targetmem.go`)
+
 ## [0.35.0] - 2026-05-08
 
 Startup-validation polish. Two bounded fixes that close silent
