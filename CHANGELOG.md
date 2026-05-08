@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-05-08
+
+Defensive correctness pass — three cohesive themes across nine
+commits: HTTP response-body size caps on every operator-configurable
+client, deterministic output on two map-iteration sites, and stack
+traces on every `recover()` site in production code.
+
+### Added
+
+- **`obs.SafeGo`-style stack traces on every panic-recovery site.**
+  v0.37.0 already added `runtime/debug.Stack()` to `obs.SafeGo`'s
+  recovery log; v0.38 extends that discipline to the other three
+  recover() sites in production code:
+  - `audit.notify` — observer fanout. A buggy webhook / rules-engine
+    observer now shows the panic frame in the log line; a new
+    `TestObserverPanicDoesNotCrashRecord` pins the recover guard.
+  - `runShutdownHooks` — first-ever `signals_test.go` covers both
+    panic-doesn't-block-siblings and the 2 s per-hook timeout.
+  - `eval.runOne` — scenario panics in the golden-evaluation
+    harness now carry the stack in `Result.Err`.
+
+  No API changes; every existing call site benefits automatically.
+  (`internal/audit/audit.go`, `cmd/promptzero/signals.go`,
+  `internal/eval/eval.go`)
+
+### Fixed
+
+- **HTTP response-body size caps on all four operator-configurable
+  clients.** Each client previously used unbounded `io.ReadAll`,
+  so a misconfigured `baseURL` / `whisperURL` / Flipper bridge
+  pointing at a file server, paginated debug endpoint, or 5xx CDN
+  page would buffer the entire body in memory. The agent's OOM
+  vector dropped to zero with these four changes:
+  - `internal/provider`: 16 MiB cap on Ollama + OpenAI-compat
+    clients (with the package's first 8 tests).
+  - `internal/voice`: 4 MiB cap on the Whisper transcription
+    client.
+  - `internal/flipper/transport/http.go`: 16 MiB cap on the
+    UART-over-HTTP recv body, plus 8 KiB cap on the
+    error-message body that `snippet()` was already truncating
+    to 256 bytes anyway.
+
+  Each fix has a regression test that streams oversized data
+  through a stub server and asserts the cap fires with a clear
+  "exceeded N-byte cap" error rather than a half-buffered JSON
+  parse failure.
+
+- **Deterministic output where Go's randomised map iteration
+  was leaking through.** Two sites where the operator could see
+  shuffled output run-to-run:
+  - `discover.FormatApps` — section order shuffled because
+    `range groups` iterated a `map[string][]App` directly. Fixed
+    by sorting type keys; preserves entry order within each
+    group. Adds the package's first 4 tests, including a 50-run
+    determinism check.
+  - `containerbridge.Run` — docker `-e KEY=VAL` flags came out in
+    a different order every call, visible in `ps`/audit logs.
+    Refactored argv construction into a private
+    `buildDockerArgs` helper, sorted env keys, added 3 new
+    tests (50-run determinism + safe-default --network none +
+    full-feature wire-format pin).
+
+### Tested
+
+- 8 new tests in `internal/provider` (was zero) covering Ollama
+  + OpenAI-compat happy paths, error responses, response-size
+  cap, default base URL/model, OpenRouter constructor, and the
+  size-cap floor.
+- First test files for `internal/discover` (4 tests) and
+  `cmd/promptzero/signals.go` (2 tests).
+- New regression tests in `internal/audit` (1),
+  `internal/voice` (1), `internal/flipper/transport` (1),
+  `internal/containerbridge` (3), `internal/eval` (extends
+  existing).
+
 ## [0.37.0] - 2026-05-08
 
 Resilience + observability pass with new safety-rail rules. Two
