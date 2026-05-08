@@ -628,7 +628,14 @@ func setupRiskGate(cfg *config.Config, confirmRisk string, yolo bool, p *persona
 		statusWarn(resolveErr.Error())
 	}
 	if p.DefaultRiskThreshold != "" && cfg.ConfirmRisk == "" && confirmRisk == "" && !yolo {
-		if pt, _, pErr := resolveConfirmRisk(p.DefaultRiskThreshold, "", false); pErr == nil {
+		pt, _, pErr := resolveConfirmRisk(p.DefaultRiskThreshold, "", false)
+		if pErr != nil {
+			// Surface the typo. Without this an operator would get
+			// the global default threshold rather than the persona's
+			// declared one with no signal that the YAML had a bad
+			// value (e.g. `default_risk_threshold: critcal`).
+			statusWarn(fmt.Sprintf("persona %q: %v (using global default)", p.Name, pErr))
+		} else {
 			threshold, enabled = pt, true
 		}
 	}
