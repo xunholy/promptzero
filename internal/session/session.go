@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // validIDRE constrains session ids to filesystem-safe identifiers.
@@ -128,6 +130,10 @@ func (s *Store) List() ([]State, error) {
 		id := e.Name()[:len(e.Name())-5]
 		state, err := s.Load(id)
 		if err != nil {
+			// One bad file shouldn't break /session list. Log it so a
+			// corrupt or schema-incompatible session is visible rather
+			// than silently disappearing from the operator's listing.
+			obs.Default().Warn("session_list_load_failed", "file", e.Name(), "err", err)
 			continue
 		}
 		sessions = append(sessions, *state)
