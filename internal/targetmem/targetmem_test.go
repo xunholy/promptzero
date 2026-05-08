@@ -135,6 +135,34 @@ func TestRecent(t *testing.T) {
 	}
 }
 
+// TestLookup_CorruptFactsJSON confirms that a row with malformed
+// facts JSON (e.g. due to an external edit or schema drift) doesn't
+// fail the whole lookup — the row is returned with empty Facts and
+// the unmarshal error surfaces via obs warning instead of vanishing.
+func TestLookup_CorruptFactsJSON(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.db.Exec(`INSERT INTO targets (identifier, kind, facts, first_seen, last_seen)
+		VALUES (?, ?, ?, ?, ?)`,
+		"corrupt-id", KindBSSID, "not valid json{",
+		"2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	got, ok, err := s.Lookup("corrupt-id", KindBSSID)
+	if err != nil {
+		t.Fatalf("Lookup: %v (want nil — corrupt facts should not fail lookup)", err)
+	}
+	if !ok {
+		t.Fatal("Lookup should still find the row")
+	}
+	if got.Identifier != "corrupt-id" {
+		t.Errorf("Identifier = %q", got.Identifier)
+	}
+	if got.Facts != nil {
+		t.Errorf("Facts = %v; want nil on unmarshal failure", got.Facts)
+	}
+}
+
 func TestForget(t *testing.T) {
 	s := newTestStore(t)
 	_ = s.Remember(Target{Identifier: "doomed", Kind: KindBSSID})
