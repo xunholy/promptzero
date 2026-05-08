@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -154,8 +155,19 @@ func (c ClientConfig) resolveEnv() []string {
 	if len(c.Env) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(c.Env))
-	for k, v := range c.Env {
+	// Iterate keys in sorted order so the resulting child-process
+	// env is deterministic per call. Without the sort, Go's
+	// randomised map iteration would emit `KEY=VAL` entries in a
+	// different order every spawn — visible in `ps` listings and
+	// would defeat any test that asserted exec.Cmd.Env shape.
+	keys := make([]string, 0, len(c.Env))
+	for k := range c.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		v := c.Env[k]
 		if strings.HasPrefix(v, "$") {
 			v = os.Getenv(strings.TrimPrefix(v, "$"))
 		}
