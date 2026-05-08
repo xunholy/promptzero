@@ -543,6 +543,7 @@ func (l *Log) QuerySince(afterID int64) ([]Entry, error) {
 		var e Entry
 		var ts string
 		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &e.Success); err != nil {
+			obs.Default().Warn("audit_row_scan_failed", "where", "QuerySince", "after_id", afterID, "err", err)
 			continue
 		}
 		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
