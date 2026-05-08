@@ -156,10 +156,7 @@ func (a *Agent) verifyPayload(ctx context.Context, payloadType, content string) 
 	// first 4000 bytes are almost always enough to catch structural
 	// issues, and sending 60KB of HTML to Haiku on every generate
 	// would defeat the cost argument.
-	trimmed := content
-	if len(trimmed) > 4000 {
-		trimmed = trimmed[:4000] + "\n…(truncated)"
-	}
+	trimmed := truncateForVerifier(content, 4000)
 
 	model := a.modelForLocked(TierClassify)
 	// Enforce a hard timeout so a stalled classifier API can't wedge
@@ -213,6 +210,23 @@ func parseVerificationVerdict(raw string) VerificationVerdict {
 		v.Severity = VerifySeverityNone
 	}
 	return v
+}
+
+// truncateForVerifier caps content at max bytes and appends a
+// "\n…(truncated)" marker so the verifier knows the input was
+// clipped. UTF-8-aware: when the cut lands inside a multi-byte
+// rune we walk back to the previous rune start so the verifier
+// never sees a half-rune at the tail. Mirrors session.clipTitle /
+// generate.capSize / audit.RecordCtx.
+func truncateForVerifier(content string, max int) string {
+	if len(content) <= max {
+		return content
+	}
+	cut := max
+	for cut > 0 && content[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return content[:cut] + "\n…(truncated)"
 }
 
 // extractJSONObject returns the substring of s that looks like a
