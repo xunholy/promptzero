@@ -1224,7 +1224,14 @@ func (a *Agent) RunTool(ctx context.Context, tool string, params map[string]inte
 	// the gate is skipped — RequireOpen above already blocked
 	// High/Critical without audit, so the floor is preserved.
 	if a.confirmCb != nil && toolRisk >= a.confirmThreshold {
-		rawInput, _ := json.Marshal(params)
+		rawInput, mErr := json.Marshal(params)
+		if mErr != nil {
+			// Operator-facing confirm gate must show what's being
+			// approved. If params didn't marshal, log it and substitute
+			// a placeholder rather than presenting an empty input.
+			obs.Default().Warn("agent_runtool_marshal_failed", "tool", tool, "err", mErr)
+			rawInput = []byte(fmt.Sprintf(`{"_marshal_error":%q}`, mErr.Error()))
+		}
 		a.mu.Unlock()
 		resp := a.confirmWithIdleTimeout(ctx, a.buildConfirmRequest(tool, rawInput, toolRisk))
 		a.mu.Lock()
@@ -1414,7 +1421,11 @@ func (a *Agent) workflowConfirmHook(ctx context.Context, tool string, input inte
 	// Serialise the input to raw JSON the way the top-level gate
 	// shows it — matches what operators already see in the primary
 	// confirm prompt and keeps the UX consistent across layers.
-	rawInput, _ := json.Marshal(input)
+	rawInput, mErr := json.Marshal(input)
+	if mErr != nil {
+		obs.Default().Warn("agent_workflow_confirm_marshal_failed", "tool", tool, "err", mErr)
+		rawInput = []byte(fmt.Sprintf(`{"_marshal_error":%q}`, mErr.Error()))
+	}
 	a.mu.Unlock()
 	resp := a.confirmWithIdleTimeout(ctx, a.buildConfirmRequest(tool, rawInput, level))
 	a.mu.Lock()
