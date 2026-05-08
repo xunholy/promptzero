@@ -48,6 +48,22 @@ func validateSessionID(id string) error {
 	return nil
 }
 
+// validateSnapshotID guards the second filepath.Join target — the
+// snapshot id passed to Restore. Internally Store generates ids as
+// "<timestamp>-<sha256>" (letters/digits/hyphen), so the same
+// allow-list applies. Without this a caller could pass id="../foo"
+// to escape the per-session dir even when the sessionID itself is
+// sanitised.
+func validateSnapshotID(id string) error {
+	if id == "" {
+		return errors.New("snapshot: id required")
+	}
+	if !validSessionIDRE.MatchString(id) {
+		return fmt.Errorf("snapshot: invalid id %q (allowed: letters, digits, _, -, .; max 128 chars; no path separators)", id)
+	}
+	return nil
+}
+
 // Entry is the public metadata record for a saved snapshot. Exposed so
 // /rewind list can render a table without re-parsing filenames.
 type Entry struct {
@@ -173,8 +189,8 @@ func (m *Manager) Restore(sessionID, id string) (Entry, []byte, error) {
 	if err := validateSessionID(sessionID); err != nil {
 		return Entry{}, nil, err
 	}
-	if id == "" {
-		return Entry{}, nil, errors.New("snapshot: id required")
+	if err := validateSnapshotID(id); err != nil {
+		return Entry{}, nil, err
 	}
 	dir := filepath.Join(m.root, sessionID)
 	metaPath := filepath.Join(dir, id+".json")
