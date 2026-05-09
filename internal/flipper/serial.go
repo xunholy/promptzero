@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/flipper/rpc"
 	"github.com/xunholy/promptzero/internal/flipper/transport"
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // This file owns everything ABOVE the byte channel: prompt framing,
@@ -690,10 +692,23 @@ func ConnectURL(ctx context.Context, rawURL string, timeout time.Duration) (*Fli
 
 	done := make(chan error, 1)
 	go func() {
+		// Custom recover so a panic inside f.handshake still sends
+		// to the buffered done channel — both the happy-path case
+		// and the ctx-done branch's <-done synchronisation read
+		// from it, and would otherwise block forever on a panic.
+		var err error
+		defer func() {
+			if r := recover(); r != nil {
+				obs.Default().Error("flipper.handshake.panic",
+					"panic", r,
+					"stack", string(debug.Stack()))
+				err = fmt.Errorf("handshake panicked: %v", r)
+			}
+			done <- err
+		}()
 		dbg("handshake goroutine: starting")
-		err := f.handshake(handshakeCtx)
+		err = f.handshake(handshakeCtx)
 		dbg("handshake goroutine: returned err=%v", err)
-		done <- err
 	}()
 
 	select {
