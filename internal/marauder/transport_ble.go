@@ -39,6 +39,8 @@ import (
 	"time"
 
 	"tinygo.org/x/bluetooth"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // marauderBLEServiceUUID is the 128-bit UUID of the Nordic-UART-style serial
@@ -447,7 +449,7 @@ func scanForMarauderAddress(ctx context.Context, adapter *bluetooth.Adapter, kin
 	scanDone := make(chan error, 1)
 	var stopped atomic.Bool
 
-	go func() {
+	obs.SafeGo("marauder/ble.scan_for_address", func() {
 		err := adapter.Scan(func(a *bluetooth.Adapter, sr bluetooth.ScanResult) {
 			if stopped.Load() {
 				return
@@ -475,7 +477,7 @@ func scanForMarauderAddress(ctx context.Context, adapter *bluetooth.Adapter, kin
 			}
 		})
 		scanDone <- err
-	}()
+	})
 
 	select {
 	case addr := <-addrCh:
