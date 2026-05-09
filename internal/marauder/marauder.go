@@ -156,7 +156,7 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 	lines := make(chan string, 128)
 	done := make(chan struct{})
 
-	go func() {
+	obs.SafeGo("marauder.stream", func() {
 		defer m.mu.Unlock()
 		defer close(lines)
 
@@ -233,7 +233,7 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 				return
 			}
 		}
-	}()
+	})
 
 	return lines, done, nil
 }
