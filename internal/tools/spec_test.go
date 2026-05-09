@@ -197,6 +197,66 @@ func TestNames_IncludesAliases(t *testing.T) {
 	}
 }
 
+// TestUnregisterForTest_RemovesToolAndAliases pins the contract on
+// the public sibling of resetForTest: cross-package tests use it to
+// scrub a fake tool they registered with t.Cleanup so the registry
+// stays consistent under -count=N.
+func TestUnregisterForTest_RemovesToolAndAliases(t *testing.T) {
+	resetForTest(t)
+
+	const canonical = "ufu_canonical"
+	const alias1 = "ufu_alias_one"
+	const alias2 = "ufu_alias_two"
+
+	Register(newSpec(canonical, alias1, alias2))
+
+	// All three names resolve before unregister.
+	for _, n := range []string{canonical, alias1, alias2} {
+		if _, ok := Get(n); !ok {
+			t.Fatalf("Get(%q) before unregister: not found", n)
+		}
+	}
+
+	UnregisterForTest(canonical)
+
+	// All three names miss after unregister.
+	for _, n := range []string{canonical, alias1, alias2} {
+		if _, ok := Get(n); ok {
+			t.Errorf("Get(%q) after unregister: still resolves; expected miss", n)
+		}
+	}
+
+	// order slice no longer contains the canonical name (asserts via
+	// Names which composes byName + byAlias keys).
+	for _, n := range Names() {
+		if n == canonical || n == alias1 || n == alias2 {
+			t.Errorf("Names() still contains %q after unregister", n)
+		}
+	}
+
+	// Re-Register works (would panic with "duplicate" if any of the
+	// three keys leaked).
+	Register(newSpec(canonical, alias1, alias2))
+}
+
+// TestUnregisterForTest_NoOpOnUnregistered confirms the documented
+// "safe to call unconditionally" contract: passing an unknown name
+// is a silent no-op so cleanup paths don't have to guard.
+func TestUnregisterForTest_NoOpOnUnregistered(t *testing.T) {
+	resetForTest(t)
+
+	// Empty registry — must not panic.
+	UnregisterForTest("does_not_exist")
+
+	// Registry with one entry — unregistering an unrelated name must
+	// not touch the existing entry.
+	Register(newSpec("present"))
+	UnregisterForTest("absent")
+	if _, ok := Get("present"); !ok {
+		t.Error("Get(present) after unregistering absent: missing; the unrelated entry was incorrectly removed")
+	}
+}
+
 func TestSnapshotBeforeWrite_NoOpOnNilDeps(t *testing.T) {
 	// Exercises the nil-safe early returns: a handler in MCP mode (no
 	// Snapshot, no SessionID) must not panic when it calls
