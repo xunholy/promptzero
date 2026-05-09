@@ -1034,7 +1034,7 @@ func startWatch(ctx context.Context, deps *REPLDeps, dispatchTurn func(string)) 
 		path string
 	}, 16)
 	watchCtx, cancelWatch := context.WithCancel(ctx)
-	go func() {
+	obs.SafeGo("repl.watch.fsnotify", func() {
 		if err := watchMgr.Run(watchCtx, func(r watch.Rule, p string) error {
 			select {
 			case events <- struct {
@@ -1055,8 +1055,8 @@ func startWatch(ctx context.Context, deps *REPLDeps, dispatchTurn func(string)) 
 				fmt.Fprintf(os.Stderr, "  %s● watch error: %v%s\n", red, err, reset)
 			})
 		}
-	}()
-	go func() {
+	})
+	obs.SafeGo("repl.watch.dispatcher", func() {
 		for {
 			select {
 			case <-watchCtx.Done():
@@ -1083,7 +1083,7 @@ func startWatch(ctx context.Context, deps *REPLDeps, dispatchTurn func(string)) 
 				dispatchTurn(ev.rule.Prompt)
 			}
 		}
-	}()
+	})
 	statusOK(fmt.Sprintf("Watch active on %s%d path%s%s", bold, len(paths), plural(len(paths)), reset))
 	return watchMgr, cancelWatch
 }
