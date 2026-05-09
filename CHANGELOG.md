@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-05-10
+
+Test-coverage pass on untrusted-input parsers, plus one
+final documentation-drift cleanup. No code-path changes; all
+six commits are tests or doc edits, but the fuzz tests do
+add a new `testdata/fuzz/` directory pattern under
+`internal/vision/`, `internal/iclass/`, `internal/marauder/`,
+and `internal/tools/`.
+
+### Added
+
+- **Four `Fuzz` tests pinning the no-panic guarantee on
+  attacker-shaped input** to the parsers most-exposed to
+  LLM- or operator-supplied data:
+  - `vision.parseDataURL` (data-URL extraction; previously
+    pinned by a single regression test for the v0.47
+    slice-bounds fix)
+  - `iclass.ParseCapturesHex` (hex Proxmark3 capture
+    decoding)
+  - `marauder.parseMarauderResponse` (raw serial response
+    line normalization). The fuzz itself surfaced a
+    contract subtlety in the draft assertion (CR-only
+    inputs expand into multiple normalized lines under
+    `\r → \n` rewrite) — the no-panic guarantee was kept
+    and the speculative line-count invariant dropped.
+  - `tools.parsePorts` (LLM-supplied port-spec parser for
+    `port_scan_tcp`; this one had **zero direct tests**
+    before — only transitive coverage through tool e2e).
+    Added 6 unit tests + the fuzz; fuzz pins
+    sorted/deduplicated/in-range invariants on success +
+    nil-slice on error.
+
+  Each fuzz seeds the boundary inputs the unit tests cover,
+  and 5-second runs on each surfaced 20–65 new coverage
+  paths under 28 workers without a single panic. Run with
+  `go test -fuzz=Fuzz<Name> ./internal/<pkg>/`.
+
+- **`tools.UnregisterForTest` direct coverage.** The helper
+  added in v0.48.0 (so cross-package tests can register a
+  fake tool with `t.Cleanup` and not leak it under
+  `-count=N`) had only transitive coverage. Two focused
+  tests now pin the contract: removes-canonical-and-aliases,
+  and no-op-on-unregistered-name.
+
+### Changed
+
+- **`SECURITY.md` alignment with rescinded deprecation.**
+  The Safety model section still claimed
+  `--mode recon|intel|stealth` "alias to [--read-only]
+  during a one-release deprecation window" — framing
+  retracted in v0.47/v0.48-era code commits and aligned
+  elsewhere (configuration.md, agent comments, persona +
+  config example YAMLs). Last user-facing doc carrying the
+  stale framing; rewritten to describe the actual
+  layering.
+
 ## [0.49.0] - 2026-05-10
 
 Maintenance release. One real bug fix carried forward from
