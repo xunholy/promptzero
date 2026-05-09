@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/crypto1"
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/risk"
 )
 
@@ -169,12 +170,16 @@ func mfocAttackHandler(ctx context.Context, _ *Deps, args map[string]any) (strin
 
 	resCh := make(chan recoverResult, 1)
 	start := time.Now()
-	go func() {
+	// SafeGo so a panic inside the crypto1 brute-force path is
+	// recovered + logged with a stack trace instead of crashing
+	// the agent. The buffered resCh + ctx-bounded select below
+	// remain the happy-path completion mechanism.
+	obs.SafeGo("tools.mfoc_attack", func() {
 		// runCtx is forwarded so the inner search loop is cancelled when the
 		// deadline fires, preventing a goroutine leak.
 		key, err := crypto1.RecoverNestedWithRange(runCtx, cap, 0, hiCap)
 		resCh <- recoverResult{key: key, err: err}
-	}()
+	})
 
 	select {
 	case <-runCtx.Done():
@@ -312,12 +317,12 @@ func mfcukAttackHandler(ctx context.Context, _ *Deps, args map[string]any) (stri
 
 	resCh := make(chan recoverResult, 1)
 	start := time.Now()
-	go func() {
+	obs.SafeGo("tools.mfcuk_attack", func() {
 		// runCtx is forwarded so the inner search loop is cancelled when the
 		// deadline fires, preventing a goroutine leak.
 		key, err := crypto1.RecoverDarksideWithRange(runCtx, cap, 0, hiCap)
 		resCh <- recoverResult{key: key, err: err}
-	}()
+	})
 
 	select {
 	case <-runCtx.Done():
@@ -450,7 +455,7 @@ func mfkey32RecoverHandler(ctx context.Context, _ *Deps, args map[string]any) (s
 
 	resCh := make(chan recoverResult, 1)
 	start := time.Now()
-	go func() {
+	obs.SafeGo("tools.mfkey32_recover", func() {
 		var key uint64
 		var err error
 		if rangeBits >= 32 {
@@ -466,7 +471,7 @@ func mfkey32RecoverHandler(ctx context.Context, _ *Deps, args map[string]any) (s
 			key, err = crypto1.RecoverWithRange(runCtx, uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, hiCap)
 		}
 		resCh <- recoverResult{key: key, err: err}
-	}()
+	})
 
 	select {
 	case <-runCtx.Done():
