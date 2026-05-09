@@ -102,9 +102,10 @@ persona: "default"
 
 # --- Read-only safety rail -----------------------------------------------
 # When true, dispatch refuses any tool whose Spec.Risk is above Low — no
-# writes, no transmits, no execution, no payload generation. The single
-# safety rail in v0.19.0; replaces the old --mode flag (which is
-# deprecated and will be removed in v0.20.0). Override with --read-only
+# writes, no transmits, no execution, no payload generation. Layered with
+# the older --mode flag (recon/intel/stealth/assault): dispatch consults
+# read-only first, then the per-mode group allow-list. Both gates
+# compose; tripping either refuses the call. Override with --read-only
 # on the command line.
 read_only: false
 

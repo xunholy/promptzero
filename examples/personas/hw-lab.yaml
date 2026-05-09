@@ -1,11 +1,10 @@
 # hw-lab — hardware-bench black-box analysis persona.
 #
-# v0.19.0 note: per-persona tool allowlists are deprecated; tool
-# narrowing moved to --read-only at the safety layer. This persona
-# now sets system_prompt + risk threshold only; the tools: list was
-# removed. The natural "RF off, NFC off, WiFi off" feel comes from
+# Sets system_prompt + risk threshold only — no explicit Tools
+# allowlist. The natural "RF off, NFC off, WiFi off" feel comes from
 # the system prompt + the operator's medium risk gate, not a
-# hard-coded allowlist.
+# hard-coded allowlist. (Tools allowlists remain a supported feature
+# for personas that want positive catalog scoping.)
 
 name: hw-lab
 description: >-

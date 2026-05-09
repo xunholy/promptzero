@@ -1,10 +1,10 @@
 # red-team-day — full offensive surface for an authorised engagement.
 #
-# v0.19.0 note: per-persona tool allowlists are deprecated; the
-# tool-narrowing job moved to --read-only at the safety layer. This
-# persona keeps its strong system prompt + risk threshold but no
-# longer carries a tools: list (the LLM sees the full registry and
-# the risk gate / read-only rail decide what dispatches).
+# Strong system prompt + risk threshold, no explicit Tools allowlist
+# — this persona deliberately exposes the full registry so the LLM
+# can pick the right tool. The risk gate decides what dispatches.
+# (Tools allowlists remain a supported feature for narrower personas
+# that want to scope the catalog.)
 
 name: red-team-day
 description: >-

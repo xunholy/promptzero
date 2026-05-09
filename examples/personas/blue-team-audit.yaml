@@ -1,11 +1,13 @@
 # blue-team-audit — defensive / forensic monitoring persona.
 #
-# v0.19.0 note: pair this persona with --read-only (or read_only: true
-# in config) for the hard "no writes / no transmits" guarantee. This
-# YAML now sets system_prompt + risk threshold; the per-tool allowlist
-# (deprecated) was removed because the read-only safety rail enforces
-# the same intent at dispatch with a single boolean. See
-# docs/reference/configuration.md → "Read-only safety rail".
+# Pair this persona with --read-only (or read_only: true in config)
+# for the hard "no writes / no transmits" guarantee at the dispatch
+# boundary. This YAML sets system_prompt + risk threshold only; an
+# explicit Tools allowlist isn't needed here because read-only
+# already enforces the intent. (Tools allowlists remain a supported
+# feature for personas that want positive scoping rather than risk
+# gating.) See docs/reference/configuration.md → "Read-only safety
+# rail".
 
 name: blue-team-audit
 description: >-
