@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-05-09
+
+Concurrency-safety pass. Seven commits across three cohesive
+themes that harden every parallel cracking / scanning goroutine
+in the agent.
+
+### Fixed
+
+- **Worker-count upper bounds.** Two cracking surfaces accepted
+  unbounded `workers` parameters — an LLM tool call asking for
+  `workers=10000` would spawn 10000 goroutines for a CPU-bound
+  loop that saturates well below NumCPU. Both now cap at 64
+  internally:
+  - `hash_crack_dictionary` tool — `maxHashCrackWorkers = 64`
+    (`internal/tools/security.go`)
+  - `keeloq.BruteForce` library — `maxBruteForceWorkers = 64`,
+    clamped at the library entry point so all callers
+    inherit the bound. Adds
+    TestBruteForceWorkersClampedAboveCap regression.
+    (`internal/keeloq/bruteforce.go`)
+
+- **Channel-send deadlocks.** Two scanner workers blocked on
+  unguarded sends when the result channel filled up — workers
+  couldn't finish, `wg.Wait()` hung, and the tools couldn't even
+  be cancelled by the parent context. Both now use
+  `select { case ch<-r: case <-ctx.Done(): return }`:
+  - `http_path_scan` workers — fired when > 256 paths matched
+    a wide wordlist scan (`internal/tools/security.go`)
+  - `hash_crack_dictionary` workers — fired when multiple
+    workers raced on the same hash before the
+    delete-from-remaining landed and surplus duplicates filled
+    the buffer. (`internal/tools/security.go`)
+
+- **Raw goroutines wrapped in `obs.SafeGo` for panic recovery.**
+  Three sites launched long-lived goroutines as raw `go func()`,
+  so a panic in any of them would crash the whole agent
+  process even though the work was non-essential:
+  - `agent.maybeGenerateTitleLocked` — sidebar title
+    generation, called once per session-save. A nil pointer in
+    an SDK response would take down the agent.
+    (`internal/agent/session.go`)
+  - `web.handleScreenAcquire` — `streamFrames` +
+    `heartbeatScreen` for the screen-mirror UI. An RPC frame
+    decode panic would crash the web server (taking down every
+    WebSocket client) just because one operator viewed the
+    Flipper screen. (`internal/web/api_screen.go`)
+  - `tools/mifare` — three crypto1 brute-force tools
+    (`mfoc_attack`, `mfcuk_attack`, `mfkey32_recover`).
+    (`internal/tools/mifare.go`)
+
+  Each SafeGo call gets a descriptive name so the recovery log
+  identifies the panic site without a full stack walk.
+
 ## [0.41.0] - 2026-05-09
 
 Three small cohesive themes across seven commits: finishing the
