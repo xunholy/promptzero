@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -70,7 +71,12 @@ func (a *Agent) streamOnceWithRetry(ctx context.Context, sysPrompt string, tools
 			"backoff_ms", backoff.Milliseconds(),
 			"err", err.Error())
 		if a.retryNotifyCb != nil {
-			a.retryNotifyCb(RetryNotice{Attempt: attempt, MaxAttempts: retryMaxAttempts, Backoff: backoff, Err: err})
+			safeCallRetryNotify(a.retryNotifyCb, RetryNotice{
+				Attempt:     attempt,
+				MaxAttempts: retryMaxAttempts,
+				Backoff:     backoff,
+				Err:         err,
+			})
 		}
 		select {
 		case <-ctx.Done():
@@ -157,6 +163,21 @@ type RetryNotice struct {
 	MaxAttempts int
 	Backoff     time.Duration
 	Err         error
+}
+
+// safeCallRetryNotify is the recover-wrapped invocation for the
+// per-attempt retry observer. A panic in the operator-supplied
+// callback would otherwise crash the agent mid-retry, just when
+// it's trying to recover from an upstream API blip.
+func safeCallRetryNotify(cb func(RetryNotice), n RetryNotice) {
+	defer func() {
+		if r := recover(); r != nil {
+			obs.Default().Warn("agent_retry_notify_cb_panicked",
+				"attempt", n.Attempt,
+				"recovered", fmt.Sprintf("%v", r))
+		}
+	}()
+	cb(n)
 }
 
 // SetRetryNotifyCallback installs a per-attempt retry observer.

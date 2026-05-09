@@ -123,6 +123,35 @@ func TestSafeCallUsage_RecoversPanic(t *testing.T) {
 	}
 }
 
+// TestSafeCallToolStatus_RecoversPanic pins the recover-wrapped
+// tool-status callback. Operators install this to drive a UI
+// progress indicator; a panic would otherwise crash the agent
+// during dispatch even after the tool itself succeeded.
+func TestSafeCallToolStatus_RecoversPanic(t *testing.T) {
+	called := false
+	safeCallToolStatus(func(e ToolEvent) {
+		called = true
+		panic("test-panic-marker-tool-status")
+	}, ToolEvent{Phase: "start", Name: "test_tool"})
+	if !called {
+		t.Errorf("callback was not invoked")
+	}
+}
+
+// TestSafeCallRetryNotify_RecoversPanic pins the recover-wrapped
+// retry-notify callback. Defined alongside the agent.go-level
+// safeCall* set even though the helper itself lives in retry.go.
+func TestSafeCallRetryNotify_RecoversPanic(t *testing.T) {
+	called := false
+	safeCallRetryNotify(func(n RetryNotice) {
+		called = true
+		panic("test-panic-marker-retry-notify")
+	}, RetryNotice{Attempt: 2, MaxAttempts: 4})
+	if !called {
+		t.Errorf("callback was not invoked")
+	}
+}
+
 // TestDispatch_RecoversToolHandlerPanic pins the agent's safety
 // guarantee: a buggy tool handler that panics must surface as a
 // structured error from dispatch, not crash the whole agent
