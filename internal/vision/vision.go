@@ -36,13 +36,33 @@ func (a *Analyzer) AnalyzeFile(ctx context.Context, path string, question string
 
 func (a *Analyzer) AnalyzeBase64(ctx context.Context, b64data string, question string) (string, error) {
 	mediaType := anthropic.Base64ImageSourceMediaTypeImageJPEG
-	if idx := strings.Index(b64data, ";base64,"); idx >= 0 {
-		mt := b64data[5:idx]
+	if mt, payload, ok := parseDataURL(b64data); ok {
 		mediaType = anthropic.Base64ImageSourceMediaType(mt)
-		b64data = b64data[idx+8:]
+		b64data = payload
 	}
 
 	return a.analyze(ctx, string(mediaType), b64data, question)
+}
+
+// parseDataURL extracts the media type and base64 payload from a data
+// URL of shape "data:<media-type>;base64,<payload>". Returns ok=false
+// for malformed inputs (missing "data:" prefix, missing ";base64,"
+// delimiter, etc.) so the caller can fall back to treating the input
+// as raw base64. Previously the prefix-strip was an unchecked
+// b64data[5:idx] slice that panicked on inputs like "X;base64,..."
+// where idx<5.
+func parseDataURL(s string) (mediaType, payload string, ok bool) {
+	const prefix = "data:"
+	const delim = ";base64,"
+	if !strings.HasPrefix(s, prefix) {
+		return "", "", false
+	}
+	rest := s[len(prefix):]
+	idx := strings.Index(rest, delim)
+	if idx < 0 {
+		return "", "", false
+	}
+	return rest[:idx], rest[idx+len(delim):], true
 }
 
 func (a *Analyzer) analyze(ctx context.Context, mediaType, b64data, question string) (string, error) {
