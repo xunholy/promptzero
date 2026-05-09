@@ -416,7 +416,15 @@ func (a *Agent) maybeGenerateTitleLocked(state *session.State) {
 	copy(historyCopy, a.history)
 	a.titleGenInflight[id] = true
 
-	go a.runTitleGeneration(id, model, derived, historyCopy)
+	// Wrap in obs.SafeGo so a panic inside the title-generation
+	// goroutine (nil pointer in an SDK response, marshal failure
+	// in callTitleAPI, etc.) is recovered + logged with a stack
+	// trace instead of crashing the whole agent process. Title
+	// generation is a best-effort sidebar label — the cost of a
+	// failure should be a missing label, not a process exit.
+	obs.SafeGo("agent.title_generation", func() {
+		a.runTitleGeneration(id, model, derived, historyCopy)
+	})
 }
 
 // runTitleGeneration is the goroutine launched by maybeGenerateTitleLocked.
