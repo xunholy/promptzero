@@ -68,9 +68,12 @@ PromptZero ships two operator-facing safety mechanisms that compose:
 
 - **`--read-only` (or `read_only: true`)** — refuses any tool whose
   `Spec.Risk` is above `risk.Low` at dispatch. No writes, no
-  transmits, no emulation, no payload generation. The single rail
-  introduced in v0.19.0; replaces the older `--mode recon|intel|stealth`
-  variants which alias to it during a one-release deprecation window.
+  transmits, no emulation, no payload generation. Introduced in
+  v0.19.0; layers with the per-mode group allow-list in `--mode`
+  (`standard` / `recon` / `intel` / `stealth` / `assault`):
+  dispatch consults `--read-only` first, then the per-mode gate.
+  As a defence-in-depth convenience, `--mode recon|intel|stealth`
+  also engages `--read-only` automatically.
 - **`--confirm-risk <level>`** — interactive confirmation prompt
   before any tool at or above the given risk tier dispatches. Default
   is `high`; pair with `--read-only` for belt-and-suspenders if you
