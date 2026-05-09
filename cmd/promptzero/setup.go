@@ -668,25 +668,22 @@ func setupRiskGate(cfg *config.Config, confirmRisk string, yolo bool, p *persona
 // fall back to Standard rather than aborting startup — operators
 // who typo a mode shouldn't lose their whole session.
 //
-// Deprecated: --mode is being phased out in favour of --read-only
-// (v0.19.0). recon|intel|stealth aliases to read-only; standard and
-// assault are no-ops. v0.20.0 will remove this function.
+// Read-restrictive modes (recon/intel/stealth) also engage the
+// ReadOnly safety rail as a defence-in-depth overlay: dispatch
+// consults ReadOnly first, then the per-mode group allow-list.
+// Both layers compose; tripping either refuses the call.
 func setupMode(cfg *config.Config, modeFlag string, ai *agent.Agent) {
 	raw := cfg.Mode
 	if modeFlag != "" {
 		raw = modeFlag
 	}
 
-	// Deprecation alias: map the read-restrictive modes to --read-only.
-	// We keep ai.SetMode() running so existing callers reading
-	// agent.Mode() don't break; the dispatch path now consults
-	// readOnly first and short-circuits before the mode check.
+	// Read-restrictive modes engage ReadOnly as a defence-in-depth
+	// overlay. The dispatch path consults readOnly first and
+	// short-circuits before the per-mode group check.
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "recon", "intel", "stealth":
-		statusWarn(fmt.Sprintf("--mode %s is deprecated; treating as --read-only. Update your config to read_only: true.", raw))
 		ai.SetReadOnly(true)
-	case "assault":
-		statusWarn("--mode assault is deprecated and now a no-op; remove it from your config.")
 	}
 
 	m, err := mode.ParseMode(raw)
