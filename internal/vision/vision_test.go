@@ -117,3 +117,36 @@ func TestParseDataURL_Empty(t *testing.T) {
 		t.Error("ok = true for empty string, want false")
 	}
 }
+
+// FuzzParseDataURL is a no-panic guarantee over arbitrary input.
+// The original bug this helper fixes (b64data[5:idx] with idx<5)
+// was a slice-bounds panic on attacker-shaped input. Run with
+// `go test -fuzz=FuzzParseDataURL ./internal/vision/` to extend
+// coverage; the corpus seeds cover the boundaries the unit tests
+// already pin (data: prefix, ;base64, delim, off-by-N positions).
+func FuzzParseDataURL(f *testing.F) {
+	for _, seed := range []string{
+		"",                          // empty
+		"data:",                     // prefix only
+		"data:;base64,",             // empty mediatype + payload
+		"data:image/png;base64,abc", // canonical
+		"X;base64,real_data",        // regression: idx<len("data:")
+		";base64,",                  // delim at start
+		"data:image/png",            // no delim
+		":base64,",                  // close-but-not-prefix
+		"data",                      // truncated prefix
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		mt, payload, ok := parseDataURL(s)
+		// Contract: ok=false implies both returns are empty; the
+		// caller treats malformed inputs as raw base64 and ignores
+		// the (mt, payload) pair entirely.
+		if !ok && (mt != "" || payload != "") {
+			t.Errorf("parseDataURL(%q) ok=false but mt=%q payload=%q (must both be empty)",
+				s, mt, payload)
+		}
+		// Implicit assertion: the call returned without panicking.
+	})
+}
