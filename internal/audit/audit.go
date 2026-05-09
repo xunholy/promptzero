@@ -150,7 +150,7 @@ func Open(dbPath string) (*Log, error) {
 		CREATE INDEX IF NOT EXISTS idx_audit_risk ON audit_log(risk);
 	`)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		_ = releaseFlock(lockFile)
 		return nil, fmt.Errorf("creating audit tables: %w", err)
 	}
