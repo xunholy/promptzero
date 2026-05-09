@@ -7,6 +7,8 @@ import (
 	"os/signal"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // enableOPOSTONLCR on BSD-like systems uses TIOCGETA/TIOCSETA rather than
@@ -26,7 +28,7 @@ func watchWindowSize(onResize func()) func() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, unix.SIGWINCH)
 	done := make(chan struct{})
-	go func() {
+	obs.SafeGo("termios.unixlike.sigwinch", func() {
 		for {
 			select {
 			case <-ch:
@@ -35,7 +37,7 @@ func watchWindowSize(onResize func()) func() {
 				return
 			}
 		}
-	}()
+	})
 	return func() {
 		signal.Stop(ch)
 		close(done)
