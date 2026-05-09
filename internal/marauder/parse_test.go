@@ -291,3 +291,40 @@ func TestParseMarauderResponse_OnlyEchoLine(t *testing.T) {
 		t.Errorf("only-echo input = %q, want empty", got)
 	}
 }
+
+// FuzzParseMarauderResponse is a no-panic guarantee over arbitrary
+// byte input. The Stream goroutine and Exec call path both feed
+// untrusted serial bytes from the ESP32 Marauder through this
+// parser; a panic in line-ending normalization or echo-stripping
+// would crash the dispatch (now SafeGo-recovered, but still
+// surfaced as a tool error to the LLM). Better to know the parser
+// itself is panic-free.
+//
+// Run with `go test -fuzz=FuzzParseMarauderResponse ./internal/marauder/`
+// to extend coverage. Seeds cover the boundaries the unit tests
+// already pin (echo line, mixed line endings, blank lines, etc.).
+func FuzzParseMarauderResponse(f *testing.F) {
+	for _, seed := range [][]byte{
+		nil,                                // empty
+		[]byte(""),                         // explicit empty string
+		[]byte("\n"),                       // single newline
+		[]byte("\r\n"),                     // CRLF
+		[]byte("#scanap\nresult\n"),        // echo + content
+		[]byte("#scanap"),                  // echo only, no newline
+		[]byte("\x00"),                     // NUL
+		[]byte("# \n"),                     // hash with whitespace
+		[]byte("\xff\xfe\xfd"),             // non-UTF-8 bytes
+		[]byte("a\rb\nc\r\nd\n\nf"),        // mixed line endings + blanks
+		[]byte(strings.Repeat("a", 10000)), // large no-newline buffer
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, b []byte) {
+		// Output line count vs input is non-trivial because the
+		// parser normalizes \r → \n (a CR-only input expands into
+		// multiple normalized lines). The assertion the fuzz body
+		// pins is purely the no-panic guarantee — any panic in the
+		// ReplaceAll / Split / TrimSpace chain auto-fails the test.
+		_ = parseMarauderResponse(b)
+	})
+}
