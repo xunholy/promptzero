@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/hex"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -369,6 +371,91 @@ func TestParseCapturesHex_Empty(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("len(got) = %d, want 0", len(got))
+	}
+}
+
+// TestParseCapturesFromFile_RoundTrip pins the file-IO wrapper.
+// Operators feed loclass with binary capture files dumped from
+// Proxmark3 / sniffer hardware; this path is the agent's main
+// entry point in non-hex form.
+func TestParseCapturesFromFile_RoundTrip(t *testing.T) {
+	want := []Capture{
+		{
+			CSN: [8]byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11},
+			CC:  [8]byte{0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99},
+			NR:  [4]byte{0x01, 0x23, 0x45, 0x67},
+			MAC: [4]byte{0x89, 0xAB, 0xCD, 0xEF},
+		},
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "captures.bin")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := WriteCaptures(f, want); err != nil {
+		t.Fatalf("WriteCaptures: %v", err)
+	}
+	f.Close()
+
+	got, err := ParseCapturesFromFile(path)
+	if err != nil {
+		t.Fatalf("ParseCapturesFromFile: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(got) = %d, want 1", len(got))
+	}
+	if got[0] != want[0] {
+		t.Errorf("round-trip mismatch:\n  got %+v\n  want %+v", got[0], want[0])
+	}
+}
+
+// TestParseCapturesFromFile_MissingPath returns the standard
+// os-not-exist error rather than silently returning empty.
+// Operators with a typo'd path get a clear signal.
+func TestParseCapturesFromFile_MissingPath(t *testing.T) {
+	_, err := ParseCapturesFromFile(filepath.Join(t.TempDir(), "does-not-exist.bin"))
+	if err == nil {
+		t.Fatal("expected error for missing path")
+	}
+}
+
+// TestParseCapturesFromFile_TruncatedRecord covers the partial-
+// record case: a file whose size is not a multiple of CaptureSize
+// (e.g., transmission cut off mid-write). io.ReadFull returns
+// io.ErrUnexpectedEOF which ParseCaptures treats as end-of-stream,
+// so the partial record is silently dropped — pin that contract.
+func TestParseCapturesFromFile_TruncatedRecord(t *testing.T) {
+	want := []Capture{
+		{
+			CSN: [8]byte{1, 2, 3, 4, 5, 6, 7, 8},
+			MAC: [4]byte{0xAA, 0xBB, 0xCC, 0xDD},
+		},
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "truncated.bin")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := WriteCaptures(f, want); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	// Append a partial second record (10 bytes — short by 14).
+	if _, err := f.Write([]byte{0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA, 0xF9, 0xF8, 0x77, 0x66}); err != nil {
+		t.Fatalf("partial write: %v", err)
+	}
+	f.Close()
+
+	got, err := ParseCapturesFromFile(path)
+	if err != nil {
+		t.Fatalf("ParseCapturesFromFile on truncated: %v", err)
+	}
+	// One complete record returned; the partial trailer is dropped
+	// without error (the file was 24+10 = 34 bytes, only 24 yields
+	// a full Capture).
+	if len(got) != 1 {
+		t.Errorf("len(got) = %d, want 1 (partial record should be dropped)", len(got))
 	}
 }
 
