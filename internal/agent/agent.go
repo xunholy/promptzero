@@ -39,15 +39,15 @@ import (
 )
 
 // ErrBlockedByMode is the sentinel returned by dispatch when the
-// active operation mode does not allow a tool's group. Callers
-// (telemetry, UI) can errors.Is against this so the rejection is
-// distinguishable from a runtime failure.
+// active operation mode (Recon/Intel/Stealth/Assault) does not allow
+// a tool's group. Callers (telemetry, UI) can errors.Is against this
+// so the rejection is distinguishable from a runtime failure.
 //
-// Deprecated: use ErrReadOnly. Mode is being phased out in v0.19.0
-// in favour of the simpler read-only-vs-full-CRUD safety rail. The
-// sentinel stays so existing errors.Is callers don't break during
-// the deprecation window; the dispatch path emits ErrReadOnly going
-// forward.
+// Layered after ErrReadOnly: dispatch consults readOnly first; mode
+// is checked only when readOnly=false. v0.19.0 introduced the
+// read-only rail; mode was originally slated for removal in v0.20.0
+// but remained as a useful coarse capability filter (see
+// mode_dispatch_test.go).
 var ErrBlockedByMode = errors.New("tool blocked by operation mode")
 
 // ErrReadOnly is returned by dispatch when the agent is in read-only
@@ -240,9 +240,10 @@ type Agent struct {
 	// every tool group — preserving historical behaviour for builds /
 	// callers that never set a mode.
 	//
-	// Deprecated: kept for one release so existing callers don't break.
-	// The dispatch path now consults readOnly first; mode is consulted
-	// only when readOnly is false. v0.20.0 removes the field.
+	// Layered after readOnly: dispatch consults readOnly first; mode
+	// is consulted only when readOnly is false. The originally-planned
+	// v0.20.0 removal didn't happen because mode-as-coarse-capability-
+	// filter remained useful alongside the read-only rail.
 	//
 	// Stored in an atomic.Pointer instead of under a.mu because dispatch
 	// is invoked from Run with a.mu already held — taking it again in
@@ -344,9 +345,10 @@ func New(client *anthropic.Client, flip *flipper.Flipper, cfg *config.Config) *A
 // per-mode allow-lists. An empty Mode resets to mode.ModeStandard
 // (the default, behaviour-preserving profile).
 //
-// Deprecated: prefer SetReadOnly. Mode is being phased out in v0.19.0
-// in favour of the simpler read-only-vs-full-CRUD safety rail. The
-// setter still works for one release; v0.20.0 will remove it.
+// Layers after SetReadOnly: dispatch consults readOnly first, then
+// mode. Both gates are independently useful — read-only is a hard
+// no-write rail; mode is a coarse capability profile (e.g. Recon
+// blocks transmit groups; Stealth blocks high-noise groups).
 func (a *Agent) SetMode(m mode.Mode) {
 	if m == "" {
 		m = mode.ModeStandard
