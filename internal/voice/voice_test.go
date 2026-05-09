@@ -41,7 +41,7 @@ func TestWhisperTimeoutRespected(t *testing.T) {
 		httpClient: &http.Client{Timeout: 100 * time.Millisecond},
 	}
 
-	_, err := e.TranscribeReader(strings.NewReader("audio"), "test.wav")
+	_, err := e.TranscribeReaderCtx(context.Background(), strings.NewReader("audio"), "test.wav")
 	if err == nil {
 		t.Fatal("expected timeout error from hanging Whisper server, got nil")
 	}
@@ -107,9 +107,9 @@ func TestTranscribeReaderParsesResponse(t *testing.T) {
 		whisperURL: ts.URL,
 	}
 
-	text, err := e.TranscribeReader(strings.NewReader("audio data"), "test.wav")
+	text, err := e.TranscribeReaderCtx(context.Background(), strings.NewReader("audio data"), "test.wav")
 	if err != nil {
-		t.Fatalf("TranscribeReader: %v", err)
+		t.Fatalf("TranscribeReaderCtx: %v", err)
 	}
 	if text != "hello world" {
 		t.Errorf("text = %q, want %q", text, "hello world")
@@ -145,7 +145,7 @@ func TestTranscribeReaderResponseSizeCap(t *testing.T) {
 		whisperURL: ts.URL,
 	}
 
-	_, err := e.TranscribeReader(strings.NewReader("audio data"), "test.wav")
+	_, err := e.TranscribeReaderCtx(context.Background(), strings.NewReader("audio data"), "test.wav")
 	if err == nil {
 		t.Fatal("expected error on oversized whisper response")
 	}
