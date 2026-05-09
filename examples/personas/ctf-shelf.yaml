@@ -1,10 +1,11 @@
 # ctf-shelf — CTF-style puzzle-solving persona.
 #
-# v0.19.0 note: per-persona tool allowlists are deprecated; tool
-# narrowing moved to --read-only at the safety layer. This persona
-# now sets system_prompt + risk threshold; the tools: list was
-# removed. Pair with --read-only if you want the strict no-write
-# guarantee while solving (most CTF flows benefit from this).
+# Sets system_prompt + risk threshold; no explicit Tools allowlist
+# because risk-medium pairs with --read-only nicely for typical CTF
+# flows. (Tools allowlists remain a supported feature for personas
+# that want positive scoping; this persona just doesn't need it.)
+# Pair with --read-only for the strict no-write guarantee while
+# solving — most CTF flows benefit from this.
 
 name: ctf-shelf
 description: >-
