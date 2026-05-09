@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -277,33 +278,14 @@ func isTransportClosed(err error) bool {
 	return false
 }
 
+// containsFold is a thin wrapper over strings.Contains +
+// strings.ToLower so the isTransportClosedError marker scan stays
+// readable. Each call allocates two lowercased strings — that's
+// fine here because the call site only runs after the transport
+// already errored.
 func containsFold(haystack, needle string) bool {
 	if len(needle) == 0 {
 		return true
 	}
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if equalFoldFast(haystack[i:i+len(needle)], needle) {
-			return true
-		}
-	}
-	return false
-}
-
-func equalFoldFast(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := 0; i < len(a); i++ {
-		ca, cb := a[i], b[i]
-		if ca >= 'A' && ca <= 'Z' {
-			ca += 'a' - 'A'
-		}
-		if cb >= 'A' && cb <= 'Z' {
-			cb += 'a' - 'A'
-		}
-		if ca != cb {
-			return false
-		}
-	}
-	return true
+	return strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))
 }
