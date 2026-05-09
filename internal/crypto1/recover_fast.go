@@ -63,6 +63,8 @@ package crypto1
 import (
 	"context"
 	"fmt"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // --- Sub-state decomposition helpers -----------------------------------
@@ -300,7 +302,7 @@ func RecoverFastTimeout(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 u
 	ch := make(chan result, 2)
 
 	// Start Garcia §4 fast path in background.
-	go func() {
+	obs.SafeGo("crypto1.mfkey32_fast.garcia", func() {
 		survivors := make([]uint32, 0, 512)
 		for x := uint32(0); x < (1 << 24); x++ {
 			if x&(checkInterval-1) == 0 {
@@ -346,14 +348,14 @@ func RecoverFastTimeout(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 u
 				}
 			}
 		}
-	}()
+	})
 
 	// Start guaranteed fallback in background.  Pass ctx so the fallback's
 	// inner hi32 loop also terminates promptly on cancellation.
-	go func() {
+	obs.SafeGo("crypto1.mfkey32_fast.fallback", func() {
 		k, err := RecoverWithRange(ctx, uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
 		ch <- result{k, err}
-	}()
+	})
 
 	// Wait for the first result or context cancellation.
 	select {
