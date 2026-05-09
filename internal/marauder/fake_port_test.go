@@ -217,9 +217,14 @@ func TestStreamCancelViaDone(t *testing.T) {
 	}()
 	close(done)
 
+	// 5s rather than 2s for headroom under -race + parallel package
+	// execution: the Stream goroutine polls done at ~100ms granularity
+	// (the SetReadTimeout-bounded port.Read loop), so a non-flake drain
+	// completes in <500ms. The wider window absorbs CPU contention on
+	// heavily loaded `go test ./...` runs without changing the contract.
 	select {
 	case <-drained:
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("stream did not drain after done close")
 	}
 
