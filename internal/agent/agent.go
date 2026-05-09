@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1360,7 +1361,7 @@ func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMess
 	return result, false
 }
 
-func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interface{}) (string, error) {
+func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interface{}) (output string, err error) {
 	// All tools are now in the central registry. The risk gate runs in
 	// executeTool (before dispatch is called), so this path inherits the
 	// gate for free.
@@ -1383,11 +1384,31 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 	// Operation-mode gate (deprecated; v0.20.0 will remove). When the
 	// active mode disallows a tool's group, refuse the call before the
 	// handler runs. Error wraps ErrBlockedByMode for back-compat with
-	// existing errors.Is callers; new code should use ErrReadOnly.
+	// existing errors-Is callers; new code should use ErrReadOnly.
 	if m := a.Mode(); !m.Allows(spec.Group) {
 		return "", fmt.Errorf("%w: %s blocked in %s mode — %s",
 			ErrBlockedByMode, spec.Name, m.DisplayName(), m.Reason(spec.Group))
 	}
+
+	// Recover from panics inside the tool handler. With 200+ tools
+	// registered any single buggy handler — a nil-deref on an
+	// unexpected input shape, a malformed reflection path, an
+	// edge-case in a parser — would otherwise crash the whole
+	// agent process. The named-return-values pattern lets the
+	// deferred recover convert a panic into a tool_error so the
+	// LLM sees a structured failure and can react. The recovery
+	// log carries a stack trace via runtime/debug so the panic
+	// site is visible without GOTRACEBACK=all.
+	defer func() {
+		if r := recover(); r != nil {
+			obs.Default().Error("tool_handler_panicked",
+				"tool", name,
+				"recovered", fmt.Sprintf("%v", r),
+				"stack", string(debug.Stack()))
+			output = ""
+			err = fmt.Errorf("tool %s panicked: %v", name, r)
+		}
+	}()
 
 	return spec.Handler(ctx, a.deps(), p)
 }
