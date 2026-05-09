@@ -30,7 +30,7 @@ func newSpec(name string, aliases ...string) Spec {
 }
 
 func TestRegister_And_Get_HappyPath(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 
 	Register(newSpec("alpha"))
 	Register(newSpec("beta", "bravo", "b2"))
@@ -59,7 +59,7 @@ func TestRegister_And_Get_HappyPath(t *testing.T) {
 }
 
 func TestAll_RegistrationOrderStable(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 
 	want := []string{"first", "second", "third", "fourth"}
 	for _, n := range want {
@@ -85,7 +85,7 @@ func TestAll_RegistrationOrderStable(t *testing.T) {
 }
 
 func TestRegister_PanicsOnDuplicateName(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 	Register(newSpec("dup"))
 
 	defer func() {
@@ -102,7 +102,7 @@ func TestRegister_PanicsOnDuplicateName(t *testing.T) {
 }
 
 func TestRegister_PanicsOnDuplicateAlias(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 	Register(newSpec("alpha", "a1"))
 
 	defer func() {
@@ -114,7 +114,7 @@ func TestRegister_PanicsOnDuplicateAlias(t *testing.T) {
 }
 
 func TestRegister_PanicsWhenAliasCollidesWithName(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 	Register(newSpec("alpha"))
 
 	defer func() {
@@ -126,7 +126,7 @@ func TestRegister_PanicsWhenAliasCollidesWithName(t *testing.T) {
 }
 
 func TestRegister_PanicsWhenNameCollidesWithAlias(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 	Register(newSpec("alpha", "shared"))
 
 	defer func() {
@@ -138,7 +138,7 @@ func TestRegister_PanicsWhenNameCollidesWithAlias(t *testing.T) {
 }
 
 func TestRegister_PanicsOnEmptyName(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 
 	defer func() {
 		if r := recover(); r == nil {
@@ -149,7 +149,7 @@ func TestRegister_PanicsOnEmptyName(t *testing.T) {
 }
 
 func TestRegister_PanicsOnNilHandler(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 
 	defer func() {
 		if r := recover(); r == nil {
@@ -160,7 +160,7 @@ func TestRegister_PanicsOnNilHandler(t *testing.T) {
 }
 
 func TestRegister_PanicsOnSelfAlias(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 
 	defer func() {
 		if r := recover(); r == nil {
@@ -171,7 +171,7 @@ func TestRegister_PanicsOnSelfAlias(t *testing.T) {
 }
 
 func TestNames_IncludesAliases(t *testing.T) {
-	resetForTest()
+	resetForTest(t)
 
 	Register(newSpec("device_info"))
 	Register(newSpec("power_info"))

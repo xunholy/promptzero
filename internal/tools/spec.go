@@ -397,15 +397,42 @@ func Names() []string {
 	return out
 }
 
-// resetForTest clears the registry. Package-private so tests within
-// this package can exercise Register without leaking state between
-// cases. Production code has no reason to reach for this.
-func resetForTest() {
+// resetForTest clears the registry and registers a cleanup with t to
+// restore the original (post-init) registry when the test (and any
+// subtests) finish. This makes the reset safe to combine with
+// `-count=N`: each test sees a freshly-empty registry, but
+// subsequent tests in the same process — and re-runs of the same
+// test — get the production registrations back.
+//
+// Package-private so tests within this package can exercise Register
+// without leaking state between cases. Production code has no reason
+// to reach for this.
+func resetForTest(t interface {
+	Helper()
+	Cleanup(func())
+}) {
+	t.Helper()
 	regMu.Lock()
-	defer regMu.Unlock()
+	snapByName := make(map[string]Spec, len(byName))
+	for k, v := range byName {
+		snapByName[k] = v
+	}
+	snapByAlias := make(map[string]string, len(byAlias))
+	for k, v := range byAlias {
+		snapByAlias[k] = v
+	}
+	snapOrder := append([]string(nil), order...)
 	byName = map[string]Spec{}
 	byAlias = map[string]string{}
 	order = nil
+	regMu.Unlock()
+	t.Cleanup(func() {
+		regMu.Lock()
+		defer regMu.Unlock()
+		byName = snapByName
+		byAlias = snapByAlias
+		order = snapOrder
+	})
 }
 
 // UnregisterForTest removes a single tool (and its aliases) from the
