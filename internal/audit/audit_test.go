@@ -2,6 +2,7 @@ package audit
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -65,7 +66,7 @@ func TestQueryFilteredByTool(t *testing.T) {
 		t.Fatalf("expected 2 rfid rows, got %d", len(got))
 	}
 	for _, e := range got {
-		if !contains(e.Tool, "rfid") {
+		if !strings.Contains(e.Tool, "rfid") {
 			t.Errorf("unexpected tool %q in rfid filter", e.Tool)
 		}
 	}
@@ -138,7 +139,7 @@ func TestQueryFilteredSinceUntil(t *testing.T) {
 	for i, at := range ts {
 		if _, err := log.db.Exec(`INSERT INTO audit_log (timestamp, tool, input, output, risk, level, session_id, duration_ms, success)
 			VALUES (?, ?, '{}', '', 'low', 'action', 's', 1, 1)`,
-			at.Format(time.RFC3339), "t"+itoa(i)); err != nil {
+			at.Format(time.RFC3339), "t"+strconv.Itoa(i)); err != nil {
 			t.Fatalf("insert: %v", err)
 		}
 	}
@@ -276,37 +277,6 @@ func TestTopToolsAndRisks(t *testing.T) {
 	if len(risks) == 0 {
 		t.Fatalf("TopRisks returned empty")
 	}
-}
-
-func contains(haystack, needle string) bool {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var buf [12]byte
-	n := len(buf)
-	neg := i < 0
-	if neg {
-		i = -i
-	}
-	for i > 0 {
-		n--
-		buf[n] = byte('0' + i%10)
-		i /= 10
-	}
-	if neg {
-		n--
-		buf[n] = '-'
-	}
-	return string(buf[n:])
 }
 
 func TestRequireOpen(t *testing.T) {
