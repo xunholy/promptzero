@@ -620,7 +620,7 @@ func setupPersona(cfg *config.Config, personaName string, ai *agent.Agent) (*per
 		return nil, nil, fmt.Errorf("unknown persona %q; available: %s", choice, strings.Join(personas.Names(), ", "))
 	}
 	ai.SetPersona(active)
-	scope := fmt.Sprintf("%d tools allowed", len(active.Tools)) //nolint:staticcheck // back-compat through v0.19.0
+	scope := fmt.Sprintf("%d tools allowed", len(active.Tools))
 	if active.IsUnrestricted() {
 		scope = "all tools allowed"
 	}
