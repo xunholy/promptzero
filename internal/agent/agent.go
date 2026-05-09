@@ -481,6 +481,21 @@ func safeCallUsage(cb func(Usage), u Usage) {
 	cb(u)
 }
 
+// safeCallToolStatus is the recover-wrapped invocation for the
+// per-tool status callback. Operators install this to drive a UI
+// progress indicator; a panic in it would otherwise crash the agent
+// during a tool dispatch — even after the tool itself succeeded.
+func safeCallToolStatus(cb func(ToolEvent), e ToolEvent) {
+	defer func() {
+		if r := recover(); r != nil {
+			obs.Default().Warn("agent_tool_status_cb_panicked",
+				"phase", e.Phase, "tool", e.Name,
+				"recovered", fmt.Sprintf("%v", r))
+		}
+	}()
+	cb(e)
+}
+
 // SetConfirmIdleTimeout overrides how long confirmWithIdleTimeout waits for
 // an operator response before treating silence as a deny. A zero or negative
 // value restores the default (5 minutes).
@@ -936,8 +951,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			if err := audit.RequireOpen(a.auditLog, toolRisk); err != nil {
 				msg := err.Error()
 				if a.toolStatusCb != nil {
-					a.toolStatusCb(ToolEvent{Phase: "start", Name: tc.Name, Input: input})
-					a.toolStatusCb(ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: msg, Err: true})
+					safeCallToolStatus(a.toolStatusCb, ToolEvent{Phase: "start", Name: tc.Name, Input: input})
+					safeCallToolStatus(a.toolStatusCb, ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: msg, Err: true})
 				}
 				toolResults = append(toolResults, anthropic.NewToolResultBlock(tc.ID, msg, true))
 				continue
@@ -961,8 +976,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 				case DecisionDeny:
 					const denyMsg = "user denied this action"
 					if a.toolStatusCb != nil {
-						a.toolStatusCb(ToolEvent{Phase: "start", Name: tc.Name, Input: input})
-						a.toolStatusCb(ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: denyMsg, Err: true})
+						safeCallToolStatus(a.toolStatusCb, ToolEvent{Phase: "start", Name: tc.Name, Input: input})
+						safeCallToolStatus(a.toolStatusCb, ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: denyMsg, Err: true})
 					}
 					if a.auditLog != nil {
 						a.auditLog.RecordCtx(ctx, tc.Name, input, denyMsg, toolRisk.String(), audit.LevelAction, 0, false)
@@ -982,8 +997,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 					}
 					resultMsg := "operator requested revision instead of running this tool: " + revisionText
 					if a.toolStatusCb != nil {
-						a.toolStatusCb(ToolEvent{Phase: "start", Name: tc.Name, Input: input})
-						a.toolStatusCb(ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: resultMsg, Err: true})
+						safeCallToolStatus(a.toolStatusCb, ToolEvent{Phase: "start", Name: tc.Name, Input: input})
+						safeCallToolStatus(a.toolStatusCb, ToolEvent{Phase: "finish", Name: tc.Name, Input: input, Output: resultMsg, Err: true})
 					}
 					if a.auditLog != nil {
 						a.auditLog.RecordCtx(ctx, tc.Name, input, resultMsg, toolRisk.String(), audit.LevelAction, 0, false)
@@ -1008,7 +1023,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			}
 
 			if a.toolStatusCb != nil {
-				a.toolStatusCb(ToolEvent{Phase: "start", Name: tc.Name, Input: input})
+				safeCallToolStatus(a.toolStatusCb, ToolEvent{Phase: "start", Name: tc.Name, Input: input})
 			}
 
 			// Open a child OTel span for this tool call. The span
@@ -1025,7 +1040,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			toolSpan.End()
 
 			if a.toolStatusCb != nil {
-				a.toolStatusCb(ToolEvent{
+				safeCallToolStatus(a.toolStatusCb, ToolEvent{
 					Phase:    "finish",
 					Name:     tc.Name,
 					Input:    input,
