@@ -97,6 +97,46 @@ func TestRegisterUnregister(t *testing.T) {
 	}
 }
 
+// TestClassifyExplicit pins the (Level, bool) contract: the bool
+// distinguishes "explicitly registered, here's the level" from the
+// safe-default fallback that Classify silently returns. Coverage
+// validators (agent.risk_coverage_test, tools.registry_coverage_test)
+// rely on this distinction so an unregistered tool surfaces as a
+// hard failure rather than a Classify-default coincidence.
+func TestClassifyExplicit(t *testing.T) {
+	// Compile-time-registered tool: explicit hit.
+	if l, ok := ClassifyExplicit("wifi_deauth"); !ok || l != Critical {
+		t.Errorf("ClassifyExplicit(wifi_deauth) = (%s, %v), want (Critical, true)", l, ok)
+	}
+
+	// Unknown tool: ok=false, level returns the zero-value Low (NOT
+	// the High safe-default that Classify applies). Callers wanting
+	// the safe default should use Classify; callers wanting the
+	// explicit/inferred distinction should use ClassifyExplicit.
+	if l, ok := ClassifyExplicit("totally_unknown_xyz"); ok {
+		t.Errorf("ClassifyExplicit(unknown) ok = true, want false; level = %s", l)
+	}
+
+	// Runtime-registered tool: takes precedence over compile-time
+	// table; explicit hit at the runtime-supplied level.
+	const runtimeTool = "test_runtime_classify_explicit"
+	defer Unregister(runtimeTool)
+	Register(runtimeTool, Medium)
+	if l, ok := ClassifyExplicit(runtimeTool); !ok || l != Medium {
+		t.Errorf("ClassifyExplicit(runtime-registered) = (%s, %v), want (Medium, true)", l, ok)
+	}
+
+	// Runtime override of a compile-time tool: explicit hit at the
+	// runtime level, not the compile-time level. This is the same
+	// precedence Classify uses; ClassifyExplicit just exposes the
+	// explicit-vs-default bit alongside.
+	defer Unregister("wifi_deauth") // restore compile-time entry
+	Register("wifi_deauth", Low)
+	if l, ok := ClassifyExplicit("wifi_deauth"); !ok || l != Low {
+		t.Errorf("runtime override: ClassifyExplicit(wifi_deauth) = (%s, %v), want (Low, true)", l, ok)
+	}
+}
+
 func TestLevelString(t *testing.T) {
 	cases := []struct {
 		level Level
