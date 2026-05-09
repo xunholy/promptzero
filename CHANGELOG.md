@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-05-09
+
+Refinement-and-coverage pass on the v0.44 additions plus two
+small panic-resilience extensions. Eight commits across three
+themes.
+
+### Added
+
+- **`wiegand_decode` hex display + format hint.** The v0.44
+  decoder gains two operator-friendly fields: `FacilityCodeHex`
+  and `CardNumberHex` are now populated for every result so
+  operators cross-referencing a card with hex-printed codes
+  don't need to convert by hand. Plus a new `format_hint`
+  param: when an operator's capture has noise (leading idle
+  bits, trailing pad bytes), they can force a specific bit
+  count and get a clear length-mismatch error rather than
+  "unsupported bit count". The auto-detect path still works
+  when format_hint is 0 or absent. (`internal/tools/wiegand.go`)
+
+- **Richer unsupported-format error message.** Names every
+  supported Wiegand format with its identifier (H10301, HID
+  Corporate 1000, H10302/H10304) plus actionable guidance
+  ("strip leading/trailing pad bits or pass format_hint")
+  instead of just listing numeric bit counts.
+
+### Fixed
+
+- **Two more `go func()` → `obs.SafeGo` migrations.**
+  - `mcpfed.Initialize` runs `runHealthLoop` per federated
+    client; a panic in the watchdog (misbehaving server, JSON
+    edge case) no longer crashes the whole agent.
+    (`internal/mcpfed/federation.go`)
+  - `flipper/transport/ble.go` BLE scan goroutines (one for
+    target lookup, one for `--ble-discover`) — a panic from
+    the upstream tinygo.org/x/bluetooth library's scan
+    callback can no longer take down the agent.
+    (`internal/flipper/transport/ble.go`)
+
+  This brings the SafeGo discipline started in v0.42–v0.43
+  to every long-lived goroutine in the codebase that wasn't
+  already wrapped.
+
+- **`mcpfed` containsFold reduced to a stdlib wrapper.**
+  Dropped the hand-rolled equalFoldFast in favour of
+  `strings.Contains(strings.ToLower(haystack), strings.ToLower(needle))`.
+  Same shape as the cleanups landed for audit_test.go,
+  lineedit.go, and discover.go in v0.44.
+  (`internal/mcpfed/managed.go`)
+
+### Tested
+
+- **`internal/iclass` public-API parsers.** 9 new tests cover
+  both entry points operators use to feed loclass: hex input
+  (Proxmark3 dumps, CFW iCLASS sniffer exfils) and binary
+  files (sniffer hardware dumps). Includes a regression for
+  the documented truncated-record-silently-dropped contract.
+  (`internal/iclass/loclass_test.go`)
+
+- **`internal/marauder` response-parsing helpers.**
+  parseMarauderResponse and marauderPromptIndex were exercised
+  only indirectly through Marauder.Exec. 7 tests pin the
+  conditional echo strip, CRLF normalization, blank-line
+  drop, empty-input no-op, and only-echo-line edge cases —
+  plus a 5-case table for the prompt-offset helper.
+  (`internal/marauder/parse_test.go`)
+
 ## [0.44.0] - 2026-05-09
 
 New offensive primitive + test-coverage and stdlib-cleanup pass.
