@@ -108,6 +108,9 @@ var toolLevels = func() map[string]Level {
 		// No mutation, no I/O beyond a read of the audit DB the operator
 		// already owns.
 		"explain_last_result",
+		// v0.43+ — pure offline Wiegand parser (no IO, no
+		// transmission). Operators paste sniffed D0/D1 bitstreams.
+		"wiegand_decode",
 	)
 
 	// Captures, scans, file writes
