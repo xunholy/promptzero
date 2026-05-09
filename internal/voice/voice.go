@@ -57,15 +57,6 @@ func New(openAIKey string) *Engine {
 // enough that a hang surfaces before the operator gives up.
 const recordTimeout = 2 * time.Minute
 
-// Record captures audio from the microphone using sox. Equivalent to
-// RecordCtx with context.Background(); kept for back-compat.
-//
-// Deprecated: prefer RecordCtx so the REPL's turn ctx can abort a stuck
-// recording (Ctrl+C cancels mid-flight instead of waiting for silence).
-func (e *Engine) Record(outPath string) error {
-	return e.RecordCtx(context.Background(), outPath)
-}
-
 // RecordCtx captures audio from the microphone using sox until the
 // silence detector fires or the recordTimeout fallback expires. The
 // caller's ctx is honoured: cancelling it kills the rec process.
@@ -108,15 +99,9 @@ func (e *Engine) RecordFixed(outPath string, seconds int) error {
 	return cmd.Run()
 }
 
-// Transcribe sends audio to OpenAI Whisper API and returns the text.
-// Equivalent to TranscribeCtx with context.Background().
-//
-// Deprecated: prefer TranscribeCtx so a network hang can be cancelled.
-func (e *Engine) Transcribe(audioPath string) (string, error) {
-	return e.TranscribeCtx(context.Background(), audioPath)
-}
-
-// TranscribeCtx is the ctx-aware variant of Transcribe.
+// TranscribeCtx loads audioPath and forwards it to TranscribeReaderCtx.
+// Honours ctx — cancelling it aborts the in-flight HTTP request so the
+// REPL can return immediately on Ctrl+C even if the API hangs.
 func (e *Engine) TranscribeCtx(ctx context.Context, audioPath string) (string, error) {
 	file, err := os.Open(audioPath)
 	if err != nil {
@@ -124,15 +109,6 @@ func (e *Engine) TranscribeCtx(ctx context.Context, audioPath string) (string, e
 	}
 	defer file.Close()
 	return e.TranscribeReaderCtx(ctx, file, filepath.Base(audioPath))
-}
-
-// TranscribeReader sends audio from a reader to OpenAI Whisper API.
-// Equivalent to TranscribeReaderCtx with context.Background().
-//
-// Deprecated: prefer TranscribeReaderCtx — without a cancellable ctx
-// the only timeout is the HTTP client's Timeout field.
-func (e *Engine) TranscribeReader(audio io.Reader, filename string) (string, error) {
-	return e.TranscribeReaderCtx(context.Background(), audio, filename)
 }
 
 // TranscribeReaderCtx sends audio from a reader to OpenAI Whisper API.
