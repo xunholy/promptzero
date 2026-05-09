@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/xunholy/promptzero/internal/mode"
+	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/tools"
 )
 
 // TestDispatch_ModeBlocksHighRiskTransmit confirms a Sub-GHz TX
@@ -72,6 +75,41 @@ func TestDispatch_ModeUnknownToolStillReportsUnknown(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown tool") {
 		t.Errorf("unknown tool error = %q, want substring %q", err, "unknown tool")
+	}
+}
+
+// TestDispatch_RecoversToolHandlerPanic pins the agent's safety
+// guarantee: a buggy tool handler that panics must surface as a
+// structured error from dispatch, not crash the whole agent
+// process. With 200+ registered tools any single bad input
+// shape (nil-deref, parser edge case, reflection panic) was a
+// crash hazard before the recover wrap.
+func TestDispatch_RecoversToolHandlerPanic(t *testing.T) {
+	const panicToolName = "_test_panic_tool_for_dispatch_recover"
+	tools.Register(tools.Spec{
+		Name:        panicToolName,
+		Description: "Test-only tool that always panics — pins the dispatch recover.",
+		Schema:      json.RawMessage(`{"type":"object","properties":{}}`),
+		Risk:        risk.Low,
+		Group:       tools.GroupMetaUtil,
+		Handler: func(_ context.Context, _ *tools.Deps, _ map[string]any) (string, error) {
+			panic("test-panic-marker-x9q")
+		},
+	})
+
+	a := agentForModelTest("claude-sonnet-4-6", nil)
+	out, err := a.dispatch(context.Background(), panicToolName, map[string]interface{}{})
+	if err == nil {
+		t.Fatalf("dispatch returned nil error after a panicking handler, got out=%q", out)
+	}
+	if !strings.Contains(err.Error(), panicToolName) {
+		t.Errorf("error %q should name the panicking tool", err.Error())
+	}
+	if !strings.Contains(err.Error(), "panicked") {
+		t.Errorf("error %q should mention 'panicked'", err.Error())
+	}
+	if !strings.Contains(err.Error(), "test-panic-marker-x9q") {
+		t.Errorf("error %q should include the recovered panic value", err.Error())
 	}
 }
 
