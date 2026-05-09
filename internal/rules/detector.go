@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // Verdict is the structured output of a Detector. Grep-friendly on
@@ -318,6 +321,24 @@ func (e *DetectorEngine) EvaluateFor(ctx context.Context, toolName, input, outpu
 		wg.Add(1)
 		go func(i int, d Detector) {
 			defer wg.Done()
+			// Custom recover (not obs.SafeGo) so a misbehaving detector
+			// surfaces as a structured VerdictUnknown rather than a
+			// missing slot in the verdicts slice — same fail-soft
+			// contract the docstring above promises for errors.
+			defer func() {
+				if r := recover(); r != nil {
+					obs.Default().Error("rules.detector.panic",
+						"detector", d.Name(),
+						"tool", toolName,
+						"panic", r,
+						"stack", string(debug.Stack()))
+					verdicts[i] = Verdict{
+						Verdict:    VerdictUnknown,
+						DetectedBy: d.Name(),
+						Evidence:   fmt.Sprintf("detector panic: %v", r),
+					}
+				}
+			}()
 
 			// Apply per-detector timeout to prevent a single stalled
 			// classifier from blocking the entire evaluation round.
