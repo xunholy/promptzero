@@ -123,7 +123,7 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 		// registered in the REPL surfaces phase messages in the
 		// output area; we just need to call it. Short ctx so a stuck
 		// reconnect doesn't wedge the REPL indefinitely.
-		go func() {
+		obs.SafeGo("repl.cmd.reconnect", func() {
 			reCtx, cancelRe := context.WithTimeout(deps.ctx, 15*time.Second)
 			defer cancelRe()
 			if err := deps.flip.Reconnect(reCtx); err != nil {
@@ -131,7 +131,7 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 					fmt.Fprintf(os.Stderr, "  %s● reconnect failed: %v%s\n", red, err, reset)
 				})
 			}
-		}()
+		})
 		return true, false
 	}
 
