@@ -40,7 +40,8 @@ var wiegandDecodeSpec = Spec{
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"bits":{"type":"string","description":"Binary string of 0s and 1s captured from the reader (e.g. '1010100...'). Length determines format."}
+			"bits":{"type":"string","description":"Binary string of 0s and 1s captured from the reader (e.g. '1010100...'). Length determines format unless format_hint is set."},
+			"format_hint":{"type":"integer","description":"Optional bit count override (26, 34, 35, or 37). When set, the decoder requires the input to be exactly this length and produces a clearer error if the capture has stray bits."}
 		},
 		"required":["bits"]
 	}`),
@@ -88,6 +89,17 @@ func wiegandDecodeHandler(_ context.Context, _ *Deps, p map[string]any) (string,
 		return "", fmt.Errorf("wiegand_decode: %w", err)
 	}
 
+	// format_hint lets the operator force a specific bit count when
+	// their capture has known noise (leading zeros from the sniffer's
+	// idle line, trailing pad bytes from a buffer flush). When set,
+	// the input length must match exactly — we don't auto-trim because
+	// "trim from which end" is ambiguous.
+	if hint := intOr(p, "format_hint", 0); hint > 0 {
+		if len(bits) != hint {
+			return "", fmt.Errorf("wiegand_decode: format_hint=%d but bits has length %d (strip leading/trailing pad bits or pass the exact frame)", hint, len(bits))
+		}
+	}
+
 	res, err := DecodeWiegand(bits)
 	if err != nil {
 		return "", fmt.Errorf("wiegand_decode: %w", err)
@@ -133,7 +145,13 @@ func DecodeWiegand(bits []bool) (WiegandResult, error) {
 	case 37:
 		res, err = decodeWiegand37(bits)
 	default:
-		return WiegandResult{}, fmt.Errorf("unsupported bit count %d (supported: 26, 34, 35, 37)", len(bits))
+		return WiegandResult{}, fmt.Errorf(
+			"unsupported bit count %d; supported formats are "+
+				"26 (H10301), 34 (HID standard), 35 (HID Corporate 1000), "+
+				"and 37 (H10302/H10304); strip any leading idle bits or "+
+				"trailing pad bytes from your capture, or pass format_hint "+
+				"to force a specific length",
+			len(bits))
 	}
 	if err != nil {
 		return res, err
