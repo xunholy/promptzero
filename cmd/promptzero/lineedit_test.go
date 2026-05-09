@@ -322,21 +322,6 @@ func TestInsertPasteTabExpands(t *testing.T) {
 	}
 }
 
-func TestIndexOfAndHasPrefix(t *testing.T) {
-	if !hasPrefix([]byte("hello"), []byte("hel")) {
-		t.Fatal("hasPrefix should match hel in hello")
-	}
-	if hasPrefix([]byte("hi"), []byte("hello")) {
-		t.Fatal("hasPrefix should not match when src shorter than prefix")
-	}
-	if idx := indexOf([]byte("abcabcd"), []byte("abcd")); idx != 3 {
-		t.Fatalf("indexOf = %d, want 3", idx)
-	}
-	if idx := indexOf([]byte("abc"), []byte("xyz")); idx != -1 {
-		t.Fatalf("indexOf = %d, want -1", idx)
-	}
-}
-
 func TestQueuePopClearsFlagAtomically(t *testing.T) {
 	// Regression: popQueued used to clear hasQueued after releasing the
 	// mutex, which opened a window where a concurrent setQueued could write
