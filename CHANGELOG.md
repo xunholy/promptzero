@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-05-10
+
+Cleanup pass: a real slice-bounds bug fix in vision, two
+straggler panic-recovery sites picked up after v0.46.0
+shipped, and a long-overdue deprecation rescind across four
+files where the "v0.20.0 will remove this" comments had
+remained through v0.46.0.
+
+### Fixed
+
+- **`vision.AnalyzeBase64` data-URL parser**: an LLM-supplied
+  `image` arg of shape `"X;base64,..."` (where `";base64,"`
+  appeared in the first five bytes) tripped a `b64data[5:idx]`
+  slice-bounds panic. Extracted to a `parseDataURL` helper
+  that requires the literal `"data:"` prefix before slicing
+  and returns `ok=false` for malformed inputs so callers fall
+  back to raw-base64 mode. Pinned by
+  `TestParseDataURL_PanicSlicePathRegression` plus seven
+  other parse + extension-routing cases. Closes the only
+  `internal/` package that previously had no test file.
+
+- **`flipper/serial.go` handshake goroutine** (post-v0.46.0
+  follow-up): same channel-send-or-block contract as the REPL
+  turn dispatcher, missed by the v0.46.0 sweep because the
+  ctx-done arm's `<-done` synchronisation read makes the
+  potential deadlock less visible. Custom inline recover
+  now always sends to `done` with a synthetic
+  `"handshake panicked: ..."` error.
+
+- **SIGWINCH watcher goroutines** (post-v0.46.0 follow-up):
+  `watchWindowSize` on both Linux and BSD-likes wraps a long-
+  lived goroutine that delivers terminal-resize events to a
+  caller-supplied callback. Both build-tagged variants were
+  missed by the v0.46.0 sweep. Plain `obs.SafeGo` wraps; no
+  channel-send contract.
+
+### Changed
+
+- **Deprecation rescind sweep** across four files where the
+  "phased out in v0.19.0, removed in v0.20.0" comments had
+  remained through v0.46.0:
+  - `agent.SetMode` / `agent.opMode` / `agent.ErrBlockedByMode`
+    — mode is genuinely useful as a coarse capability filter
+    layered after the read-only rail; deprecation rescinded
+    and the layering documented.
+  - `persona.Persona.Tools` — allowlist-shape persona scoping
+    is genuinely useful alongside the read-only rail rather
+    than redundant with it. Rescinded plus eleven
+    `//nolint:staticcheck` markers across four files removed.
+  - `config.Config.Mode` field — comment rewritten to describe
+    the layering with `ReadOnly`.
+  - `setup.go setupMode` — function-level deprecation comment
+    dropped; two misleading runtime warnings (`"--mode recon
+    is deprecated"`, `"--mode assault is now a no-op"`)
+    removed because they lied about observable behaviour
+    (`ai.SetMode(m)` actually applies the mode and assault
+    genuinely allows everything Standard does). Kept the
+    recon/intel/stealth → SetReadOnly auto-enable as
+    documented defence-in-depth.
+
+### Removed
+
+- **`voice.Engine.Record / .Transcribe / .TranscribeReader`
+  non-ctx wrappers**. Production already on the Ctx variants
+  (`cmd/promptzero/repl.go` uses `RecordCtx`,
+  `internal/web/server.go` uses `TranscribeReaderCtx`); only
+  three test sites still called the wrappers, migrated to
+  `…Ctx(context.Background(), …)`.
+- **`marauder.Marauder.ExecLong`** alias for `Exec`. Zero
+  callers anywhere in the repo.
+
+After this release, the only remaining `Deprecated:` markers
+in the codebase are auto-generated protobuf comments in
+`internal/flipper/rpc/pb/*.pb.go`.
+
 ## [0.46.0] - 2026-05-09
 
 Panic-recovery hardening sweep across every long-lived
