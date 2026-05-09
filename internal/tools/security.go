@@ -445,14 +445,16 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 	}
 
 	// Producer — streams the wordlist without loading it into memory.
-	go func() {
+	// SafeGo + defer close ensures the channel closes even if Scan
+	// panics, so workers don't block forever in wg.Wait().
+	obs.SafeGo("hash_crack_dictionary.producer", func() {
+		defer close(wordCh)
 		scanner := bufio.NewScanner(wordReader)
 		scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1 MB line buffer
 		var lineCount int
 		for scanner.Scan() {
 			select {
 			case <-ctx.Done():
-				close(wordCh)
 				return
 			default:
 			}
@@ -464,16 +466,15 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 			allDone := len(remaining) == 0
 			remainMu.Unlock()
 			if allDone {
-				break
+				return
 			}
 			wordCh <- word
 			lineCount++
 			if maxWords > 0 && lineCount >= maxWords {
-				break
+				return
 			}
 		}
-		close(wordCh)
-	}()
+	})
 
 	wg.Wait()
 	close(resultCh)
@@ -768,17 +769,16 @@ func portScanTCPHandler(ctx context.Context, _ *Deps, p map[string]any) (string,
 		})
 	}
 
-	go func() {
+	obs.SafeGo("port_scan_tcp.producer", func() {
+		defer close(portCh)
 		for _, port := range ports {
 			select {
 			case <-ctx.Done():
-				close(portCh)
 				return
 			case portCh <- port:
 			}
 		}
-		close(portCh)
-	}()
+	})
 
 	wg.Wait()
 	close(resultCh)
@@ -1089,18 +1089,17 @@ func httpEnumCommonHandler(ctx context.Context, _ *Deps, p map[string]any) (stri
 	}
 
 	var requestsMade int
-	go func() {
+	obs.SafeGo("http_enum_common.producer", func() {
+		defer close(pathCh)
 		for _, path := range paths {
 			select {
 			case <-ctx.Done():
-				close(pathCh)
 				return
 			case pathCh <- path:
 				requestsMade++
 			}
 		}
-		close(pathCh)
-	}()
+	})
 
 	wg.Wait()
 	close(resultCh)
