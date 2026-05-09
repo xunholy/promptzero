@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
@@ -179,5 +180,95 @@ func TestBuildHandoff_IgnoresSyntheticPrefixes(t *testing.T) {
 	// Assistant replied, so the user turn is closed — no open threads.
 	if len(h.OpenThreads) != 0 {
 		t.Fatalf("open thread should have cleared after assistant reply, got %+v", h.OpenThreads)
+	}
+}
+
+// TestTruncatePreview_Short pins the no-op path: input under cap
+// returns trimmed but otherwise unchanged.
+func TestTruncatePreview_Short(t *testing.T) {
+	got := truncatePreview("  hello world  ", 50)
+	if got != "hello world" {
+		t.Errorf("truncatePreview short = %q, want %q", got, "hello world")
+	}
+}
+
+// TestTruncatePreview_AsciiCutsAtN pins the byte-level cut behaviour
+// for ASCII inputs (no walk-back fires when the boundary is already
+// a leading byte).
+func TestTruncatePreview_AsciiCutsAtN(t *testing.T) {
+	got := truncatePreview(strings.Repeat("a", 100), 10)
+	want := strings.Repeat("a", 10) + "…"
+	if got != want {
+		t.Errorf("truncatePreview ASCII = %q, want %q", got, want)
+	}
+}
+
+// TestTruncatePreview_UTF8Boundary pins the rune-aware cut. Without
+// the walk-back, a multi-byte rune at the boundary would be split
+// and the result would be invalid UTF-8 (renders as U+FFFD in
+// downstream consumers). Mirrors the boundary tests for clipTitle,
+// capSize, and audit.RecordCtx.
+func TestTruncatePreview_UTF8Boundary(t *testing.T) {
+	in := strings.Repeat("x", 8) + "é" + strings.Repeat("y", 50)
+	got := truncatePreview(in, 9) // byte 9 lands on 0xa9 (continuation)
+	// The walk-back drops the 'é' entirely, so output ends at byte 8.
+	if got != strings.Repeat("x", 8)+"…" {
+		t.Errorf("truncatePreview UTF-8 = %q, want %q", got, strings.Repeat("x", 8)+"…")
+	}
+	// Output must be valid UTF-8.
+	if !utf8.ValidString(got) {
+		t.Errorf("truncatePreview produced invalid UTF-8: % x", got)
+	}
+}
+
+// TestExtractBlocked_StructuredToolError pins the canonical happy
+// path: a tool_result body that is a JSON-marshaled ToolError gets
+// fully decoded into Code + Message.
+func TestExtractBlocked_StructuredToolError(t *testing.T) {
+	te := ToolError{
+		Code:    "flipper_nfc_timeout",
+		Tool:    "nfc_detect",
+		Message: "timeout after 30s reading card",
+	}
+	got := extractBlocked("nfc_detect", te.JSON())
+	if got.Tool != "nfc_detect" {
+		t.Errorf("Tool = %q", got.Tool)
+	}
+	if got.Code != "flipper_nfc_timeout" {
+		t.Errorf("Code = %q, want flipper_nfc_timeout", got.Code)
+	}
+	if got.Message != "timeout after 30s reading card" {
+		t.Errorf("Message = %q", got.Message)
+	}
+}
+
+// TestExtractBlocked_FreeformFallback covers the fallback path:
+// a non-JSON or pre-structured tool_result body is preserved as
+// the Message field with no Code set.
+func TestExtractBlocked_FreeformFallback(t *testing.T) {
+	got := extractBlocked("subghz_receive", "device returned: timeout")
+	if got.Code != "" {
+		t.Errorf("Code = %q, want empty (free-form fallback)", got.Code)
+	}
+	if got.Message != "device returned: timeout" {
+		t.Errorf("Message = %q", got.Message)
+	}
+	if got.Tool != "subghz_receive" {
+		t.Errorf("Tool field lost: %q", got.Tool)
+	}
+}
+
+// TestExtractBlocked_JSONWithoutCode handles the edge case: payload
+// LOOKS like JSON (starts with '{') but isn't a ToolError shape.
+// Falls back to free-form rather than emitting a ToolError with
+// Code="".
+func TestExtractBlocked_JSONWithoutCode(t *testing.T) {
+	got := extractBlocked("nfc_detect", `{"random":"json","without":"code"}`)
+	if got.Code != "" {
+		t.Errorf("Code = %q, want empty when ToolError shape didn't decode", got.Code)
+	}
+	// The free-form Message should preserve the raw JSON string.
+	if !strings.Contains(got.Message, "random") {
+		t.Errorf("Message lost the raw payload: %q", got.Message)
 	}
 }
