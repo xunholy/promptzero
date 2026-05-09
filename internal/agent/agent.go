@@ -442,6 +442,45 @@ func (a *Agent) SetStreamErrorCallback(f func(err error)) { a.streamErrCb = f }
 // this unset so tools execute without prompting.
 func (a *Agent) SetConfirmCallback(f ConfirmFunc) { a.confirmCb = f }
 
+// safeCallTextDelta invokes the operator-supplied delta callback with a
+// deferred recover. A buggy callback that panics would otherwise crash
+// the agent mid-stream — the recover converts the panic into a logged
+// warning and lets streamOnce continue accumulating the message.
+func safeCallTextDelta(cb func(TextDelta), d TextDelta) {
+	defer func() {
+		if r := recover(); r != nil {
+			obs.Default().Warn("agent_text_delta_cb_panicked",
+				"recovered", fmt.Sprintf("%v", r))
+		}
+	}()
+	cb(d)
+}
+
+// safeCallStreamErr is the recover-wrapped invocation for stream-error
+// callbacks. Same shape as safeCallTextDelta.
+func safeCallStreamErr(cb func(error), err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			obs.Default().Warn("agent_stream_err_cb_panicked",
+				"recovered", fmt.Sprintf("%v", r))
+		}
+	}()
+	cb(err)
+}
+
+// safeCallUsage is the recover-wrapped invocation for usage callbacks.
+// A panic here would lose token-accounting for the turn but must not
+// crash the agent (which has just successfully completed the API call).
+func safeCallUsage(cb func(Usage), u Usage) {
+	defer func() {
+		if r := recover(); r != nil {
+			obs.Default().Warn("agent_usage_cb_panicked",
+				"recovered", fmt.Sprintf("%v", r))
+		}
+	}()
+	cb(u)
+}
+
 // SetConfirmIdleTimeout overrides how long confirmWithIdleTimeout waits for
 // an operator response before treating silence as a deny. A zero or negative
 // value restores the default (5 minutes).
@@ -1107,18 +1146,18 @@ func (a *Agent) streamOnce(ctx context.Context, sysPrompt string, tools []anthro
 		}
 		if cbd, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 			if td, ok := cbd.Delta.AsAny().(anthropic.TextDelta); ok && td.Text != "" {
-				a.textDeltaCb(TextDelta{Text: td.Text})
+				safeCallTextDelta(a.textDeltaCb, TextDelta{Text: td.Text})
 			}
 		}
 	}
 	if err := stream.Err(); err != nil {
 		if a.streamErrCb != nil {
-			a.streamErrCb(err)
+			safeCallStreamErr(a.streamErrCb, err)
 		}
 		return nil, err
 	}
 	if a.usageCb != nil {
-		a.usageCb(Usage{
+		safeCallUsage(a.usageCb, Usage{
 			InputTokens:         msg.Usage.InputTokens,
 			OutputTokens:        msg.Usage.OutputTokens,
 			CacheReadTokens:     msg.Usage.CacheReadInputTokens,
