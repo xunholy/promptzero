@@ -7,7 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.45.0] - 2026-05-09
+## [0.46.0] - 2026-05-09
+
+Panic-recovery hardening sweep across every long-lived
+goroutine that processes external input or drives the REPL.
+Seven commits, all on the same theme: a panic in any one of
+these paths previously crashed the whole CLI; with this
+release, every site is wrapped so the panic logs a stack
+trace and the surrounding system stays responsive.
+
+### Fixed
+
+- **`marauder.Stream` serial reader** — long-lived goroutine
+  parsing untrusted bytes from the ESP32 Marauder. Wrapped in
+  `obs.SafeGo`; deferred lock release and channel close still
+  fire during panic unwind.
+- **`marauder/ble.scan_for_address`** — BLE advertisement
+  callback. A panic in the scan handler no longer crashes the
+  CLI; the caller's select falls through to the normal scan
+  timeout.
+- **`hash_crack_dictionary` / `port_scan_tcp` / `http_enum_common`
+  producers** — work-distributing goroutines that feed worker
+  pools via channels. Wrapped + hoisted `close(ch)` to
+  `defer` so a producer panic no longer leaves workers
+  blocked in `for range ch` and deadlocks `wg.Wait()` for the
+  process lifetime.
+- **`crypto1.Mfkey32Fast` racing recovery paths** — both the
+  Garcia §4 fast path and the guaranteed fallback are now
+  panic-safe. A panic in one path is recovered; the surviving
+  goroutine still produces a result and the outer select
+  unblocks normally.
+- **`rules.DetectorEngine` parallel detectors** — a panicking
+  detector now yields a structured `Verdict{VerdictUnknown,
+  evidence: "detector panic: ..."}` rather than crashing the
+  process or leaving an empty slot. Sibling detectors in the
+  same batch keep running. Behaviour pinned by
+  `TestDetectorEngine_DetectorPanicYieldsUnknown`.
+- **REPL turn dispatcher** — `ai.Run` runs on a goroutine that
+  must always send to `turnDone` and call `releaseTurn()` or
+  the main select loop deadlocks. Custom inline `defer
+  recover()` now fills `turnResult.err` with `"agent panicked:
+  …"` so the panic surfaces in the REPL output instead of
+  crashing the CLI.
+- **REPL `/reconnect`, watch fsnotify pump, watch dispatcher**
+  — three more REPL goroutines wrapped in `obs.SafeGo`; same
+  defensive contract as the other long-lived goroutines.
+
+
 
 Refinement-and-coverage pass on the v0.44 additions plus two
 small panic-resilience extensions. Eight commits across three
