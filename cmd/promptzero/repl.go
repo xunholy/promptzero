@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
@@ -723,9 +725,23 @@ func enterREPL(deps *REPLDeps) error {
 		go runTurnStatusBar(ed, &turnStartedAt, &turnNote, &turnToolCount)
 		turnCtx, releaseTurn := sh.withCancel(ctx)
 		go func() {
-			resp, runErr := ai.Run(turnCtx, input)
-			releaseTurn()
-			turnDone <- turnResult{response: resp, err: runErr}
+			// Custom recover (not obs.SafeGo) so a panic in ai.Run
+			// still releases the turn ctx + sends to turnDone — the
+			// REPL receiver blocks on that channel and would hang
+			// otherwise. Surface the panic as an error to the user
+			// rather than crashing the whole CLI.
+			var res turnResult
+			defer func() {
+				if r := recover(); r != nil {
+					obs.Default().Error("repl.dispatch_turn.panic",
+						"panic", r,
+						"stack", string(debug.Stack()))
+					res = turnResult{err: fmt.Errorf("agent panicked: %v", r)}
+				}
+				releaseTurn()
+				turnDone <- res
+			}()
+			res.response, res.err = ai.Run(turnCtx, input)
 		}()
 	}
 
