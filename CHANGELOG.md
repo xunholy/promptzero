@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-05-09
+
+Panic-resilience pass. Four commits that close every remaining
+"a panic crashes the whole agent" hazard in the request-handling
+hot path. With v0.42's SafeGo discipline already covering
+long-lived goroutines, this release covers the *synchronous* call
+sites: tool dispatch, workflow phases, streaming callbacks, and
+the security worker pools.
+
+### Added
+
+- **Tool dispatch recovers panics into structured errors.**
+  `agent.dispatch` called `spec.Handler` directly. With 200+
+  handlers registered any single nil-deref / parser edge case
+  would crash the whole agent. A deferred recover (named-return-
+  values pattern) now converts a panic into
+  `"tool <name> panicked: <value>"` — the LLM sees a structured
+  failure and can react / retry instead of the process exiting.
+  (`internal/agent/agent.go`)
+
+- **Workflow phases recover panics into failed-phase results.**
+  `workflows.runPhase` called `fn()` directly; a panic in any
+  phase (badge_walk, mousejack, garage_door, rolljam, etc.) would
+  crash the agent. Now produces a structured failed phase
+  (OK=false, Output names the panic, ElapsedMs still populated)
+  so the workflow's caller can decide whether to bail or
+  continue. Adds the package's first runner_test.go with 3 tests.
+  (`internal/workflows/runner.go`)
+
+- **Streaming callbacks recover panics.** The textDelta /
+  streamErr / usage callbacks set via SetTextDeltaCallback /
+  SetStreamErrorCallback / SetUsageCallback now go through three
+  tiny `safeCall*` helpers that catch panics and log a warning
+  instead of crashing the agent mid-stream. A buggy operator
+  callback no longer takes the process down on a successful API
+  call. (`internal/agent/agent.go`)
+
+- **Security worker pools wrapped in obs.SafeGo.**
+  `hash_crack_dictionary`, `port_scan_tcp`, and `http_path_scan`
+  spawned worker goroutines as raw `go func()`. Each is now
+  `obs.SafeGo("tools.<scanner>.worker", ...)` so a panic in any
+  worker is recovered + logged with a stack trace. The deferred
+  `wg.Done()` inside each func still fires during panic unwind
+  so the WaitGroup balance is preserved.
+  (`internal/tools/security.go`)
+
 ## [0.42.0] - 2026-05-09
 
 Concurrency-safety pass. Seven commits across three cohesive
