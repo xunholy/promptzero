@@ -11,6 +11,7 @@ import (
 	mcpclient "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/tools"
 )
@@ -149,10 +150,17 @@ func (f *Federation) Start(ctx context.Context, cfg FederationConfig) error {
 		f.mu.Unlock()
 
 		f.healthWG.Add(1)
-		go func() {
+		// SafeGo so a panic inside runHealthLoop (a misbehaving
+		// MCP client returning unexpected JSON shapes, etc.) is
+		// recovered + logged with a stack trace instead of
+		// crashing the whole agent process. The deferred Done
+		// fires during panic unwind so the WaitGroup balance is
+		// preserved. Same discipline as
+		// 5e1ea6d / 57adfa7 / ab6a0c0 / 73fa040.
+		obs.SafeGo("mcpfed.health_loop", func() {
 			defer f.healthWG.Done()
 			mc.runHealthLoop(f.healthCx)
-		}()
+		})
 	}
 
 	if len(errs) > 0 {
