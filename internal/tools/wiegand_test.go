@@ -262,6 +262,79 @@ func TestWiegandHandler_OutputContainsHex(t *testing.T) {
 	}
 }
 
+// TestWiegandHandler_FormatHintMatches confirms that when the
+// caller passes format_hint and the bits length matches, the
+// decode succeeds normally.
+func TestWiegandHandler_FormatHintMatches(t *testing.T) {
+	out, err := wiegandDecodeSpec.Handler(context.Background(), &Deps{}, map[string]any{
+		"bits":        "1" + "01111011" + "1011001001101110" + "1",
+		"format_hint": float64(26),
+	})
+	if err != nil {
+		t.Fatalf("Handler with matching format_hint: %v", err)
+	}
+	if !strings.Contains(out, "0x7B") {
+		t.Errorf("output missing facility hex: %s", out)
+	}
+}
+
+// TestWiegandHandler_FormatHintMismatchErrors covers the
+// guidance path: when the operator's capture has stray bits and
+// they pass format_hint to force the canonical length, the
+// decoder returns a clear error rather than a silently wrong
+// auto-detect (e.g., parsing 28 bits as some random format).
+func TestWiegandHandler_FormatHintMismatchErrors(t *testing.T) {
+	// 28 bits — close to 26 but not exact; without format_hint
+	// the dispatcher would say "unsupported bit count 28".
+	in := "00" + "1" + "01111011" + "1011001001101110" + "1"
+	_, err := wiegandDecodeSpec.Handler(context.Background(), &Deps{}, map[string]any{
+		"bits":        in,
+		"format_hint": float64(26),
+	})
+	if err == nil {
+		t.Fatal("expected error for format_hint=26 with 28-bit input")
+	}
+	if !strings.Contains(err.Error(), "format_hint=26") {
+		t.Errorf("error %q should mention the hint value", err.Error())
+	}
+	if !strings.Contains(err.Error(), "length 28") {
+		t.Errorf("error %q should mention the actual length", err.Error())
+	}
+}
+
+// TestWiegandHandler_FormatHintZeroIsAuto confirms that
+// format_hint=0 (or absent) means "auto-detect". This keeps
+// callers passing the param-with-default-zero from accidentally
+// breaking the legacy auto path.
+func TestWiegandHandler_FormatHintZeroIsAuto(t *testing.T) {
+	out, err := wiegandDecodeSpec.Handler(context.Background(), &Deps{}, map[string]any{
+		"bits":        "1" + "01111011" + "1011001001101110" + "1",
+		"format_hint": float64(0),
+	})
+	if err != nil {
+		t.Fatalf("Handler with format_hint=0: %v (zero should mean auto)", err)
+	}
+	if !strings.Contains(out, "H10301") {
+		t.Errorf("output missing format identifier: %s", out)
+	}
+}
+
+// TestWiegand_UnsupportedErrorListsAllFormats pins the operator-
+// readable error message: the supported set is named with each
+// format identifier, not just numeric bit counts.
+func TestWiegand_UnsupportedErrorListsAllFormats(t *testing.T) {
+	bits := make([]bool, 28) // not a known length
+	_, err := DecodeWiegand(bits)
+	if err == nil {
+		t.Fatal("expected error for 28-bit input")
+	}
+	for _, want := range []string{"H10301", "HID Corporate 1000", "H10302", "format_hint"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q missing guidance %q", err.Error(), want)
+		}
+	}
+}
+
 // TestParityHelpers covers the two parity-bit primitives.
 func TestParityHelpers(t *testing.T) {
 	// Even parity: leading bit makes total ones count even.
