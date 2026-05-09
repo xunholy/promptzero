@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-05-09
+
+New offensive primitive + test-coverage and stdlib-cleanup pass.
+Seven commits across three small themes.
+
+### Added
+
+- **`wiegand_decode` tool — offline parser for sniffed
+  access-control bitstreams.** Operators sniffing Wiegand reader
+  signals (via ESPKey, RPI-RFID-Tool, or a Flipper wired to
+  D0/D1) can now paste raw bitstreams and get structured
+  (facility code, card number, parity-validity) fields back.
+  Supports the four most common formats: 26-bit H10301, 34-bit
+  HID standard, 35-bit HID Corporate 1000, 37-bit H10302 /
+  H10304. Pure offline parser (Risk.Low, GroupHostTools); no
+  Flipper required. Implements the highest-value gap from the
+  v0.43 public-research review. (`internal/tools/wiegand.go`)
+
+### Tested
+
+- **`agent.truncatePreview` + `agent.extractBlocked`.** Two
+  handoff helpers with no direct coverage despite carrying load-
+  bearing behaviour. 6 hermetic tests including a UTF-8
+  boundary case for the truncator and the JSON-shape
+  discriminator branches in extractBlocked.
+  (`internal/agent/handoff_test.go`)
+
+- **`cmd/promptzero/setup.go::resolveConfirmRisk`.** First tests
+  for setup.go. 6 cases covering defaults, flag-over-cfg
+  precedence, --yolo escape hatch, "none" alias, level-table
+  with whitespace/case tolerance, and the unknown-typo error
+  path with safe-default fallback. (`cmd/promptzero/setup_test.go`)
+
+### Cleaned up
+
+- **Three hand-rolled stdlib reimplementations replaced.**
+  - `internal/audit/audit_test.go` — dropped `contains` and
+    `itoa` (used `strings.Contains` and `strconv.Itoa` inline).
+  - `cmd/promptzero/lineedit.go` — dropped `hasPrefix` and
+    `indexOf` ([]byte versions of stdlib `bytes.HasPrefix` /
+    `bytes.Index`); call sites in the bracketed-paste detector
+    now use stdlib directly.
+  - `cmd/promptzero/discover.go` — dropped the ASCII-only
+    `toLower` (now uses `strings.ToLower`) and `divider`
+    (`strings.Repeat("-", n)`); `containsFold` body simplified
+    via `strings.Contains(strings.ToLower(s), strings.ToLower(sub))`.
+    Side benefit: BLE device names containing non-ASCII case
+    now case-fold correctly where they didn't before.
+
+  ~75 lines deleted across the three files; no behaviour change
+  for the common ASCII paths.
+
 ## [0.43.0] - 2026-05-09
 
 Panic-resilience pass. Four commits that close every remaining
