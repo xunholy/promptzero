@@ -164,16 +164,16 @@ func errCodeForTool(toolName, suffix string) string {
 	return flat + "_" + suffix
 }
 
-// withDeviceState returns a copy of te with DeviceState set to the
+// withDeviceState returns a copy of e with DeviceState set to the
 // agent's cached flipper snapshot, or the receiver unchanged when no
 // state is available. Called at the agent boundary after
 // newToolError so the Flipper dependency stays local to this helper.
-func (te ToolError) withDeviceState(state *flipper.State) ToolError {
+func (e ToolError) withDeviceState(state *flipper.State) ToolError {
 	if state == nil {
-		return te
+		return e
 	}
-	te.DeviceState = state
-	return te
+	e.DeviceState = state
+	return e
 }
 
 // truncateExcerpt cuts s to at most toolErrExcerptMax bytes, preferring
