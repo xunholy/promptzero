@@ -14,6 +14,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/flipper/rpc"
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // screenClient is the narrow surface the web layer needs from an RPC client.
@@ -103,8 +104,13 @@ func (s *Server) handleScreenAcquire(c *sessionConn) {
 	})
 	s.screenAudit("web.screen.start", c.id, "", audit.LevelAction, "medium")
 
-	go s.streamFrames(streamCtx, c, frames)
-	go s.heartbeatScreen(streamCtx)
+	// Wrap in obs.SafeGo so a panic inside the screen-streaming
+	// path (RPC frame decode, json.Marshal of an unexpected
+	// payload shape) is recovered + logged with a stack trace
+	// instead of crashing the whole web server. The screen UI
+	// degrades to "no frames" rather than taking everyone with it.
+	obs.SafeGo("web.screen.stream", func() { s.streamFrames(streamCtx, c, frames) })
+	obs.SafeGo("web.screen.heartbeat", func() { s.heartbeatScreen(streamCtx) })
 }
 
 // handleScreenRelease processes a screen_release WS frame. Idempotent if not holder.
