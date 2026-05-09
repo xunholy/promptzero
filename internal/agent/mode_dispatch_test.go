@@ -78,6 +78,51 @@ func TestDispatch_ModeUnknownToolStillReportsUnknown(t *testing.T) {
 	}
 }
 
+// TestSafeCallTextDelta_RecoversPanic pins the recover-wrapped
+// streaming callback. A buggy operator-supplied textDelta
+// callback that panics during streamOnce would otherwise crash
+// the agent mid-stream; safeCallTextDelta keeps the stream
+// accumulating.
+func TestSafeCallTextDelta_RecoversPanic(t *testing.T) {
+	called := false
+	safeCallTextDelta(func(d TextDelta) {
+		called = true
+		panic("test-panic-marker-text-delta")
+	}, TextDelta{Text: "x"})
+	if !called {
+		t.Errorf("callback was not invoked")
+	}
+	// safeCallTextDelta returning is itself the success — if the
+	// recover didn't fire, the deferred panic would have crashed
+	// the test goroutine.
+}
+
+// TestSafeCallStreamErr_RecoversPanic mirrors the above for the
+// stream-error callback.
+func TestSafeCallStreamErr_RecoversPanic(t *testing.T) {
+	called := false
+	safeCallStreamErr(func(err error) {
+		called = true
+		panic("test-panic-marker-stream-err")
+	}, errors.New("upstream"))
+	if !called {
+		t.Errorf("callback was not invoked")
+	}
+}
+
+// TestSafeCallUsage_RecoversPanic mirrors the above for the
+// usage callback.
+func TestSafeCallUsage_RecoversPanic(t *testing.T) {
+	called := false
+	safeCallUsage(func(u Usage) {
+		called = true
+		panic("test-panic-marker-usage")
+	}, Usage{InputTokens: 100})
+	if !called {
+		t.Errorf("callback was not invoked")
+	}
+}
+
 // TestDispatch_RecoversToolHandlerPanic pins the agent's safety
 // guarantee: a buggy tool handler that panics must surface as a
 // structured error from dispatch, not crash the whole agent
