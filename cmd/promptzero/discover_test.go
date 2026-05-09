@@ -79,29 +79,6 @@ func TestContainsFold(t *testing.T) {
 	}
 }
 
-// TestToLower covers the ASCII-only lowercase helper. Pin behaviour
-// for non-ASCII bytes since the implementation only handles A-Z.
-func TestToLower(t *testing.T) {
-	cases := []struct {
-		in, want string
-	}{
-		{"FLIPPER", "flipper"},
-		{"Flipper Zero", "flipper zero"},
-		{"already-lower", "already-lower"},
-		{"", ""},
-		{"123ABC", "123abc"},
-		{"Mix3D-c4se", "mix3d-c4se"},
-		// Non-ASCII passes through verbatim — documents the limitation.
-		{"ÀBC", "Àbc"},
-	}
-	for _, c := range cases {
-		got := toLower(c.in)
-		if got != c.want {
-			t.Errorf("toLower(%q) = %q, want %q", c.in, got, c.want)
-		}
-	}
-}
-
 // TestTruncate covers the table-rendering width helper. Edge cases:
 // short strings pass through, long strings get an ellipsis suffix,
 // n<=1 falls back to a hard slice (no room for the ellipsis).

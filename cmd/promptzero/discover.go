@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/flipper/transport"
@@ -86,30 +87,20 @@ func pickFlipperCandidate(devices []transport.DiscoveredDevice) transport.Discov
 	return devices[0]
 }
 
+// containsFold reports whether sub is a case-insensitive substring of
+// s. Wraps strings.Contains + strings.ToLower into one call so the
+// pickFlipperCandidate predicate stays readable; the early-return
+// for an over-long sub is an allocation-skip optimisation.
 func containsFold(s, sub string) bool {
 	if len(sub) > len(s) {
 		return false
 	}
-	lo := toLower(s)
-	subLo := toLower(sub)
-	for i := 0; i+len(subLo) <= len(lo); i++ {
-		if lo[i:i+len(subLo)] == subLo {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
 }
 
-func toLower(s string) string {
-	b := []byte(s)
-	for i := range b {
-		if b[i] >= 'A' && b[i] <= 'Z' {
-			b[i] += 32
-		}
-	}
-	return string(b)
-}
-
+// truncate cuts s to at most n bytes, replacing the cut bytes with an
+// ellipsis when n > 1. Stdlib has no direct equivalent shape — this
+// table-rendering helper is small enough to keep inline.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -120,10 +111,8 @@ func truncate(s string, n int) string {
 	return s[:n-1] + "…"
 }
 
+// divider returns a string of n hyphens. Used by the BLE-discover
+// table for column separators.
 func divider(n int) string {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = '-'
-	}
-	return string(b)
+	return strings.Repeat("-", n)
 }
