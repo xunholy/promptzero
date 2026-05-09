@@ -130,8 +130,12 @@ func Export(entries []audit.Entry, w io.Writer, opts Options) (int, error) {
 			return 0, fmt.Errorf("unknown min_level %q (valid: info, action, warning, critical)", opts.MinLevel)
 		}
 	}
+	// Explicit Flush at the end (rather than `defer bw.Flush()`) so a
+	// final-flush error is surfaced. A deferred ignore would silently
+	// truncate the export when the underlying writer fails on the
+	// last buffer drain — operators see "wrote N rows" for a
+	// half-written file.
 	bw := bufio.NewWriter(w)
-	defer bw.Flush()
 	enc := json.NewEncoder(bw)
 	var count int
 	for _, e := range entries {
@@ -153,6 +157,9 @@ func Export(entries []audit.Entry, w io.Writer, opts Options) (int, error) {
 			return count, fmt.Errorf("unknown format: %s", opts.Format)
 		}
 		count++
+	}
+	if err := bw.Flush(); err != nil {
+		return count, fmt.Errorf("flush: %w", err)
 	}
 	return count, nil
 }
