@@ -45,7 +45,7 @@ read_only: true                  # in config; persistent
 
 The 78 currently-Low-risk tools cover audit queries, scans, file reads, decodes, and inventory. Anything that mutates state or transmits (Medium / High / Critical) is refused.
 
-> **Migrating from `--mode`:** `--mode recon|intel|stealth` are deprecated and aliased to `--read-only` with a one-release deprecation window. `--mode standard|assault` are deprecated no-ops. v0.20.0 will remove the flag entirely.
+> **Layering with `--mode`:** `--read-only` and `--mode` (`standard` / `recon` / `intel` / `stealth` / `assault`) are independent gates that compose. Dispatch consults `--read-only` first, then the per-mode group allow-list. As a defence-in-depth convenience, `--mode recon|intel|stealth` also engage `--read-only` automatically — both layers refuse on either failure.
 
 ## Personas
 
@@ -60,7 +60,7 @@ Personas are YAML files that set the agent's system prompt, default risk thresho
 
 Load with `promptzero --persona <name>` or set `persona: <name>` in config. Switch at runtime with `/persona <name>`.
 
-> **Per-persona tool allowlist (`tools:` field):** **deprecated in v0.19.0.** The tool-narrowing job moved to `--read-only` at the safety layer. User personas under `~/.promptzero/personas/*.yaml` that still set `tools:` keep working for one release; v0.20.0 will retire the field. Strip the `tools:` list and pair with `--read-only` for the equivalent intent.
+> **Per-persona tool allowlist (`tools:` field):** Optional positive scoping that narrows the catalog the LLM sees to a specific set of tool names. Layered with `--read-only`: the safety rail handles the no-write contract, while `tools:` lets a persona declare a tighter focus (e.g. a "lecture" persona exposing only inspect-and-explain tools). Leave it empty when the persona's intent is fully covered by the system prompt + risk threshold + read-only rail (the four shipped templates take this path).
 
 ### Per-tier provider override (v0.19.0+)
 
