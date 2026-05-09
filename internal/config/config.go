@@ -59,9 +59,11 @@ type Config struct {
 	// resolves to standard (no constraints, behaviour identical to
 	// pre-mode builds). The CLI flag --mode overrides this value.
 	//
-	// Deprecated: use ReadOnly instead. Mode is being phased out in
-	// v0.19.0. recon|intel|stealth aliases to read_only: true;
-	// standard|assault are no-ops. v0.20.0 will remove this field.
+	// Layered with ReadOnly: dispatch consults ReadOnly first, then
+	// the per-mode group allow-list. Both gates are independently
+	// useful — ReadOnly is the hard no-write rail; Mode is a coarse
+	// capability profile (Recon blocks transmit groups, Stealth
+	// blocks Marauder + RF, etc.).
 	Mode string `yaml:"mode,omitempty"`
 
 	// ReadOnly engages the v0.19.0 safety rail: dispatch refuses any

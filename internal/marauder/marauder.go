@@ -132,15 +132,6 @@ func (m *Marauder) Exec(command string, timeout time.Duration) (string, error) {
 	return m.readUntilPrompt(timeout)
 }
 
-// ExecLong is a deprecated alias for Exec; callers supply the timeout
-// themselves, so there is no behavioural difference between the two.
-// Prefer Exec in new code. Retained to avoid breaking external callers.
-//
-// Deprecated: use Exec.
-func (m *Marauder) ExecLong(command string, timeout time.Duration) (string, error) {
-	return m.Exec(command, timeout)
-}
-
 // Stream sends a command and streams output lines to the returned channel.
 // Close the done channel to stop streaming; stopscan is sent automatically.
 func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error) {
