@@ -271,6 +271,107 @@ func TestCaptureParseWriteRoundTrip(t *testing.T) {
 	}
 }
 
+// TestParseCapturesHex_ValidPair pins the hex-input parser path
+// against a hand-built two-capture pair. Operators paste captures
+// in hex when the source is a Proxmark3 dump or an exfil from a
+// CFW iCLASS sniffer; whitespace/newline tolerance matters.
+func TestParseCapturesHex_ValidPair(t *testing.T) {
+	// 48 hex chars per capture (8 CSN + 8 CC + 4 NR + 4 MAC = 24
+	// bytes), 2 captures = 96 chars total. Built via Sprintf so
+	// the lengths are auditable.
+	hexIn := "" +
+		"0102030405060708" + "0000000000000000" + "AABBCCDD" + "11223344" + // cap 1
+		"FFFEFDFCFBFAF9F8" + "1020304050607080" + "01020304" + "DEADBEEF" // cap 2
+	got, err := ParseCapturesHex(hexIn)
+	if err != nil {
+		t.Fatalf("ParseCapturesHex: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+	if got[0].CSN != [8]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08} {
+		t.Errorf("cap[0].CSN = %x", got[0].CSN)
+	}
+	if got[0].MAC != [4]byte{0x11, 0x22, 0x33, 0x44} {
+		t.Errorf("cap[0].MAC = %x", got[0].MAC)
+	}
+	if got[1].MAC != [4]byte{0xDE, 0xAD, 0xBE, 0xEF} {
+		t.Errorf("cap[1].MAC = %x", got[1].MAC)
+	}
+}
+
+// TestParseCapturesHex_StripsWhitespace pins the loose-format
+// tolerance. Real captures arrive with spaces and newlines from
+// Proxmark3 stdout; the parser must accept them.
+func TestParseCapturesHex_StripsWhitespace(t *testing.T) {
+	hexIn := "01 02 03 04 05 06 07 08\n" +
+		"00 00 00 00 00 00 00 00\n" +
+		"AA BB CC DD\n" +
+		"11 22 33 44\n"
+	got, err := ParseCapturesHex(hexIn)
+	if err != nil {
+		t.Fatalf("ParseCapturesHex: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(got) = %d, want 1", len(got))
+	}
+	if got[0].MAC != [4]byte{0x11, 0x22, 0x33, 0x44} {
+		t.Errorf("MAC after whitespace strip = %x, want 11223344", got[0].MAC)
+	}
+}
+
+// TestParseCapturesHex_RejectsOddLength covers the length-multiple
+// guard: a stray nibble (47 chars instead of 48) is a corrupt
+// capture and should error out, not silently truncate.
+func TestParseCapturesHex_RejectsOddLength(t *testing.T) {
+	hexIn := "0102030405060708000000000000000aabbccdd11223344" // 47 chars
+	_, err := ParseCapturesHex(hexIn)
+	if err == nil {
+		t.Fatal("expected error for odd-length hex input")
+	}
+}
+
+// TestParseCapturesHex_RejectsBadHex covers the hex-decode guard:
+// a non-hex character (operator paste error, accidental ASCII
+// label) errors with a clear message.
+func TestParseCapturesHex_RejectsBadHex(t *testing.T) {
+	_, err := ParseCapturesHex("not hex at all")
+	if err == nil {
+		t.Fatal("expected error for non-hex input")
+	}
+	if !strings.Contains(err.Error(), "hex decode") {
+		t.Errorf("error %q should mention 'hex decode'", err.Error())
+	}
+}
+
+// TestParseCapturesHex_RejectsWrongMultiple validates the per-
+// capture stride. 48 chars per capture is the contract; passing
+// 72 chars (1.5 captures) errors with a structured message rather
+// than silently dropping the trailing nibble run.
+func TestParseCapturesHex_RejectsWrongMultiple(t *testing.T) {
+	// 72 hex chars = 36 bytes, not a multiple of CaptureSize (24).
+	hexIn := strings.Repeat("aa", 36)
+	_, err := ParseCapturesHex(hexIn)
+	if err == nil {
+		t.Fatal("expected error for non-multiple input")
+	}
+	if !strings.Contains(err.Error(), "multiple of") {
+		t.Errorf("error %q should mention 'multiple of'", err.Error())
+	}
+}
+
+// TestParseCapturesHex_Empty covers the no-data path: an empty
+// hex string returns an empty slice without error.
+func TestParseCapturesHex_Empty(t *testing.T) {
+	got, err := ParseCapturesHex("")
+	if err != nil {
+		t.Fatalf("ParseCapturesHex(\"\") = %v, want nil", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("len(got) = %d, want 0", len(got))
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // helpers
 // ─────────────────────────────────────────────────────────────────────────────
