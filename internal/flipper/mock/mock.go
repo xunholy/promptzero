@@ -325,19 +325,19 @@ func openPty() (*os.File, *os.File, string, error) {
 		return nil, nil, "", fmt.Errorf("open ptmx: %w", err)
 	}
 	if err := unix.IoctlSetPointerInt(int(master.Fd()), unix.TIOCSPTLCK, 0); err != nil {
-		master.Close()
+		_ = master.Close()
 		return nil, nil, "", fmt.Errorf("unlockpt: %w", err)
 	}
 	n, err := unix.IoctlGetInt(int(master.Fd()), unix.TIOCGPTN)
 	if err != nil {
-		master.Close()
+		_ = master.Close()
 		return nil, nil, "", fmt.Errorf("ptsname: %w", err)
 	}
 	slavePath := fmt.Sprintf("/dev/pts/%d", n)
 
 	slave, err := os.OpenFile(slavePath, os.O_RDWR|unix.O_NOCTTY, 0)
 	if err != nil {
-		master.Close()
+		_ = master.Close()
 		return nil, nil, "", fmt.Errorf("open slave: %w", err)
 	}
 	if attr, gerr := unix.IoctlGetTermios(int(slave.Fd()), unix.TCGETS); gerr == nil {
