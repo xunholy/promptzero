@@ -39,13 +39,6 @@ func init() { //nolint:gochecknoinits
 	Register(mfkey32RecoverSpec)
 }
 
-// federatedFallbackMsg explains the v0.6 redirect for live-NFC attacks.
-// Preserved for documentation; the mfoc/mfcuk handlers now run offline.
-//
-//nolint:unused
-const federatedFallbackMsg = "Use the federated Proxmark3 MCP (configure mplogas/pm3-mcp under mcp_clients in config.yaml) — the live-NFC nested / darkside attacks require a real reader. " +
-	"For OFFLINE recovery from already-captured (uid, nt, nr, ar) tuples, use mfkey32_recover with appropriate inputs."
-
 // --- mfoc_attack -------------------------------------------------------
 
 var mfocAttackSpec = Spec{
