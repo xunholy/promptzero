@@ -82,7 +82,9 @@ func TestRegistrySize(t *testing.T) {
 	// at the source.
 	// v0.20.0 added explain_last_result + marauder_handoff_hashcat.
 	// v0.22.0 added badkb_run (BadUSB-over-BLE thin wrapper).
-	const expected = 271
+	// v0.43+ added wiegand_decode (offline parser for sniffed
+	// access-control reader bitstreams; no Flipper required).
+	const expected = 272
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
