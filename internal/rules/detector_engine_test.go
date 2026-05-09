@@ -178,6 +178,57 @@ func TestDetectorEngine_RegisterForMany(t *testing.T) {
 	}
 }
 
+// panicDetector implements Detector but blows up inside Evaluate.
+// Used to pin the panic-recovery contract on the engine's parallel
+// evaluation goroutines.
+type panicDetector struct{ name string }
+
+func (p *panicDetector) Name() string { return p.name }
+func (p *panicDetector) Evaluate(context.Context, string, string, string) (Verdict, error) {
+	panic("synthetic detector panic")
+}
+
+func TestDetectorEngine_DetectorPanicYieldsUnknown(t *testing.T) {
+	// A misbehaving detector that panics must not crash the engine
+	// goroutine and must not leave a zero-valued verdict slot.
+	// Contract: surface as VerdictUnknown with evidence naming
+	// the panic, same fail-soft behaviour as a returned error.
+	e := NewDetectorEngine(time.Second)
+	good := &stubDetector{name: "ok", verdict: Verdict{Verdict: VerdictSuccess, Confidence: 0.9}}
+	bad := &panicDetector{name: "panicker"}
+	e.Register("wifi_deauth", good)
+	e.Register("wifi_deauth", bad)
+
+	verdicts := e.EvaluateFor(context.Background(), "wifi_deauth", "", "")
+	if len(verdicts) != 2 {
+		t.Fatalf("want 2 verdicts, got %d", len(verdicts))
+	}
+
+	// Find the panicker's verdict — order is registration order, but
+	// scan by DetectedBy to keep the test resilient to refactoring.
+	var panicVerdict Verdict
+	for _, v := range verdicts {
+		if v.DetectedBy == "panicker" {
+			panicVerdict = v
+		}
+	}
+	if panicVerdict.Verdict != VerdictUnknown {
+		t.Errorf("panicked detector should yield unknown, got %q", panicVerdict.Verdict)
+	}
+	if !strings.Contains(panicVerdict.Evidence, "detector panic") {
+		t.Errorf("evidence should mention the panic: %q", panicVerdict.Evidence)
+	}
+	if !strings.Contains(panicVerdict.Evidence, "synthetic detector panic") {
+		t.Errorf("evidence should include the panic value: %q", panicVerdict.Evidence)
+	}
+
+	// Sibling detector still ran and produced its verdict — panic in
+	// one goroutine must not poison the others.
+	if good.called.Load() != 1 {
+		t.Errorf("good detector called %d times, want 1", good.called.Load())
+	}
+}
+
 func TestDetectorEngine_RegisterBuiltins(t *testing.T) {
 	// Built-ins should wire against the expected tools without extra
 	// registrations. Use a stub judge so nothing hits the SDK.
