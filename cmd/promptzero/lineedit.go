@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -82,7 +83,7 @@ func readKeys(out chan<- keyEvent) {
 			if inPaste {
 				// Look for the paste-end marker somewhere in the remaining
 				// bytes. Anything before it is literal paste content.
-				if idx := indexOf(data[i:], pasteEnd); idx >= 0 {
+				if idx := bytes.Index(data[i:], pasteEnd); idx >= 0 {
 					pasteBuf = append(pasteBuf, data[i:i+idx]...)
 					out <- keyEvent{kind: keyPaste, text: string(pasteBuf)}
 					pasteBuf = pasteBuf[:0]
@@ -106,7 +107,7 @@ func readKeys(out chan<- keyEvent) {
 			b := data[i]
 			if b == 0x1b {
 				// Check for paste-start first — parseEscape doesn't handle it.
-				if hasPrefix(data[i:], pasteStart) {
+				if bytes.HasPrefix(data[i:], pasteStart) {
 					inPaste = true
 					i += len(pasteStart)
 					continue
@@ -183,32 +184,6 @@ func readKeys(out chan<- keyEvent) {
 			}
 		}
 	}
-}
-
-// hasPrefix reports whether b starts with prefix.
-func hasPrefix(b, prefix []byte) bool {
-	if len(b) < len(prefix) {
-		return false
-	}
-	for i := range prefix {
-		if b[i] != prefix[i] {
-			return false
-		}
-	}
-	return true
-}
-
-// indexOf returns the index of sep in b, or -1 if absent.
-func indexOf(b, sep []byte) int {
-	if len(sep) == 0 {
-		return 0
-	}
-	for i := 0; i+len(sep) <= len(b); i++ {
-		if hasPrefix(b[i:], sep) {
-			return i
-		}
-	}
-	return -1
 }
 
 // parseEscape consumes an ANSI escape sequence starting at b[0]==0x1b.
