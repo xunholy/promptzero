@@ -61,6 +61,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/md4" //nolint:staticcheck // NTLM (MD4 of UTF-16LE) is the explicit legacy-compat use case for hash_crack_dictionary; the security warning is acknowledged.
 
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/wordlists"
 )
@@ -397,7 +398,12 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
-		go func() {
+		// SafeGo so a panic in a worker (a corrupt input bypassing
+		// validation, an unexpected hash format) is recovered and
+		// logged with a stack trace instead of crashing the agent.
+		// Defers (incl. wg.Done) inside the func still run during
+		// the panic unwind, so the WaitGroup stays balanced.
+		obs.SafeGo("tools.hash_crack.worker", func() {
 			defer wg.Done()
 			for word := range wordCh {
 				remainMu.Lock()
@@ -435,7 +441,7 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	// Producer — streams the wordlist without loading it into memory.
@@ -742,7 +748,7 @@ func portScanTCPHandler(ctx context.Context, _ *Deps, p map[string]any) (string,
 	var wg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
-		go func() {
+		obs.SafeGo("tools.port_scan.worker", func() {
 			defer wg.Done()
 			for port := range portCh {
 				addr := net.JoinHostPort(target, strconv.Itoa(port))
@@ -759,7 +765,7 @@ func portScanTCPHandler(ctx context.Context, _ *Deps, p map[string]any) (string,
 					resultCh <- dialResult{port: port} // closed
 				}
 			}
-		}()
+		})
 	}
 
 	go func() {
@@ -1049,7 +1055,7 @@ func httpEnumCommonHandler(ctx context.Context, _ *Deps, p map[string]any) (stri
 	var wg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
-		go func() {
+		obs.SafeGo("tools.http_path_scan.worker", func() {
 			defer wg.Done()
 			for path := range pathCh {
 				fullURL := baseURL + path
@@ -1079,7 +1085,7 @@ func httpEnumCommonHandler(ctx context.Context, _ *Deps, p map[string]any) (stri
 					}
 				}
 			}
-		}()
+		})
 	}
 
 	var requestsMade int
