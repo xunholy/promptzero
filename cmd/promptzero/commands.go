@@ -791,10 +791,17 @@ func handleExport(auditLog *audit.Log, args []string) {
 		fmt.Fprintf(os.Stderr, "  %s● open %s: %v%s\n", red, path, err, reset)
 		return
 	}
-	defer f.Close()
 	n, err := trainset.Export(entries, f, opts)
 	if err != nil {
+		_ = f.Close()
 		fmt.Fprintf(os.Stderr, "  %s● export: %v%s\n", red, err, reset)
+		return
+	}
+	// Surface Close error: a deferred ignore would swallow a delayed
+	// flush failure (ENOSPC, fsync error) and the operator would see
+	// "wrote N rows" for a truncated/corrupt export file.
+	if err := f.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "  %s● close %s: %v%s\n", red, path, err, reset)
 		return
 	}
 	fmt.Fprintf(os.Stderr, "  %s●%s wrote %d rows (%s) → %s\n", green, reset, n, opts.Format, path)
