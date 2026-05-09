@@ -170,6 +170,7 @@ func TestDispatch_RecoversToolHandlerPanic(t *testing.T) {
 			panic("test-panic-marker-x9q")
 		},
 	})
+	t.Cleanup(func() { tools.UnregisterForTest(panicToolName) })
 
 	a := agentForModelTest("claude-sonnet-4-6", nil)
 	out, err := a.dispatch(context.Background(), panicToolName, map[string]interface{}{})

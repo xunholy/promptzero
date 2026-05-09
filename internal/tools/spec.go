@@ -408,6 +408,34 @@ func resetForTest() {
 	order = nil
 }
 
+// UnregisterForTest removes a single tool (and its aliases) from the
+// registry. Exported so sibling-package tests (e.g. internal/agent)
+// can register a one-shot fake tool with t.Cleanup(...) and avoid
+// leaking it across re-runs (`go test -count=N`). Production code
+// has no reason to reach for this — the registry is intended to be
+// init-time-immutable after all package init()s have completed.
+//
+// No-op if name is unregistered, so cleanup paths can call it
+// unconditionally.
+func UnregisterForTest(name string) {
+	regMu.Lock()
+	defer regMu.Unlock()
+	spec, ok := byName[name]
+	if !ok {
+		return
+	}
+	delete(byName, name)
+	for _, a := range spec.Aliases {
+		delete(byAlias, a)
+	}
+	for i, n := range order {
+		if n == name {
+			order = append(order[:i], order[i+1:]...)
+			break
+		}
+	}
+}
+
 // RequireMarauder returns a friendly error when the optional Marauder
 // devboard is not connected. WiFi and Marauder handlers call this
 // before invoking any d.Marauder method, mirroring the agent's
