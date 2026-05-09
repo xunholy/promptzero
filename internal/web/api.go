@@ -137,7 +137,7 @@ func (s *Server) handlePersonasList(w http.ResponseWriter, r *http.Request) {
 		out = append(out, personaEntry{
 			Name:         p.Name,
 			Description:  p.Description,
-			Tools:        len(p.Tools), //nolint:staticcheck // back-compat through v0.19.0
+			Tools:        len(p.Tools),
 			Unrestricted: p.IsUnrestricted(),
 		})
 	}
@@ -186,7 +186,7 @@ func (s *Server) handlePersonasSwitch(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{
 		"current":      p.Name,
 		"description":  p.Description,
-		"tools":        len(p.Tools), //nolint:staticcheck // back-compat through v0.19.0
+		"tools":        len(p.Tools),
 		"unrestricted": p.IsUnrestricted(),
 		"switch_id":    switchID,
 	})

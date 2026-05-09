@@ -803,13 +803,14 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		tools = filterToolsToReadOnly(tools)
 	}
 
-	// Persona-based tool narrowing is deprecated as of v0.19.0 — the
-	// safety job moved to the read-only rail above. We still honour
-	// non-empty Tools fields for one release so user personas under
-	// ~/.promptzero/personas/*.yaml that specify allowlists keep
-	// working until v0.20.0.
-	if a.persona != nil && len(a.persona.Tools) > 0 { //nolint:staticcheck // back-compat through v0.19.0
-		tools = persona.FilterTools(tools, a.persona.Tools) //nolint:staticcheck // back-compat through v0.19.0
+	// Persona-based tool narrowing layers on top of the read-only
+	// rail above: read-only is the safety gate, persona Tools is a
+	// positive allowlist that lets a persona scope the catalog
+	// (e.g. a "lecture" persona exposing only inspect-and-explain
+	// tools). User personas under ~/.promptzero/personas/*.yaml
+	// that specify allowlists are honoured here.
+	if a.persona != nil && len(a.persona.Tools) > 0 {
+		tools = persona.FilterTools(tools, a.persona.Tools)
 	}
 	// WiFi framing is appended only when the filtered tool set still exposes
 	// WiFi capabilities — personas that prune them (defender, rf-recon, etc.)

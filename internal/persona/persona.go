@@ -48,12 +48,14 @@ type Persona struct {
 	// FilterTools narrows the catalog to just these names so the LLM
 	// doesn't see anything else.
 	//
-	// Deprecated: use the read-only safety rail (--read-only or
-	// read_only: true in config) for the safety job instead. Personas
-	// kept their Tools field through v0.19.0 so existing user YAML
-	// keeps working, but new personas should leave it empty and let
-	// SystemPrompt + Models carry the persona's identity. v0.20.0
-	// will retire this field.
+	// Layered after the read-only safety rail (--read-only / config
+	// read_only: true): read-only is the hard no-write contract,
+	// while Tools is a positive allowlist that lets a persona
+	// scope the catalog (e.g. a "lecture" persona with only the
+	// inspect-and-explain tools). The field was originally slated
+	// for retirement in v0.20.0; it survived because allowlist-
+	// shape persona scoping is genuinely useful alongside the
+	// safety rail rather than redundant with it.
 	Tools []string `yaml:"tools"`
 
 	// Provider is an optional per-tier LLM-provider override. Keys
