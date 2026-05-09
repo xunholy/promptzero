@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-05-10
+
+Test-isolation hardening + two real write-path bugs in the
+`/upgrade` and `/audit export` flows.
+
+### Fixed
+
+- **Self-upgrade download swallowed `Close` error.**
+  `cmd/promptzero/upgrade.go:downloadFile` used a deferred
+  `f.Close()` after `io.Copy(f, resp.Body)`. A delayed flush
+  failure (ENOSPC mid-flush, fsync error on a network FS)
+  would silently leave a truncated/corrupt binary on disk
+  while the upgrade flow reported success — breaking the
+  next launch with no diagnostic. Replaced with the
+  explicit-Close pattern that's already used by the sibling
+  archive-extraction path (line 416).
+
+- **`/audit export` swallowed `Close` error.** Same
+  pattern in `cmd/promptzero/commands.go`: a delayed flush
+  during `Close()` could corrupt the exported audit log
+  while the operator's terminal showed the green "wrote N
+  rows" message. Particularly bad for an audit export — the
+  file is supposed to be a faithful record. Now surfaces
+  the close error before printing success.
+
+- **`tools.resetForTest()` permanently destroyed the
+  registry.** The package-private helper used by
+  `spec_test.go` cleared `byName`/`byAlias`/`order` and
+  never restored them. Test ordering at `-count=1` hid the
+  bug because `audit_test.go` (consumer) ran before
+  `spec_test.go` (resetter), but `-count=2+` produced
+  reliable failures in subsequent iterations:
+  `tool "audit_query" not registered`. CI passes because it
+  runs `-count=1`. Changed `resetForTest`'s signature to
+  take a test helper, snapshot the registry, and register a
+  `t.Cleanup` that restores. All 10 call sites migrated.
+  The full short test suite is now green under
+  `go test -race -count=3 -shuffle=on ./...`.
+
+- **`TestDispatch_RecoversToolHandlerPanic` leaked a
+  registered tool.** Sibling test-isolation issue:
+  `internal/agent/mode_dispatch_test.go` registered a
+  `_test_panic_tool_for_dispatch_recover` Spec without
+  cleanup, hitting `tools.Register`'s duplicate-name
+  panic on the second iteration. Added
+  `tools.UnregisterForTest(name)` as a public sibling of
+  the package-private `resetForTest` so cross-package tests
+  can register fake tools with `t.Cleanup` and not leak
+  them.
+
+### Added
+
+- **`TestClassifyExplicit`** in `internal/risk` — pins the
+  `(Level, bool)` contract corners (compile-time hit,
+  unknown miss, runtime register, runtime override of
+  compile-time). Previously only covered transitively
+  through coverage validators.
+
+### Changed
+
+- **`cmd/promptzero` termios consolidation.**
+  `enableOPOSTONLCR` and `watchWindowSize` were ~90%
+  duplicated across `main_termios_linux.go` and
+  `main_termios_unixlike.go` — only the ioctl request
+  constants differed. Pull both functions into a new shared
+  `main_termios.go` (build-tagged Linux ∪ BSDs); each
+  per-OS file shrinks to a 10-line constants module.
+  Net +60 / -86 lines; future termios additions land once
+  instead of being copy-pasted.
+
+- **Documentation drift cleanup**, follow-up to the
+  v0.47-era deprecation rescinds. Five example YAMLs
+  (`examples/config.yaml` + four personas) and
+  `docs/reference/configuration.md` still echoed
+  `"deprecated in v0.19.0, removed in v0.20.0"` framings
+  that earlier commits this cycle had retracted in code.
+  Rewritten to describe the actual layering (read-only
+  first, then mode/Tools as positive scoping); the four
+  shipped persona templates leave Tools empty because their
+  other knobs cover the intent, but Tools allowlists remain
+  a supported feature for personas that want positive
+  catalog scoping.
+
 ## [0.47.0] - 2026-05-10
 
 Cleanup pass: a real slice-bounds bug fix in vision, two
