@@ -517,7 +517,7 @@ func (s *Server) resolveValidatePath(p string) (string, error) {
 	}
 	abs, err := filepath.Abs(filepath.Clean(p))
 	if err != nil {
-		return "", fmt.Errorf("invalid path %q: %v", p, err)
+		return "", fmt.Errorf("invalid path %q: %w", p, err)
 	}
 	resolved, err := filepath.EvalSymlinks(abs)
 	if err != nil {
