@@ -316,7 +316,10 @@ func atomicReplace(newPath, target string) error {
 }
 
 // downloadFile streams url into dst. Uses the provided ctx so callers
-// can cancel the HTTP round-trip via SIGINT.
+// can cancel the HTTP round-trip via SIGINT. The destination file's
+// Close error is surfaced — on a self-upgrade flow a delayed flush
+// failure (disk full, fsync error) would silently leave a truncated
+// binary that breaks the next launch.
 func downloadFile(ctx context.Context, url, dst string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -335,11 +338,11 @@ func downloadFile(ctx context.Context, url, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	if _, err := io.Copy(f, resp.Body); err != nil {
+		_ = f.Close()
 		return err
 	}
-	return nil
+	return f.Close()
 }
 
 // lookupChecksum parses the GitHub release checksums.txt (GNU
