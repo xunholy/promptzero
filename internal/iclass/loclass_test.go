@@ -374,6 +374,52 @@ func TestParseCapturesHex_Empty(t *testing.T) {
 	}
 }
 
+// FuzzParseCapturesHex is a no-panic guarantee on operator-supplied
+// hex input to the loclass entrypoint. ParseCapturesHex strips
+// whitespace, hex-decodes, then chunk-splits into 24-byte Capture
+// records — each step has potential boundary issues (odd-length hex,
+// non-multiple-of-24 byte counts, oversized inputs). Run with
+// `go test -fuzz=FuzzParseCapturesHex ./internal/iclass/` to extend
+// coverage. Seeds cover the boundaries the unit tests already pin.
+func FuzzParseCapturesHex(f *testing.F) {
+	for _, seed := range []string{
+		"",                      // empty
+		"AB",                    // 1 byte
+		strings.Repeat("0", 48), // 24 bytes of zeros (one capture)
+		strings.Repeat("0", 96), // 48 bytes (two captures)
+		strings.Repeat("0", 47), // odd-length hex
+		strings.Repeat("0", 50), // valid hex, wrong multiple
+		"GG",                    // bad hex
+		" \n\r\t",               // whitespace only
+		"AABB CCDD\n",           // 4 bytes after stripping
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		caps, err := ParseCapturesHex(s)
+		// Contract: on err==nil, every returned capture is fully
+		// initialized; on err!=nil, caps is nil.
+		if err != nil {
+			if caps != nil {
+				t.Errorf("ParseCapturesHex(%q) returned err %v + non-nil caps %v", s, err, caps)
+			}
+			return
+		}
+		// Sanity: the byte count matches the capture count.
+		// Strip whitespace the same way the parser does and confirm
+		// the round-tripped length math is consistent.
+		stripped := strings.NewReplacer(" ", "", "\n", "", "\r", "").Replace(s)
+		if len(stripped)%2 != 0 {
+			t.Errorf("ParseCapturesHex(%q) accepted odd-length hex %q", s, stripped)
+		}
+		expected := len(stripped) / 2 / CaptureSize
+		if len(caps) != expected {
+			t.Errorf("ParseCapturesHex(%q) returned %d captures, want %d (from %d bytes)",
+				s, len(caps), expected, len(stripped)/2)
+		}
+	})
+}
+
 // TestParseCapturesFromFile_RoundTrip pins the file-IO wrapper.
 // Operators feed loclass with binary capture files dumped from
 // Proxmark3 / sniffer hardware; this path is the agent's main
