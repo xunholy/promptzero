@@ -189,6 +189,55 @@ func TestExport_EmptyInputStillValidJSON(t *testing.T) {
 	}
 }
 
+// failingWriter returns the configured error after `goodBytes` bytes
+// have been written. Models a destination whose final flush fails
+// (e.g. ENOSPC mid-flush, fsync error on a network FS).
+type failingWriter struct {
+	written   int
+	goodBytes int
+	err       error
+}
+
+func (f *failingWriter) Write(p []byte) (int, error) {
+	if f.written+len(p) > f.goodBytes {
+		// Accept whatever fits before the failure point, then fail.
+		fits := f.goodBytes - f.written
+		if fits < 0 {
+			fits = 0
+		}
+		f.written += fits
+		return fits, f.err
+	}
+	f.written += len(p)
+	return len(p), nil
+}
+
+// TestExport_FlushErrorSurfaced pins the contract: when bufio.Writer's
+// final Flush() fails (the underlying writer returns an error after
+// rows have been encoded into the buffer), Export must return that
+// error instead of silently reporting success with the row count.
+// Previously a `defer bw.Flush()` discarded the flush error and
+// callers saw "wrote N rows" for half-written exports.
+func TestExport_FlushErrorSurfaced(t *testing.T) {
+	// Default bufio.Writer buffer is 4 KiB; one sample entry encodes
+	// to ~250 bytes of JSONL. Set goodBytes=10 so the buffer holds
+	// rows but the eventual Flush hits the failure.
+	w := &failingWriter{goodBytes: 10, err: errSimulatedDiskFull}
+	_, err := Export(sampleEntries(), w, Options{Format: FormatJSONL})
+	if err == nil {
+		t.Fatal("Export returned nil error despite Flush failure")
+	}
+	if !strings.Contains(err.Error(), "flush") {
+		t.Errorf("error %q should mention flush", err.Error())
+	}
+}
+
+var errSimulatedDiskFull = &exportTestError{"simulated ENOSPC"}
+
+type exportTestError struct{ msg string }
+
+func (e *exportTestError) Error() string { return e.msg }
+
 func TestExport_UnknownMinLevelRejected(t *testing.T) {
 	// Regression: --min-level=warnig used to silently pass every row
 	// because levelAtLeast mapped both unknown got and want to 0,
