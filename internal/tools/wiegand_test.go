@@ -172,6 +172,96 @@ func TestWiegand34_ParsesAndValidatesParity(t *testing.T) {
 	}
 }
 
+// TestWiegand26_HexDisplayPopulated pins the operator-friendly
+// addition: every result carries facility/card values in both
+// decimal and hex so an operator cross-referencing a card
+// printed with hex codes against a sniffed frame doesn't have
+// to convert manually.
+func TestWiegand26_HexDisplayPopulated(t *testing.T) {
+	in := "1" + "01111011" + "1011001001101110" + "1" // facility=123, card=45678
+	bits, _ := parseBitString(in)
+	res, err := DecodeWiegand(bits)
+	if err != nil {
+		t.Fatalf("DecodeWiegand: %v", err)
+	}
+	if res.FacilityCodeHex != "0x7B" {
+		t.Errorf("FacilityCodeHex = %q, want 0x7B (decimal 123)", res.FacilityCodeHex)
+	}
+	if res.CardNumberHex != "0xB26E" {
+		t.Errorf("CardNumberHex = %q, want 0xB26E (decimal 45678)", res.CardNumberHex)
+	}
+}
+
+// TestWiegand_AllZeros covers the boundary case: a frame of all
+// zeros decodes cleanly (facility=0, card=0) but ParityValid is
+// FALSE — the trailing odd-parity bit must be 1 to make the
+// 0-ones span produce an odd total. This is correct H10301
+// behaviour: a real frame would have bit[25]=1, not 0. The test
+// pins this so a regression in the parity check that erroneously
+// marked the all-zeros frame as valid would be caught.
+func TestWiegand_AllZeros(t *testing.T) {
+	bits := make([]bool, 26)
+	res, err := DecodeWiegand(bits)
+	if err != nil {
+		t.Fatalf("DecodeWiegand: %v", err)
+	}
+	if res.FacilityCode != 0 || res.CardNumber != 0 {
+		t.Errorf("all-zeros frame produced facility=%d, card=%d", res.FacilityCode, res.CardNumber)
+	}
+	if res.FacilityCodeHex != "0x0" || res.CardNumberHex != "0x0" {
+		t.Errorf("all-zeros hex = %q/%q, want 0x0/0x0", res.FacilityCodeHex, res.CardNumberHex)
+	}
+	if res.ParityValid {
+		t.Errorf("ParityValid = true on all-zeros frame; expected false (trailing odd-parity bit should be 1, not 0)")
+	}
+}
+
+// TestWiegand_AllOnes pins the dual extreme. Parity should be
+// invalid because the leading even-parity bit ends up wrong.
+// Useful sanity check that the parity computation doesn't
+// quietly say "valid" for a uniform pattern.
+func TestWiegand_AllOnes(t *testing.T) {
+	bits := make([]bool, 26)
+	for i := range bits {
+		bits[i] = true
+	}
+	res, err := DecodeWiegand(bits)
+	if err != nil {
+		t.Fatalf("DecodeWiegand: %v", err)
+	}
+	if res.FacilityCode != 0xFF {
+		t.Errorf("FacilityCode = 0x%X, want 0xFF (8 ones)", res.FacilityCode)
+	}
+	if res.CardNumber != 0xFFFF {
+		t.Errorf("CardNumber = 0x%X, want 0xFFFF (16 ones)", res.CardNumber)
+	}
+	if res.ParityValid {
+		t.Errorf("ParityValid = true on all-ones frame; expected false (parity should fail)")
+	}
+}
+
+// TestWiegandHandler_OutputContainsHex confirms the spec handler
+// (which goes through json.MarshalIndent) renders the hex fields
+// in the operator-facing output. JSON tag names are pinned so a
+// future renaming doesn't silently break the operator UX.
+func TestWiegandHandler_OutputContainsHex(t *testing.T) {
+	out, err := wiegandDecodeSpec.Handler(context.Background(), &Deps{}, map[string]any{
+		"bits": "1" + "01111011" + "1011001001101110" + "1",
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if !strings.Contains(out, "facility_code_hex") {
+		t.Errorf("output missing facility_code_hex field: %s", out)
+	}
+	if !strings.Contains(out, "card_number_hex") {
+		t.Errorf("output missing card_number_hex field: %s", out)
+	}
+	if !strings.Contains(out, "0x7B") {
+		t.Errorf("output missing 0x7B (facility hex): %s", out)
+	}
+}
+
 // TestParityHelpers covers the two parity-bit primitives.
 func TestParityHelpers(t *testing.T) {
 	// Even parity: leading bit makes total ones count even.

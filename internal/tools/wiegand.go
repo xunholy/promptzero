@@ -52,15 +52,24 @@ var wiegandDecodeSpec = Spec{
 }
 
 // WiegandResult is the decoded view of a Wiegand bitstream.
+//
+// FacilityCode and CardNumber are exposed in both decimal (the
+// numeric fields) and hex strings (the *Hex fields) because access
+// cards are often printed in either form depending on the
+// manufacturer; serving both saves the operator a conversion step
+// when they're cross-referencing a printed card against a sniffed
+// frame.
 type WiegandResult struct {
-	Format         string `json:"format"`
-	BitCount       int    `json:"bit_count"`
-	FacilityCode   uint64 `json:"facility_code"`
-	CardNumber     uint64 `json:"card_number"`
-	ParityValid    bool   `json:"parity_valid"`
-	LeadingParity  bool   `json:"leading_parity"`
-	TrailingParity bool   `json:"trailing_parity"`
-	RawBits        string `json:"raw_bits"`
+	Format          string `json:"format"`
+	BitCount        int    `json:"bit_count"`
+	FacilityCode    uint64 `json:"facility_code"`
+	FacilityCodeHex string `json:"facility_code_hex"`
+	CardNumber      uint64 `json:"card_number"`
+	CardNumberHex   string `json:"card_number_hex"`
+	ParityValid     bool   `json:"parity_valid"`
+	LeadingParity   bool   `json:"leading_parity"`
+	TrailingParity  bool   `json:"trailing_parity"`
+	RawBits         string `json:"raw_bits"`
 }
 
 func wiegandDecodeHandler(_ context.Context, _ *Deps, p map[string]any) (string, error) {
@@ -110,18 +119,30 @@ func parseBitString(s string) ([]bool, error) {
 // adapters) can reuse the parser without going through the Spec
 // registry.
 func DecodeWiegand(bits []bool) (WiegandResult, error) {
+	var (
+		res WiegandResult
+		err error
+	)
 	switch len(bits) {
 	case 26:
-		return decodeWiegand26(bits)
+		res, err = decodeWiegand26(bits)
 	case 34:
-		return decodeWiegand34(bits)
+		res, err = decodeWiegand34(bits)
 	case 35:
-		return decodeWiegand35Corporate(bits)
+		res, err = decodeWiegand35Corporate(bits)
 	case 37:
-		return decodeWiegand37(bits)
+		res, err = decodeWiegand37(bits)
 	default:
 		return WiegandResult{}, fmt.Errorf("unsupported bit count %d (supported: 26, 34, 35, 37)", len(bits))
 	}
+	if err != nil {
+		return res, err
+	}
+	// Populate hex-display fields once at dispatch time so each
+	// per-format decoder doesn't have to remember to do it.
+	res.FacilityCodeHex = fmt.Sprintf("0x%X", res.FacilityCode)
+	res.CardNumberHex = fmt.Sprintf("0x%X", res.CardNumber)
+	return res, nil
 }
 
 // decodeWiegand26 parses the canonical 26-bit H10301 format:
