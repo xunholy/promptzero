@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.49.0] - 2026-05-10
+
+Maintenance release. One real bug fix carried forward from
+the v0.48 write-path-Close audit, plus a flake-headroom test
+fix and four polish items found via static-analyzer
+(staticcheck, errcheck) sweeps.
+
+### Fixed
+
+- **`trainset.Export` swallowed `bufio.Writer.Flush` error.**
+  Same write-path-Close suppression pattern as v0.48.0's
+  `/upgrade` and `/audit export` fixes, one layer deeper:
+  `Export` wraps the destination writer in a `bufio.Writer`
+  and used `defer bw.Flush()`. The deferred ignore meant a
+  failure during the final flush (network FS hiccup, ENOSPC
+  mid-drain) silently truncated the export — and the v0.48
+  file-Close fix wouldn't help here, because the bytes never
+  even made it from buffer to file. Replaced with explicit
+  `Flush()` at the success exit, with the error wrapped via
+  `flush:` prefix. Pinned by `TestExport_FlushErrorSurfaced`.
+
+- **Error chain preservation in `resolveValidatePath`.**
+  The web layer's path-validation helper used
+  `fmt.Errorf("invalid path %q: %v", p, err)` for
+  `filepath.Abs` failures — `%v` breaks the error chain so
+  callers can't `errors.Is` against the underlying fs error.
+  Switched to `%w`. Pure correctness; no behaviour change
+  unless a future caller adds an `errors.Is` check.
+
+### Changed
+
+- **`TestStreamCancelViaDone` drain window 2s → 5s.** The
+  Stream goroutine polls `done` at ~100ms granularity, so a
+  non-flake drain completes in <500ms. Under heavy parallel
+  load + race detector, CPU contention occasionally pushed
+  iterations past the 2s window (1 in ~50 runs during the
+  v0.48 release cycle). The extra 3s is pure headroom; no
+  contract change.
+
+- **Polish items.** Three small consistency fixes surfaced
+  by static-analyzer sweeps:
+  - `staticcheck U1000`: dropped unused `federatedFallbackMsg`
+    constant in `internal/tools/mifare.go`. Stranded since
+    v0.7 when native mfoc/mfcuk replaced the federated
+    Proxmark3 redirect; papered over with `//nolint:unused`.
+    The proper docstrings on the `mfoc_attack` /
+    `mfcuk_attack` / `mfkey32_recover` specs document the
+    offline workflow authoritatively now.
+  - `staticcheck ST1016`: unified `ToolError` receiver name
+    (`JSON` used `e`, `withDeviceState` used `te`) to `e`
+    consistently.
+  - `errcheck`: prefixed `_ =` on four cleanup-path
+    `Close()` discards in `internal/audit/audit.go` and
+    `internal/flipper/mock/mock.go` to match the existing
+    convention (the very next line of the audit case
+    already used `_ = releaseFlock(...)`).
+
 ## [0.48.0] - 2026-05-10
 
 Test-isolation hardening + two real write-path bugs in the
