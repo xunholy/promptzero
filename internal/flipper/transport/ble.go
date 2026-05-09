@@ -44,6 +44,8 @@ import (
 	"time"
 
 	"tinygo.org/x/bluetooth"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // flipperBLEServiceUUID is the 128-bit UUID of the Flipper Zero's BLE
@@ -674,7 +676,13 @@ func scanForAddress(ctx context.Context, adapter *bluetooth.Adapter, kind addrKi
 	scanDone := make(chan error, 1)
 	var stopped atomic.Bool
 
-	go func() {
+	// SafeGo so a panic inside the bluetooth library's scan
+	// callback (unexpected ScanResult shape, advert-payload edge
+	// case in the upstream lib) is recovered + logged rather
+	// than crashing the agent. scanDone has a buffer of 1 so the
+	// caller's select unblocks even when SafeGo's recover swallows
+	// the panic without forwarding an error.
+	obs.SafeGo("transport/ble.scan_for_target", func() {
 		err := adapter.Scan(func(a *bluetooth.Adapter, sr bluetooth.ScanResult) {
 			if stopped.Load() {
 				return
@@ -702,7 +710,7 @@ func scanForAddress(ctx context.Context, adapter *bluetooth.Adapter, kind addrKi
 			}
 		})
 		scanDone <- err
-	}()
+	})
 
 	select {
 	case addr := <-addrCh:
@@ -790,7 +798,13 @@ func Discover(ctx context.Context, timeout time.Duration) ([]DiscoveredDevice, e
 	var mu sync.Mutex
 	seen := make(map[string]DiscoveredDevice)
 
-	go func() {
+	// SafeGo: panic inside the upstream bluetooth library's
+	// callback (advert payload corner case, etc.) shouldn't take
+	// down the whole agent — Discover is invoked from the
+	// --ble-discover CLI flag and from the BLE transport's
+	// auto-detect path. scanDone has buffer=1 so the caller's
+	// select unblocks even when the recover eats the panic.
+	obs.SafeGo("transport/ble.discover", func() {
 		err := adapter.Scan(func(a *bluetooth.Adapter, sr bluetooth.ScanResult) {
 			if stopped.Load() {
 				return
@@ -812,7 +826,7 @@ func Discover(ctx context.Context, timeout time.Duration) ([]DiscoveredDevice, e
 			mu.Unlock()
 		})
 		scanDone <- err
-	}()
+	})
 
 	select {
 	case err := <-scanDone:
