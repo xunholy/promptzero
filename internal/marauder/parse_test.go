@@ -197,3 +197,97 @@ func TestParseAPList_InjectionPayloadStaysInSSID(t *testing.T) {
 		t.Errorf("BSSID field didn't isolate from SSID injection: %q", res.APs[0].BSSID)
 	}
 }
+
+// TestMarauderPromptIndex_FindsLastPrompt covers the offset
+// helper used by readUntilPromptCtx to slice off everything
+// before the trailing prompt. The "> " marker can appear inside
+// command output (rare but possible), so the function uses
+// bytes.LastIndex — confirm it picks the LATEST occurrence.
+func TestMarauderPromptIndex_FindsLastPrompt(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want int
+	}{
+		{"trailing_prompt", "scan complete\n> ", 14},
+		{"two_prompts_picks_last", "ok > result\n> ", 12},
+		{"no_prompt", "no prompt here", -1},
+		{"empty_input", "", -1},
+		{"prompt_only", "> ", 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := marauderPromptIndex([]byte(c.in))
+			if got != c.want {
+				t.Errorf("marauderPromptIndex(%q) = %d, want %d", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// TestParseMarauderResponse_StripsEcho pins the documented
+// behaviour: the first line is dropped IF it starts with '#'
+// (the command echo line).
+func TestParseMarauderResponse_StripsEcho(t *testing.T) {
+	in := "#scanap\nresult line 1\nresult line 2"
+	got := parseMarauderResponse([]byte(in))
+	want := "result line 1\nresult line 2"
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+// TestParseMarauderResponse_DoesNotStripFirstLineWithoutHash
+// confirms the echo strip is conditional. A line that doesn't
+// start with '#' is preserved as data.
+func TestParseMarauderResponse_DoesNotStripFirstLineWithoutHash(t *testing.T) {
+	in := "scan_result\nline 2"
+	got := parseMarauderResponse([]byte(in))
+	want := "scan_result\nline 2"
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+// TestParseMarauderResponse_NormalizesLineEndings covers the
+// CRLF / CR / LF mix that real serial ports send.
+func TestParseMarauderResponse_NormalizesLineEndings(t *testing.T) {
+	in := "#cmd\r\nrow1\r\nrow2\r"
+	got := parseMarauderResponse([]byte(in))
+	want := "row1\nrow2"
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+// TestParseMarauderResponse_DropsBlankLines pins the blank-line
+// stripping behaviour. Operators see compact output rather than
+// vertical-whitespace-padded firmware noise.
+func TestParseMarauderResponse_DropsBlankLines(t *testing.T) {
+	in := "#cmd\nrow1\n\n\nrow2\n"
+	got := parseMarauderResponse([]byte(in))
+	want := "row1\nrow2"
+	if got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+// TestParseMarauderResponse_EmptyInput pins the no-data path
+// (returns empty string, no panic).
+func TestParseMarauderResponse_EmptyInput(t *testing.T) {
+	got := parseMarauderResponse([]byte(""))
+	if got != "" {
+		t.Errorf("empty input produced %q, want empty", got)
+	}
+}
+
+// TestParseMarauderResponse_OnlyEchoLine confirms a response
+// containing nothing but the echo line returns empty (not the
+// echo itself). A bare echo means the firmware ack'd but
+// returned no content.
+func TestParseMarauderResponse_OnlyEchoLine(t *testing.T) {
+	got := parseMarauderResponse([]byte("#scanap\n"))
+	if got != "" {
+		t.Errorf("only-echo input = %q, want empty", got)
+	}
+}
