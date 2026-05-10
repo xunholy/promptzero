@@ -91,3 +91,54 @@ func TestRecorder_LastToolsRing(t *testing.T) {
 		}
 	}
 }
+
+// TestRecorder_RegistryAndUptime pins the two accessors used by
+// the /debug + /metrics surfaces: Registry() exposes the
+// underlying prometheus registry for test scraping and operator
+// dashboards; UptimeStart() reports the recorder construction
+// instant so /debug can render a human-readable uptime. Both are
+// nil-safe.
+func TestRecorder_RegistryAndUptime(t *testing.T) {
+	// Live recorder
+	before := time.Now()
+	r := NewRecorder()
+	after := time.Now()
+
+	if reg := r.Registry(); reg == nil {
+		t.Errorf("Registry() returned nil on a live recorder")
+	}
+	start := r.UptimeStart()
+	if start.Before(before) || start.After(after) {
+		t.Errorf("UptimeStart() = %v, want in [%v, %v]", start, before, after)
+	}
+
+	// Nil-safe path
+	var nilR *Recorder
+	if reg := nilR.Registry(); reg != nil {
+		t.Errorf("nil Registry() = %v, want nil", reg)
+	}
+	if got := nilR.UptimeStart(); !got.IsZero() {
+		t.Errorf("nil UptimeStart() = %v, want zero", got)
+	}
+}
+
+// TestRecorder_HandlerNilReturnsDisabledResponder pins the nil-safe
+// Handler contract: returns a stub that 404s rather than panicking
+// when metrics are disabled. The non-nil path is exercised by
+// TestRecorder_MetricsExport above.
+func TestRecorder_HandlerNilDisabled(t *testing.T) {
+	var r *Recorder
+	h := r.Handler()
+	if h == nil {
+		t.Fatal("nil Recorder.Handler() returned nil")
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/metrics", nil)
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("nil Recorder handler responded %d, want 404", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "metrics disabled") {
+		t.Errorf("nil Recorder handler body = %q, want 'metrics disabled'", w.Body.String())
+	}
+}

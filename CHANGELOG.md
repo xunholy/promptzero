@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`internal/obs/metrics.go` and `log.go` gain accessor + parse
+  coverage.** Two more helpers in `internal/obs` were undertested:
+  `Recorder.Registry` / `Recorder.UptimeStart` (both 0 %) and
+  `parseLevel` (57 %). New tests pin:
+  - `Recorder.Registry()` returns the live registry on a live
+    recorder and nil on a nil receiver (the nil-safe path used by
+    "metrics disabled" deployments).
+  - `Recorder.UptimeStart()` returns the construction time on a
+    live recorder and the zero time on nil.
+  - `Recorder.Handler()` on a nil recorder serves a 404 with the
+    "metrics disabled" body (not nil-panics).
+  - `parseLevel` maps every supported name (`debug`, `info`,
+    `warn`, `warning`, `error`, `err`) plus casing/whitespace
+    normalisation, with the unknown-value fallback to info
+    surfacing the stderr warning silently.
+
+  Coverage on `internal/obs` rose **84.2 % → 88.0 %**.
+
 - **`internal/obs/debug.go` gains rendering-helper coverage.** The
   pure functions backing the `/debug` snapshot — `Render`,
   `formatTransport`, `humanDuration`, `runeLen`, `truncateRunes`,
