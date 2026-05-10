@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-05-11
+
+**Transport helper coverage + flake fix.** Continues the coverage
+sweep into `internal/flipper/transport` (BLE UUID handling +
+discovery sort + HTTP error-body snippet) and deflakes
+`TestStreamCancelViaDone`, an intermittently-failing marauder
+test that had been racing the fake's auto-prompt under parallel
+`-race` runs.
+
+### Changed
+
+- **`internal/flipper/transport` pure-helper coverage.** Six
+  helpers (`reverseUUID`, `uuidsMatch`, `sortDiscovered`,
+  `discoveredLess`, `addrKind.String`, `snippet`) were 0 %
+  covered. New `helpers_test.go` (build-tagged to match
+  `ble.go`) pins:
+  - `reverseUUID` — 16-byte projection reverses cleanly and is
+    its own inverse (involution).
+  - `uuidsMatch` — equality treats a UUID and its byte-reversed
+    form as the same identifier; symmetric, reflexive.
+  - `sortDiscovered` — strongest RSSI first, ties by Name then
+    Address — the order `--ble-discover` displays so operators
+    can pick their Flipper.
+  - `discoveredLess` — direct comparator coverage so a
+    tie-break regression localises easily.
+  - `addrKind.String` — MAC / UUID / name labels plus the
+    out-of-range "address" fallback.
+  - `snippet` — HTTP-error-body truncator; over-256-byte inputs
+    clipped + `"...[truncated]"` sentinel; bounds operator-
+    visible error messages.
+
+  Coverage on `internal/flipper/transport` rose **40.3 % →
+  44.8 %** (+4.5 pp).
+
+### Fixed
+
+- **`TestStreamCancelViaDone` flake under parallel `-race`.**
+  The fake auto-emitted `"> "` for every command including
+  unscripted streaming verbs (`sniffbeacon`). The Stream
+  goroutine would read the auto-prompt and exit via the prompt
+  path BEFORE the test's `close(done)` could fire the stopscan
+  dispatch. Under CPU contention the prompt arrived first; under
+  light load the cancel won — hence the intermittent failure.
+  Fixed by adding a `suppressPromptFor` opt-in on `fakePort`;
+  `TestStreamCancelViaDone` now calls
+  `fp.suppressPrompt("sniffbeacon")` so the goroutine has no
+  choice but to exit via done, dispatching stopscan
+  deterministically. Stable across 5 consecutive
+  `-count=5 -race` runs.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A this release. Pure unit tests on
+  transport helpers and a fake-port-only flake fix.
+
 ## [0.68.0] - 2026-05-11
 
 **Pure-helper coverage sweep.** Three packages gain coverage on
