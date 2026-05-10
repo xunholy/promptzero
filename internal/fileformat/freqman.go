@@ -2,6 +2,9 @@ package fileformat
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -324,6 +327,151 @@ func (l *FreqmanList) Find(query string) *FreqmanEntry {
 		}
 	}
 	return nil
+}
+
+// FreqmanMatch is one hit returned by SearchFreqmanDir / FilterEntries.
+// File and Line locate the entry within the on-disk library so an
+// operator-facing report can render an actionable pointer back into a
+// firmware-fork's editor.
+type FreqmanMatch struct {
+	File  string       `json:"file"`
+	Line  int          `json:"line"` // 1-based, matches editor convention.
+	Entry FreqmanEntry `json:"entry"`
+}
+
+// SearchFreqmanDir walks root recursively, parses every `*.txt` file as a
+// Freqman list, and returns matches whose Frequency, RangeStart..RangeEnd
+// band, or Description matches the query.
+//
+// Match rules (case-insensitive on description):
+//   - Pure-numeric query: parsed as Hz. Single-frequency entries match on
+//     equality. Range entries match when the query Hz falls inside
+//     [RangeStart, RangeEnd] inclusive.
+//   - Otherwise: substring match against Description.
+//
+// Files that fail to parse are skipped silently (returned in the optional
+// errs slice for the caller's diagnostics) — a single malformed library
+// shouldn't blank the whole result set. If limit > 0, results are capped
+// at limit; the walk stops early once the cap is hit. A non-existent root
+// is not an error and yields zero matches.
+//
+// All file accesses must remain inside root (filepath.Walk handles that
+// natively for non-symlinked trees; symlinks are followed only when they
+// resolve back inside root, mirroring the snapshot package's policy).
+func SearchFreqmanDir(root, query string, limit int) ([]FreqmanMatch, []error) {
+	if root == "" {
+		return nil, nil
+	}
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
+		return nil, nil
+	}
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return nil, nil
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return nil, []error{err}
+	}
+
+	var matches []FreqmanMatch
+	var errs []error
+	stop := false
+	_ = filepath.WalkDir(rootAbs, func(p string, d fs.DirEntry, werr error) error {
+		if stop || werr != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.EqualFold(filepath.Ext(p), ".txt") {
+			return nil
+		}
+		// Refuse anything that resolved outside root (defence in depth
+		// against tricky symlink trees the OS handed us).
+		abs, aerr := filepath.Abs(p)
+		if aerr != nil || !strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) && abs != rootAbs {
+			return nil
+		}
+		raw, rerr := os.ReadFile(p)
+		if rerr != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", p, rerr))
+			return nil
+		}
+		list, perr := ParseFreqman(raw)
+		if perr != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", p, perr))
+			return nil
+		}
+		hits := filterEntries(list.Entries, q)
+		for _, h := range hits {
+			matches = append(matches, FreqmanMatch{
+				File:  p,
+				Line:  lineOfEntry(raw, h.index),
+				Entry: h.entry,
+			})
+			if limit > 0 && len(matches) >= limit {
+				stop = true
+				return filepath.SkipAll
+			}
+		}
+		return nil
+	})
+	return matches, errs
+}
+
+// indexedEntry pairs an entry with its post-parse position so we can map
+// hits back to their source line.
+type indexedEntry struct {
+	index int
+	entry FreqmanEntry
+}
+
+func filterEntries(entries []FreqmanEntry, query string) []indexedEntry {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return nil
+	}
+	if hz, err := strconv.ParseUint(q, 10, 64); err == nil {
+		var out []indexedEntry
+		for i, e := range entries {
+			switch {
+			case e.Frequency == hz:
+				out = append(out, indexedEntry{i, e})
+			case e.IsRange() && hz >= e.RangeStart && hz <= e.RangeEnd:
+				out = append(out, indexedEntry{i, e})
+			}
+		}
+		return out
+	}
+	var out []indexedEntry
+	for i, e := range entries {
+		if strings.Contains(strings.ToLower(e.Description), q) {
+			out = append(out, indexedEntry{i, e})
+		}
+	}
+	return out
+}
+
+// lineOfEntry returns the 1-based line number of the n-th non-comment,
+// non-blank line in raw — matching the rule ParseFreqman uses to discard
+// comments + blanks. Used to render an editor-friendly file:line pointer.
+func lineOfEntry(raw []byte, entryIndex int) int {
+	want := entryIndex
+	lineno := 0
+	for _, line := range splitLines(raw) {
+		lineno++
+		s := strings.TrimSpace(line)
+		if s == "" || strings.HasPrefix(s, "#") {
+			continue
+		}
+		if want == 0 {
+			return lineno
+		}
+		want--
+	}
+	return 0
 }
 
 // Sort orders entries by frequency (single first, then range by start).

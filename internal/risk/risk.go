@@ -63,6 +63,10 @@ var toolLevels = func() map[string]Level {
 		"bt_hci_info",
 		"loader_unitemp",
 		"fileformat_read", "fileformat_diff",
+		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
+		// Read-only directory traversal under ~/.promptzero/freqman/
+		// followed by a parser pass. No RF, no Flipper or Marauder I/O.
+		"signal_library_search",
 		"badusb_validate",
 		"system_info",
 		"firmware_introspect", // v0.5 wave-1: read-only capability oracle

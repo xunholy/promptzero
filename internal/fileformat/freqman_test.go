@@ -1,6 +1,8 @@
 package fileformat
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -293,6 +295,150 @@ func TestParseFreqman_EmptyFile(t *testing.T) {
 	}
 	if len(got.Entries) != 0 {
 		t.Errorf("comment-only entries = %d, want 0", len(got.Entries))
+	}
+}
+
+func TestSearchFreqmanDir_FindsByFrequency(t *testing.T) {
+	dir := t.TempDir()
+	must := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	must("garage.txt", "f=433920000,m=AM_DSB,d=Garage A\nf=315000000,m=AM_DSB,d=Garage B\n")
+	must("car.txt", "f=433920000,m=AM_DSB,d=Car fob captured 2026-04-01\n")
+
+	matches, errs := SearchFreqmanDir(dir, "433920000", 0)
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errs: %v", errs)
+	}
+	if len(matches) != 2 {
+		t.Fatalf("matches = %d, want 2 (Garage A + Car fob); got %+v", len(matches), matches)
+	}
+}
+
+func TestSearchFreqmanDir_FindsByDescriptionSubstring(t *testing.T) {
+	dir := t.TempDir()
+	body := "f=433920000,m=AM_DSB,d=Garage door, blue button\nf=315000000,d=TV remote\n"
+	if err := os.WriteFile(filepath.Join(dir, "lib.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := SearchFreqmanDir(dir, "garage", 0)
+	if len(matches) != 1 {
+		t.Fatalf("matches = %d, want 1; got %+v", len(matches), matches)
+	}
+	if matches[0].Entry.Frequency != 433920000 {
+		t.Errorf("matched entry = %+v, want 433.92MHz", matches[0].Entry)
+	}
+	if matches[0].Line != 1 {
+		t.Errorf("Line = %d, want 1", matches[0].Line)
+	}
+}
+
+func TestSearchFreqmanDir_FrequencyInRange(t *testing.T) {
+	dir := t.TempDir()
+	body := "a=315000000,b=320000000,m=AM_DSB,d=Sweep 315\nf=433920000,d=Single 433\n"
+	if err := os.WriteFile(filepath.Join(dir, "lib.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 317 MHz falls inside the range scan, not the single 433.
+	matches, _ := SearchFreqmanDir(dir, "317000000", 0)
+	if len(matches) != 1 {
+		t.Fatalf("matches = %d, want 1 (range hit); got %+v", len(matches), matches)
+	}
+	if !matches[0].Entry.IsRange() {
+		t.Errorf("expected range entry, got %+v", matches[0].Entry)
+	}
+}
+
+func TestSearchFreqmanDir_LimitCapsResults(t *testing.T) {
+	dir := t.TempDir()
+	body := "f=433920000,d=A\nf=433920000,d=B\nf=433920000,d=C\n"
+	if err := os.WriteFile(filepath.Join(dir, "lib.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := SearchFreqmanDir(dir, "433920000", 2)
+	if len(matches) != 2 {
+		t.Fatalf("matches = %d, want 2 (limit); got %+v", len(matches), matches)
+	}
+}
+
+func TestSearchFreqmanDir_RecursesSubdirs(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "garages")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "f=433920000,d=Nested garage\n"
+	if err := os.WriteFile(filepath.Join(sub, "g.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := SearchFreqmanDir(dir, "garage", 0)
+	if len(matches) != 1 {
+		t.Fatalf("matches = %d, want 1 (nested); got %+v", len(matches), matches)
+	}
+}
+
+func TestSearchFreqmanDir_IgnoresNonTxtFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "lib.csv"), []byte("f=433920000,d=A\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := SearchFreqmanDir(dir, "433920000", 0)
+	if len(matches) != 0 {
+		t.Errorf(".csv should be ignored, got %+v", matches)
+	}
+}
+
+func TestSearchFreqmanDir_MalformedFileSurfacedAsErr(t *testing.T) {
+	dir := t.TempDir()
+	good := "f=433920000,d=Good\n"
+	bad := "this is not a freqman line\n"
+	if err := os.WriteFile(filepath.Join(dir, "good.txt"), []byte(good), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "bad.txt"), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	matches, errs := SearchFreqmanDir(dir, "433920000", 0)
+	if len(matches) != 1 {
+		t.Errorf("matches = %d, want 1 (good only)", len(matches))
+	}
+	if len(errs) != 1 {
+		t.Errorf("errs = %d, want 1 (bad file)", len(errs))
+	}
+}
+
+func TestSearchFreqmanDir_NonExistentRootIsZeroResults(t *testing.T) {
+	matches, errs := SearchFreqmanDir("/nonexistent-path-xyz-1234", "433", 0)
+	if len(matches) != 0 || len(errs) != 0 {
+		t.Errorf("non-existent root: matches=%v errs=%v, want both empty", matches, errs)
+	}
+}
+
+func TestSearchFreqmanDir_EmptyQueryReturnsNothing(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "lib.txt"), []byte("f=433,d=A\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := SearchFreqmanDir(dir, "", 0)
+	if len(matches) != 0 {
+		t.Errorf("empty query should return zero matches, got %+v", matches)
+	}
+}
+
+func TestSearchFreqmanDir_LineNumbersAccountForCommentsAndBlanks(t *testing.T) {
+	dir := t.TempDir()
+	body := "# header comment\n\nf=433920000,d=First\n# inline comment\nf=315000000,d=Second\n"
+	if err := os.WriteFile(filepath.Join(dir, "lib.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	matches, _ := SearchFreqmanDir(dir, "315000000", 0)
+	if len(matches) != 1 {
+		t.Fatalf("matches = %d, want 1", len(matches))
+	}
+	if matches[0].Line != 5 {
+		t.Errorf("Line = %d, want 5 (comments + blanks counted)", matches[0].Line)
 	}
 }
 

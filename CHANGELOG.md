@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`signal_library_search` tool + recursive Freqman directory walker**
+  (roadmap P2-20 mid-stage). Builds on the v0.51-shipped Freqman parser
+  to give the agent a host-side library lookup before any RF capture
+  or transmit: ask the catalogue at `~/.promptzero/freqman/` for
+  hits on a frequency or description substring, and reuse a vetted
+  entry instead of capturing fresh.
+
+  - `fileformat.SearchFreqmanDir(root, query, limit)` walks `*.txt`
+    files recursively, parses each as a Freqman list, and returns
+    `FreqmanMatch{File, Line, Entry}` records. Pure-numeric queries
+    match by Hz: equality on single-frequency entries, inclusive
+    band membership on `a=…,b=…` range entries (so a query of
+    `317000000` finds a 315–320 MHz sweep). Non-numeric queries
+    case-insensitively substring-match `Description`. Malformed
+    libraries surface in the error slice rather than blanking the
+    result set; non-`.txt` files are ignored. Symlinks that resolve
+    outside `root` are dropped (defence in depth).
+  - `signal_library_search` (Risk: Low, Group: meta.util) is the
+    LLM-visible wrapper. JSON envelope returns `{root, query,
+    matches[], match_count, limit, parse_warnings[]}`. Limit
+    defaults to 50, clamped to 500. Empty `query` rejected; missing
+    `~/.promptzero/freqman/` returns `match_count=0`.
+  - 16 new tests pin the contract: directory walking, range-band
+    membership, recursion, non-`.txt` skip, malformed surfaced as
+    warnings, line-number accounting through comments + blanks,
+    and the tool's JSON envelope shape, limit defaulting + clamping,
+    home-dir override via `t.Setenv`. `task lint` clean.
+
+  Registry size pinned at 273 (was 272). Signal-import-from-URL is
+  P2-20's last sub-item and lands in a follow-up release.
+
 - **Freqman list parser/marshaller in `internal/fileformat/freqman.go`**
   (roadmap P2-20 foundation). Tolerant CSV parser for the de-facto
   `f=<Hz>,m=<mod>,bw=<n>,s=<step>,d=<desc>` interop format shared by
