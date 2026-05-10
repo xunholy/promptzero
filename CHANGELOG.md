@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-05-11
+
+**Workflows helper coverage.** `internal/workflows` had several
+pure-helper functions at 0 % coverage despite driving load-bearing
+routing decisions (NFC family classification, AP-list parsing,
+cancellation envelope). A regression to `classifyNFCSAK` or
+`mapNFCFamilyToDeviceType` would silently route the badge pipeline
+to the wrong protocol; a regression to `parseMarauderAPList` would
+break the PMKID candidate-selection step. New
+`internal/workflows/helpers_test.go` pins 7 helpers across the
+three files.
+
 ### Changed
 
 - **`internal/workflows` helper coverage.** Seven pure helpers
@@ -42,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Coverage on `internal/workflows` rose **61.2 % → 70.4 %**
   (+9.2 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A this release. Pure tests on
+  unexported helper functions; no transport or hardware surface
+  touched.
 
 ## [0.64.0] - 2026-05-11
 
