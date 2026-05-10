@@ -1,6 +1,7 @@
 package marauder
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -10,15 +11,34 @@ import (
 )
 
 // --- WiFi Scanning ---
+//
+// Each timed method here has a Background-context wrapper for
+// back-compat (`ScanAP`, `ScanAll`, …) and a context-aware variant
+// (`ScanAPCtx`, `ScanAllCtx`, …) that threads ctx through to the
+// Marauder read loop. Tool handlers and any other caller with a
+// turn-level ctx should prefer the *Ctx form so a Ctrl+C aborts
+// the in-flight call within ~100 ms instead of blocking until
+// timeout. The Background wrappers exist so the migration can be
+// done incrementally per call site.
 
 func (m *Marauder) ScanAP(timeout time.Duration) (string, error) {
-	return m.Exec("scanap", timeout)
+	return m.ScanAPCtx(context.Background(), timeout)
+}
+
+// ScanAPCtx is the context-aware variant of ScanAP.
+func (m *Marauder) ScanAPCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "scanap", timeout)
 }
 
 // ScanAll scans for both APs and stations simultaneously.
 // (scansta is not available in Marauder v1.11.1; use scanall instead.)
 func (m *Marauder) ScanAll(timeout time.Duration) (string, error) {
-	return m.Exec("scanall", timeout)
+	return m.ScanAllCtx(context.Background(), timeout)
+}
+
+// ScanAllCtx is the context-aware variant of ScanAll.
+func (m *Marauder) ScanAllCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "scanall", timeout)
 }
 
 // ScanStation was the short-hand for scanning stations only on pre-v1.11
@@ -108,7 +128,12 @@ func (m *Marauder) ClearStations() (string, error) {
 
 // DeauthAttack sends deauth frames to all selected APs/stations.
 func (m *Marauder) DeauthAttack(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t deauth", timeout)
+	return m.DeauthAttackCtx(context.Background(), timeout)
+}
+
+// DeauthAttackCtx is the context-aware variant of DeauthAttack.
+func (m *Marauder) DeauthAttackCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t deauth", timeout)
 }
 
 // DeauthToStationList sends deauth frames to the currently-selected
@@ -118,47 +143,92 @@ func (m *Marauder) DeauthAttack(timeout time.Duration) (string, error) {
 // Callers need to have populated the station list via ScanAll / SelectStation
 // first, otherwise the attack finds no targets and returns immediately.
 func (m *Marauder) DeauthToStationList(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t deauth -c", timeout)
+	return m.DeauthToStationListCtx(context.Background(), timeout)
+}
+
+// DeauthToStationListCtx is the context-aware variant of DeauthToStationList.
+func (m *Marauder) DeauthToStationListCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t deauth -c", timeout)
 }
 
 // BeaconSpamList spams beacon frames from the current SSID list.
 func (m *Marauder) BeaconSpamList(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t beacon -l", timeout)
+	return m.BeaconSpamListCtx(context.Background(), timeout)
+}
+
+// BeaconSpamListCtx is the context-aware variant of BeaconSpamList.
+func (m *Marauder) BeaconSpamListCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t beacon -l", timeout)
 }
 
 // BeaconSpamRandom spams beacon frames with random SSIDs.
 func (m *Marauder) BeaconSpamRandom(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t beacon -r", timeout)
+	return m.BeaconSpamRandomCtx(context.Background(), timeout)
+}
+
+// BeaconSpamRandomCtx is the context-aware variant of BeaconSpamRandom.
+func (m *Marauder) BeaconSpamRandomCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t beacon -r", timeout)
 }
 
 // BeaconSpamClone clones nearby AP SSIDs and spams them as beacons.
 func (m *Marauder) BeaconSpamClone(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t beacon -a", timeout)
+	return m.BeaconSpamCloneCtx(context.Background(), timeout)
+}
+
+// BeaconSpamCloneCtx is the context-aware variant of BeaconSpamClone.
+func (m *Marauder) BeaconSpamCloneCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t beacon -a", timeout)
 }
 
 // BeaconSpamRickroll spams Rick Astley-themed SSIDs as beacons.
 func (m *Marauder) BeaconSpamRickroll(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t rickroll", timeout)
+	return m.BeaconSpamRickrollCtx(context.Background(), timeout)
+}
+
+// BeaconSpamRickrollCtx is the context-aware variant of BeaconSpamRickroll.
+func (m *Marauder) BeaconSpamRickrollCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t rickroll", timeout)
 }
 
 // BeaconSpamFunny spams a set of funny SSIDs as beacons.
 func (m *Marauder) BeaconSpamFunny(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t funny", timeout)
+	return m.BeaconSpamFunnyCtx(context.Background(), timeout)
+}
+
+// BeaconSpamFunnyCtx is the context-aware variant of BeaconSpamFunny.
+func (m *Marauder) BeaconSpamFunnyCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t funny", timeout)
 }
 
 // ProbeFlood floods the air with probe request frames.
 func (m *Marauder) ProbeFlood(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t probe", timeout)
+	return m.ProbeFloodCtx(context.Background(), timeout)
+}
+
+// ProbeFloodCtx is the context-aware variant of ProbeFlood.
+func (m *Marauder) ProbeFloodCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t probe", timeout)
 }
 
 // CSAAttack sends Channel Switch Announcement frames to selected APs.
 func (m *Marauder) CSAAttack(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t csa", timeout)
+	return m.CSAAttackCtx(context.Background(), timeout)
+}
+
+// CSAAttackCtx is the context-aware variant of CSAAttack.
+func (m *Marauder) CSAAttackCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t csa", timeout)
 }
 
 // SAEFlood floods selected APs with SAE (WPA3) authentication frames.
 func (m *Marauder) SAEFlood(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t sae", timeout)
+	return m.SAEFloodCtx(context.Background(), timeout)
+}
+
+// SAEFloodCtx is the context-aware variant of SAEFlood.
+func (m *Marauder) SAEFloodCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t sae", timeout)
 }
 
 // --- Sniffing ---
@@ -172,6 +242,11 @@ func (m *Marauder) SAEFlood(timeout time.Duration) (string, error) {
 // through unsanitised — a caller-supplied `\n` would inject arbitrary
 // follow-on commands over the serial link. Typed params remove that vector.
 func (m *Marauder) SniffPMKID(channel int, deauth, listOnly bool, timeout time.Duration) (string, error) {
+	return m.SniffPMKIDCtx(context.Background(), channel, deauth, listOnly, timeout)
+}
+
+// SniffPMKIDCtx is the context-aware variant of SniffPMKID.
+func (m *Marauder) SniffPMKIDCtx(ctx context.Context, channel int, deauth, listOnly bool, timeout time.Duration) (string, error) {
 	cmd := "sniffpmkid"
 	if channel > 0 {
 		cmd += fmt.Sprintf(" -c %d", channel)
@@ -182,28 +257,53 @@ func (m *Marauder) SniffPMKID(channel int, deauth, listOnly bool, timeout time.D
 	if listOnly {
 		cmd += " -l"
 	}
-	return m.Exec(cmd, timeout)
+	return m.ExecCtx(ctx, cmd, timeout)
 }
 
 func (m *Marauder) SniffBeacon(timeout time.Duration) (string, error) {
-	return m.Exec("sniffbeacon", timeout)
+	return m.SniffBeaconCtx(context.Background(), timeout)
+}
+
+// SniffBeaconCtx is the context-aware variant of SniffBeacon.
+func (m *Marauder) SniffBeaconCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sniffbeacon", timeout)
 }
 
 func (m *Marauder) SniffDeauth(timeout time.Duration) (string, error) {
-	return m.Exec("sniffdeauth", timeout)
+	return m.SniffDeauthCtx(context.Background(), timeout)
+}
+
+// SniffDeauthCtx is the context-aware variant of SniffDeauth.
+func (m *Marauder) SniffDeauthCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sniffdeauth", timeout)
 }
 
 func (m *Marauder) SniffProbe(timeout time.Duration) (string, error) {
-	return m.Exec("sniffprobe", timeout)
+	return m.SniffProbeCtx(context.Background(), timeout)
+}
+
+// SniffProbeCtx is the context-aware variant of SniffProbe.
+func (m *Marauder) SniffProbeCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sniffprobe", timeout)
 }
 
 // SniffPwnagotchi sniffs for Pwnagotchi devices.
 func (m *Marauder) SniffPwnagotchi(timeout time.Duration) (string, error) {
-	return m.Exec("sniffpwn", timeout)
+	return m.SniffPwnagotchiCtx(context.Background(), timeout)
+}
+
+// SniffPwnagotchiCtx is the context-aware variant of SniffPwnagotchi.
+func (m *Marauder) SniffPwnagotchiCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sniffpwn", timeout)
 }
 
 func (m *Marauder) SniffRaw(timeout time.Duration) (string, error) {
-	return m.Exec("sniffraw", timeout)
+	return m.SniffRawCtx(context.Background(), timeout)
+}
+
+// SniffRawCtx is the context-aware variant of SniffRaw.
+func (m *Marauder) SniffRawCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sniffraw", timeout)
 }
 
 // --- BLE Spam ---
@@ -223,10 +323,15 @@ var bleSpamModes = map[string]struct{}{
 // BLESpam sends BLE advertisement spam of the given type.
 // Valid modes: apple, google, samsung, windows, flipper, all.
 func (m *Marauder) BLESpam(mode string, timeout time.Duration) (string, error) {
+	return m.BLESpamCtx(context.Background(), mode, timeout)
+}
+
+// BLESpamCtx is the context-aware variant of BLESpam.
+func (m *Marauder) BLESpamCtx(ctx context.Context, mode string, timeout time.Duration) (string, error) {
 	if _, ok := bleSpamModes[mode]; !ok {
 		return "", fmt.Errorf("invalid blespam mode %q (valid: apple, google, samsung, windows, flipper, all)", mode)
 	}
-	return m.Exec("blespam -t "+clisafe.SanitizeArg(mode), timeout)
+	return m.ExecCtx(ctx, "blespam -t "+clisafe.SanitizeArg(mode), timeout)
 }
 
 // --- Bluetooth Scanning ---
@@ -244,15 +349,25 @@ var sniffBTTargets = map[string]struct{}{
 // SniffBT sniffs Bluetooth advertisements for specific device types.
 // Valid targetType values: airtag, flipper, flock, meta.
 func (m *Marauder) SniffBT(targetType string, timeout time.Duration) (string, error) {
+	return m.SniffBTCtx(context.Background(), targetType, timeout)
+}
+
+// SniffBTCtx is the context-aware variant of SniffBT.
+func (m *Marauder) SniffBTCtx(ctx context.Context, targetType string, timeout time.Duration) (string, error) {
 	if _, ok := sniffBTTargets[targetType]; !ok {
 		return "", fmt.Errorf("invalid sniffbt target %q (valid: airtag, flipper, flock, meta)", targetType)
 	}
-	return m.Exec("sniffbt -t "+clisafe.SanitizeArg(targetType), timeout)
+	return m.ExecCtx(ctx, "sniffbt -t "+clisafe.SanitizeArg(targetType), timeout)
 }
 
 // SniffSkimmer sniffs for Bluetooth credit card skimmers.
 func (m *Marauder) SniffSkimmer(timeout time.Duration) (string, error) {
-	return m.Exec("sniffskim", timeout)
+	return m.SniffSkimmerCtx(context.Background(), timeout)
+}
+
+// SniffSkimmerCtx is the context-aware variant of SniffSkimmer.
+func (m *Marauder) SniffSkimmerCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sniffskim", timeout)
 }
 
 // --- Evil Portal ---
@@ -325,7 +440,12 @@ func (m *Marauder) Join(apIndex int, password string) (string, error) {
 // associated with an AP via Join — there is no error on the wire. Callers
 // should invoke Join successfully beforehand.
 func (m *Marauder) PingScan(timeout time.Duration) (string, error) {
-	return m.Exec("pingscan", timeout)
+	return m.PingScanCtx(context.Background(), timeout)
+}
+
+// PingScanCtx is the context-aware variant of PingScan.
+func (m *Marauder) PingScanCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "pingscan", timeout)
 }
 
 // ARPScan performs an ARP scan of the joined network. Silently no-ops on
@@ -333,14 +453,24 @@ func (m *Marauder) PingScan(timeout time.Duration) (string, error) {
 // the board isn't associated. Call Join first and, on dual-band hardware,
 // use the upstream pingscan as an alternative.
 func (m *Marauder) ARPScan(timeout time.Duration) (string, error) {
-	return m.Exec("arpscan", timeout)
+	return m.ARPScanCtx(context.Background(), timeout)
+}
+
+// ARPScanCtx is the context-aware variant of ARPScan.
+func (m *Marauder) ARPScanCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "arpscan", timeout)
 }
 
 // PortScan performs a full-port scan against the host at the given IP
 // index. Requires a successful Join and a prior pingscan/arpscan to
 // populate the IP list. See PortScanService for the named-service variant.
 func (m *Marauder) PortScan(ipIndex int, timeout time.Duration) (string, error) {
-	return m.Exec(fmt.Sprintf("portscan -a -t %d", ipIndex), timeout)
+	return m.PortScanCtx(context.Background(), ipIndex, timeout)
+}
+
+// PortScanCtx is the context-aware variant of PortScan.
+func (m *Marauder) PortScanCtx(ctx context.Context, ipIndex int, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, fmt.Sprintf("portscan -a -t %d", ipIndex), timeout)
 }
 
 // portScanServices is the allowlist of well-known service tokens Marauder
@@ -368,10 +498,15 @@ var portScanServices = map[string]struct{}{
 // PortScanService runs the named-service variant of portscan (`portscan -s
 // <service> -t <ipIndex>`). Requires the same Join precondition as PortScan.
 func (m *Marauder) PortScanService(ipIndex int, service string, timeout time.Duration) (string, error) {
+	return m.PortScanServiceCtx(context.Background(), ipIndex, service, timeout)
+}
+
+// PortScanServiceCtx is the context-aware variant of PortScanService.
+func (m *Marauder) PortScanServiceCtx(ctx context.Context, ipIndex int, service string, timeout time.Duration) (string, error) {
 	if _, ok := portScanServices[service]; !ok {
 		return "", fmt.Errorf("invalid portscan service %q (valid: ssh, http, https, ftp, smb, rdp, dns, smtp, pop3, imap, mysql, psql, mssql, redis, vnc)", service)
 	}
-	return m.Exec(fmt.Sprintf("portscan -s %s -t %d", clisafe.SanitizeArg(service), ipIndex), timeout)
+	return m.ExecCtx(ctx, fmt.Sprintf("portscan -s %s -t %d", clisafe.SanitizeArg(service), ipIndex), timeout)
 }
 
 // --- MAC Manipulation ---
@@ -503,7 +638,12 @@ func (m *Marauder) GPSField(field, navSystem string) (string, error) {
 // NMEA streams raw NMEA sentences from the attached GPS module. Empty on
 // boards without GPS hardware.
 func (m *Marauder) NMEA(timeout time.Duration) (string, error) {
-	return m.Exec("nmea", timeout)
+	return m.NMEACtx(context.Background(), timeout)
+}
+
+// NMEACtx is the context-aware variant of NMEA.
+func (m *Marauder) NMEACtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "nmea", timeout)
 }
 
 // --- Device-local utilities ---

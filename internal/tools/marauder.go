@@ -59,11 +59,11 @@ func init() {
 		Risk:        risk.Low,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.NMEA(time.Duration(intOr(p, "duration_seconds", 5)) * time.Second)
+			return d.Marauder.NMEACtx(ctx, time.Duration(intOr(p, "duration_seconds", 5))*time.Second)
 		},
 	})
 
