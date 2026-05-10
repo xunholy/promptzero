@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`internal/audit` accessor + tail coverage.** Four 0 %-coverage
+  methods in `internal/audit/audit.go` drive load-bearing UX paths:
+  `SessionID` (header rendering for `/audit tail`), `MaxID` +
+  `QuerySince` (the polling loop that streams new audit rows
+  live), and `Export` (the `/audit export` JSON dump operators
+  pipe to `jq`/`grep`). New tests in `audit_test.go`:
+  - `TestSessionID` — default non-empty, override returns the new
+    value.
+  - `TestMaxID_EmptyAndPopulated` — empty log returns 0 (not an
+    error), N inserts return N.
+  - `TestQuerySince` — `afterID=0` returns all rows ordered
+    ascending, mid-range returns only the strictly-greater rows,
+    past-end returns empty slice.
+  - `TestExport` — JSON array with both tool names, indented
+    (newlines), and empty-session output is `null` / `[]` rather
+    than an error.
+
+  Coverage on `internal/audit` rose **70.2 % → 79.2 %** (+9 pp).
+
 ## [0.65.0] - 2026-05-11
 
 **Workflows helper coverage.** `internal/workflows` had several
