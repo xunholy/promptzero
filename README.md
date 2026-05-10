@@ -108,6 +108,13 @@ Slash commands (run `/help` for the full list with descriptions):
 - **Operator**: `/persona [name]`, `/mode [name]`, `/watch [pause|resume]`, `/webhooks [test <name>]`, `/validate <path>`, `/attack {set|clear} <techniques>`, `/campaign {validate|run} <file>`, `/rewind [snapshot]`, `/report [session] [json] [save]`, `/rules`
 - **Device**: `/reconnect`
 
+Keystrokes during a turn:
+
+- **Ctrl+C** — cancel the current turn entirely.
+- **Ctrl+G** — abort the current streaming tool (e.g. `subghz_receive`, `wifi_scan_ap`) but let the agent continue with the partial result. Use this when you've seen what you needed and don't want to wait out the full duration.
+- **Ctrl+R** — reverse-incremental history search.
+- **Ctrl+L** — clear screen.
+
 ### Web UI — `promptzero --web`
 
 Dark-themed browser interface at `http://localhost:8080`. Includes the chat surface, a live Flipper viewport, file browser, audit log, report builder, and (when a Marauder is connected) a TFT display panel.
