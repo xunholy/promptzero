@@ -2,6 +2,7 @@ package marauder
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -382,5 +383,104 @@ func TestStreamBackpressureExits(t *testing.T) {
 		// goroutine exited cleanly —
 	case <-time.After(time.Second):
 		t.Fatal("stream goroutine did not exit within 3s+1s (backpressure timer may be missing)")
+	}
+}
+
+// TestStreamLines_DeliversEachLine pins the StreamLines adapter
+// contract: each emitted line lands at onLine in order and the
+// accumulated raw mirrors the wire content. The fake auto-emits a
+// prompt after the body so the underlying Stream goroutine exits
+// cleanly via the prompt path — the test doesn't assert on
+// stopscan because that defensive write only fires when the host
+// closes done before the firmware is finished (TestStreamCancelViaDone
+// already covers that path against an unscripted command).
+func TestStreamLines_DeliversEachLine(t *testing.T) {
+	fp := newFakePort()
+	fp.respond("scanap", "0 | -55 | 6 | aa:bb:cc:dd:ee:ff | OPEN | HomeWifi\n"+
+		"1 | -77 | 1 | 11:22:33:44:55:66 | WPA2 | NeighbourAP\n"+
+		"2 | -88 | 11 | 99:88:77:66:55:44 | WPA2 | OfficeAP")
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	const budget = 2 * time.Second
+	var got []string
+	raw, err := m.StreamLines(context.Background(), "scanap", budget, func(line string) bool {
+		got = append(got, line)
+		return false
+	})
+	if err != nil {
+		t.Fatalf("StreamLines: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("onLine called %d times, want 3 (lines=%v)", len(got), got)
+	}
+	for _, want := range []string{"HomeWifi", "NeighbourAP", "OfficeAP"} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("accumulated raw missing %q: %q", want, raw)
+		}
+	}
+}
+
+// TestStreamLines_StopsEarlyOnCallback pins the consumer-driven abort
+// path: returning stop=true ends the stream before the timeout and
+// returns the accumulated raw cleanly. As with the deliver-each-line
+// test, the fake's auto-prompt makes stopscan unnecessary in the
+// underlying Stream goroutine, so the assertion focuses on the
+// callback-stop semantics rather than the wire trace.
+func TestStreamLines_StopsEarlyOnCallback(t *testing.T) {
+	fp := newFakePort()
+	fp.respond("scanap", "0 | -55 | 6 | aa:bb:cc:dd:ee:ff | OPEN | First\n"+
+		"1 | -77 | 1 | 11:22:33:44:55:66 | WPA2 | Second\n"+
+		"2 | -88 | 11 | 99:88:77:66:55:44 | WPA2 | Third")
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	const budget = 5 * time.Second
+	start := time.Now()
+	var got []string
+	raw, err := m.StreamLines(context.Background(), "scanap", budget, func(line string) bool {
+		got = append(got, line)
+		return true // abort on first frame
+	})
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("StreamLines: %v", err)
+	}
+	if elapsed >= budget {
+		t.Errorf("StreamLines did not stop early: took %s (budget %s)", elapsed, budget)
+	}
+	if len(got) != 1 {
+		t.Errorf("onLine called %d times, want 1 (early-stop)", len(got))
+	}
+	if !strings.Contains(raw, "First") {
+		t.Errorf("raw missing first line: %q", raw)
+	}
+}
+
+// TestStreamLines_CtxCancelStopsCapture pins the budget/cancel path:
+// when the context is cancelled, StreamLines returns cleanly with no
+// error and the accumulated raw preserved. Uses an unscripted
+// command (no respond() registration) so the fake won't auto-supply
+// a prompt — the only way out is ctx cancellation.
+func TestStreamLines_CtxCancelStopsCapture(t *testing.T) {
+	fp := newFakePort()
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := m.StreamLines(ctx, "sniffbeacon", 5*time.Second, nil)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Errorf("StreamLines on ctx cancel: expected nil error, got %v", err)
+	}
+	if elapsed >= 1500*time.Millisecond {
+		t.Errorf("StreamLines did not honour ctx cancel promptly: took %s", elapsed)
 	}
 }

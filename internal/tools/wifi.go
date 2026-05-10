@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/streaming"
 )
 
 //nolint:gochecknoinits
@@ -20,11 +21,34 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
+		// Streaming opt-in: each scanap line emitted by the Marauder
+		// (typically one per detected AP) lands at the host's stream
+		// callback as a frame in real time. First Marauder-backed
+		// streaming tool — bridges the channel-based Marauder.Stream
+		// API to the same StreamHandler shape used for Flipper
+		// streaming tools via the new Marauder.StreamLines wrapper.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
 			res, err := d.Marauder.ScanAPParsed(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
+			if err != nil {
+				return "", err
+			}
+			b, _ := json.Marshal(res)
+			return string(b), nil
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			if err := d.RequireMarauder(); err != nil {
+				return "", err
+			}
+			timeout := time.Duration(intOr(p, "duration_seconds", 15)) * time.Second
+			res, err := d.Marauder.ScanAPParsedStream(ctx, timeout, func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				return sink.IsAborted()
+			})
 			if err != nil {
 				return "", err
 			}

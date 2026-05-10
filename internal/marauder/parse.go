@@ -1,6 +1,7 @@
 package marauder
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -231,6 +232,21 @@ func parseStationLine(line string) (Station, bool) {
 // RawLines so the caller can fall back to text display.
 func (m *Marauder) ScanAPParsed(timeout time.Duration) (ScanResult, error) {
 	raw, err := m.Exec("scanap", timeout)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	return ParseAPList(raw), nil
+}
+
+// ScanAPParsedStream is the line-streaming variant of ScanAPParsed.
+// onLine is invoked for every scanap line as the firmware emits it
+// (typically one per detected AP); returning stop=true ends the
+// scan early. The accumulated raw output is parsed and returned
+// the same way ScanAPParsed would. Errors propagate; stream-end
+// (timeout / ctx cancel / onLine stop) is treated as success and
+// the parser runs against whatever was accumulated.
+func (m *Marauder) ScanAPParsedStream(ctx context.Context, timeout time.Duration, onLine func(line string) (stop bool)) (ScanResult, error) {
+	raw, err := m.StreamLines(ctx, "scanap", timeout, onLine)
 	if err != nil {
 		return ScanResult{}, err
 	}

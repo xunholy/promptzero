@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`wifi_scan_ap` becomes streaming-capable** — first Marauder-backed
+  streaming tool, after the four Flipper-backed ones in v0.56–v0.57
+  (`subghz_receive`, `subghz_rx_raw`, `log_stream`, `ir_receive`).
+  Each `scanap` line emitted by the Marauder (typically one per
+  detected AP) lands at the host's stream callback as a frame in
+  real time; the final return is still the parsed
+  `marauder.ScanResult` JSON the blocking `wifi_scan_ap` produces,
+  so the LLM-facing tool_result is unchanged.
+
+  - New `Marauder.StreamLines(ctx, command, timeout, onLine)` in
+    `internal/marauder/marauder.go`. Bridges the channel-based
+    `Marauder.Stream` API to the same callback shape used by the
+    Flipper streaming wrappers (`onLine func(line string) (stop
+    bool)`). Closes the underlying done channel exactly once on
+    every exit path so the Stream goroutine releases its mutex.
+    Treats budget/cancel as success — same convention as
+    `Flipper.streamLines` + `ExecLong`.
+  - `Marauder.ScanAPParsedStream(ctx, timeout, onLine)` adds the
+    parsing layer matching `ScanAPParsed`, returning a fully-typed
+    `ScanResult` once the stream ends (parser runs against the
+    accumulated raw regardless of whether the stream ended via
+    timeout, ctx cancel, or `onLine` stop).
+  - `wifi_scan_ap` tool gains `Streams: true` + a `StreamHandler`
+    that calls `ScanAPParsedStream`, pumps each line via
+    `sink.Send`, and polls `sink.IsAborted()` for consumer-driven
+    abort. Blocking `Handler` left in place for non-streaming
+    hosts so behaviour is unchanged when no callback is installed.
+  - 3 new fake-port tests pin the contract: per-line delivery
+    (3 emitted AP lines → 3 onLine calls, accumulated raw matches),
+    early-stop via `stop=true` (1 onLine call only, partial raw
+    preserved), ctx-cancel-as-success (no error, prompt return
+    against an unscripted command). The `stopscan` defensive write
+    in `Stream` is intentionally not asserted here — the fake's
+    auto-prompt makes the goroutine exit cleanly via the prompt
+    path, so `stopscan` only fires under the timing covered by
+    the existing `TestStreamCancelViaDone`.
+
 ## [0.57.0] - 2026-05-11
 
 **Streaming spreads.** v0.56 wired the first streaming tool

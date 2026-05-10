@@ -132,6 +132,60 @@ func (m *Marauder) Exec(command string, timeout time.Duration) (string, error) {
 	return m.readUntilPrompt(timeout)
 }
 
+// StreamLines is the callback-based wrapper around Stream that mirrors
+// the Flipper.streamLines shape: each emitted line is delivered to
+// onLine; returning stop=true ends the stream early and triggers a
+// stopscan via the underlying done channel. timeout bounds the call
+// (via context.WithTimeout); ctx cancellation also ends the stream.
+//
+// Treats budget/cancel as success and returns the accumulated raw
+// output regardless of exit reason — same convention as
+// Flipper.streamLines + ExecLong, so streaming and blocking callers
+// see identical "no error on a clean stream-end" semantics.
+//
+// The done-close + stopscan dispatch is handled inside Stream's
+// goroutine; this wrapper is responsible for closing done exactly
+// once on every exit path so the goroutine releases its mutex.
+func (m *Marauder) StreamLines(ctx context.Context, command string, timeout time.Duration, onLine func(line string) (stop bool)) (string, error) {
+	streamCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	lines, done, err := m.Stream(command)
+	if err != nil {
+		return "", err
+	}
+
+	var sb strings.Builder
+	var closeOnce sync.Once
+	closeDone := func() {
+		closeOnce.Do(func() { close(done) })
+	}
+	defer closeDone()
+
+	for {
+		select {
+		case <-streamCtx.Done():
+			closeDone()
+			// Drain remaining buffered lines so the goroutine exits
+			// cleanly + we capture any final output.
+			for line := range lines {
+				sb.WriteString(line)
+				sb.WriteByte('\n')
+			}
+			return sb.String(), nil
+		case line, ok := <-lines:
+			if !ok {
+				return sb.String(), nil
+			}
+			sb.WriteString(line)
+			sb.WriteByte('\n')
+			if onLine != nil && onLine(line) {
+				return sb.String(), nil
+			}
+		}
+	}
+}
+
 // Stream sends a command and streams output lines to the returned channel.
 // Close the done channel to stop streaming; stopscan is sent automatically.
 func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error) {
