@@ -119,7 +119,26 @@ func (m *Marauder) Close() error {
 
 // Exec sends a command and reads the response until the '> ' prompt appears or idle timeout.
 // The echo line (prefixed with '#') is stripped from the returned output.
+//
+// Preserved for backward compatibility — 95 callers across the
+// codebase don't have a meaningful context to thread (most are
+// short blocking calls under their own timeout). New callers that
+// DO have a context (especially streaming wrappers, agent
+// dispatch, REPL turn cancellation) should use [ExecCtx] so a
+// turn-level cancel cleanly aborts in-flight Marauder calls
+// rather than blocking until the timeout fires.
 func (m *Marauder) Exec(command string, timeout time.Duration) (string, error) {
+	return m.ExecCtx(context.Background(), command, timeout)
+}
+
+// ExecCtx is the context-aware variant of Exec. ctx cancellation
+// terminates the read loop promptly (via readUntilPromptCtx's
+// 100 ms SetReadTimeout poll cadence) and returns ctx.Err
+// alongside whatever partial output was accumulated. timeout is
+// applied as a sub-deadline of ctx. Mirrors
+// [github.com/xunholy/promptzero/internal/flipper.Flipper.ExecLongCtx]
+// so transports share the same cancellation contract.
+func (m *Marauder) ExecCtx(ctx context.Context, command string, timeout time.Duration) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -129,7 +148,7 @@ func (m *Marauder) Exec(command string, timeout time.Duration) (string, error) {
 		return "", fmt.Errorf("sending command: %w", err)
 	}
 
-	return m.readUntilPrompt(timeout)
+	return m.readUntilPromptCtx(ctx, timeout)
 }
 
 // StreamLines is the callback-based wrapper around Stream that mirrors
@@ -318,16 +337,6 @@ func (m *Marauder) readUntilPromptCtx(ctx context.Context, timeout time.Duration
 			return parseMarauderResponse(accum[:idx]), nil
 		}
 	}
-}
-
-// readUntilPrompt is a backwards-compatible wrapper around readUntilPromptCtx
-// that uses context.Background(). Prefer readUntilPromptCtx in new code when
-// a meaningful context is available.
-//
-// TODO: thread a real context through Exec and its callers so this wrapper
-// can be removed.
-func (m *Marauder) readUntilPrompt(timeout time.Duration) (string, error) {
-	return m.readUntilPromptCtx(context.Background(), timeout)
 }
 
 // marauderPromptIndex returns the byte offset of the last '> ' in b, or -1.
