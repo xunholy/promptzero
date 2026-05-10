@@ -15,6 +15,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
+	"github.com/xunholy/promptzero/internal/breaker"
 	"github.com/xunholy/promptzero/internal/bruce"
 	"github.com/xunholy/promptzero/internal/buspirate"
 	"github.com/xunholy/promptzero/internal/confidence"
@@ -215,6 +216,14 @@ type Agent struct {
 	// disables the feature (no engine = no verdicts).
 	detectorEngine *rules.DetectorEngine
 
+	// breakerCounter tracks per-tool consecutive same-kind errors
+	// (P3-28 second half). Trips after N matching failures and the
+	// dispatcher prepends a structured <circuit-breaker-open> block
+	// to the next tool result so the model sees an explicit
+	// escalation cue instead of looping. Nil disables the feature
+	// entirely — the dispatcher then falls through unchanged.
+	breakerCounter *breaker.Counter
+
 	// attackIdx maps tools to MITRE ATT&CK technique IDs. Consumed
 	// by the /report generator and the runtime attack-constraint
 	// filter. Set via SetAttackIndex; nil disables both.
@@ -409,6 +418,19 @@ func (a *Agent) SetFaultier(c *faultier.Client) { a.faultier = c }
 // SetBusPirate attaches a Bus Pirate 5 universal-bus probe client. Nil
 // disables buspirate_* Specs.
 func (a *Agent) SetBusPirate(c *buspirate.Client) { a.buspirate = c }
+
+// SetBreaker attaches the per-tool circuit breaker (P3-28 second
+// half). When non-nil, every tool error feeds the breaker and a
+// trip prepends a <circuit-breaker-open> block to the model-facing
+// output so the LLM sees an explicit "stop hammering this" cue
+// instead of looping. Pass nil to disable; production wiring uses
+// breaker.New(0) to pick up the default 3-strike threshold.
+func (a *Agent) SetBreaker(b *breaker.Counter) { a.breakerCounter = b }
+
+// Breaker returns the active circuit-breaker counter, or nil when
+// the feature is disabled. Exposed for /stats and operator-facing
+// /reset-breaker commands.
+func (a *Agent) Breaker() *breaker.Counter { return a.breakerCounter }
 
 // SetAuditLog attaches the audit log and wires the per-session
 // PersonaContextResolver (P3-31) so each recorded entry picks up the
@@ -1086,6 +1108,29 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			// storage ones.
 			if a.auditLog != nil {
 				a.auditLog.RecordCtx(ctx, tc.Name, input, output, toolRisk.String(), audit.LevelAction, duration, !toolErr)
+			}
+
+			// Circuit breaker (P3-28 second half): record the
+			// success or failure for this tool. On a trip, the
+			// breaker returns Open=true and the dispatcher prepends a
+			// structured <circuit-breaker-open> block to the output
+			// so the model sees the escalation cue alongside any
+			// reflection / detector / quarantine wrapping that may
+			// follow.
+			if a.breakerCounter != nil {
+				var breakerInput string
+				if toolErr {
+					breakerInput = output
+				}
+				if state := a.breakerCounter.Record(tc.Name, breakerInput); state.Open {
+					obs.FromCtx(ctx).Warn("circuit_breaker_open",
+						"tool", state.Tool,
+						"streak", state.Streak,
+						"kind", state.LastKind)
+					if msg := breaker.EscalationMessage(state); msg != "" {
+						output = msg + "\n" + output
+					}
+				}
 			}
 
 			// Reflexion on failure: when a tool errors, invoke the
