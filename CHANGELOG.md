@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-05-10
+
+P2-20 (Freqman + signal-library interop) closed. Three commits
+covering the parser, the host-side library walker, and the
+HTTPS-only importer with allowlist + hash-pin. The operator now
+has a complete catalogue lifecycle for Sub-GHz signals: import a
+community-curated list, search it before any RF capture or
+transmit, and round-trip individual entries to/from Flipper `.sub`
+files for the actual hardware operation.
+
 ### Added
 
 - **`signal_import` tool — HTTPS-only Freqman list importer with
