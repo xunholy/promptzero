@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-05-11
+
+**Ctx-threading sweep complete.** Closes the last two gaps in the
+ctx-cancellation refactor: the Marauder v0.16 command family
+(MacTrack / Sigmon / Wardrive / GpsTracker / Sniff{PineScan,
+MultiSSID} / Attack{Quiet, Badmsg, Sleep}) and Flipper's interactive
+`subghz_chat`. After this release every known timed wrapper across
+both transports has a context-aware variant and every tool that
+consumes one threads `ctx` through, so a turn-level Ctrl+C in the
+REPL aborts an in-flight call within ~100 ms regardless of which
+transport or command family it lives in. The biggest operator-
+visible delta is `wifi_wardrive_start` (600 s default → now
+cancellable in ~100 ms instead of 10 minutes).
+
 ### Changed
 
 - **Ctx threading covers Flipper subghz_chat.** Closes the last
@@ -40,6 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `wifi_attack_sleep`. Same signature change pattern as v0.61 /
     v0.62: `func(_ context.Context, …)` → `func(ctx context.Context,
     …)` and `d.Marauder.X(…)` → `d.Marauder.XCtx(ctx, …)`.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A this release. The 11 new `…Ctx`
+  variants (9 v0.16 + 2 subghz_chat) delegate through the same
+  ExecCtx / ExecLongCtx paths the existing tests already exercise.
+  Tool-handler migration is byte-identical on the wire (verified
+  by `TestCommandsWireForm`).
 
 ## [0.62.0] - 2026-05-11
 
