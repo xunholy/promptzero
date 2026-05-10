@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`test/adversarial/` — centralised adversarial test suite**
+  (roadmap P3-30). A unified attacker-shaped corpus + assertion
+  harness covering the *combined* parser-then-quarantine-then-
+  sanitiser contract. Existing per-package injection tests pin
+  individual surfaces in isolation; this directory pins the layered
+  end-to-end safety story so a regression in any one layer surfaces
+  as a centralised CI failure.
+
+  Corpus categories (in `corpus.go`):
+  - `InjectionPayloads` — direct-instruction injections, role-
+    confusion, JSON tool-call mimicry, tag-escape attempts, ANSI
+    escapes, raw control bytes, Unicode RTL/LRO display attacks.
+  - `MarauderAPLines` / `MarauderProbeLines` / `MarauderBLELines`
+    in the canonical formats from each parser's own seed tests, so
+    a parser-format change has to update one corpus file rather
+    than scatter regressions across packages.
+  - `HardwareToolNames` / `AuditToolNames` /
+    `StructuredInternalToolNames` — the three quarantine classes.
+
+  Test contracts (in `adversarial_test.go`):
+  - Every hardware tool wraps in `<untrusted-hardware-output>` for
+    every payload in the corpus (the most direct prompt-injection
+    surface).
+  - Audit tools wrap in `<untrusted-audit-content>` instead.
+  - Structured-internal tools never get wrapped (their output is
+    self-attested PromptZero text).
+  - Error-path output gets wrapped on the same rule as success-path
+    output (an error message can carry attacker-controllable text
+    too — e.g. an SSID embedded in a connection-failure message).
+  - ANSI escape sequences are stripped, raw NUL/BEL/DEL bytes are
+    stripped, but `\n` and `\t` survive (multi-line tool output
+    must keep its formatting).
+  - Marauder AP / Probe / BLE parsers keep BSSID, Client MAC, RSSI,
+    Channel clean even when the free-text fields they sit alongside
+    carry injection payloads.
+  - Tag-escape attempts (a payload containing the closing wrapper
+    string itself) stay inside the wrapper — pinned by counting the
+    open + close tag occurrences in the rendered output.
+
+  Required exposing one new agent helper: `agent.QuarantineOutput`
+  (a thin public wrapper around the existing unexported sibling) so
+  the cross-package test can call into the production sanitiser +
+  wrapper without re-implementing them.
+
+  11 tests, 30+ subtests. `task lint` clean (Unicode RTL/LRO
+  literals written as Go escape sequences for staticcheck ST1018).
+
 ## [0.53.0] - 2026-05-10
 
 P2 closeout + P3 down-payment. Three commits closing the last P2
