@@ -106,3 +106,41 @@ func setGlobal(l *slog.Logger) {
 	global = l
 	globalMu.Unlock()
 }
+
+// TestParseLevel pins the user-facing level-string mapping: every
+// supported name resolves to the right slog.Level, casing and
+// whitespace are normalised, and unknown values fall back to info
+// (with a stderr warning that the test silences).
+func TestParseLevel(t *testing.T) {
+	tests := []struct {
+		in   string
+		want slog.Level
+	}{
+		{"debug", slog.LevelDebug},
+		{"DEBUG", slog.LevelDebug},
+		{"  debug  ", slog.LevelDebug},
+		{"info", slog.LevelInfo},
+		{"INFO", slog.LevelInfo},
+		{"", slog.LevelInfo},
+		{"warn", slog.LevelWarn},
+		{"warning", slog.LevelWarn},
+		{"error", slog.LevelError},
+		{"err", slog.LevelError},
+		{"ERROR", slog.LevelError},
+	}
+	for _, tc := range tests {
+		if got := parseLevel(tc.in); got != tc.want {
+			t.Errorf("parseLevel(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+
+	// Unknown value falls back to info. parseLevel prints a warning
+	// to stderr; redirect it to /dev/null so the test output isn't
+	// polluted.
+	oldStderr := os.Stderr
+	os.Stderr, _ = os.Open(os.DevNull)
+	t.Cleanup(func() { os.Stderr = oldStderr })
+	if got := parseLevel("nonsense"); got != slog.LevelInfo {
+		t.Errorf("parseLevel(\"nonsense\") = %v, want LevelInfo (fallback)", got)
+	}
+}
