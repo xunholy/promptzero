@@ -1158,6 +1158,19 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 					pfn = a.prospective
 				}
 				output = maybeProspectiveReflect(ctx, tc.Name, input, output, &prospectiveThisTurn, pfn)
+
+				// Ensemble voting (P3-33): when the persona has a
+				// non-empty consensus list, run prospective once per
+				// listed model and prepend a structured
+				// <consensus-disagreement> block on disagreement.
+				// Pure additive — unanimous panels emit nothing and
+				// the existing single-model critique above stays the
+				// only escalation signal.
+				if p := a.persona; p != nil && len(p.Consensus) > 0 {
+					if disagreement := a.runEnsembleProspective(ctx, tc.Name, input, p.Consensus); disagreement != "" {
+						output = disagreement + "\n" + output
+					}
+				}
 			}
 
 			// Detector pass (P1-10): run any registered detectors for
