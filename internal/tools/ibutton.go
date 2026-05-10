@@ -17,8 +17,8 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupFlipperIButton,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.IButtonRead(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.IButtonReadCtx(ctx, time.Duration(intOr(p, "timeout_seconds", 30))*time.Second)
 		},
 	})
 
@@ -30,8 +30,9 @@ func init() {
 		Risk:        risk.High,
 		Group:       GroupFlipperIButton,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.IButtonEmulate(
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.IButtonEmulateCtx(
+				ctx,
 				str(p, "protocol"),
 				str(p, "hex_data"),
 				time.Duration(intOr(p, "duration_seconds", 10))*time.Second,

@@ -56,8 +56,8 @@ func init() {
 		// the moment the operator's remote is captured, rather than
 		// waiting for the full timeout.
 		Streams: true,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.IRRx(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.IRRxCtx(ctx, time.Duration(intOr(p, "timeout_seconds", 30))*time.Second)
 		},
 		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
 			defer sink.Close()

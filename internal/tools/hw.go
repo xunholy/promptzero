@@ -43,8 +43,8 @@ func init() {
 		Risk:        risk.Low,
 		Group:       GroupFlipperHW,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.OneWireSearch(time.Duration(intOr(p, "duration_seconds", 10)) * time.Second)
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.OneWireSearchCtx(ctx, time.Duration(intOr(p, "duration_seconds", 10))*time.Second)
 		},
 	})
 

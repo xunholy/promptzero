@@ -34,8 +34,9 @@ func init() {
 		Risk:        risk.High,
 		Group:       GroupFlipperRFID,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.RFIDEmulate(
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.RFIDEmulateCtx(
+				ctx,
 				str(p, "protocol"),
 				str(p, "data"),
 				time.Duration(intOr(p, "duration_seconds", 10))*time.Second,
@@ -95,8 +96,9 @@ func init() {
 		Risk:        risk.High,
 		Group:       GroupFlipperRFID,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.RFIDRawEmulate(
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.RFIDRawEmulateCtx(
+				ctx,
 				str(p, "file"),
 				time.Duration(intOr(p, "duration_seconds", 30))*time.Second,
 			)
