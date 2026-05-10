@@ -279,3 +279,111 @@ func TestMatch_CaseInsensitive(t *testing.T) {
 		}
 	}
 }
+
+// TestPathsAndRulesReturnCopies pins the immutability contract on
+// the two accessors: callers can mutate the returned slice without
+// corrupting the watcher's internal state. The /watch slash command
+// renders these to operators; if it could mutate them inadvertently
+// the watcher's matching behaviour would drift mid-session.
+func TestPathsAndRulesReturnCopies(t *testing.T) {
+	origPaths := []string{"/path/a", "/path/b"}
+	origRules := []Rule{
+		{Pattern: "*.sub", Prompt: "decode {{path}}", Persona: "rf"},
+		{Pattern: "*.nfc", Prompt: "read {{path}}"},
+	}
+	w := New(origPaths, origRules)
+
+	gotPaths := w.Paths()
+	if len(gotPaths) != 2 || gotPaths[0] != "/path/a" || gotPaths[1] != "/path/b" {
+		t.Errorf("Paths() = %v, want [/path/a /path/b]", gotPaths)
+	}
+	gotPaths[0] = "/CORRUPTED"
+	if again := w.Paths(); again[0] != "/path/a" {
+		t.Errorf("Paths() returns shared slice — mutation leaked: %v", again)
+	}
+
+	gotRules := w.Rules()
+	if len(gotRules) != 2 || gotRules[0].Pattern != "*.sub" || gotRules[1].Pattern != "*.nfc" {
+		t.Errorf("Rules() = %+v, want 2 rules", gotRules)
+	}
+	gotRules[0].Pattern = "CORRUPTED"
+	if again := w.Rules(); again[0].Pattern != "*.sub" {
+		t.Errorf("Rules() returns shared slice — mutation leaked: %+v", again)
+	}
+
+	// Input-slice mutation must not affect the watcher (New copies).
+	origPaths[0] = "/MUTATED"
+	if again := w.Paths(); again[0] != "/path/a" {
+		t.Errorf("input mutation leaked into watcher: Paths()[0] = %q", again[0])
+	}
+}
+
+// TestPauseResumePausedRoundTrip pins the /watch pause/resume state
+// machine the operator UX toggles.
+func TestPauseResumePausedRoundTrip(t *testing.T) {
+	w := New(nil, nil)
+
+	if w.Paused() {
+		t.Errorf("freshly-constructed watcher reports Paused=true, want false")
+	}
+	w.Pause()
+	if !w.Paused() {
+		t.Errorf("after Pause(), Paused() = false")
+	}
+	w.Pause() // idempotent
+	if !w.Paused() {
+		t.Errorf("double-Pause() should stay paused")
+	}
+	w.Resume()
+	if w.Paused() {
+		t.Errorf("after Resume(), Paused() = true")
+	}
+	w.Resume() // idempotent
+	if w.Paused() {
+		t.Errorf("double-Resume() should stay running")
+	}
+}
+
+// TestRecentReturnsNewestFirst pins the /watch slash command's
+// recent-events render order: newest first, capped at n and at
+// len(history).
+func TestRecentReturnsNewestFirst(t *testing.T) {
+	w := New(nil, nil)
+
+	now := time.Now()
+	w.history = []Event{
+		{At: now, Path: "/a"},
+		{At: now.Add(time.Second), Path: "/b"},
+		{At: now.Add(2 * time.Second), Path: "/c"},
+		{At: now.Add(3 * time.Second), Path: "/d"},
+	}
+
+	got := w.Recent(2)
+	if len(got) != 2 {
+		t.Fatalf("Recent(2) returned %d events, want 2", len(got))
+	}
+	if got[0].Path != "/d" {
+		t.Errorf("Recent(2)[0].Path = %q, want /d (newest)", got[0].Path)
+	}
+	if got[1].Path != "/c" {
+		t.Errorf("Recent(2)[1].Path = %q, want /c", got[1].Path)
+	}
+
+	all := w.Recent(10)
+	if len(all) != 4 {
+		t.Errorf("Recent(10) returned %d events, want 4 (capped at len(history))", len(all))
+	}
+	if all[0].Path != "/d" || all[3].Path != "/a" {
+		t.Errorf("Recent(10) wrong order: %v", all)
+	}
+
+	empty := w.Recent(0)
+	if len(empty) != 0 {
+		t.Errorf("Recent(0) returned %d events, want 0", len(empty))
+	}
+
+	w.history = nil
+	if got := w.Recent(5); len(got) != 0 {
+		t.Errorf("Recent on empty history returned %d events, want 0", len(got))
+	}
+}
