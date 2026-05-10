@@ -47,6 +47,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     stubborn producer that ignores both signals still runs to
     completion and the dispatcher returns its final string.
 
+- **REPL host renders streaming-tool frames.** Closes the streaming
+  loop end-to-end: the CLI host now installs a stream callback, so a
+  running `subghz_receive` (or any future streaming tool) shows
+  per-frame partial output as dim, indented lines under the running
+  tool — same visual style as the existing tool start/finish status
+  lines. The callback always returns `true` for now; an abort hotkey
+  is the next product step (the infrastructure for it shipped in
+  the previous commit).
+
+  - `cmd/promptzero/repl.go` imports `internal/streaming` (aliased
+    `streampkg` because the file already has a local `streaming`
+    atomic.Bool tracking text-delta state) and calls
+    `ai.SetToolStreamCallback` right after `SetToolStatusCallback`.
+    The callback first calls `ed.endDelta()` if a text-delta stream
+    is in flight so the frame line doesn't append to a half-flushed
+    assistant token, then renders the frame via `ed.writeOutput` so
+    concurrent keystroke redraws and the frame line don't trample
+    each other.
+  - New `renderStreamFrame(streampkg.Frame) string` mirrors the
+    `outputPreview` shape: collapse whitespace, truncate to terminal
+    width minus a small margin, prefix with the dim `·` marker. C0
+    control bytes and DEL trigger Go's `%q` quoting before render —
+    a captured BLE device name set to `\x1b[31mEVIL\x1b[0m` must NOT
+    inject raw ANSI into the operator's terminal. Helper
+    `needsQuote` is the predicate; printable UTF-8 above 0x7f is NOT
+    quoted, so non-ASCII payloads (emoji in a chat-app capture)
+    render as themselves.
+  - 4 new tests pin: plain payloads render with the marker + payload
+    intact, empty / whitespace-only frames render as the empty
+    string (REPL skips them), control-char frames are escaped (no
+    raw `\x1b[31m` leaks into output, `\x1b` does appear), and
+    `needsQuote` flags only C0 + DEL (printable UTF-8 like emoji
+    passes through).
+
 - **First real streaming tool: `subghz_receive`.** Wires the v0.55
   streaming infrastructure to a real long-running capture so the
   abort-early UX has a production consumer, not just tests. Hosts

@@ -8,6 +8,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/risk"
+	streampkg "github.com/xunholy/promptzero/internal/streaming"
 )
 
 // makeConfirmState builds a confirmState for testing resolveConfirmKey.
@@ -181,5 +182,83 @@ func TestResolveConfirmKey_HintOnGateClosed(t *testing.T) {
 	})
 	if !strings.Contains(out, "wait") {
 		t.Errorf("expected a 'wait' hint in stderr when gate is closed, got %q", out)
+	}
+}
+
+// TestRenderStreamFrame_RendersPlainPayload pins the happy path: a
+// printable, short frame becomes a single dim, indented line. The
+// exact ANSI sequences are not asserted (terminal-style globals can
+// vary in test contexts) — only that the payload is preserved and
+// the leading indent / dim marker shape is intact.
+func TestRenderStreamFrame_RendersPlainPayload(t *testing.T) {
+	got := renderStreamFrame(streampkg.Frame{
+		Tool:  "subghz_receive",
+		Bytes: []byte("Princeton  433.92  KEY=DEADBEEF"),
+	})
+	if got == "" {
+		t.Fatal("renderStreamFrame returned empty for a non-empty payload")
+	}
+	if !strings.Contains(got, "Princeton") {
+		t.Errorf("rendered frame missing payload: %q", got)
+	}
+	if !strings.Contains(got, "·") {
+		t.Errorf("rendered frame missing the · marker: %q", got)
+	}
+}
+
+// TestRenderStreamFrame_EmptyPayloadIsSilent pins that an empty or
+// whitespace-only frame renders as the empty string — the REPL skips
+// printing those, so a chatty parser that emits a stray newline frame
+// doesn't pollute the scroll area.
+func TestRenderStreamFrame_EmptyPayloadIsSilent(t *testing.T) {
+	for _, in := range [][]byte{nil, {}, []byte("\n"), []byte("   "), []byte("\r\n  \n\r")} {
+		if got := renderStreamFrame(streampkg.Frame{Bytes: in}); got != "" {
+			t.Errorf("renderStreamFrame(%q) = %q, want empty string", in, got)
+		}
+	}
+}
+
+// TestRenderStreamFrame_QuotesControlChars pins the hostile-capture
+// defence: a frame containing ANSI escapes or NUL bytes is %q-quoted
+// before render. A captured BLE device name set to
+// "\x1b[31mEVIL\x1b[0m" must NOT inject raw ANSI into the operator's
+// terminal.
+func TestRenderStreamFrame_QuotesControlChars(t *testing.T) {
+	got := renderStreamFrame(streampkg.Frame{
+		Tool:  "marauder_scan",
+		Bytes: []byte("\x1b[31mEVIL\x1b[0m"),
+	})
+	if got == "" {
+		t.Fatal("renderStreamFrame returned empty for a non-empty hostile payload")
+	}
+	// Raw ESC must not appear — %q would have rendered it as \x1b.
+	if strings.Contains(got, "\x1b[31m") {
+		t.Errorf("rendered frame leaked raw ANSI: %q", got)
+	}
+	if !strings.Contains(got, `\x1b`) {
+		t.Errorf("rendered frame did not escape ANSI: %q", got)
+	}
+}
+
+// TestNeedsQuote pins the predicate the renderer uses: only C0
+// control bytes (< 0x20) and DEL (0x7f) trigger quoting. The
+// motivating attack is ANSI-escape injection from hardware-supplied
+// strings (a captured BLE device name like "\x1b[31mEVIL"). UTF-8
+// printable bytes above 0x7f are NOT quoted — non-ASCII payloads
+// (e.g. an emoji in a chat-app capture) render as themselves.
+func TestNeedsQuote(t *testing.T) {
+	tests := map[string]bool{
+		"plain ASCII": false,
+		"":            false,
+		"with\ttab":   true,
+		"esc\x1b[31m": true,
+		"nul\x00byte": true,
+		"del\x7fchar": true,
+		"emoji 🎉":     false, // printable UTF-8 above 0x7f is fine
+	}
+	for in, want := range tests {
+		if got := needsQuote(in); got != want {
+			t.Errorf("needsQuote(%q) = %v, want %v", in, got, want)
+		}
 	}
 }
