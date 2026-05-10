@@ -8,6 +8,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/streaming"
 )
 
 func init() {
@@ -36,6 +37,14 @@ func init() {
 		Risk:      risk.Medium,
 		Group:     GroupFlipperSubGHz,
 		AgentOnly: false,
+		// Streaming opt-in: hosts that wire SetToolStreamCallback get
+		// per-line frames (one Send per firmware-emitted scan line) AND
+		// abort-early — returning false from the host callback fires
+		// sink.Abort() + ctx cancel, the StreamHandler observes via
+		// IsAborted() / ctx.Done() inside StreamCtx and stops the
+		// capture cleanly. Hosts without a callback fall back to the
+		// non-streaming Handler below — semantics unchanged.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			raw, err := d.Flipper.SubGHzRx(
 				uint32(intOr(p, "frequency", 0)),
@@ -46,6 +55,26 @@ func init() {
 			}
 			// Structured parse (§F.6): model sees {candidates:[...]} instead
 			// of raw scan transcript.
+			parsed := flipper.ParseSubGHzReceive(raw)
+			b, _ := json.Marshal(parsed)
+			return string(b), nil
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			freq := uint32(intOr(p, "frequency", 0))
+			duration := time.Duration(intOr(p, "duration_seconds", 30)) * time.Second
+			raw, err := d.Flipper.SubGHzRxStream(ctx, freq, duration, func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				// IsAborted() honours consumer-driven abort (host
+				// callback returned false). ctx is also cancelled on
+				// abort so StreamCtx will return promptly even if the
+				// firmware never emits another line for IsAborted to
+				// be polled against.
+				return sink.IsAborted()
+			})
+			if err != nil {
+				return raw, err
+			}
 			parsed := flipper.ParseSubGHzReceive(raw)
 			b, _ := json.Marshal(parsed)
 			return string(b), nil
