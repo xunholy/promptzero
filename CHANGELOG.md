@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Freqman list parser/marshaller in `internal/fileformat/freqman.go`**
+  (roadmap P2-20 foundation). Tolerant CSV parser for the de-facto
+  `f=<Hz>,m=<mod>,bw=<n>,s=<step>,d=<desc>` interop format shared by
+  HackRF/PortaPack-Mayhem, OpenSDR, and Flipper community signal lists.
+  Supports both single-frequency entries and `a=<startHz>,b=<endHz>`
+  range-scan entries; preserves unknown `key=value` pairs in `Extra`
+  for round-trip lossless behaviour against firmware-fork extensions.
+  `FreqmanFromSub` / `ToSubLite` interconvert single-frequency entries
+  with the existing `*SubFile` so an operator can move a captured
+  `.sub` into a Freqman library or hydrate a stub `.sub` from a known
+  catalogue entry. The follow-on `signal_library_search` and
+  `signal_import` tools (P2-20 mid/late) build on this primitive in a
+  later release.
+
+  Sticky-tail rule for `d=`: everything after the first top-level
+  `d=` token (start-of-line or `,`-anchored) is the description, so
+  unquoted commas inside descriptions — Mayhem's emitter does not
+  quote — round-trip correctly. `Find` does Hz-or-description lookup
+  case-insensitively; `Sort` orders entries by frequency stably so
+  intra-band operator ordering survives.
+
+  Pinned by 19 unit tests covering round-trip, range entries,
+  CRLF input, comment/blank lines, malformed-token rejection, float-
+  Hz rejection, and `*SubFile` interconversion. `task lint` clean.
+
 ## [0.51.0] - 2026-05-10
 
 Parser-security parity sweep. Three sibling tests pinning the
