@@ -84,10 +84,12 @@ func TestRegistrySize(t *testing.T) {
 	// v0.22.0 added badkb_run (BadUSB-over-BLE thin wrapper).
 	// v0.43+ added wiegand_decode (offline parser for sniffed
 	// access-control reader bitstreams; no Flipper required).
-	// v0.52.0 added signal_library_search (P2-20: host-side Freqman
-	// signal library walker; read-only directory traversal under
-	// ~/.promptzero/freqman/ followed by a parser pass).
-	const expected = 273
+	// v0.52.0 added signal_library_search + signal_import (P2-20:
+	// host-side Freqman signal library walker, and an HTTPS-only
+	// allowlisted importer that pulls Freqman lists from vetted
+	// public hosts into ~/.promptzero/freqman/ with size cap, hash
+	// pinning, and parse-before-write validation).
+	const expected = 274
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
