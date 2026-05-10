@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`internal/workflows` helper coverage.** Seven pure helpers
+  in `nfc_badge.go`, `wifi_hashcat.go`, and `workflows.go` had
+  0 % coverage despite driving load-bearing routing decisions
+  (NFC family classification, AP-list parsing, cancellation
+  envelope). A regression where `classifyNFCSAK("08")` stops
+  returning `NFCFamilyMIFAREClassic` would silently route the
+  badge pipeline to the wrong protocol — no error, just a
+  confused operator. New `internal/workflows/helpers_test.go`
+  pins:
+  - `sanitizeFilename` — UID sanitiser; non-`[0-9A-Za-z_-]`
+    bytes replaced with `_`, empty input → `"unknown"`, multi-
+    byte input (`日本語`) handled cleanly.
+  - `classifyNFCSAK` — `08`/`09`/`18`/`19` → Classic, `00` →
+    Ultralight, `20`/`28` → ISO 14443-4 (DESFire/Plus
+    underlay), unknown SAKs → Unknown.
+  - `nfcFamilyName` — display strings for every enum value
+    plus the out-of-range sentinel.
+  - `mapNFCFamilyToDeviceType` — protocol-string substring
+    matches (case-insensitive) take priority; family-enum
+    fallback when Protocol is empty / unrecognised.
+  - `parseMarauderAPList` — index pattern (`0:`, `[1]`, `2.`,
+    `3]`), BSSID/SSID/channel/encryption/RSSI extraction
+    across firmware layout variants.
+  - `pickStrongestWPA` — only WPA/WPA2 eligible, WPA3/OPEN/WEP
+    skipped, ties resolve to highest RSSI, nil input → nil.
+  - `extractSSIDTokens` — fallback when row has no `ssid=`
+    label; first non-metadata token wins.
+  - `cancelledResult` — partial JSON envelope, `(cancelled)`
+    summary suffix, NextSteps preserved, Extra fields merged
+    into top level via `Result.MarshalJSON`.
+
+  Coverage on `internal/workflows` rose **61.2 % → 70.4 %**
+  (+9.2 pp).
+
 ## [0.64.0] - 2026-05-11
 
 **Observability coverage.** `internal/obs` jumped from 49.4 % → 88.0 %
