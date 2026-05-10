@@ -634,6 +634,14 @@ func enterREPL(deps *REPLDeps) error {
 	// flip it back to false so the next delta re-clears the status line.
 	var streaming atomic.Bool
 
+	// streamAbortRequested is set by Ctrl+G during a streaming tool
+	// run. The agent's stream callback (installed below) inspects it
+	// per frame and returns false when set, which fires
+	// sink.Abort() + ctx cancel via the existing dispatch path. Reset
+	// at the start of every dispatchTurn so a stale request from a
+	// prior turn cannot poison the next one.
+	var streamAbortRequested atomic.Bool
+
 	// --- Turn status bar (Claude-Code-style spinner on top border) ---
 	// turnStartedAt + turnNote drive the spinner goroutine below. The
 	// spinner redraws the box's top border every ~100ms with the current
@@ -714,9 +722,11 @@ func enterREPL(deps *REPLDeps) error {
 	// emit one frame per partial result. Render each as a dim,
 	// indented line under the running tool — matches the look of
 	// the start/finish status lines from SetToolStatusCallback. The
-	// callback returns true (continue streaming); abort-early UX is
-	// a follow-up that will need product wiring (e.g. a hotkey to
-	// signal "got what I needed, stop").
+	// callback returns false when streamAbortRequested is set
+	// (Ctrl+G hotkey) so the agent's dispatcher fires
+	// sink.Abort() + per-call ctx cancel; the streaming tool's
+	// StreamHandler honours both signals and returns its partial
+	// result via the normal final-string path.
 	ai.SetToolStreamCallback(func(f streampkg.Frame) bool {
 		// End any in-flight delta stream cleanly so the frame line
 		// doesn't append to a half-flushed assistant token.
@@ -726,6 +736,16 @@ func enterREPL(deps *REPLDeps) error {
 		ed.writeOutput(func() {
 			fmt.Fprintln(os.Stderr, renderStreamFrame(f))
 		})
+		// Consume the abort request — flip back to false so a
+		// follow-up streaming tool in the same turn isn't aborted
+		// by a stale flag. The agent's drain loop swallows post-
+		// abort frames so this only fires once per abort.
+		if streamAbortRequested.Swap(false) {
+			ed.writeOutput(func() {
+				fmt.Fprintf(os.Stderr, "    %s· (stop requested — finishing capture)%s\n", dim, reset)
+			})
+			return false
+		}
 		return true
 	})
 
@@ -779,6 +799,10 @@ func enterREPL(deps *REPLDeps) error {
 
 	dispatchTurn := func(input string) {
 		streaming.Store(false)
+		// Clear any stale Ctrl+G abort request from a prior turn so
+		// the new turn's first streaming tool isn't immediately
+		// aborted by a latched flag.
+		streamAbortRequested.Store(false)
 		ed.writeOutput(func() {
 			pad := strings.Repeat(" ", boxPad)
 			fmt.Fprintf(os.Stderr, "\n%s%s>%s %s%s%s\n", pad, dim, reset, dim, input, reset)
@@ -994,6 +1018,20 @@ func enterREPL(deps *REPLDeps) error {
 				ed.render()
 			case keyCtrlL:
 				ed.clearScreen()
+			case keyCtrlG:
+				// Abort the current streaming tool (if one is
+				// running). The next frame's stream callback
+				// observes the flag, returns false, and the
+				// agent's dispatcher fires sink.Abort() + ctx
+				// cancel. If no streaming tool is in flight the
+				// flag is harmlessly latched and consumed by the
+				// next streaming tool in this turn — but the
+				// dispatchTurn-start reset clears it on every
+				// fresh turn so a stale latch can't carry over.
+				streamAbortRequested.Store(true)
+				ed.writeOutput(func() {
+					fmt.Fprintf(os.Stderr, "\n  %s(stop requested — Ctrl+C cancels the whole turn instead)%s\n", dim, reset)
+				})
 			case keyCtrlC:
 				now := time.Now().UnixNano()
 				prev := kbdCtrlCAt.Swap(now)

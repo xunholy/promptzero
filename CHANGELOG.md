@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Ctrl+G abort hotkey for streaming tools.** Closes the
+  operator-facing piece of the streaming UX. The infrastructure
+  (callback returns false → `sink.Abort()` + per-call ctx cancel)
+  has been live since v0.56 but the REPL host's stream callback
+  always returned `true`, so abort-early was theoretically reachable
+  but practically unused. Pressing **Ctrl+G** during a streaming
+  tool now ends only that tool — the agent's turn continues with
+  the partial result. Distinct from **Ctrl+C**, which still cancels
+  the whole turn.
+
+  - `keyCtrlG` added to the keystroke enum; `0x07` (BEL / Ctrl+G)
+    mapped to it in `readKeys`. No conflict with existing keys —
+    Ctrl+G is the readline-tradition "abort current operation"
+    keystroke.
+  - REPL holds a `streamAbortRequested atomic.Bool`. Ctrl+G sets
+    it; the agent's stream callback consumes it on the next frame
+    via `Swap(false)` and returns false, prompting
+    `dispatchStreaming` to fire `sink.Abort()` + cancel the
+    per-call ctx. The streaming tool's StreamHandler
+    (`SubGHzRxStream`, `LogStreamLines`, `IRRxStream`,
+    `Marauder.StreamLines`) already polls `sink.IsAborted()` /
+    `ctx.Done()` so it returns its partial result via the normal
+    final-string path.
+  - Reset on every `dispatchTurn` start so a stale latch from a
+    prior turn cannot pre-abort the new turn's first streaming
+    tool. The Ctrl+G keystroke also surfaces an inline hint so
+    operators who hit it while expecting a full-turn cancel are
+    told to use Ctrl+C instead.
+  - No new test — the dispatch-level abort path is already pinned
+    by `TestDispatchStreaming_AbortEarlyOnCallbackFalse` and
+    `TestDispatchStreaming_AbortCancelsContext`. The REPL wiring
+    is straightforward keystroke-flag plumbing; manual testing in
+    the REPL covers it.
+
 ## [0.58.0] - 2026-05-11
 
 **Streaming spreads to the WiFi/Marauder side.** v0.56 introduced
