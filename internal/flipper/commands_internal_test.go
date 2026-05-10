@@ -99,3 +99,113 @@ func TestDesktopAndPropertyUSBOnly(t *testing.T) {
 		}
 	})
 }
+
+// TestStorageErrorBanner pins every recognised firmware-status →
+// human-readable banner mapping. The CLI emits banners like
+// "Storage error: not exist\n" so callers (notably ParseStorageStat
+// in parse.go) can match against a stable text form regardless of
+// which transport surfaced the error. A regression here would
+// silently classify errors as the catch-all "Storage error: <raw
+// msg>" fallback, breaking those parsers.
+func TestStorageErrorBanner(t *testing.T) {
+	tests := []struct {
+		errMsg string
+		want   string
+	}{
+		{"wrapped: ERROR_STORAGE_NOT_EXIST: file missing", "Storage error: not exist\n"},
+		{"wrapped: ERROR_STORAGE_NOT_READY: sd unmounted", "Storage error: not ready\n"},
+		{"wrapped: ERROR_STORAGE_DENIED: write protected", "Storage error: denied\n"},
+		{"wrapped: ERROR_STORAGE_INVALID_NAME: bad path", "Storage error: invalid name\n"},
+		{"wrapped: ERROR_STORAGE_INVALID_PARAMETER: bad arg", "Storage error: invalid parameter\n"},
+		{"wrapped: ERROR_STORAGE_EXIST: already there", "Storage error: already exist\n"},
+		{"wrapped: ERROR_STORAGE_INTERNAL: fs glitch", "Storage error: internal\n"},
+		{"wrapped: ERROR_STORAGE_NOT_IMPLEMENTED: rpc-only", "Storage error: not implemented\n"},
+		{"wrapped: ERROR_STORAGE_ALREADY_OPEN: locked", "Storage error: already open\n"},
+		{"wrapped: ERROR_STORAGE_DIR_NOT_EMPTY: rmdir failed", "Storage error: dir not empty\n"},
+
+		// Unmatched errors fall through to the catch-all form.
+		{"unrelated network error", "Storage error: unrelated network error\n"},
+		{"", "Storage error: \n"},
+	}
+	for _, tc := range tests {
+		err := errors.New(tc.errMsg)
+		if got := storageErrorBanner(err); got != tc.want {
+			t.Errorf("storageErrorBanner(%q) = %q, want %q", tc.errMsg, got, tc.want)
+		}
+	}
+}
+
+// TestRFIDDetectionLine pins the streamed-line classifier used by
+// the RFID-read tool to decide which lines are tag detections vs
+// scanner banner / status. The "Reading 125 kHz RFID..." startup
+// banner must NOT be classified as a detection.
+func TestRFIDDetectionLine(t *testing.T) {
+	detections := []string{
+		"EM4100  data: 1234567890",
+		"em-410x detected",
+		"HIDProx card",
+		"HID Prox H10301",
+		"H10301 facility:1 card:42",
+		"Indala 1234",
+		"AWID",
+		"FDX-A",
+		"FDX-B",
+		"Pyramid",
+		"Viking",
+		"IOProx",
+		"Jablotron",
+		"Paradox",
+		"NexWatch",
+		"Presco",
+		"Keri",
+		"Data: deadbeef",
+		"Key: 1234",
+		"Card id: 42",
+		"Facility: 7",
+	}
+	for _, line := range detections {
+		if !rfidDetectionLine(line) {
+			t.Errorf("rfidDetectionLine(%q) = false, want true (recognised detection)", line)
+		}
+	}
+
+	nonDetections := []string{
+		"Reading 125 kHz RFID...",
+		"reading rfid",
+		"Press EXIT to stop",
+		"",
+		"  ",
+		"vibro 1",
+	}
+	for _, line := range nonDetections {
+		if rfidDetectionLine(line) {
+			t.Errorf("rfidDetectionLine(%q) = true, want false (not a detection)", line)
+		}
+	}
+}
+
+// TestSanitizeArg pins the exported wrapper that the agent's
+// inline bruteforce dispatch calls when it builds Flipper CLI
+// commands directly. Delegates to clisafe.SanitizeArg; the strip-
+// set is CR / LF / NUL / ETX / double-quote.
+func TestSanitizeArg(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"plain", "plain"},
+		{"with\rCR", "withCR"},
+		{"with\nLF", "withLF"},
+		{"with\x00NUL", "withNUL"},
+		{"with\x03ETX", "withETX"},
+		{`with"quote`, "withquote"},
+		{"two words", "two words"}, // spaces preserved
+		{"a\rb\nc\x00d\"e", "abcde"},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		if got := SanitizeArg(tc.in); got != tc.want {
+			t.Errorf("SanitizeArg(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
