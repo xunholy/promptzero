@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-05-11
+
+**Cancellation propagates to the Marauder.** v0.59 closed the
+abort-early loop on streaming tools (Ctrl+G); v0.60 brings the
+same cancellation semantics to blocking Marauder calls. New
+`Marauder.ExecCtx` plus the first migrated handler
+(`wifi_scan_ap` blocking path) mean a turn-level Ctrl+C now aborts
+an in-flight Marauder scan within ~100 ms instead of blocking
+until the duration timeout fires. The cleanup also retires the
+last "TODO: thread context through Exec" placeholder in the
+Marauder transport. README gains a "Keystrokes during a turn"
+reference so operators discover Ctrl+G / Ctrl+C / Ctrl+R / Ctrl+L
+through the docs rather than the changelog.
+
 ### Changed
 
 - **`wifi_scan_ap` blocking Handler threads ctx to the wire.** First
@@ -43,6 +57,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The unused `readUntilPrompt(timeout)` wrapper is deleted.
     `readUntilPromptCtx` was already context-aware; `Exec` now
     calls it directly via `ExecCtx`.
+
+### Documentation
+
+- **README gains a "Keystrokes during a turn" reference.** Names
+  the four operator-visible keystrokes — Ctrl+C (cancel turn),
+  Ctrl+G (abort streaming tool, agent continues), Ctrl+R (history
+  search), Ctrl+L (clear screen) — right after the slash-commands
+  list. Closes the discovery gap for Ctrl+G that shipped in
+  v0.59.0; until this change operators had to read the changelog
+  or notice the inline hint when they happened to press the key.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-Marauder validator — N/A this release. The `ExecCtx`
+  cancellation contract is pinned by
+  `TestExecCtx_HonoursCancellation` in the fake-port suite; the
+  wire-form of the migrated `wifi_scan_ap` Handler is unchanged
+  (still `scanap` on the wire), so `TestCommandsWireForm/ScanAP`
+  continues to cover the wire side.
 
 ## [0.59.0] - 2026-05-11
 
