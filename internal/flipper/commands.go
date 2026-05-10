@@ -229,10 +229,34 @@ func (f *Flipper) IRRx(timeout time.Duration) (string, error) {
 	})
 }
 
+// IRRxStream is the line-streaming variant of IRRx. Each line emitted
+// by `ir rx` (typically the decoded signal once a remote button is
+// pressed) lands at onLine; stop=true ends the capture. Wraps the
+// streaming call in withSuccessBuzz so a successful capture still
+// triggers the 120 ms vibration on completion — operators rely on
+// the buzz to confirm the IR signal was caught without looking at
+// the screen.
+// CLI: ir rx
+func (f *Flipper) IRRxStream(ctx context.Context, timeout time.Duration, onLine func(line string) (stop bool)) (string, error) {
+	return f.withSuccessBuzz(func() (string, error) {
+		return f.streamLines(ctx, "ir rx", timeout, onLine)
+	})
+}
+
 // IRRxRaw listens for a raw infrared signal.
 // CLI: ir rx raw
 func (f *Flipper) IRRxRaw(timeout time.Duration) (string, error) {
 	return f.ExecLong("ir rx raw", timeout)
+}
+
+// IRRxRawStream is the line-streaming variant of IRRxRaw. Each pulse
+// line emitted while `ir rx raw` is running lands at onLine; stop=true
+// ends the capture early. No success buzz — the raw stream typically
+// runs to completion via a duration budget rather than a discrete
+// "captured" moment.
+// CLI: ir rx raw
+func (f *Flipper) IRRxRawStream(ctx context.Context, timeout time.Duration, onLine func(line string) (stop bool)) (string, error) {
+	return f.streamLines(ctx, "ir rx raw", timeout, onLine)
 }
 
 // IRUniversal brute-forces every variant of the named signal category across
