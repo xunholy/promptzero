@@ -231,7 +231,17 @@ func parseStationLine(line string) (Station, bool) {
 // ScanResult. On parse failure the raw string is still carried in
 // RawLines so the caller can fall back to text display.
 func (m *Marauder) ScanAPParsed(timeout time.Duration) (ScanResult, error) {
-	raw, err := m.Exec("scanap", timeout)
+	return m.ScanAPParsedCtx(context.Background(), timeout)
+}
+
+// ScanAPParsedCtx is the context-aware variant of ScanAPParsed.
+// A turn-level cancel (e.g. operator Ctrl+C in the REPL) propagates
+// to the underlying Marauder read loop within ~100 ms, so the call
+// returns promptly rather than blocking until the timeout fires.
+// Mirrors the [Flipper.ExecLongCtx] convention so handlers can
+// thread their dispatch ctx all the way through to the wire.
+func (m *Marauder) ScanAPParsedCtx(ctx context.Context, timeout time.Duration) (ScanResult, error) {
+	raw, err := m.ExecCtx(ctx, "scanap", timeout)
 	if err != nil {
 		return ScanResult{}, err
 	}
