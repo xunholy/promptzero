@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-05-11
+
+**Cancellation parity across transports.** v0.60–v0.61 wired ctx
+threading through the Marauder timed-command surface. v0.62
+brings the same to Flipper, so both transports now honour
+turn-level Ctrl+C identically — operators no longer wait out a
+30-second `ir_receive` or `ibutton_read` to cancel a turn.
+
 ### Changed
 
 - **Ctx threading reaches the Flipper transport.** v0.60–v0.61 did
@@ -41,6 +49,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     by the existing flipper test suite, and the migrated handlers
     are signature-preserving on the wire (the existing
     `TestCommandsWireForm` table-test still passes unchanged).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-Flipper validator — N/A this release. The 9 new `…Ctx`
+  variants delegate through the same `ExecLongCtx` path the
+  flipper test suite already exercises. The handler migration is
+  byte-identical on the wire (verified by the existing
+  `TestCommandsWireForm` table-test which continues to pin every
+  wrapped command).
 
 ## [0.61.0] - 2026-05-11
 
