@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-05-10
+
+P3 sweep — three more roadmap items closed. v0.54 finishes the
+"safety / observability / fine-tune-readiness" cluster of P3 items
+that pair naturally with the v0.53 versioning + cache work:
+
+- P3-30 — adversarial test suite (`test/adversarial/`) pins the
+  combined parser → quarantine → sanitiser contract end-to-end.
+- P3-29 — classifier-output confidence + persona-tunable abstention
+  on vision and the per-turn router. Closes the symmetrical gap
+  with the v0.4-era input-grounding sibling.
+- P3-28 (second half) — per-tool circuit breaker + structured
+  `<circuit-breaker-open>` escalation message in agent dispatch.
+  Streaming-tool-outputs (the first half) is deferred — it requires
+  changes to the tool Spec interface that don't fit a single
+  iteration cleanly.
+
+After this release, every P0 + P1 + P2 item plus P3-29, P3-30,
+P3-31, P3-32, and the breaker half of P3-28 are in main.
+Remaining P3: 28 streaming half, 33 ensemble voting, 34 plugins
+(deferred-by-design), 35 pwnagotchi-learning (deferred-by-design).
+
 ### Added
 
 - **Per-tool circuit breaker — second half of P3-28**. Closes the
