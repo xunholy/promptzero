@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-05-11
+
+**Pure-helper coverage sweep.** Three packages gain coverage on
+0 %-tested helpers that every Handler in the registry depends on
+but no test previously pinned: Flipper pure helpers
+(`storageErrorBanner`, `rfidDetectionLine`, `SanitizeArg`), the
+`tools/args.go` parameter-bag extractors (`str` / `intOr` /
+`floatOr` / `boolOr`), and the `Deps.Require…` dependency gates
+(Marauder, Bruce, BusPirate, Faultier). A regression in any of
+these silently breaks every consumer; pinning them via direct
+unit tests is the cheapest insurance available.
+
+### Changed
+
+- **`internal/flipper` pure-helper coverage.** Three previously-
+  0 % helpers tested directly:
+  - `storageErrorBanner` — every recognised
+    `ERROR_STORAGE_*` → human-readable banner mapping (10 mapped
+    cases + catch-all fallback). `ParseStorageStat` matches
+    against these stable text forms; a silent reclassification
+    would break the parser.
+  - `rfidDetectionLine` — the streamed-line classifier the
+    RFID-read tool uses to decide which lines are tag
+    detections. "Reading 125 kHz RFID..." must NOT be flagged
+    (would emit a spurious result before any tag appeared);
+    every known protocol name and decoded-field prefix must be.
+  - `SanitizeArg` — the exported `clisafe.SanitizeArg` wrapper
+    the agent's inline-bruteforce dispatch calls. Strips
+    CR/LF/NUL/ETX/double-quote, preserves spaces.
+
+  Coverage on `internal/flipper` rose **55.5 % → 56.9 %**
+  (+1.4 pp).
+
+- **`internal/tools` argument + gate coverage.**
+  - New `args_test.go` — pins `str`, `intOr`, `floatOr`, `boolOr`,
+    the four parameter-bag extractors every tool Handler in the
+    registry calls. JSON-payload shape coming in is
+    `map[string]any{}` with float64 numbers; these helpers
+    normalise that into typed Go values with safe fallbacks. A
+    regression silently breaks every tool that consumes typed
+    inputs.
+  - New `require_test.go` — pins `Deps.RequireMarauder`,
+    `RequireBruce`, `RequireBusPirate`, `RequireFaultier`. nil-
+    receiver-safe, returns a clear "X not connected" error
+    mentioning the relevant CLI flag instead of a nil-pointer
+    panic when a Handler runs without its transport wired.
+
+  Coverage on `internal/tools` rose **41.1 % → 41.3 %**
+  (+0.2 pp). The modest delta reflects the package being
+  dominated by thin Handler wrappers around transport calls;
+  the headline win here is locking in correctness for the
+  helpers every Handler shares.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A this release. Pure unit tests on
+  helpers and gates; no transport surface touched.
+
 ## [0.67.0] - 2026-05-11
 
 **Watcher + Marauder validation coverage.** Continues the coverage
