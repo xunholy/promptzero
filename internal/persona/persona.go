@@ -44,6 +44,19 @@ type Persona struct {
 	DefaultRiskThreshold string            `yaml:"default_risk_threshold,omitempty"`
 	Models               map[string]string `yaml:"models,omitempty"`
 
+	// Confidence is per-classifier-surface abstention thresholds in
+	// [0.0, 1.0] (roadmap P3-29). Keys are the names declared in
+	// internal/confidence (`vision`, `router`); values below the
+	// threshold cause the agent to abstain — for vision, surface a
+	// clarifying user-facing question; for router, fall back to the
+	// full tool catalog instead of acting on a low-confidence
+	// narrowing. Empty / absent keys fall back to
+	// confidence.DefaultClassifierThreshold (0.5), matching the
+	// historical input-grounding default. Out-of-range values are
+	// clamped at use-site so a misconfigured persona can't push the
+	// agent into always-abstain or never-abstain territory.
+	Confidence map[string]float64 `yaml:"confidence,omitempty"`
+
 	// Version is an operator-supplied identifier for this persona
 	// snapshot — typically a SemVer string ("1.0.0") or a date
 	// ("2026-05-10"). Recorded on every audit row through the
