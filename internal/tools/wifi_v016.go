@@ -60,11 +60,11 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.MacTrack(time.Duration(intOr(p, "duration_seconds", 60)) * time.Second)
+			return d.Marauder.MacTrackCtx(ctx, time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
 		},
 	})
 
@@ -76,11 +76,11 @@ func init() {
 		Risk:        risk.Low,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.Sigmon(time.Duration(intOr(p, "duration_seconds", 60)) * time.Second)
+			return d.Marauder.SigmonCtx(ctx, time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
 		},
 	})
 
@@ -92,11 +92,11 @@ func init() {
 		Risk:        risk.Low,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.SniffPineScan(time.Duration(intOr(p, "duration_seconds", 60)) * time.Second)
+			return d.Marauder.SniffPineScanCtx(ctx, time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
 		},
 	})
 
@@ -108,11 +108,11 @@ func init() {
 		Risk:        risk.Low,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.SniffMultiSSID(time.Duration(intOr(p, "duration_seconds", 60)) * time.Second)
+			return d.Marauder.SniffMultiSSIDCtx(ctx, time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
 		},
 	})
 
@@ -126,11 +126,11 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.WardriveStart(time.Duration(intOr(p, "duration_seconds", 600)) * time.Second)
+			return d.Marauder.WardriveStartCtx(ctx, time.Duration(intOr(p, "duration_seconds", 600))*time.Second)
 		},
 	})
 
@@ -177,11 +177,11 @@ func init() {
 		Risk:        risk.Low,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.GpsTrackerStart(time.Duration(intOr(p, "duration_seconds", 600)) * time.Second)
+			return d.Marauder.GpsTrackerStartCtx(ctx, time.Duration(intOr(p, "duration_seconds", 600))*time.Second)
 		},
 	})
 
@@ -306,11 +306,11 @@ func init() {
 		Risk:        risk.Critical,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.AttackQuiet(time.Duration(intOr(p, "duration_seconds", 60)) * time.Second)
+			return d.Marauder.AttackQuietCtx(ctx, time.Duration(intOr(p, "duration_seconds", 60))*time.Second)
 		},
 	})
 
@@ -324,11 +324,12 @@ func init() {
 		Risk:      risk.Critical,
 		Group:     GroupMarauderWiFi,
 		AgentOnly: false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.AttackBadmsg(
+			return d.Marauder.AttackBadmsgCtx(
+				ctx,
 				boolOr(p, "targeted", false),
 				time.Duration(intOr(p, "duration_seconds", 60))*time.Second,
 			)
@@ -345,11 +346,12 @@ func init() {
 		Risk:      risk.Critical,
 		Group:     GroupMarauderWiFi,
 		AgentOnly: false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			return d.Marauder.AttackSleep(
+			return d.Marauder.AttackSleepCtx(
+				ctx,
 				boolOr(p, "targeted", false),
 				time.Duration(intOr(p, "duration_seconds", 60))*time.Second,
 			)

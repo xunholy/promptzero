@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Ctx threading covers the Marauder v0.16 command family.**
+  v0.61 lifted the original `commands.go` Marauder methods onto the
+  ctx-aware path; v0.62 did the Flipper transport. This change
+  closes the last remaining gap on the Marauder side —
+  `commands_v016.go` (audit gap §2 additions) had 9 timed methods
+  still routing through `Exec` instead of `ExecCtx`.
+
+  - **9 new `…Ctx` variants** in `internal/marauder/commands_v016.go`
+    — `MacTrackCtx`, `SigmonCtx`, `SniffPineScanCtx`,
+    `SniffMultiSSIDCtx`, `WardriveStartCtx`, `GpsTrackerStartCtx`,
+    `AttackQuietCtx`, `AttackBadmsgCtx`, `AttackSleepCtx`. The
+    biggest impact is `WardriveStartCtx`: `wifi_wardrive_start`'s
+    600 s (10 minute) default duration meant operators previously
+    waited up to 10 minutes for Ctrl+C to take effect; now it's
+    ~100 ms.
+  - **9 tool handlers migrated** in `internal/tools/wifi_v016.go`
+    — `wifi_mactrack`, `wifi_sigmon`, `wifi_sniff_pinescan`,
+    `wifi_sniff_multissid`, `wifi_wardrive_start`,
+    `gps_tracker_start`, `wifi_attack_quiet`, `wifi_attack_badmsg`,
+    `wifi_attack_sleep`. Same signature change pattern as v0.61 /
+    v0.62: `func(_ context.Context, …)` → `func(ctx context.Context,
+    …)` and `d.Marauder.X(…)` → `d.Marauder.XCtx(ctx, …)`.
+
 ## [0.62.0] - 2026-05-11
 
 **Cancellation parity across transports.** v0.60–v0.61 wired ctx
