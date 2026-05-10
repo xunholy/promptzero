@@ -34,6 +34,7 @@ import (
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/session"
 	"github.com/xunholy/promptzero/internal/snapshot"
+	"github.com/xunholy/promptzero/internal/streaming"
 	"github.com/xunholy/promptzero/internal/targetmem"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
 	"github.com/xunholy/promptzero/internal/vision"
@@ -149,22 +150,29 @@ type Agent struct {
 	// partially-advanced history.
 	turnMu sync.Mutex
 
-	mu            sync.Mutex
-	client        *anthropic.Client
-	flipper       *flipper.Flipper
-	marauder      *marauder.Marauder
-	bruce         *bruce.Client
-	faultier      *faultier.Client
-	buspirate     *buspirate.Client
-	cfg           *config.Config
-	model         string
-	history       []anthropic.MessageParam
-	auditLog      *audit.Log
-	generator     *generate.Generator
-	vision        *vision.Analyzer
-	genLLM        provider.Provider
-	toolStatusCb  func(ToolEvent)
-	textDeltaCb   func(TextDelta)
+	mu           sync.Mutex
+	client       *anthropic.Client
+	flipper      *flipper.Flipper
+	marauder     *marauder.Marauder
+	bruce        *bruce.Client
+	faultier     *faultier.Client
+	buspirate    *buspirate.Client
+	cfg          *config.Config
+	model        string
+	history      []anthropic.MessageParam
+	auditLog     *audit.Log
+	generator    *generate.Generator
+	vision       *vision.Analyzer
+	genLLM       provider.Provider
+	toolStatusCb func(ToolEvent)
+	textDeltaCb  func(TextDelta)
+	// toolStreamCb receives partial frames emitted by tools that
+	// opted into streaming dispatch (Spec.Streams=true,
+	// Spec.StreamHandler set). Operator-facing only — frames don't
+	// affect the LLM-visible tool_result. See internal/streaming
+	// + dispatchStreaming. Nil disables streaming dispatch entirely
+	// (tools fall back to their non-streaming Handler).
+	toolStreamCb  func(streaming.Frame)
 	usageCb       func(u Usage)
 	streamErrCb   func(err error)
 	retryNotifyCb func(RetryNotice) // v0.21.0: per-attempt retry observer for transient API errors
@@ -463,6 +471,15 @@ func (a *Agent) SetGenerator(g *generate.Generator)      { a.generator = g }
 func (a *Agent) SetGenLLM(p provider.Provider)           { a.genLLM = p }
 func (a *Agent) SetToolStatusCallback(f func(ToolEvent)) { a.toolStatusCb = f }
 func (a *Agent) SetTextDeltaCallback(f func(TextDelta))  { a.textDeltaCb = f }
+
+// SetToolStreamCallback registers a per-frame callback for tools
+// that opted into streaming dispatch (P3-28 first half). The
+// callback is invoked once per partial frame, in arrival order;
+// dispatch blocks until the consumer drain completes so no frame
+// arrives after the dispatch returns. Pass nil to disable
+// streaming dispatch entirely — opted-in tools then fall back to
+// their non-streaming Handler.
+func (a *Agent) SetToolStreamCallback(f func(streaming.Frame)) { a.toolStreamCb = f }
 
 // Usage reports token consumption for one successful streamOnce call.
 // InputTokens and OutputTokens are the usual Anthropic counters; the
@@ -1552,7 +1569,42 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 		}
 	}()
 
+	// Streaming dispatch (P3-28 first half): when the tool opted in
+	// AND the host wired a frame callback, run the StreamHandler
+	// against a fresh sink and forward frames to the callback in
+	// real time. The LLM-facing return string still comes from the
+	// handler's final return — partial frames are operator-facing
+	// only. Falls through to the regular Handler when the tool
+	// didn't opt in or the host didn't install a callback.
+	if spec.Streams && spec.StreamHandler != nil && a.toolStreamCb != nil {
+		return a.dispatchStreaming(ctx, spec, p)
+	}
+
 	return spec.Handler(ctx, a.deps(), p)
+}
+
+// dispatchStreaming runs a streaming tool. A consumer goroutine
+// drains the sink and forwards frames to the operator-supplied
+// callback; the producer is the spec.StreamHandler. The function
+// blocks until the handler returns and the consumer drains —
+// guarantees that no frames arrive at the callback after dispatch
+// returns.
+func (a *Agent) dispatchStreaming(ctx context.Context, spec toolsreg.Spec, p map[string]any) (string, error) {
+	sink := streaming.NewSink(spec.Name, 0)
+	cb := a.toolStreamCb
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for f := range sink.Frames() {
+			cb(f)
+		}
+	}()
+
+	output, err := spec.StreamHandler(ctx, a.deps(), p, sink)
+	sink.Close()
+	<-done
+	return output, err
 }
 
 // workflowConfirmHook routes a workflow's internal sub-tool

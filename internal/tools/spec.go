@@ -35,6 +35,7 @@ import (
 	"github.com/xunholy/promptzero/internal/rag"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/snapshot"
+	"github.com/xunholy/promptzero/internal/streaming"
 	"github.com/xunholy/promptzero/internal/targetmem"
 	"github.com/xunholy/promptzero/internal/vision"
 )
@@ -81,6 +82,19 @@ const (
 // handler MUST guard against nil fields that its mode may not wire up
 // (e.g. an MCP-only host will not set Snapshot or Generator).
 type Handler func(ctx context.Context, d *Deps, args map[string]any) (string, error)
+
+// streamHandler is the streaming-dispatch variant of Handler. Same
+// shape plus a *streaming.Sink so the tool can emit partial frames
+// while still returning the final LLM-facing tool_result string.
+// Non-streaming tools leave Spec.StreamHandler nil and the
+// dispatcher falls through to the regular Handler path.
+type streamHandler func(ctx context.Context, d *Deps, args map[string]any, sink *streaming.Sink) (string, error)
+
+// StreamHandler is the exported alias of streamHandler. Tool
+// authors declare the streaming variant via the public name; the
+// internal type stays unexported so the Spec field's signature in
+// the catalog reads cleanly.
+type StreamHandler = streamHandler
 
 // Spec is the canonical description of one tool.
 //
@@ -143,6 +157,29 @@ type Spec struct {
 	// dispatch switch into this function, substituting `a.flipper` →
 	// `d.Flipper`, `a.marauder` → `d.Marauder`, etc.
 	Handler Handler
+
+	// Streams declares whether the tool can emit partial output via
+	// a streaming.Sink during dispatch (roadmap P3-28 first half).
+	// Operator-facing UIs (CLI status line, web UI, SSE forwarder)
+	// subscribe to the per-call sink to surface live progress;
+	// the LLM-facing tool_result is unchanged — it remains the
+	// final return string. Default false; non-streaming dispatch is
+	// the historical behaviour.
+	Streams bool
+
+	// StreamHandler is the streaming-handler variant. Optional —
+	// when nil, the dispatcher uses Handler. When set AND the host
+	// has installed a stream callback, the dispatcher invokes
+	// StreamHandler with a fresh sink and forwards frames to the
+	// callback in real time. The callback ALSO receives a final
+	// frame on close so consumers can flush any per-tool buffer.
+	//
+	// StreamHandler still returns the final tool_result string so
+	// the LLM contract is unchanged: the agent serialises the
+	// return value into the tool_result block exactly as for the
+	// non-streaming Handler. Streaming is an addition to the side
+	// channel, never a replacement for the model-facing answer.
+	StreamHandler streamHandler
 
 	// WriteIntent, when non-nil, is invoked by the confirmation flow
 	// to extract the (path, content) the tool would write. The flow
