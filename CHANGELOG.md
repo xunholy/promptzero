@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-05-11
+
+**Streaming + abort-early — end-to-end.** v0.55 shipped the
+streaming-tool-output infrastructure (Sink, opt-in tool flag,
+dispatch path) but no real tool used it and no host wired the
+frame callback. v0.56 closes the loop on all three layers:
+infrastructure gains a cooperative abort signal, `subghz_receive`
+opts in for per-line streaming, and the REPL host renders each
+frame as a dim, indented line under the running tool. A
+long-running Sub-GHz capture can now show partial output as it
+arrives and stop the moment a useful candidate lands — without
+forcibly killing the producer or leaving the radio in a
+half-configured state.
+
 ### Added
 
 - **Streaming abort-early UX** (the natural follow-up flagged in the
@@ -113,6 +127,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     sends Ctrl+C (and the post-stop line is NOT in the accumulated
     output), ctx cancel ends capture promptly with no error and
     leaves the session healthy for a follow-up DeviceInfo call.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-Flipper validator — N/A this release (no hardware-touching
+  changes; the streaming additions exercise existing transports
+  through the mock-pty test suite).
 
 ## [0.55.0] - 2026-05-10
 
