@@ -494,6 +494,51 @@ func TestLogStreamLines_LevelArgPasses(t *testing.T) {
 	}
 }
 
+// TestSubGHzRxRawStream_DeliversEachLine pins per-line delivery for
+// the rx_raw streaming variant. The third caller of streamLines —
+// the existence of three callers is what justified extracting the
+// shared helper in the first place.
+func TestSubGHzRxRawStream_DeliversEachLine(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("subghz"),
+		mock.WithHandler("subghz", func(args []string) string {
+			if len(args) >= 1 && args[0] == "rx_raw" {
+				return "RAW T:400 D:1\nRAW T:800 D:0\nRAW T:400 D:1\n"
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 400 * time.Millisecond
+	var got []string
+	raw, err := flip.SubGHzRxRawStream(context.Background(), 433920000, budget, func(line string) bool {
+		got = append(got, line)
+		return false
+	})
+	if err != nil {
+		t.Fatalf("SubGHzRxRawStream: %v", err)
+	}
+	wantLines := []string{
+		"RAW T:400 D:1",
+		"RAW T:800 D:0",
+		"RAW T:400 D:1",
+	}
+	if len(got) != len(wantLines) {
+		t.Fatalf("onLine called %d times, want %d (lines=%v)", len(got), len(wantLines), got)
+	}
+	for i, w := range wantLines {
+		if got[i] != w {
+			t.Errorf("line[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+	for _, w := range wantLines {
+		if !strings.Contains(raw, w) {
+			t.Errorf("accumulated raw missing %q: %q", w, raw)
+		}
+	}
+}
+
 // TestNFCDetectTimeoutReturnsNilError verifies that when the scanner budget
 // expires inside the NFC subshell:
 //   - NFCDetect returns nil error (streaming-success semantics)

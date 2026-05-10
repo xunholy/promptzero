@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`subghz_rx_raw` becomes streaming-capable** — third tool wired to
+  v0.55's streaming dispatch path after `subghz_receive` and
+  `log_stream`. Each pulse line emitted while `subghz rx_raw` runs
+  lands at the host's stream callback as a frame in real time. The
+  same Momentum-only firmware-fork gate as the blocking `SubGHzRxRaw`
+  applies — non-Momentum forks return the file-path-required error
+  before any streaming starts, so streaming hosts never see a sudden
+  silent Stream-end on unsupported firmware.
+
 - **`log_stream` becomes streaming-capable** — the second tool wired
   to v0.55's streaming dispatch path after `subghz_receive`. Each
   firmware log line emitted by `log [<level>]` lands at the host's
@@ -32,6 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     early-stop via `stop=true` (1 onLine call, post-stop line NOT
     in raw, mock observes Ctrl+C, follow-up DeviceInfo healthy),
     `log <level>` argument passes through to the wire.
+
+### Changed
+
+- **Shared `Flipper.streamLines` helper.** Three streaming wrappers
+  (`SubGHzRxStream`, `LogStreamLines`, new `SubGHzRxRawStream`) had
+  drifted into near-identical bodies — `context.WithTimeout` +
+  command-echo filter + `strings.Builder` accumulator + cancel-as-
+  success unwrap. The shared shape is now in one place; each
+  caller is reduced to building its command string and delegating.
+  No public API change; the per-wrapper godoc lives where the
+  wrapper lives so capability gates and CLI verbs still document
+  themselves.
 
 ## [0.56.0] - 2026-05-11
 

@@ -140,11 +140,25 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupFlipperSubGHz,
 		AgentOnly:   false,
+		// Streaming opt-in mirrors subghz_receive / log_stream: each
+		// pulse line emitted by firmware lands at the host's stream
+		// callback as a frame in real time. Hosts without a callback
+		// fall back to the blocking SubGHzRxRaw Handler unchanged.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.SubGHzRxRaw(
 				uint32(intOr(p, "frequency", 0)),
 				time.Duration(intOr(p, "duration_seconds", 30))*time.Second,
 			)
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			freq := uint32(intOr(p, "frequency", 0))
+			duration := time.Duration(intOr(p, "duration_seconds", 30)) * time.Second
+			return d.Flipper.SubGHzRxRawStream(ctx, freq, duration, func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				return sink.IsAborted()
+			})
 		},
 	})
 
