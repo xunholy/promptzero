@@ -2,8 +2,13 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -169,6 +174,301 @@ func TestSignalLibrarySearch_LimitZeroFallsBackToDefault(t *testing.T) {
 	}
 	if env.Limit != 50 {
 		t.Errorf("limit = %d, want 50 (default)", env.Limit)
+	}
+}
+
+// --- signal_import ---
+
+// signalImportRedirectClient swaps the package-level HTTP client to a
+// version that follows redirects without enforcing the allowlist (the
+// tool does that itself), and rewrites the request to point at the
+// httptest server. We can't change net.LookupHost, so the test feeds
+// the server's URL directly via a "URL rewrite" RoundTripper.
+type signalImportRewriteTransport struct {
+	target string // e.g. "http://127.0.0.1:12345"
+}
+
+func (t *signalImportRewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	tu, err := url.Parse(t.target)
+	if err != nil {
+		return nil, err
+	}
+	req2 := req.Clone(req.Context())
+	req2.URL.Scheme = tu.Scheme
+	req2.URL.Host = tu.Host
+	return http.DefaultTransport.RoundTrip(req2)
+}
+
+func swapImportClient(t *testing.T, server *httptest.Server) {
+	t.Helper()
+	prev := signalImportClient
+	signalImportClient = &http.Client{
+		Transport:     &signalImportRewriteTransport{target: server.URL},
+		Timeout:       signalImportFetchTimeout,
+		CheckRedirect: prev.CheckRedirect,
+	}
+	t.Cleanup(func() { signalImportClient = prev })
+}
+
+func TestSignalImport_RegisteredAtInit(t *testing.T) {
+	spec, ok := Get("signal_import")
+	if !ok {
+		t.Fatal("signal_import not registered")
+	}
+	if spec.Risk != risk.Medium {
+		t.Errorf("Risk = %s, want Medium", spec.Risk)
+	}
+	if spec.Group != GroupMetaUtil {
+		t.Errorf("Group = %s, want %s", spec.Group, GroupMetaUtil)
+	}
+}
+
+func TestSignalImport_RejectsNonHTTPS(t *testing.T) {
+	spec, _ := Get("signal_import")
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url": "http://lab.flipper.net/x.txt",
+	})
+	if err == nil || !strings.Contains(err.Error(), "https") {
+		t.Errorf("non-https: expected scheme error, got %v", err)
+	}
+}
+
+func TestSignalImport_RejectsDisallowedHost(t *testing.T) {
+	spec, _ := Get("signal_import")
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url": "https://attacker.example.com/x.txt",
+	})
+	if err == nil || !strings.Contains(err.Error(), "allowlist") {
+		t.Errorf("bad host: expected allowlist error, got %v", err)
+	}
+}
+
+func TestSignalImport_RejectsPathTraversalFilename(t *testing.T) {
+	spec, _ := Get("signal_import")
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":      "https://lab.flipper.net/lib.txt",
+		"filename": "../../escape.txt",
+	})
+	if err == nil || !strings.Contains(err.Error(), "basename") {
+		t.Errorf("path traversal: expected basename error, got %v", err)
+	}
+}
+
+func TestSignalImport_RejectsNonTxtFilename(t *testing.T) {
+	spec, _ := Get("signal_import")
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":      "https://lab.flipper.net/lib.txt",
+		"filename": "shellcode.exe",
+	})
+	if err == nil || !strings.Contains(err.Error(), ".txt") {
+		t.Errorf("non-txt filename: expected error, got %v", err)
+	}
+}
+
+func TestSignalImport_RejectsBadExpectedHash(t *testing.T) {
+	spec, _ := Get("signal_import")
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":             "https://lab.flipper.net/lib.txt",
+		"expected_sha256": "not-a-hash",
+	})
+	if err == nil || !strings.Contains(err.Error(), "expected_sha256") {
+		t.Errorf("bad hash: expected error, got %v", err)
+	}
+}
+
+func TestSignalImport_HappyPath_SavesAndReportsHash(t *testing.T) {
+	body := []byte("f=433920000,m=AM_DSB,d=Garage A\nf=315000000,d=Car fob\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	swapImportClient(t, srv)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	spec, _ := Get("signal_import")
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":      "https://lab.flipper.net/test.txt",
+		"filename": "test.txt",
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	var env struct {
+		URL            string `json:"url"`
+		SavedTo        string `json:"saved_to"`
+		SHA256         string `json:"sha256"`
+		Bytes          int    `json:"bytes"`
+		EntryCount     int    `json:"entry_count"`
+		VerifiedPinned bool   `json:"verified_pinned"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("envelope: %v\n%s", err, out)
+	}
+	wantSum := sha256.Sum256(body)
+	if env.SHA256 != hex.EncodeToString(wantSum[:]) {
+		t.Errorf("sha256 = %q, want %q", env.SHA256, hex.EncodeToString(wantSum[:]))
+	}
+	if env.Bytes != len(body) {
+		t.Errorf("bytes = %d, want %d", env.Bytes, len(body))
+	}
+	if env.EntryCount != 2 {
+		t.Errorf("entry_count = %d, want 2", env.EntryCount)
+	}
+	if env.VerifiedPinned {
+		t.Error("verified_pinned = true; no expected_sha256 was supplied")
+	}
+	// File should be on disk and parseable on next call.
+	saved, err := os.ReadFile(env.SavedTo)
+	if err != nil {
+		t.Fatalf("read saved file: %v", err)
+	}
+	if string(saved) != string(body) {
+		t.Errorf("saved bytes mismatch: got %q, want %q", saved, body)
+	}
+}
+
+func TestSignalImport_HashMismatchIsRejected(t *testing.T) {
+	body := []byte("f=433920000,d=Real\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	swapImportClient(t, srv)
+	t.Setenv("HOME", t.TempDir())
+
+	spec, _ := Get("signal_import")
+	bogus := strings.Repeat("0", 64)
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":             "https://lab.flipper.net/x.txt",
+		"filename":        "x.txt",
+		"expected_sha256": bogus,
+	})
+	if err == nil || !strings.Contains(err.Error(), "sha256 mismatch") {
+		t.Errorf("hash mismatch: expected mismatch error, got %v", err)
+	}
+}
+
+func TestSignalImport_HashPinSucceedsWhenCorrect(t *testing.T) {
+	body := []byte("f=433920000,d=A\n")
+	wantSum := sha256.Sum256(body)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	swapImportClient(t, srv)
+	t.Setenv("HOME", t.TempDir())
+
+	spec, _ := Get("signal_import")
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":             "https://lab.flipper.net/x.txt",
+		"filename":        "x.txt",
+		"expected_sha256": hex.EncodeToString(wantSum[:]),
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if !strings.Contains(out, `"verified_pinned": true`) {
+		t.Errorf("verified_pinned should be true in envelope: %s", out)
+	}
+}
+
+func TestSignalImport_RejectsResponseLargerThanCap(t *testing.T) {
+	huge := make([]byte, signalImportMaxBytes+1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(huge)
+	}))
+	t.Cleanup(srv.Close)
+	swapImportClient(t, srv)
+	t.Setenv("HOME", t.TempDir())
+
+	spec, _ := Get("signal_import")
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":      "https://lab.flipper.net/big.txt",
+		"filename": "big.txt",
+	})
+	if err == nil || !strings.Contains(err.Error(), "cap") {
+		t.Errorf("oversize: expected cap error, got %v", err)
+	}
+}
+
+func TestSignalImport_RejectsServerErrorStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	swapImportClient(t, srv)
+	t.Setenv("HOME", t.TempDir())
+
+	spec, _ := Get("signal_import")
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":      "https://lab.flipper.net/missing.txt",
+		"filename": "missing.txt",
+	})
+	if err == nil || !strings.Contains(err.Error(), "404") {
+		t.Errorf("404: expected error, got %v", err)
+	}
+}
+
+func TestSignalImport_RejectsBytesThatDontParseAsFreqman(t *testing.T) {
+	body := []byte("This is not a freqman list, just plain prose\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	swapImportClient(t, srv)
+	t.Setenv("HOME", t.TempDir())
+
+	spec, _ := Get("signal_import")
+	_, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":      "https://lab.flipper.net/bad.txt",
+		"filename": "bad.txt",
+	})
+	if err == nil || !strings.Contains(err.Error(), "Freqman") {
+		t.Errorf("non-freqman bytes: expected error, got %v", err)
+	}
+}
+
+func TestSignalImport_RedirectToDisallowedHostRefused(t *testing.T) {
+	// Direct CheckRedirect-hook test: we don't need a live server because
+	// the hook is invoked by net/http on each redirect step. Construct a
+	// fake request to the off-allowlist host and call the hook.
+	req, _ := http.NewRequest(http.MethodGet, "https://attacker.example.com/x.txt", nil)
+	via := []*http.Request{}
+	if err := signalImportClient.CheckRedirect(req, via); err == nil ||
+		!strings.Contains(err.Error(), "disallowed host") {
+		t.Errorf("CheckRedirect to off-allowlist host: expected refusal, got %v", err)
+	}
+	// Sanity: a redirect to an allowlisted host is permitted.
+	req2, _ := http.NewRequest(http.MethodGet, "https://lab.flipper.net/x.txt", nil)
+	if err := signalImportClient.CheckRedirect(req2, via); err != nil {
+		t.Errorf("CheckRedirect to allowlisted host: unexpected error %v", err)
+	}
+}
+
+func TestSignalImport_FilenameDefaultsToURLBasename(t *testing.T) {
+	body := []byte("f=433920000,d=A\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	swapImportClient(t, srv)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	spec, _ := Get("signal_import")
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url": "https://lab.flipper.net/region-eu.txt",
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if !strings.Contains(out, "region-eu.txt") {
+		t.Errorf("expected default filename region-eu.txt in envelope: %s", out)
 	}
 }
 

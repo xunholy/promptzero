@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`signal_import` tool — HTTPS-only Freqman list importer with
+  hash-pin, allowlist, size cap, and parse-before-write validation**
+  (roadmap P2-20 final). Closes the third and last sub-item of
+  P2-20: an operator can now seed the local catalogue from
+  community-curated public lists with the same end-to-end safety
+  posture as the rest of the agent's risky-write tools.
+
+  - Allowlist of vetted hosts (`lab.flipper.net`, `flipc.org`,
+    `raw.githubusercontent.com`, `gist.githubusercontent.com`).
+    Adding a host is a deliberate PR-time decision; hash-pinning
+    is defence-in-depth, not the primary trust gate.
+  - HTTPS-only — non-HTTPS URLs rejected pre-fetch.
+  - Size cap of 1 MiB; oversize responses refused.
+  - Optional `expected_sha256` parameter pins the fetched body's
+    digest. The handler always returns the actual `sha256` so the
+    operator can copy it into a follow-up call to lock the import
+    against future drift.
+  - `CheckRedirect` hook on the package-level HTTP client refuses
+    any redirect hop whose host is off the allowlist (CDN-fronted
+    catalogues that 301 elsewhere stay safe).
+  - Filename sanitisation rejects `/`, `\`, `.`, `..`, and any
+    suffix other than `.txt` (so the saved file is reachable by
+    the v0.51 `SearchFreqmanDir` walker).
+  - Parse-before-write: bytes that don't decode as a Freqman list
+    surface as an error instead of polluting `~/.promptzero/freqman/`.
+  - Risk: Medium. Pinned by 14 new tests (URL + filename + hash
+    validation; 200/404/oversize/parse-fail/hash-mismatch behaviours;
+    happy-path round-trip with httptest server; CheckRedirect-hook
+    direct test). Registry size pinned at 274 (was 273).
+
 - **`signal_library_search` tool + recursive Freqman directory walker**
   (roadmap P2-20 mid-stage). Builds on the v0.51-shipped Freqman parser
   to give the agent a host-side library lookup before any RF capture

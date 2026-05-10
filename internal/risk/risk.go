@@ -152,6 +152,12 @@ var toolLevels = func() map[string]Level {
 		"loader_close",
 		"workflow_garage_door_triage",
 		"workflow_phys_pentest_badge_walk",
+		// v0.52 OSS-expansion (P2-20): host-side Freqman library
+		// import. Medium risk because the tool writes a file under
+		// ~/.promptzero/freqman/ from a remote URL, even though the
+		// allowlist + size cap + Freqman-parse validation make the
+		// blast radius small. No RF, no Flipper or Marauder I/O.
+		"signal_import",
 		// Parametric file-builders (P1-13). Medium risk because the
 		// build tool writes a file to SD but does not transmit /
 		// emulate — the operator still has to invoke subghz_transmit
