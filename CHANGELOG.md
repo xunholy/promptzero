@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`Marauder.ExecCtx` for context-aware command dispatch.** Closes
+  the long-standing TODO at the old `readUntilPrompt` wrapper site
+  (now removed). New `ExecCtx(ctx, command, timeout)` mirrors
+  `Flipper.ExecLongCtx` so both transports share one cancellation
+  contract: when the caller's ctx is cancelled, the read loop
+  terminates within ~100 ms instead of blocking until the timeout
+  fires. The legacy `Exec(command, timeout)` is preserved for the
+  95 existing callers that don't have a meaningful context to
+  thread — it now delegates to `ExecCtx(context.Background(), …)`.
+  New code (especially streaming wrappers, agent dispatch, REPL
+  turn cancellation) should prefer `ExecCtx` so a turn-level
+  cancel cleanly aborts in-flight Marauder calls.
+
+  - 2 new tests pin the contract: `TestExecCtx_HonoursCancellation`
+    proves a cancelled ctx returns within ~100–500 ms (not the
+    full 5 s budget), `TestExec_BackCompatStillWorks` proves the
+    legacy wrapper still produces the same output the 95 existing
+    callers depend on.
+  - The unused `readUntilPrompt(timeout)` wrapper is deleted.
+    `readUntilPromptCtx` was already context-aware; `Exec` now
+    calls it directly via `ExecCtx`.
+
 ## [0.59.0] - 2026-05-11
 
 **Operator UX + transport coverage.** v0.56–v0.58 built up the

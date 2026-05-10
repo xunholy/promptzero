@@ -296,6 +296,60 @@ func TestExecNoNewlinePrompt(t *testing.T) {
 	}
 }
 
+// TestExecCtx_HonoursCancellation pins the new ExecCtx contract:
+// when ctx is cancelled while a command is in flight, the read loop
+// terminates promptly (within ~100 ms — readUntilPromptCtx polls
+// SetReadTimeout at that cadence) instead of waiting for the
+// timeout to fire. Closes the TODO at the old `readUntilPrompt`
+// wrapper site by giving callers a context-aware Exec for
+// turn-cancellation cases.
+func TestExecCtx_HonoursCancellation(t *testing.T) {
+	fp := newFakePort()
+	// No respond() call — the fake won't supply a prompt for
+	// "freeze", so readUntilPromptCtx would otherwise time out.
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := m.ExecCtx(ctx, "freeze", 5*time.Second)
+	elapsed := time.Since(start)
+
+	// Cancellation should yield a non-nil error (timeout-shaped from
+	// readUntilPromptCtx since it doesn't distinguish ctx-cancel
+	// from deadline) but the elapsed time should be under ~500 ms,
+	// far less than the 5 s timeout.
+	if err == nil {
+		t.Errorf("ExecCtx on ctx cancel: expected error, got nil")
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("ExecCtx did not honour ctx cancel promptly: took %s (expected ≤500ms)", elapsed)
+	}
+}
+
+// TestExec_BackCompatStillWorks pins that the legacy Exec wrapper
+// (now delegating to ExecCtx with context.Background()) preserves
+// the timeout-based behaviour the 95 existing callers depend on.
+func TestExec_BackCompatStillWorks(t *testing.T) {
+	fp := newFakePort()
+	fp.respond("info", "version: 1.11.1")
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	out, err := m.Exec("info", time.Second)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if !strings.Contains(out, "version: 1.11.1") {
+		t.Errorf("Exec output missing body content: %q", out)
+	}
+}
+
 // TestExecSubsequentAfterNoNewlinePrompt verifies that after Exec cleanly
 // consumes a no-newline-prompt response, a subsequent Exec on the same
 // Marauder also succeeds (drain left the port in a clean state).
