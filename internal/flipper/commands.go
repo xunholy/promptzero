@@ -1772,11 +1772,16 @@ func (f *Flipper) SubGHzRxRawStream(ctx context.Context, frequency uint32, durat
 // Xtreme firmware requires the trailing `<device>` arg.
 // CLI: subghz chat <frequency> [<device>]
 func (f *Flipper) SubGHzChat(frequency uint32, duration time.Duration) (string, error) {
+	return f.SubGHzChatCtx(context.Background(), frequency, duration)
+}
+
+// SubGHzChatCtx is the context-aware variant of SubGHzChat.
+func (f *Flipper) SubGHzChatCtx(ctx context.Context, frequency uint32, duration time.Duration) (string, error) {
 	cmd := fmt.Sprintf("subghz chat %d", frequency)
 	if f.Capabilities().SubGHzNeedsDev {
 		cmd += " 0"
 	}
-	return f.ExecLong(cmd, duration)
+	return f.ExecLongCtx(ctx, cmd, duration)
 }
 
 // --- Infrared (capability-gap primitives) ---

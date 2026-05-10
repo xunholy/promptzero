@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Ctx threading covers Flipper subghz_chat.** Closes the last
+  known ctx-discarding timed wrapper on the Flipper side.
+  `subghz_chat` is interactive (transmits on every keystroke for
+  up to 60 s by default) so a turn-level Ctrl+C aborting the chat
+  within ~100 ms is a meaningful UX win — operators previously had
+  to wait out the full duration. Adds `SubGHzChatCtx` and
+  `SubGHzChatDeviceCtx` (the v0.16 device-explicit variant).
+  Handler in `internal/tools/subghz.go` migrated.
+
 - **Ctx threading covers the Marauder v0.16 command family.**
   v0.61 lifted the original `commands.go` Marauder methods onto the
   ctx-aware path; v0.62 did the Flipper transport. This change
