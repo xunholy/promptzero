@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-05-11
+
+**Operator UX + transport coverage.** v0.56–v0.58 built up the
+streaming dispatch path and rolled it across nine long-running
+tools across two transports, but the operator side of the
+abort-early UX was theoretical — the REPL stream callback always
+returned true. v0.59 closes that loop: **Ctrl+G** now ends the
+current streaming tool while letting the agent's turn continue
+with the partial result. In the same release, both transport
+packages gain parameterised wire-form coverage so a regression
+that silently renames a firmware command token (the kind that
+returns no error and no output, leaving operators staring at a
+seemingly-empty Marauder response) is caught at unit-test time.
+
 ### Changed
 
 - **Flipper commands.go gains parameterised wire-form coverage.**
@@ -39,6 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **48.3 % → 59.7 %** (+11.4 pp). Validation-bearing wrappers
   (`BLESpam`, `SetSetting`, etc.) keep their bespoke error-path
   tests.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A this release. The new wire-form
+  tests run against the existing mock-pty / fake-port suites; the
+  Ctrl+G hotkey plumbing is REPL-side and exercises the dispatch-
+  level abort path that's already pinned by
+  `TestDispatchStreaming_AbortEarlyOnCallbackFalse` /
+  `TestDispatchStreaming_AbortCancelsContext`.
 
 ### Added
 
