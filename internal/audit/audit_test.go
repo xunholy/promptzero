@@ -390,3 +390,132 @@ func TestObserverPanicDoesNotCrashRecord(t *testing.T) {
 		t.Error("observer registered after a panicking observer should still run")
 	}
 }
+
+// TestSessionID pins the accessor: returns whatever was set via
+// the in-place sessionID assignment the production code does at
+// session start. The /audit tail UX queries this to render
+// "session-1234" headings; a zero value would silently break it.
+func TestSessionID(t *testing.T) {
+	log := openTestLog(t)
+	if got := log.SessionID(); got == "" {
+		t.Errorf("freshly-opened log SessionID = %q, want non-empty default", got)
+	}
+	log.sessionID = "session-test-12345"
+	if got := log.SessionID(); got != "session-test-12345" {
+		t.Errorf("SessionID after override = %q, want session-test-12345", got)
+	}
+}
+
+// TestMaxID_EmptyAndPopulated pins the audit tail's high-water
+// mark. An empty log returns 0 (not an error). After N inserts,
+// MaxID returns N.
+func TestMaxID_EmptyAndPopulated(t *testing.T) {
+	log := openTestLog(t)
+	id, err := log.MaxID()
+	if err != nil {
+		t.Fatalf("MaxID on empty log: %v", err)
+	}
+	if id != 0 {
+		t.Errorf("MaxID on empty log = %d, want 0", id)
+	}
+
+	for i := 0; i < 3; i++ {
+		log.Record("tool"+strconv.Itoa(i), nil, "", "low", LevelInfo, 0, true)
+	}
+	id, err = log.MaxID()
+	if err != nil {
+		t.Fatalf("MaxID after 3 inserts: %v", err)
+	}
+	if id != 3 {
+		t.Errorf("MaxID after 3 inserts = %d, want 3", id)
+	}
+}
+
+// TestQuerySince pins the audit-tail iteration: rows with id >
+// afterID, ordered oldest first. The /audit tail loop polls
+// MaxID() and uses QuerySince(prevMaxID) to fetch the new rows.
+func TestQuerySince(t *testing.T) {
+	log := openTestLog(t)
+	for i := 0; i < 5; i++ {
+		log.Record("tool"+strconv.Itoa(i), nil, "", "low", LevelInfo, 0, true)
+	}
+
+	all, err := log.QuerySince(0)
+	if err != nil {
+		t.Fatalf("QuerySince(0): %v", err)
+	}
+	if len(all) != 5 {
+		t.Errorf("QuerySince(0) returned %d, want 5", len(all))
+	}
+	for i := range all {
+		if i > 0 && all[i].ID <= all[i-1].ID {
+			t.Errorf("QuerySince not ordered ascending: id[%d]=%d, id[%d]=%d", i-1, all[i-1].ID, i, all[i].ID)
+		}
+	}
+
+	tail, err := log.QuerySince(2)
+	if err != nil {
+		t.Fatalf("QuerySince(2): %v", err)
+	}
+	if len(tail) != 3 {
+		t.Errorf("QuerySince(2) returned %d, want 3", len(tail))
+	}
+	for _, e := range tail {
+		if e.ID <= 2 {
+			t.Errorf("QuerySince(2) returned id %d, want > 2", e.ID)
+		}
+	}
+
+	empty, err := log.QuerySince(100)
+	if err != nil {
+		t.Fatalf("QuerySince(100): %v", err)
+	}
+	if len(empty) != 0 {
+		t.Errorf("QuerySince(100) returned %d, want 0", len(empty))
+	}
+}
+
+// TestExport pins the JSON-export contract used by /audit export.
+// Output is an indented JSON array (or "null" / "[]" for an empty
+// session). Operators pipe this to grep / jq, so an undocumented
+// format change would break workflows.
+func TestExport(t *testing.T) {
+	log := openTestLog(t)
+	log.sessionID = "session-export-test"
+	log.Record("rfid_read", map[string]string{"mode": "lf"}, "uid: 1234", "medium", LevelAction, 50*time.Millisecond, true)
+	log.Record("nfc_detect", nil, "ok", "low", LevelInfo, 10*time.Millisecond, true)
+
+	out, err := log.Export()
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if out == "" {
+		t.Fatal("Export returned empty string")
+	}
+	if !strings.HasPrefix(strings.TrimSpace(out), "[") {
+		t.Errorf("Export output doesn't start with JSON array: %q", out)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(out), "]") {
+		t.Errorf("Export output doesn't end with JSON array: %q", out)
+	}
+	for _, want := range []string{"rfid_read", "nfc_detect"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Export output missing %q: %s", want, out)
+		}
+	}
+	if !strings.Contains(out, "\n") {
+		t.Errorf("Export output is not indented JSON: %s", out)
+	}
+
+	// Empty session (different sessionID) → empty JSON document.
+	emptyLog := openTestLog(t)
+	emptyLog.sessionID = "session-empty-test"
+	emptyOut, err := emptyLog.Export()
+	if err != nil {
+		t.Fatalf("Export on empty session: %v", err)
+	}
+	trimmed := strings.TrimSpace(emptyOut)
+	if trimmed != "null" && trimmed != "[]" {
+		t.Errorf("Export on empty session = %q, want \"null\" or \"[]\"", trimmed)
+	}
+}
