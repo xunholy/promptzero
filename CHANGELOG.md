@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`wifi_scan_ap` blocking Handler threads ctx to the wire.** First
+  caller of the new `ExecCtx` infrastructure. The handler signature
+  always exposed a `ctx context.Context` parameter but all
+  Marauder-backed handlers had been discarding it (`_ context.Context`)
+  because there was no ctx-aware Marauder API. New
+  `ScanAPParsedCtx(ctx, timeout)` calls `ExecCtx` so a turn-level
+  Ctrl+C now aborts an in-flight `wifi_scan_ap` within ~100 ms
+  instead of blocking until the duration fires. The streaming
+  StreamHandler already threaded ctx via `ScanAPParsedStream`, so
+  this brings the blocking path to parity. Other Marauder-backed
+  handlers will migrate incrementally as their `…ParsedCtx` /
+  `…Ctx` variants are added.
+
 - **`Marauder.ExecCtx` for context-aware command dispatch.** Closes
   the long-standing TODO at the old `readUntilPrompt` wrapper site
   (now removed). New `ExecCtx(ctx, command, timeout)` mirrors

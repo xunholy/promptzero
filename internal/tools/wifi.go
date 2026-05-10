@@ -28,11 +28,14 @@ func init() {
 		// API to the same StreamHandler shape used for Flipper
 		// streaming tools via the new Marauder.StreamLines wrapper.
 		Streams: true,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
-			res, err := d.Marauder.ScanAPParsed(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
+			// ScanAPParsedCtx threads ctx all the way to the
+			// Marauder read loop so a turn-level cancel (Ctrl+C)
+			// aborts mid-scan instead of blocking until timeout.
+			res, err := d.Marauder.ScanAPParsedCtx(ctx, time.Duration(intOr(p, "duration_seconds", 15))*time.Second)
 			if err != nil {
 				return "", err
 			}
