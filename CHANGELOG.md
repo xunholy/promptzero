@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Flipper commands.go gains parameterised wire-form coverage.**
+  Mirrors the Marauder coverage change in this same release: the
+  ~12 simple `f.Exec(...)` wrappers in `internal/flipper/commands.go`
+  (`SubGHzTx`, `SubGHzDecode`, `IRTxParsed`, `IRTxRaw`, `IRUniversal`,
+  `IRDecodeFile`, `IRUniversalList`, `LED`, `RFIDRawAnalyze`,
+  `CryptoStoreKey`, `BTHCIInfo`) were untested at the wire level —
+  a renamed firmware token would silently break comms with no
+  CLI feedback. New `internal/flipper/commands_wire_test.go` adds
+  a table-driven `TestCommandsWireForm` with 12 sub-tests that pin
+  every wrapper's exact bytes via the existing `mock.Spawn` +
+  `connectAndDetect` helpers. Capability-gated wrappers
+  (`SubGHzTxKey` etc.), validation-bearing wrappers, and anything
+  on the `f.dispatch()` RPC/CLI dual-path are intentionally
+  excluded — those have bespoke fork-aware tests in
+  `commands_v016_test.go` / `commands_mock_test.go`.
+
 - **Marauder commands.go gains parameterised wire-form coverage.**
   All 49 simple `m.Exec(cmd, …)` wrappers in `internal/marauder/
   commands.go` (ScanAP, ScanAll, SniffBeacon, DeauthAttack,
