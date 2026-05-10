@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`internal/semcache` — durable, file-backed semantic cache for
+  generated payloads** (roadmap P2-27). Closes the second-to-last
+  P2 item. Key idea: identical generation inputs (task label,
+  provider name, system prompt, message list) produce identical
+  outputs, so a second call should return the prior bytes without
+  re-billing the LLM.
+
+  - Cache key is `SHA-256(task ‖ provider ‖ system ‖ <role,content>*)`,
+    null-terminated between parts so two concat-equivalent splits
+    don't collide.
+  - On-disk layout: one JSON file per entry under `~/.promptzero/
+    cache/generations/<key>.json`. No in-process state besides a
+    mutex; `rm -rf` is safe and idempotent.
+  - LRU eviction by `LastAccessed`; capacity defaults to 256 entries.
+  - Get refreshes `LastAccessed` and increments `Hits`; Put
+    normalises empty timestamps and triggers eviction; Clear /
+    Stats round out the public surface.
+  - Corrupt JSON entries are dropped on read so a malformed file
+    doesn't poison subsequent calls.
+  - Nil `*Cache` is a usable sentinel — every public method is a
+    no-op so callers can wire `g.cache = nil` and skip "if c != nil"
+    plumbing.
+  - 12 unit tests pin: deterministic + collision-resistant keys,
+    capacity defaulting, round-trip + Hits/LastAccessed update,
+    miss on unknown key, corrupt-entry recovery, empty-key
+    rejection, nil-Cache no-op, LRU eviction order, Clear,
+    Stats shape, DefaultRoot under HOME, timestamp normalisation.
+
+- **`Generator.SetCache` / `SetCacheBypass` integration**
+  (P2-27 wiring). `completeWithFallback` now consults the cache
+  before each LLM call and writes successful non-refusal responses
+  back into it. Refusals are explicitly NOT cached — re-running
+  might succeed, and caching a transient policy refusal would lock
+  the operator out. Bypass mode skips reads but still writes, so
+  `--no-cache` / `/regen` semantics keep the cache populated for
+  future calls.
+
+  Re-keys after a fallback so a subsequent identical refusal-then-
+  fallback chain short-circuits at the cache. 7 new integration
+  tests pin: cache hit avoids LLM call, miss on different
+  description, miss on different task label, bypass-skips-read-
+  still-writes, refusal-is-not-cached, no-cache fall-through,
+  cleanOutput-preserved-via-cache (the second call's content
+  matches the first after both pass through cleanOutput).
+
+  `task lint` clean; full short test suite passes.
+
 ## [0.52.0] - 2026-05-10
 
 P2-20 (Freqman + signal-library interop) closed. Three commits
