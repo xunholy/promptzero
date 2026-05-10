@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`internal/obs/debug.go` gains rendering-helper coverage.** The
+  pure functions backing the `/debug` snapshot — `Render`,
+  `formatTransport`, `humanDuration`, `runeLen`, `truncateRunes`,
+  `CollectRuntime`, `shortSHA` — were all at 0 % coverage. A
+  regression where the human-duration thresholds drift or the
+  box-drawing layout silently breaks would slip through CI. New
+  `internal/obs/debug_test.go` adds 8 test functions / ~30
+  sub-cases covering: human-duration thresholds (sub-second / 1s–60s
+  / 1m–60m / hours+), multibyte rune handling (`├`, `✓`, `🎉`),
+  truncation edge cases (n ≤ 0), transport state strings, SHA
+  shortening, full-snapshot rendering with every optional field,
+  minimal-snapshot rendering (defaults kick in), width floor (10 →
+  40), and `CollectRuntime` shape assertions. Coverage on
+  `internal/obs` rose from **49.4 % → 84.2 %** (+34.8 pp).
+
 ## [0.63.0] - 2026-05-11
 
 **Ctx-threading sweep complete.** Closes the last two gaps in the
