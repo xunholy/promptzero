@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Marauder commands.go gains parameterised wire-form coverage.**
+  All 49 simple `m.Exec(cmd, …)` wrappers in `internal/marauder/
+  commands.go` (ScanAP, ScanAll, SniffBeacon, DeauthAttack,
+  BeaconSpamRandom, GPSField, LEDSetHex, EvilPortalStart, …) were
+  previously at 0 % coverage. A regression where someone accidentally
+  renames `"sniffbeacon"` → `"sniffbeacons"` would silently break
+  firmware comms (the firmware ignores unknown tokens without
+  feedback). New `internal/marauder/commands_test.go` adds a
+  table-driven `TestCommandsWireForm` with **65 sub-tests** that
+  pin every wrapper's exact wire form via the existing
+  `wireCmd` + fakePort helpers. Coverage on the package rose from
+  **48.3 % → 59.7 %** (+11.4 pp). Validation-bearing wrappers
+  (`BLESpam`, `SetSetting`, etc.) keep their bespoke error-path
+  tests.
+
 ### Added
 
 - **Ctrl+G abort hotkey for streaming tools.** Closes the
