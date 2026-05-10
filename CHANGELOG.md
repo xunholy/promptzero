@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Streaming abort-early UX** (the natural follow-up flagged in the
+  v0.55 closeout). Builds on the streaming-tool-output infrastructure
+  shipped in v0.55 and turns it into something the agent or operator
+  can actually steer mid-flight: a long-running scan can stop the
+  moment a useful frame lands ("got a handshake — stopping") without
+  forcibly killing the producer.
+
+  - `streaming.Sink` gains `Abort()`, `Aborted() <-chan struct{}`,
+    and `IsAborted() bool`. Abort closes the abort channel exactly
+    once (`abortOnce`); `Send` is intentionally NOT short-circuited
+    so producers honouring abort can emit a final summary frame
+    between observing the signal and calling Close. Nil-sink sentinel
+    semantics extend to all three new methods.
+  - `Agent.SetToolStreamCallback` callback signature changes from
+    `func(streaming.Frame)` to `func(streaming.Frame) bool`. Returning
+    true keeps the stream alive; false triggers abort-early. The
+    only callers were internal tests, so the rename is safe — no
+    host code (cmd/, fap/) referenced the old signature.
+  - `dispatchStreaming` now derives a per-call cancellable context
+    (`context.WithCancel(ctx)`); on callback false it calls
+    `sink.Abort()` AND `cancel()`. Belt-and-suspenders: producers
+    polling `ctx.Done()` see the abort even if they ignore
+    `sink.Aborted()`. After abort the drain goroutine keeps draining
+    but stops invoking the callback, so the producer's Send calls
+    don't wedge on a full buffer while it winds down.
+  - Abort is **cooperative**: a producer that ignores both signals
+    runs to completion. The alternative (forced kill) was rejected
+    because it would risk leaving hardware in a half-configured
+    state — a stuck Sub-GHz radio mid-TX is worse than a delayed
+    stop. Producers MUST poll `Aborted()` or `ctx.Done()` to honour
+    abort within reasonable latency.
+  - 7 new tests pin: `Sink.Abort` signal + idempotency, post-Abort
+    Send still works (final summary frame), nil-sink Abort no-ops,
+    dispatch closes Aborted on cb=false, dispatch cancels ctx on
+    cb=false, drained-after-abort frames are silently swallowed,
+    stubborn producer that ignores both signals still runs to
+    completion and the dispatcher returns its final string.
+
 ## [0.55.0] - 2026-05-10
 
 **Roadmap closeout.** v0.55 lands the last two genuinely-open P3

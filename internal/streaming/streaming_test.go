@@ -181,3 +181,62 @@ func TestSequence_TracksHighestSeq(t *testing.T) {
 		t.Errorf("Sequence = %d, want 5", got)
 	}
 }
+
+// Abort closes the Aborted() channel exactly once, IsAborted reflects
+// the state non-blockingly, and producers receiving on Aborted() see
+// the close. This is the contract the agent-side dispatcher relies
+// on for the abort-early UX.
+func TestAbort_SignalsAndIsIdempotent(t *testing.T) {
+	s := NewSink("t", 4)
+	if s.IsAborted() {
+		t.Fatal("fresh sink reports IsAborted=true")
+	}
+	select {
+	case <-s.Aborted():
+		t.Fatal("Aborted() channel pre-closed on fresh sink")
+	default:
+	}
+	s.Abort()
+	s.Abort() // second call must not panic
+	s.Abort()
+	if !s.IsAborted() {
+		t.Errorf("post-Abort IsAborted=false")
+	}
+	select {
+	case <-s.Aborted():
+		// expected
+	default:
+		t.Errorf("Aborted() channel not closed after Abort")
+	}
+}
+
+// Send still succeeds after Abort (until Close). Producers honouring
+// abort may want to emit a final summary frame between observing the
+// signal and calling Close — this confirms that path works.
+func TestAbort_DoesNotBlockSend(t *testing.T) {
+	s := NewSink("t", 4)
+	s.Abort()
+	if !s.Send([]byte("summary")) {
+		t.Errorf("Send after Abort returned false; should still succeed until Close")
+	}
+	if got := s.Sequence(); got != 1 {
+		t.Errorf("Sequence = %d, want 1", got)
+	}
+	s.Close()
+	if s.Send([]byte("late")) {
+		t.Errorf("Send after Close returned true")
+	}
+}
+
+// Nil-sink Abort/Aborted/IsAborted are no-ops, matching the rest of
+// the nil-sentinel contract.
+func TestNilSink_AbortIsNoOp(t *testing.T) {
+	var s *Sink
+	s.Abort() // must not panic
+	if s.IsAborted() {
+		t.Errorf("nil IsAborted = true")
+	}
+	if s.Aborted() != nil {
+		t.Errorf("nil Aborted() != nil chan")
+	}
+}

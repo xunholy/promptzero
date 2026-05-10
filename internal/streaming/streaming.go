@@ -69,6 +69,8 @@ type Sink struct {
 	closed atomic.Bool
 	drops  atomic.Uint64
 
+	aborted   chan struct{}
+	abortOnce sync.Once
 	closeOnce sync.Once
 }
 
@@ -80,8 +82,9 @@ func NewSink(tool string, buffer int) *Sink {
 		buffer = DefaultBufferSize
 	}
 	return &Sink{
-		tool:   tool,
-		frames: make(chan Frame, buffer),
+		tool:    tool,
+		frames:  make(chan Frame, buffer),
+		aborted: make(chan struct{}),
 	}
 }
 
@@ -155,6 +158,50 @@ func (s *Sink) Sequence() uint64 {
 		return 0
 	}
 	return s.seq.Load()
+}
+
+// Abort signals the producer to wrap up early. The channel returned
+// by Aborted() is closed; idempotent and nil-safe. A producer
+// honouring abort polls Aborted() in its select loop (or relies on
+// the per-call context that dispatch cancels in tandem) and returns
+// promptly with whatever partial result it can summarise. Send is
+// NOT short-circuited — producers may still emit a final summary
+// frame between observing Aborted() and calling Close.
+func (s *Sink) Abort() {
+	if s == nil {
+		return
+	}
+	s.abortOnce.Do(func() {
+		close(s.aborted)
+	})
+}
+
+// Aborted returns a channel that is closed when Abort has been
+// called. Producers should select on this alongside ctx.Done() so
+// abort fires regardless of whether dispatch cancels the context.
+// A nil *Sink returns a nil channel — selecting on a nil channel
+// never receives, so non-streaming dispatch (sink=nil) naturally
+// has no abort signal.
+func (s *Sink) Aborted() <-chan struct{} {
+	if s == nil {
+		return nil
+	}
+	return s.aborted
+}
+
+// IsAborted is a non-blocking convenience for producers that prefer
+// a periodic poll over a select. nil-safe; returns false on a nil
+// sink.
+func (s *Sink) IsAborted() bool {
+	if s == nil {
+		return false
+	}
+	select {
+	case <-s.aborted:
+		return true
+	default:
+		return false
+	}
 }
 
 // Handler is the streaming-handler signature: a function that

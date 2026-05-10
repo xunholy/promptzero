@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/streaming"
@@ -20,7 +21,7 @@ func TestSetToolStreamCallback_RoundTrip(t *testing.T) {
 		t.Errorf("zero-value Agent should not have a stream callback")
 	}
 	called := false
-	a.SetToolStreamCallback(func(_ streaming.Frame) { called = true })
+	a.SetToolStreamCallback(func(_ streaming.Frame) bool { called = true; return true })
 	if a.toolStreamCb == nil {
 		t.Errorf("setter did not install the callback")
 	}
@@ -64,10 +65,11 @@ func TestDispatchStreaming_ForwardsFramesAndReturnsFinalString(t *testing.T) {
 	a := &Agent{}
 	var mu sync.Mutex
 	var seen []string
-	a.SetToolStreamCallback(func(f streaming.Frame) {
+	a.SetToolStreamCallback(func(f streaming.Frame) bool {
 		mu.Lock()
 		defer mu.Unlock()
 		seen = append(seen, string(f.Bytes))
+		return true
 	})
 
 	out, err := a.dispatch(context.Background(), toolName, map[string]any{})
@@ -151,7 +153,7 @@ func TestDispatchStreaming_FallsBackWhenStreamsFlagFalse(t *testing.T) {
 	})
 
 	a := &Agent{}
-	a.SetToolStreamCallback(func(_ streaming.Frame) {})
+	a.SetToolStreamCallback(func(_ streaming.Frame) bool { return true })
 	out, _ := a.dispatch(context.Background(), toolName, map[string]any{})
 	if streamRan {
 		t.Errorf("StreamHandler ran despite Streams=false")
@@ -191,10 +193,11 @@ func TestDispatchStreaming_NoFramesAfterReturn(t *testing.T) {
 	a := &Agent{}
 	var mu sync.Mutex
 	var count int
-	a.SetToolStreamCallback(func(_ streaming.Frame) {
+	a.SetToolStreamCallback(func(_ streaming.Frame) bool {
 		mu.Lock()
 		count++
 		mu.Unlock()
+		return true
 	})
 
 	if _, err := a.dispatch(context.Background(), toolName, map[string]any{}); err != nil {
@@ -205,5 +208,198 @@ func TestDispatchStreaming_NoFramesAfterReturn(t *testing.T) {
 	mu.Unlock()
 	if got != 50 {
 		t.Errorf("frame count after dispatch = %d, want 50", got)
+	}
+}
+
+// TestDispatchStreaming_AbortEarlyOnCallbackFalse pins the consumer-
+// driven abort path: when the callback returns false, dispatch
+// closes the sink's Aborted() channel and cancels the per-call
+// context. A producer that polls Aborted() returns promptly with a
+// partial-result string; later frames it would have emitted are
+// neither produced nor delivered to the callback.
+func TestDispatchStreaming_AbortEarlyOnCallbackFalse(t *testing.T) {
+	const toolName = "test_streaming_abort_tool"
+	t.Cleanup(func() { toolsreg.UnregisterForTest(toolName) })
+
+	producerSawAbort := make(chan struct{})
+
+	toolsreg.Register(toolsreg.Spec{
+		Name:        toolName,
+		Description: "abort-aware streaming tool",
+		Schema:      json.RawMessage(`{"type":"object"}`),
+		Risk:        risk.Low,
+		Streams:     true,
+		Handler: func(_ context.Context, _ *toolsreg.Deps, _ map[string]any) (string, error) {
+			t.Fatal("non-streaming Handler called")
+			return "", nil
+		},
+		StreamHandler: func(ctx context.Context, _ *toolsreg.Deps, _ map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			// Slow producer mirrors a real scan: yields per frame so
+			// the consumer can deliver the abort before we run out
+			// the 1000-iter safety net.
+			ticker := time.NewTicker(time.Millisecond)
+			defer ticker.Stop()
+			for i := 0; i < 1000; i++ {
+				select {
+				case <-sink.Aborted():
+					close(producerSawAbort)
+					return "partial-after-abort", nil
+				case <-ctx.Done():
+					close(producerSawAbort)
+					return "ctx-cancelled", ctx.Err()
+				case <-ticker.C:
+				}
+				sink.Send([]byte("tick"))
+			}
+			t.Fatal("producer never observed abort")
+			return "", nil
+		},
+	})
+
+	a := &Agent{}
+	var mu sync.Mutex
+	var seen int
+	a.SetToolStreamCallback(func(f streaming.Frame) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		seen++
+		// Abort after the third frame.
+		return seen < 3
+	})
+
+	out, err := a.dispatch(context.Background(), toolName, map[string]any{})
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if out != "partial-after-abort" {
+		t.Errorf("output = %q, want partial-after-abort", out)
+	}
+	select {
+	case <-producerSawAbort:
+	default:
+		t.Fatal("producer did not observe abort signal")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	// We aborted *after* the third invocation returned false, so the
+	// callback must have seen exactly 3 frames. Any drained-after-
+	// abort frames are silently swallowed (no callback invocation).
+	if seen != 3 {
+		t.Errorf("callback invoked %d times, want 3", seen)
+	}
+}
+
+// TestDispatchStreaming_AbortCancelsContext pins the second half of
+// the abort contract: the per-call context is cancelled. Producers
+// that watch ctx.Done() instead of sink.Aborted() must also observe
+// the abort. Belt-and-suspenders so existing context-aware tools
+// work without retrofitting the Aborted() poll.
+func TestDispatchStreaming_AbortCancelsContext(t *testing.T) {
+	const toolName = "test_streaming_abort_ctx_tool"
+	t.Cleanup(func() { toolsreg.UnregisterForTest(toolName) })
+
+	producerSawCancel := make(chan struct{})
+
+	toolsreg.Register(toolsreg.Spec{
+		Name:        toolName,
+		Description: "ctx-aware streaming tool",
+		Schema:      json.RawMessage(`{"type":"object"}`),
+		Risk:        risk.Low,
+		Streams:     true,
+		Handler: func(_ context.Context, _ *toolsreg.Deps, _ map[string]any) (string, error) {
+			return "", nil
+		},
+		StreamHandler: func(ctx context.Context, _ *toolsreg.Deps, _ map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			// Slow producer (1 ms per frame) — mirrors a real radio
+			// scan and gives the consumer goroutine room to deliver
+			// the cancel signal before the producer finishes.
+			ticker := time.NewTicker(time.Millisecond)
+			defer ticker.Stop()
+			for i := 0; i < 1000; i++ {
+				select {
+				case <-ctx.Done():
+					close(producerSawCancel)
+					return "ctx-aware-partial", nil
+				case <-ticker.C:
+				}
+				sink.Send([]byte("frame"))
+			}
+			t.Fatal("producer never observed ctx cancel")
+			return "", nil
+		},
+	})
+
+	a := &Agent{}
+	var mu sync.Mutex
+	abortAfter := 1
+	count := 0
+	a.SetToolStreamCallback(func(_ streaming.Frame) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		count++
+		return count <= abortAfter
+	})
+
+	out, err := a.dispatch(context.Background(), toolName, map[string]any{})
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if out != "ctx-aware-partial" {
+		t.Errorf("output = %q, want ctx-aware-partial", out)
+	}
+	select {
+	case <-producerSawCancel:
+	default:
+		t.Fatal("producer did not observe ctx cancellation")
+	}
+}
+
+// TestDispatchStreaming_StubbornProducerIsNotForceKilled pins that
+// abort is cooperative: a producer that ignores both signals runs
+// to completion, drained-after-abort frames are silently swallowed,
+// and dispatch returns the producer's normal final string. This is
+// the documented contract — the alternative (forced kill) would
+// risk leaving hardware in a half-configured state.
+func TestDispatchStreaming_StubbornProducerIsNotForceKilled(t *testing.T) {
+	const toolName = "test_streaming_stubborn_tool"
+	t.Cleanup(func() { toolsreg.UnregisterForTest(toolName) })
+
+	const totalFrames = 20
+	toolsreg.Register(toolsreg.Spec{
+		Name:        toolName,
+		Description: "stubborn tool that ignores abort",
+		Schema:      json.RawMessage(`{"type":"object"}`),
+		Risk:        risk.Low,
+		Streams:     true,
+		Handler: func(_ context.Context, _ *toolsreg.Deps, _ map[string]any) (string, error) {
+			return "", nil
+		},
+		StreamHandler: func(_ context.Context, _ *toolsreg.Deps, _ map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			for i := 0; i < totalFrames; i++ {
+				sink.Send([]byte("ignored"))
+			}
+			return "ran-to-completion", nil
+		},
+	})
+
+	a := &Agent{}
+	var seen int
+	a.SetToolStreamCallback(func(_ streaming.Frame) bool {
+		seen++
+		return false // abort on first frame
+	})
+
+	out, err := a.dispatch(context.Background(), toolName, map[string]any{})
+	if err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	if out != "ran-to-completion" {
+		t.Errorf("output = %q, want ran-to-completion", out)
+	}
+	if seen != 1 {
+		t.Errorf("callback invoked %d times after abort, want exactly 1", seen)
 	}
 }
