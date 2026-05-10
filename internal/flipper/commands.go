@@ -142,20 +142,30 @@ func (f *Flipper) SubGHzRx(frequency uint32, duration time.Duration) (string, er
 // like SubGHzRx; ctx cancel also terminates early. The accumulated raw
 // output is returned so callers can feed it to ParseSubGHzReceive on
 // the streaming path the same way they would on the blocking path.
+func (f *Flipper) SubGHzRxStream(ctx context.Context, frequency uint32, duration time.Duration, onLine func(line string) (stop bool)) (string, error) {
+	cmd := fmt.Sprintf("subghz rx %d", frequency)
+	if f.Capabilities().SubGHzNeedsDev {
+		cmd += " 0"
+	}
+	return f.streamLines(ctx, cmd, duration, onLine)
+}
+
+// streamLines is the shared shape used by streaming wrappers around a
+// long-running firmware command (SubGHzRxStream, LogStreamLines,
+// SubGHzRxRawStream). Each non-echo line emitted by the firmware is
+// delivered to onLine as it arrives and accumulated into the returned
+// raw string; onLine returning stop=true ends the capture early.
 //
 // The serial protocol echoes commands back as their first "line", so
 // the wrapper drops the line that exactly matches the dispatched
 // command before forwarding to onLine. Otherwise every streaming
 // caller would see one frame of noise per call.
 //
-// Budget/cancel are treated as normal stream-end (no error returned),
-// matching ExecLong semantics — the partial accumulated output is the
-// caller's result.
-func (f *Flipper) SubGHzRxStream(ctx context.Context, frequency uint32, duration time.Duration, onLine func(line string) (stop bool)) (string, error) {
-	cmd := fmt.Sprintf("subghz rx %d", frequency)
-	if f.Capabilities().SubGHzNeedsDev {
-		cmd += " 0"
-	}
+// duration is enforced via context.WithTimeout. Budget/cancel are
+// treated as normal stream-end (no error returned), matching ExecLong
+// semantics — the partial accumulated output is the caller's result.
+// All other errors propagate.
+func (f *Flipper) streamLines(ctx context.Context, cmd string, duration time.Duration, onLine func(line string) (stop bool)) (string, error) {
 	streamCtx, cancel := context.WithTimeout(ctx, duration)
 	defer cancel()
 
@@ -1668,6 +1678,28 @@ func (f *Flipper) SubGHzRxRaw(frequency uint32, duration time.Duration) (string,
 	return f.ExecLong(cmd, duration)
 }
 
+// SubGHzRxRawStream is the line-streaming variant of SubGHzRxRaw.
+// Each pulse line emitted while `subghz rx_raw` is running is
+// delivered to onLine; stop=true ends the capture early. The same
+// firmware-fork capability check as SubGHzRxRaw applies — non-Momentum
+// forks return the file-path-required error before any streaming
+// starts.
+// CLI (Momentum): subghz rx_raw [<frequency>]
+func (f *Flipper) SubGHzRxRawStream(ctx context.Context, frequency uint32, duration time.Duration, onLine func(line string) (stop bool)) (string, error) {
+	caps := f.Capabilities()
+	if caps.SubGHzRxRawHasFilePath {
+		return "", fmt.Errorf("subghz rx_raw on %s firmware requires a file-path argument; use SubGHzRx for capture or StorageWrite to build a .sub file", caps.FriendlyFork())
+	}
+	cmd := "subghz rx_raw"
+	if frequency > 0 {
+		cmd += fmt.Sprintf(" %d", frequency)
+	}
+	if caps.SubGHzNeedsDev {
+		cmd += " 0"
+	}
+	return f.streamLines(ctx, cmd, duration, onLine)
+}
+
 // SubGHzChat joins an interactive Sub-GHz text chat on the given frequency.
 // Long-running and actively transmits — the caller bounds it with a duration.
 // Xtreme firmware requires the trailing `<device>` arg.
@@ -2220,9 +2252,7 @@ func (f *Flipper) LogStream(duration time.Duration, level string) (string, error
 
 // LogStreamLines is the line-streaming variant of LogStream. Each log
 // line emitted by firmware is delivered to onLine as it arrives;
-// returning stop=true ends the capture early. Mirrors SubGHzRxStream's
-// shape: budget/cancel-as-success, command-echo filtering, accumulated
-// raw returned regardless of exit reason.
+// returning stop=true ends the capture early.
 //
 // Empty level uses the firmware default. Recognised values match
 // LogStream.
@@ -2232,27 +2262,7 @@ func (f *Flipper) LogStreamLines(ctx context.Context, duration time.Duration, le
 	if level != "" {
 		cmd += " " + sanitizeArg(level)
 	}
-	streamCtx, cancel := context.WithTimeout(ctx, duration)
-	defer cancel()
-
-	var sb strings.Builder
-	echoSeen := false
-	err := f.StreamCtx(streamCtx, cmd, func(line string) (stop bool) {
-		if !echoSeen && strings.TrimSpace(line) == cmd {
-			echoSeen = true
-			return false
-		}
-		sb.WriteString(line)
-		sb.WriteByte('\n')
-		if onLine != nil {
-			return onLine(line)
-		}
-		return false
-	})
-	if err != nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
-		return sb.String(), nil
-	}
-	return sb.String(), err
+	return f.streamLines(ctx, cmd, duration, onLine)
 }
 
 // PowerRebootDFU reboots the Flipper into the STM32 DFU bootloader. Leaves
