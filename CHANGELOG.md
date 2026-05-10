@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-05-11
+
+**Streaming spreads to the WiFi/Marauder side.** v0.56 introduced
+streaming dispatch + abort-early; v0.57 rolled it across four
+Flipper-backed long-running captures. v0.58 brings the same
+real-time-frames UX to the Marauder transport. The
+`Marauder.StreamLines` adapter bridges the channel-based
+`Marauder.Stream` API to the same callback shape used by the
+Flipper streaming wrappers, so one `StreamHandler` implementation
+pattern now works for the entire long-running tool surface.
+`wifi_scan_ap`, `wifi_scan_all`, `wifi_sniff_beacon`,
+`wifi_sniff_deauth`, and `wifi_sniff_probe` all stream their
+firmware-emitted lines as frames.
+
 ### Added
 
 - **`wifi_sniff_beacon` / `wifi_sniff_deauth` / `wifi_sniff_probe`
@@ -67,6 +81,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     auto-prompt makes the goroutine exit cleanly via the prompt
     path, so `stopscan` only fires under the timing covered by
     the existing `TestStreamCancelViaDone`.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-Marauder validator — N/A this release. The new streaming
+  wrappers exercise the same `Marauder.Stream` path covered by the
+  fake-port test suite (`internal/marauder/fake_port_test.go`),
+  and the corresponding non-streaming wrappers (`ScanAP`,
+  `ScanAll`, `SniffBeacon`, `SniffDeauth`, `SniffProbe`) are
+  unchanged on the wire.
 
 ## [0.57.0] - 2026-05-11
 
