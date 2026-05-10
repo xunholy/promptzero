@@ -1,6 +1,7 @@
 package marauder
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -32,28 +33,48 @@ func (m *Marauder) InfoAP(apIndex int) (string, error) {
 // Suggested timeout: 30 s.
 // Wire: mactrack
 func (m *Marauder) MacTrack(timeout time.Duration) (string, error) {
-	return m.Exec("mactrack", timeout)
+	return m.MacTrackCtx(context.Background(), timeout)
+}
+
+// MacTrackCtx is the context-aware variant of MacTrack.
+func (m *Marauder) MacTrackCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "mactrack", timeout)
 }
 
 // Sigmon monitors WiFi signal levels for the given duration.
 // Suggested timeout: 30 s.
 // Wire: sigmon
 func (m *Marauder) Sigmon(timeout time.Duration) (string, error) {
-	return m.Exec("sigmon", timeout)
+	return m.SigmonCtx(context.Background(), timeout)
+}
+
+// SigmonCtx is the context-aware variant of Sigmon.
+func (m *Marauder) SigmonCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sigmon", timeout)
 }
 
 // SniffPineScan sniffs for WiFi Pineapple scan frames for the given duration.
 // Suggested timeout: 30 s.
 // Wire: sniffpinescan
 func (m *Marauder) SniffPineScan(timeout time.Duration) (string, error) {
-	return m.Exec("sniffpinescan", timeout)
+	return m.SniffPineScanCtx(context.Background(), timeout)
+}
+
+// SniffPineScanCtx is the context-aware variant of SniffPineScan.
+func (m *Marauder) SniffPineScanCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sniffpinescan", timeout)
 }
 
 // SniffMultiSSID sniffs for multi-SSID beacon frames for the given duration.
 // Suggested timeout: 30 s.
 // Wire: sniffmultissid
 func (m *Marauder) SniffMultiSSID(timeout time.Duration) (string, error) {
-	return m.Exec("sniffmultissid", timeout)
+	return m.SniffMultiSSIDCtx(context.Background(), timeout)
+}
+
+// SniffMultiSSIDCtx is the context-aware variant of SniffMultiSSID.
+func (m *Marauder) SniffMultiSSIDCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "sniffmultissid", timeout)
 }
 
 // --- Wardrive ---
@@ -62,7 +83,14 @@ func (m *Marauder) SniffMultiSSID(timeout time.Duration) (string, error) {
 // The session runs until the timeout elapses or WardriveStop is called.
 // Wire: wardrive
 func (m *Marauder) WardriveStart(timeout time.Duration) (string, error) {
-	return m.Exec("wardrive", timeout)
+	return m.WardriveStartCtx(context.Background(), timeout)
+}
+
+// WardriveStartCtx is the context-aware variant of WardriveStart.
+// Particularly impactful given wardrive's 600 s default duration —
+// operators no longer wait out the full 10 minutes to cancel a turn.
+func (m *Marauder) WardriveStartCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "wardrive", timeout)
 }
 
 // WardriveStop sends stopscan to end an active wardrive session.
@@ -84,7 +112,12 @@ func (m *Marauder) WardrivePOI(label string) (string, error) {
 // Suggested timeout: 30 s.
 // Wire: gpstracker
 func (m *Marauder) GpsTrackerStart(timeout time.Duration) (string, error) {
-	return m.Exec("gpstracker", timeout)
+	return m.GpsTrackerStartCtx(context.Background(), timeout)
+}
+
+// GpsTrackerStartCtx is the context-aware variant of GpsTrackerStart.
+func (m *Marauder) GpsTrackerStartCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "gpstracker", timeout)
 }
 
 // GpsTrackerStop sends stopscan to end an active GPS tracker session.
@@ -159,7 +192,12 @@ func (m *Marauder) Karma(probeIndex int) (string, error) {
 // for the given duration.
 // Wire: attack -t quiet
 func (m *Marauder) AttackQuiet(timeout time.Duration) (string, error) {
-	return m.Exec("attack -t quiet", timeout)
+	return m.AttackQuietCtx(context.Background(), timeout)
+}
+
+// AttackQuietCtx is the context-aware variant of AttackQuiet.
+func (m *Marauder) AttackQuietCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return m.ExecCtx(ctx, "attack -t quiet", timeout)
 }
 
 // AttackBadmsg sends malformed management frames to selected targets for the
@@ -167,11 +205,16 @@ func (m *Marauder) AttackQuiet(timeout time.Duration) (string, error) {
 // currently-selected station list (same semantics as DeauthToStationList).
 // Wire: attack -t badmsg [-c]
 func (m *Marauder) AttackBadmsg(targeted bool, timeout time.Duration) (string, error) {
+	return m.AttackBadmsgCtx(context.Background(), targeted, timeout)
+}
+
+// AttackBadmsgCtx is the context-aware variant of AttackBadmsg.
+func (m *Marauder) AttackBadmsgCtx(ctx context.Context, targeted bool, timeout time.Duration) (string, error) {
 	cmd := "attack -t badmsg"
 	if targeted {
 		cmd += " -c"
 	}
-	return m.Exec(cmd, timeout)
+	return m.ExecCtx(ctx, cmd, timeout)
 }
 
 // AttackSleep sends power-save spoofed frames to selected targets for the
@@ -180,11 +223,16 @@ func (m *Marauder) AttackBadmsg(targeted bool, timeout time.Duration) (string, e
 // station list (same semantics as DeauthToStationList).
 // Wire: attack -t sleep [-c]
 func (m *Marauder) AttackSleep(targeted bool, timeout time.Duration) (string, error) {
+	return m.AttackSleepCtx(context.Background(), targeted, timeout)
+}
+
+// AttackSleepCtx is the context-aware variant of AttackSleep.
+func (m *Marauder) AttackSleepCtx(ctx context.Context, targeted bool, timeout time.Duration) (string, error) {
 	cmd := "attack -t sleep"
 	if targeted {
 		cmd += " -c"
 	}
-	return m.Exec(cmd, timeout)
+	return m.ExecCtx(ctx, cmd, timeout)
 }
 
 // --- Evil Portal (additional subverbs) ---
