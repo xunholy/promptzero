@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Streaming-tool-output infrastructure** (roadmap P3-28 first half
+  — closes the item). The breaker half shipped in v0.54; this lands
+  the gRPC-style server-streaming dispatch path for tools that opt
+  in. Operator-facing live feedback is enabled; the abort-early-
+  on-partial-result UX (e.g. "got a handshake — stopping") is the
+  natural follow-up that builds on this infrastructure.
+
+  - New `internal/streaming/` package: `Sink` is a bounded-channel
+    frame buffer with a non-blocking `Send` (drops on overflow,
+    counted as `Drops`), idempotent `Close`, monotonic `Seq`
+    numbering, byte-buffer copy-on-send so producers can reuse a
+    parse buffer. Nil-sink methods are no-ops so dispatch code can
+    pass nil for non-streaming paths without an "if sink != nil"
+    wrapper at every emission site.
+  - `tools.Spec.Streams bool` — declarative opt-in flag.
+  - `tools.Spec.StreamHandler` — optional alternate handler with
+    signature `(ctx, deps, args, *streaming.Sink) (string, error)`.
+    Returns the same final string the non-streaming Handler would
+    so the LLM contract is unchanged — partial frames are
+    operator-side only.
+  - `Agent.SetToolStreamCallback` — host wires the per-frame
+    consumer (CLI status line, web UI, SSE forwarder). Dispatch
+    routes through the streaming path only when ALL three are true:
+    Spec.Streams=true, Spec.StreamHandler set, callback installed.
+    Otherwise dispatch falls through to the regular Handler — safe
+    default; existing tools unaffected.
+  - `Agent.dispatchStreaming` blocks until the consumer drain
+    completes so callers can assume "dispatch done = all frames
+    observed". Important for audit log + report generator
+    consistency.
+  - 16 new tests pin: Sink default-buffer, send/round-trip, copy-
+    on-send, monotonic Seq, drops-on-full, post-close send rejected,
+    idempotent close, range-loop terminates on close, nil-sink no-
+    ops, concurrent producers (uniqueness + drop accounting),
+    Sequence accessor; agent: SetToolStreamCallback round-trip,
+    streaming dispatch forwards frames + returns final string,
+    fallback when callback unset, fallback when Streams=false flag
+    is false, no-frames-after-dispatch-return drain guarantee.
+
+  After this release, every actually-open roadmap item is delivered.
+  Remaining P3 items (34 plugins, 35 pwnagotchi-learning) are
+  explicit "defer until X" by design — see Anti-goals.
+
 - **Ensemble voting on critical-risk decisions** (roadmap P3-33).
   Closes the item. When the active persona declares
   `consensus: [model-a, model-b, …]` and the about-to-fire tool is
