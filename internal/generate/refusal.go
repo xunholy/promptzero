@@ -6,6 +6,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/provider"
+	"github.com/xunholy/promptzero/internal/semcache"
 )
 
 // refusalPrefixes are the canonical opening phrases of model refusals
@@ -88,11 +89,21 @@ func looksLikeRefusal(text string) bool {
 // g.llm.Complete call: refusal text passes through unchanged, just
 // like pre-v0.20.0.
 func (g *Generator) completeWithFallback(ctx context.Context, system string, msgs []provider.Message, taskLabel string) (*provider.Response, string, error) {
+	cacheKey := g.cacheKeyFor(taskLabel, g.llm, system, msgs)
+	if !g.bypassCache && cacheKey != "" {
+		if entry, ok := g.cache.Get(cacheKey); ok {
+			return &provider.Response{Content: entry.Content}, entry.Provider, nil
+		}
+	}
+
 	resp, err := g.llm.Complete(ctx, system, msgs)
 	if err != nil {
 		return nil, "", err
 	}
 	if !looksLikeRefusal(resp.Content) {
+		// Cache only successful non-refusals — re-running a refusal
+		// might succeed; caching it would lock in the failure.
+		g.cachePut(cacheKey, taskLabel, g.llm.Name(), resp.Content)
 		return resp, "", nil
 	}
 	// Refusal detected. Log structured so operators see it in audit
@@ -125,7 +136,43 @@ func (g *Generator) completeWithFallback(ctx context.Context, system string, msg
 		"task", taskLabel,
 		"primary_provider", g.llm.Name(),
 		"fallback_provider", g.fallback.Name())
+	// Re-key including the fallback identity — a future call that
+	// resolves the same way (refusal-then-fallback) will short-circuit.
+	g.cachePut(g.cacheKeyFor(taskLabel, g.fallback, system, msgs), taskLabel, g.fallback.Name(), fbResp.Content)
 	return fbResp, g.fallback.Name(), nil
+}
+
+// cacheKeyFor produces the SHA-256 cache key for a generation request.
+// Returns "" when caching is disabled (nil cache or nil provider) so
+// the caller can short-circuit cleanly.
+func (g *Generator) cacheKeyFor(taskLabel string, p provider.Provider, system string, msgs []provider.Message) string {
+	if g.cache == nil || p == nil {
+		return ""
+	}
+	parts := make([]string, 0, 3+2*len(msgs))
+	parts = append(parts, taskLabel, p.Name(), system)
+	for _, m := range msgs {
+		parts = append(parts, m.Role, m.Content)
+	}
+	return semcache.Key(parts...)
+}
+
+// cachePut writes a cache entry, swallowing any error after a structured
+// log so a read-only cache directory doesn't break generation. Empty
+// keys are no-ops (the cache is disabled).
+func (g *Generator) cachePut(key, taskLabel, providerName, content string) {
+	if key == "" || g.cache == nil {
+		return
+	}
+	if err := g.cache.Put(key, semcache.Entry{
+		Task:     taskLabel,
+		Provider: providerName,
+		Content:  content,
+	}); err != nil {
+		obs.Default().Warn("semcache_put_failed",
+			"task", taskLabel,
+			"err", err.Error())
+	}
 }
 
 // excerpt returns the first n runes of s, single-line, suffixed with

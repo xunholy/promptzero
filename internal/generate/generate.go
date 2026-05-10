@@ -7,6 +7,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/provider"
+	"github.com/xunholy/promptzero/internal/semcache"
 )
 
 // Generator creates, validates, deploys, and runs payloads on the Flipper Zero.
@@ -18,10 +19,36 @@ type Generator struct {
 	// caller unchanged — same UX as pre-v0.20.0.
 	fallback provider.Provider
 	flipper  *flipper.Flipper
+	// cache is the optional on-disk semantic cache for generated
+	// payloads (roadmap P2-27). When nil, every generation hits the
+	// LLM — same UX as pre-v0.52. When wired, identical inputs
+	// (system + messages + provider + task) on a second call return
+	// the prior bytes without re-billing the model.
+	cache *semcache.Cache
+	// bypassCache, when true, skips cache reads for the next call but
+	// still writes the result on success. Lets the operator force a
+	// refresh while keeping the cache populated for future calls.
+	bypassCache bool
 }
 
 func New(llm provider.Provider, f *flipper.Flipper) *Generator {
 	return &Generator{llm: llm, flipper: f}
+}
+
+// SetCache wires a semantic cache into the generator. Pass nil to
+// disable. Subsequent generation calls (EvilPortal, BadUSB, SubGHz,
+// IR, NFC) will check the cache before falling through to the LLM,
+// and write successful non-refusal responses back into it.
+func (g *Generator) SetCache(c *semcache.Cache) {
+	g.cache = c
+}
+
+// SetCacheBypass toggles the "skip-on-read, still-write" mode. Useful
+// for `--no-cache` CLI flags or `/regen` REPL commands: the operator
+// wants a fresh generation but still wants the new bytes cached for
+// future use. Pass false to resume normal cache-read behaviour.
+func (g *Generator) SetCacheBypass(bypass bool) {
+	g.bypassCache = bypass
 }
 
 // SetFallback wires a secondary provider that's consulted when the
