@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-05-10
+
+Parser-security parity sweep. Three sibling tests pinning the
+prompt-injection-isolation contract on every WiFi/BLE-scan
+parser in the codebase that captures attacker-controllable
+free-text fields. The quarantine layer in `internal/agent` is
+the downstream catch-all, but the structured parsers are the
+first line of defence — operators and the LLM key off the
+*structured* fields (BSSID, RSSI, Channel, ClientMAC, MAC),
+which must not get corrupted by injection text dropped into
+the *free-text* fields (SSID, Probe, Name).
+
+### Added
+
+- **`TestParseAPList_InjectionPayloadStaysInSSID`** in
+  `internal/bruce`. WiFi AP-scan parser sibling of the
+  long-standing `TestParseAPList_InjectionPayloadStaysInSSID`
+  guard in `internal/marauder/parse_test.go` (since v0.5).
+  Closes the access-point-side parity gap.
+
+- **`TestParseSniffProbe_InjectionStaysContained`** in
+  `internal/marauder/parsers`. Probe-request SSIDs are
+  attacker-controllable (any nearby client can broadcast a
+  probe with arbitrary SSID payload); pin that the structured
+  parser keeps RSSI/Channel/ClientMAC clean while letting the
+  payload sit in `Probe`. Closes the probe-request-side gap.
+
+- **`TestParseBLESniff_InjectionStaysContained`** in
+  `internal/marauder/parsers`. BLE friendly-names (the GAP
+  Complete Local Name field) are operator-supplied on the
+  broadcasting device. Pin that the parser's MAC heuristic
+  doesn't get fooled by non-MAC injection text and that RSSI
+  stays clean.
+
+After this release, every WiFi/BLE-scan parser surface in
+the codebase has explicit isolation pinning. Prompt-injection
+wrappers in `internal/agent` (`<untrusted-hardware-output>`)
+remain the downstream quarantine layer; the parser tests pin
+that the structured fields the LLM keys off don't get
+corrupted upstream of that quarantine.
+
 ## [0.50.0] - 2026-05-10
 
 Test-coverage pass on untrusted-input parsers, plus one
