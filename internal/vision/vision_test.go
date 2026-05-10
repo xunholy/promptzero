@@ -150,3 +150,37 @@ func FuzzParseDataURL(f *testing.F) {
 		// Implicit assertion: the call returned without panicking.
 	})
 }
+
+// TestNew pins the Analyzer constructor. Empty model falls back
+// to the default opus model; explicit model is preserved
+// verbatim. The constructor doesn't validate against an
+// allowlist, so any non-empty string passes through.
+func TestNew(t *testing.T) {
+	t.Run("default_model_fallback", func(t *testing.T) {
+		a := New(nil, "")
+		if a == nil {
+			t.Fatal("New(nil, \"\") returned nil Analyzer")
+		}
+		if a.model != "claude-opus-4-7" {
+			t.Errorf("default model = %q, want claude-opus-4-7", a.model)
+		}
+		if a.client != nil {
+			t.Errorf("client field = %v, want nil (verbatim)", a.client)
+		}
+	})
+	t.Run("explicit_model_preserved", func(t *testing.T) {
+		a := New(nil, "claude-sonnet-4-6")
+		if a == nil {
+			t.Fatal("New returned nil")
+		}
+		if a.model != "claude-sonnet-4-6" {
+			t.Errorf("model = %q, want claude-sonnet-4-6", a.model)
+		}
+	})
+	t.Run("custom_model_name_preserved", func(t *testing.T) {
+		a := New(nil, "future-model-name-2099")
+		if a.model != "future-model-name-2099" {
+			t.Errorf("model = %q, want verbatim passthrough", a.model)
+		}
+	})
+}
