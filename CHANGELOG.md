@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-05-11
+
+**Defense classifier helper coverage.** Four pure helpers in
+`internal/tools/defense.go` had 0 % coverage despite driving the
+BLE defense classifier tool's full request / response surface:
+`parseAdvertisement` (JSON args → typed Advertisement),
+`parseManufacturerID` (decimal / hex key parsing),
+`formatMatches` (LLM-facing serialisation), `verdictFor`
+(operator routing). A regression to any of these would silently
+corrupt the tool's input parsing or misclassify a spam attack as
+"review_needed" — neither would produce a test failure
+elsewhere, only a wrong tool output.
+
+### Changed
+
+- **`internal/tools/defense.go` coverage.** New
+  `defense_test.go` adds 4 standalone tests + 12 sub-tests:
+  - `TestParseManufacturerID` — decimal / 0x-hex / whitespace /
+    overflow rejection.
+  - `TestParseAdvertisement_AllFields` — Address canonical
+    upper, LocalName / ServiceUUIDs passthrough,
+    manufacturer_data hex + manufacturer_data_b64 base64 +
+    service_data hex decode paths.
+  - `TestParseAdvertisement_ErrorPaths` — invalid keys, non-hex
+    data, non-base64 data each return a specific error.
+  - `TestParseAdvertisement_EmptyAndMinimal` — empty args / 
+    minimal args produce a zero-value Advertisement, no panic.
+  - `TestFormatMatches` — signature / description / source_mac
+    surface as map[string]string entries; nil input → len-0
+    non-nil slice.
+  - `TestVerdictFor` — nil/empty → "clean", any spam-class
+    signature → "spam_attack_likely" (wins over informational
+    matches like FlipperServiceUUID), other matches →
+    "review_needed".
+
+  Coverage on `internal/tools` rose **41.5 % → 43.5 %**
+  (+2.0 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure JSON-decode / mapping
+  tests; no transport surface touched.
+
 ## [0.70.0] - 2026-05-11
 
 **Constructor + option coverage.** Two more 0%-coverage helpers
