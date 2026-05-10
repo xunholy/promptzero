@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-05-11
+
+**Observability coverage.** `internal/obs` jumped from 49.4 % → 88.0 %
+in two passes: first the rendering helpers backing `/debug` (Render,
+formatTransport, humanDuration, runeLen, truncateRunes,
+CollectRuntime, shortSHA), then the metrics + log accessors
+(Registry, UptimeStart, nil-Handler 404 path, parseLevel). Pure-
+function coverage with no transport mocking needed; catches
+regressions where the box-drawing layout or the human-duration
+thresholds drift silently.
+
 ### Changed
 
 - **`internal/obs/metrics.go` and `log.go` gain accessor + parse
@@ -41,6 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   minimal-snapshot rendering (defaults kick in), width floor (10 →
   40), and `CollectRuntime` shape assertions. Coverage on
   `internal/obs` rose from **49.4 % → 84.2 %** (+34.8 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A this release. Pure tests on
+  rendering helpers and accessors; no transport or hardware
+  surface touched.
 
 ## [0.63.0] - 2026-05-11
 
