@@ -135,6 +135,50 @@ func (f *Flipper) SubGHzRx(frequency uint32, duration time.Duration) (string, er
 	return f.ExecLong(cmd, duration)
 }
 
+// SubGHzRxStream is the streaming variant of SubGHzRx. Each line emitted
+// by firmware while `subghz rx` is running is delivered to onLine as it
+// arrives; the callback can return stop=true to terminate the capture
+// early (e.g. once a candidate signal lands). duration bounds the call
+// like SubGHzRx; ctx cancel also terminates early. The accumulated raw
+// output is returned so callers can feed it to ParseSubGHzReceive on
+// the streaming path the same way they would on the blocking path.
+//
+// The serial protocol echoes commands back as their first "line", so
+// the wrapper drops the line that exactly matches the dispatched
+// command before forwarding to onLine. Otherwise every streaming
+// caller would see one frame of noise per call.
+//
+// Budget/cancel are treated as normal stream-end (no error returned),
+// matching ExecLong semantics — the partial accumulated output is the
+// caller's result.
+func (f *Flipper) SubGHzRxStream(ctx context.Context, frequency uint32, duration time.Duration, onLine func(line string) (stop bool)) (string, error) {
+	cmd := fmt.Sprintf("subghz rx %d", frequency)
+	if f.Capabilities().SubGHzNeedsDev {
+		cmd += " 0"
+	}
+	streamCtx, cancel := context.WithTimeout(ctx, duration)
+	defer cancel()
+
+	var sb strings.Builder
+	echoSeen := false
+	err := f.StreamCtx(streamCtx, cmd, func(line string) (stop bool) {
+		if !echoSeen && strings.TrimSpace(line) == cmd {
+			echoSeen = true
+			return false
+		}
+		sb.WriteString(line)
+		sb.WriteByte('\n')
+		if onLine != nil {
+			return onLine(line)
+		}
+		return false
+	})
+	if err != nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+		return sb.String(), nil
+	}
+	return sb.String(), err
+}
+
 // SubGHzDecode decodes a previously captured raw Sub-GHz file.
 // CLI: subghz decode_raw <file_path>
 func (f *Flipper) SubGHzDecode(filePath string) (string, error) {

@@ -47,6 +47,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     stubborn producer that ignores both signals still runs to
     completion and the dispatcher returns its final string.
 
+- **First real streaming tool: `subghz_receive`.** Wires the v0.55
+  streaming infrastructure to a real long-running capture so the
+  abort-early UX has a production consumer, not just tests. Hosts
+  that install a stream callback now see one frame per
+  firmware-emitted candidate line; returning false from the callback
+  aborts the capture promptly via `sink.Aborted()` + ctx cancel.
+  Hosts without a callback fall back to the existing blocking
+  Handler — unchanged behaviour for non-streaming consumers.
+
+  - New `Flipper.SubGHzRxStream(ctx, frequency, duration, onLine)`
+    in `internal/flipper/commands.go`. Wraps `StreamCtx` with the
+    same fork-aware command shape as `SubGHzRx` (`subghz rx <freq>
+    [device]`) and the same budget/cancel-as-success semantics
+    (DeadlineExceeded / Canceled return the accumulated raw with a
+    nil error). The dispatched command's echo line — a serial-protocol
+    artifact — is filtered out before the first frame so streaming
+    callers never see one frame of "subghz rx 433920000" noise per
+    call. Stops the firmware command via the StreamCtx-deferred
+    Ctrl+C on every exit path (budget, ctx cancel, onLine stop).
+  - `subghz_receive` tool in `internal/tools/subghz.go` gains
+    `Streams: true` and a `StreamHandler` that pumps each onLine
+    line via `sink.Send`, polls `sink.IsAborted()` for the
+    consumer-driven stop, and returns the same parsed
+    `{candidates:[...]}` JSON the blocking Handler already returns
+    so the LLM-facing tool_result is unchanged on the streaming
+    path.
+  - 3 new mock-pty tests pin the contract: per-line delivery
+    (`onLine` called once per candidate line, accumulated raw
+    matches), `stop=true` from `onLine` ends capture early and
+    sends Ctrl+C (and the post-stop line is NOT in the accumulated
+    output), ctx cancel ends capture promptly with no error and
+    leaves the session healthy for a follow-up DeviceInfo call.
+
 ## [0.55.0] - 2026-05-10
 
 **Roadmap closeout.** v0.55 lands the last two genuinely-open P3

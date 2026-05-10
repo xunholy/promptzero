@@ -240,6 +240,146 @@ func TestSubGHzRxTimeoutSendsCtrlC(t *testing.T) {
 	}
 }
 
+// TestSubGHzRxStream_DeliversEachLine pins the streaming variant: each
+// firmware-emitted scan line lands at the onLine callback exactly once
+// and the accumulated raw output mirrors what SubGHzRx would have
+// returned. This is the contract the streaming subghz_receive
+// StreamHandler relies on for per-frame fan-out.
+func TestSubGHzRxStream_DeliversEachLine(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("subghz"),
+		mock.WithHandler("subghz", func(args []string) string {
+			if len(args) >= 1 && args[0] == "rx" {
+				// Three discrete lines, like a real `subghz rx` would
+				// emit as candidates land. Trailing newline so the
+				// final line terminates before the budget fires.
+				return "Princeton  433.92  KEY=DEADBEEF\nNice  433.92  KEY=AABBCCDD\nFAAC  433.92  KEY=11223344\n"
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 400 * time.Millisecond
+	var got []string
+	raw, err := flip.SubGHzRxStream(context.Background(), 433920000, budget, func(line string) bool {
+		got = append(got, line)
+		return false
+	})
+	if err != nil {
+		t.Fatalf("SubGHzRxStream: %v", err)
+	}
+	wantLines := []string{
+		"Princeton  433.92  KEY=DEADBEEF",
+		"Nice  433.92  KEY=AABBCCDD",
+		"FAAC  433.92  KEY=11223344",
+	}
+	if len(got) != len(wantLines) {
+		t.Fatalf("onLine called %d times, want %d (lines=%v)", len(got), len(wantLines), got)
+	}
+	for i, w := range wantLines {
+		if got[i] != w {
+			t.Errorf("line[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+	for _, w := range wantLines {
+		if !strings.Contains(raw, w) {
+			t.Errorf("accumulated raw missing %q: %q", w, raw)
+		}
+	}
+}
+
+// TestSubGHzRxStream_StopsEarlyOnCallback pins the abort-early
+// contract: returning stop=true from onLine ends the capture without
+// waiting for the duration budget AND sends Ctrl+C so the firmware
+// command stops. Closes the loop on the abort-early UX (sink.Aborted
+// → onLine returns true → SubGHzRxStream returns → tool's
+// StreamHandler returns the partial parsed result).
+func TestSubGHzRxStream_StopsEarlyOnCallback(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("subghz"),
+		mock.WithHandler("subghz", func(args []string) string {
+			if len(args) >= 1 && args[0] == "rx" {
+				return "Princeton  433.92  KEY=DEADBEEF\nNice  433.92  KEY=AABBCCDD\nFAAC  433.92  KEY=11223344\n"
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	// Generous budget — we expect early termination, not timeout.
+	const budget = 5 * time.Second
+	start := time.Now()
+	var got []string
+	raw, err := flip.SubGHzRxStream(context.Background(), 433920000, budget, func(line string) bool {
+		got = append(got, line)
+		return true // stop on the first line
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("SubGHzRxStream: %v", err)
+	}
+	if elapsed >= budget {
+		t.Errorf("SubGHzRxStream did not stop early: took %s (budget %s)", elapsed, budget)
+	}
+	if len(got) != 1 {
+		t.Errorf("onLine called %d times, want 1 (early-stop)", len(got))
+	}
+	if !strings.Contains(raw, "Princeton") {
+		t.Errorf("raw missing first line: %q", raw)
+	}
+	if strings.Contains(raw, "FAAC") {
+		t.Errorf("raw included a post-stop line — early-stop did not honour the callback: %q", raw)
+	}
+
+	// Ctrl+C must have been sent so the firmware command terminated.
+	rx := m.BytesReceived()
+	if !bytes.Contains(rx, []byte{'\x03'}) {
+		t.Errorf("mock did not receive Ctrl+C after early stop; bytes: %q", rx)
+	}
+
+	// Session is still healthy.
+	if _, execErr := flip.DeviceInfo(); execErr != nil {
+		t.Errorf("DeviceInfo after early-stop: %v", execErr)
+	}
+}
+
+// TestSubGHzRxStream_CtxCancelStopsCapture pins that ctx cancellation
+// terminates the stream cleanly with no error (matches ExecLong's
+// streaming-success semantics — a cancelled budget is a normal end).
+func TestSubGHzRxStream_CtxCancelStopsCapture(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("subghz"),
+		mock.WithHandler("subghz", func(args []string) string {
+			if len(args) >= 1 && args[0] == "rx" {
+				return "Receiving...\n"
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel after a short delay so the call has time to subscribe.
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	_, err := flip.SubGHzRxStream(ctx, 433920000, 5*time.Second, nil)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Errorf("SubGHzRxStream on ctx cancel: expected nil error, got %v", err)
+	}
+	if elapsed >= 1500*time.Millisecond {
+		t.Errorf("SubGHzRxStream did not honour ctx cancel promptly: took %s", elapsed)
+	}
+	if _, execErr := flip.DeviceInfo(); execErr != nil {
+		t.Errorf("DeviceInfo after ctx cancel: %v", execErr)
+	}
+}
+
 // TestNFCDetectTimeoutReturnsNilError verifies that when the scanner budget
 // expires inside the NFC subshell:
 //   - NFCDetect returns nil error (streaming-success semantics)
