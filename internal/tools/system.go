@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/streaming"
 )
 
 func init() {
@@ -120,8 +121,21 @@ func init() {
 		Risk:        risk.Low,
 		Group:       GroupFlipperSystem,
 		AgentOnly:   false,
+		// Streaming opt-in mirrors subghz_receive: each log line
+		// emitted by firmware lands at the host's stream callback as
+		// a frame. Hosts without a callback (or with Streams=false
+		// dispatch) fall back to the blocking Handler unchanged.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.LogStream(time.Duration(intOr(p, "duration_seconds", 15))*time.Second, str(p, "level"))
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			duration := time.Duration(intOr(p, "duration_seconds", 15)) * time.Second
+			return d.Flipper.LogStreamLines(ctx, duration, str(p, "level"), func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				return sink.IsAborted()
+			})
 		},
 	})
 

@@ -380,6 +380,120 @@ func TestSubGHzRxStream_CtxCancelStopsCapture(t *testing.T) {
 	}
 }
 
+// TestLogStreamLines_DeliversEachLine pins per-line delivery for the
+// log streaming variant: each log emitted while `log` is running
+// arrives at onLine in order, and the accumulated raw mirrors what
+// LogStream would have returned. Same contract as
+// TestSubGHzRxStream_DeliversEachLine; lifted here so a future
+// refactor that DRYs these two wrappers can't accidentally regress
+// log streaming.
+func TestLogStreamLines_DeliversEachLine(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("log"),
+		mock.WithHandler("log", func(args []string) string {
+			return "[I][app] startup ok\n[W][rfid] no card\n[E][bt] dropped\n"
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 400 * time.Millisecond
+	var got []string
+	raw, err := flip.LogStreamLines(context.Background(), budget, "", func(line string) bool {
+		got = append(got, line)
+		return false
+	})
+	if err != nil {
+		t.Fatalf("LogStreamLines: %v", err)
+	}
+	wantLines := []string{
+		"[I][app] startup ok",
+		"[W][rfid] no card",
+		"[E][bt] dropped",
+	}
+	if len(got) != len(wantLines) {
+		t.Fatalf("onLine called %d times, want %d (lines=%v)", len(got), len(wantLines), got)
+	}
+	for i, w := range wantLines {
+		if got[i] != w {
+			t.Errorf("line[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+	for _, w := range wantLines {
+		if !strings.Contains(raw, w) {
+			t.Errorf("accumulated raw missing %q: %q", w, raw)
+		}
+	}
+}
+
+// TestLogStreamLines_StopsEarlyOnCallback pins the abort-early path
+// for log streaming. Same contract as the subghz variant — onLine
+// returning true stops the capture before the duration budget and
+// sends Ctrl+C so the firmware command terminates.
+func TestLogStreamLines_StopsEarlyOnCallback(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("log"),
+		mock.WithHandler("log", func(args []string) string {
+			return "first\nsecond\nthird\n"
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 5 * time.Second
+	start := time.Now()
+	var got []string
+	raw, err := flip.LogStreamLines(context.Background(), budget, "", func(line string) bool {
+		got = append(got, line)
+		return true
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("LogStreamLines: %v", err)
+	}
+	if elapsed >= budget {
+		t.Errorf("LogStreamLines did not stop early: took %s (budget %s)", elapsed, budget)
+	}
+	if len(got) != 1 {
+		t.Errorf("onLine called %d times, want 1 (early-stop)", len(got))
+	}
+	if !strings.Contains(raw, "first") {
+		t.Errorf("raw missing first line: %q", raw)
+	}
+	if strings.Contains(raw, "third") {
+		t.Errorf("raw included a post-stop line: %q", raw)
+	}
+	if rx := m.BytesReceived(); !bytes.Contains(rx, []byte{'\x03'}) {
+		t.Errorf("mock did not receive Ctrl+C after early stop; bytes: %q", rx)
+	}
+	if _, execErr := flip.DeviceInfo(); execErr != nil {
+		t.Errorf("DeviceInfo after early-stop: %v", execErr)
+	}
+}
+
+// TestLogStreamLines_LevelArgPasses pins that a non-empty level is
+// sanitised and appended to the dispatched command. The mock's
+// handler doesn't introspect args here — the assertion is on the
+// command line observed at the wire.
+func TestLogStreamLines_LevelArgPasses(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("log"),
+		mock.WithHandler("log", func(args []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	_, _ = flip.LogStreamLines(context.Background(), 200*time.Millisecond, "debug", nil)
+
+	found := false
+	for _, line := range m.Lines() {
+		if strings.HasPrefix(strings.TrimSpace(line), "log debug") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("mock did not observe 'log debug' on the wire; lines=%v", m.Lines())
+	}
+}
+
 // TestNFCDetectTimeoutReturnsNilError verifies that when the scanner budget
 // expires inside the NFC subshell:
 //   - NFCDetect returns nil error (streaming-success semantics)

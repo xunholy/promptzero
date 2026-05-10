@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`log_stream` becomes streaming-capable** — the second tool wired
+  to v0.55's streaming dispatch path after `subghz_receive`. Each
+  firmware log line emitted by `log [<level>]` lands at the host's
+  stream callback as a frame in real time; hosts without a callback
+  fall back to the existing blocking `LogStream` Handler unchanged.
+
+  - New `Flipper.LogStreamLines(ctx, duration, level, onLine)` in
+    `internal/flipper/commands.go`. Mirrors `SubGHzRxStream`'s shape
+    exactly: ctx + `WithTimeout(duration)`, command-echo filtering
+    so the dispatched `log [level]` line never surfaces as a frame,
+    budget/cancel-as-success semantics (DeadlineExceeded / Canceled
+    return the accumulated raw with a nil error), Ctrl+C-on-exit
+    via the StreamCtx defer.
+  - `log_stream` tool gains `Streams: true` and a `StreamHandler`
+    that pumps each `onLine` invocation through `sink.Send` and
+    polls `sink.IsAborted()` for the consumer-driven stop. The
+    blocking Handler is left in place for non-streaming hosts so
+    behaviour is unchanged when no host callback is installed.
+  - 3 new mock-pty tests pin the contract: per-line delivery
+    (3 emitted log lines → 3 onLine calls, accumulated raw matches),
+    early-stop via `stop=true` (1 onLine call, post-stop line NOT
+    in raw, mock observes Ctrl+C, follow-up DeviceInfo healthy),
+    `log <level>` argument passes through to the wire.
+
 ## [0.56.0] - 2026-05-11
 
 **Streaming + abort-early — end-to-end.** v0.55 shipped the
