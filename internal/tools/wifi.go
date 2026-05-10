@@ -464,11 +464,26 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
+		// Streaming opt-in: each captured beacon frame lands at the
+		// host's stream callback in real time. Same Marauder.StreamLines
+		// path as wifi_scan_ap / wifi_scan_all.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
 			return d.Marauder.SniffBeacon(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			if err := d.RequireMarauder(); err != nil {
+				return "", err
+			}
+			timeout := time.Duration(intOr(p, "duration_seconds", 30)) * time.Second
+			return d.Marauder.StreamLines(ctx, "sniffbeacon", timeout, func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				return sink.IsAborted()
+			})
 		},
 	})
 
@@ -480,11 +495,26 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
+		// Streaming opt-in: each detected deauth frame surfaces in
+		// real time so the operator can see active attacks land
+		// without waiting for the full duration.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
 			return d.Marauder.SniffDeauth(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			if err := d.RequireMarauder(); err != nil {
+				return "", err
+			}
+			timeout := time.Duration(intOr(p, "duration_seconds", 30)) * time.Second
+			return d.Marauder.StreamLines(ctx, "sniffdeauth", timeout, func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				return sink.IsAborted()
+			})
 		},
 	})
 
@@ -496,11 +526,27 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
+		// Streaming opt-in: each probe-request frame lands at the
+		// host's stream callback as it arrives — useful for
+		// real-time visibility into what nearby devices are
+		// looking for.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
 			return d.Marauder.SniffProbe(time.Duration(intOr(p, "duration_seconds", 30)) * time.Second)
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			if err := d.RequireMarauder(); err != nil {
+				return "", err
+			}
+			timeout := time.Duration(intOr(p, "duration_seconds", 30)) * time.Second
+			return d.Marauder.StreamLines(ctx, "sniffprobe", timeout, func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				return sink.IsAborted()
+			})
 		},
 	})
 

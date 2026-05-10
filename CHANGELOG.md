@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`wifi_sniff_beacon` / `wifi_sniff_deauth` / `wifi_sniff_probe`
+  become streaming-capable** — three more Marauder-backed tools
+  wired to the streaming dispatch path. Each captured frame
+  surfaces in real time at the host's stream callback, so an
+  operator running a `sniffdeauth` watch can see active attacks
+  land the moment they happen rather than waiting out the full
+  duration. All three use the existing `Marauder.StreamLines`
+  adapter — no new transport plumbing. `wifi_sniff_pmkid` keeps
+  blocking-only this release (its parameter shape is the
+  outlier — channel + deauth-assist + list-only flags — and the
+  underlying firmware emits a structured report rather than
+  per-frame lines, so streaming would offer little interactive
+  value).
+
 - **`wifi_scan_all` becomes streaming-capable** — same Marauder
   streaming path as `wifi_scan_ap`, just without the AP-list parse
   layer; `scanall`'s mixed AP + station output is returned as raw
