@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-05-11
+
+**Streaming spreads.** v0.56 wired the first streaming tool
+(`subghz_receive`) and the REPL host renderer; v0.57 rolls the
+pattern out across the natural fleet of long-running Flipper
+captures so any operator-facing tool that emits incremental output
+shows it in real time. `log_stream`, `subghz_rx_raw`, and
+`ir_receive` now stream per-line frames and honour the cooperative
+abort signal. The shared `Flipper.streamLines` helper consolidates
+what had become near-identical bodies across three wrappers.
+
 ### Added
 
 - **`ir_receive` becomes streaming-capable** — fourth tool wired to
@@ -64,6 +75,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   No public API change; the per-wrapper godoc lives where the
   wrapper lives so capability gates and CLI verbs still document
   themselves.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-Flipper validator — N/A this release. The new streaming
+  wrappers exercise the same `StreamCtx` path covered by the
+  mock-pty test suite (`internal/flipper/commands_mock_test.go`),
+  and the corresponding non-streaming wrappers (`SubGHzRxRaw`,
+  `IRRx`, `LogStream`) are unchanged on the wire.
 
 ## [0.56.0] - 2026-05-11
 
