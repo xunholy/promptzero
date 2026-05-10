@@ -172,7 +172,13 @@ type Agent struct {
 	// affect the LLM-visible tool_result. See internal/streaming
 	// + dispatchStreaming. Nil disables streaming dispatch entirely
 	// (tools fall back to their non-streaming Handler).
-	toolStreamCb  func(streaming.Frame)
+	//
+	// Returning false from the callback signals abort-early: dispatch
+	// closes the sink's Aborted() channel and cancels the per-tool
+	// context, prompting honouring producers (e.g. subghz_receive
+	// once a candidate lands) to wrap up and return a partial result.
+	// Returning true keeps streaming.
+	toolStreamCb  func(streaming.Frame) bool
 	usageCb       func(u Usage)
 	streamErrCb   func(err error)
 	retryNotifyCb func(RetryNotice) // v0.21.0: per-attempt retry observer for transient API errors
@@ -479,7 +485,14 @@ func (a *Agent) SetTextDeltaCallback(f func(TextDelta))  { a.textDeltaCb = f }
 // arrives after the dispatch returns. Pass nil to disable
 // streaming dispatch entirely — opted-in tools then fall back to
 // their non-streaming Handler.
-func (a *Agent) SetToolStreamCallback(f func(streaming.Frame)) { a.toolStreamCb = f }
+//
+// Return value semantics: true keeps the stream alive, false
+// triggers abort-early. On false, dispatch closes the sink's
+// Aborted() channel and cancels the per-tool context; honouring
+// producers wrap up and return a partial result via the normal
+// final-string path. Producers that ignore both signals will run
+// to completion (no forced kill) — abort-early is cooperative.
+func (a *Agent) SetToolStreamCallback(f func(streaming.Frame) bool) { a.toolStreamCb = f }
 
 // Usage reports token consumption for one successful streamOnce call.
 // InputTokens and OutputTokens are the usual Anthropic counters; the
@@ -1589,19 +1602,37 @@ func (a *Agent) dispatch(ctx context.Context, name string, p map[string]interfac
 // blocks until the handler returns and the consumer drains —
 // guarantees that no frames arrive at the callback after dispatch
 // returns.
+//
+// Abort-early: when the callback returns false dispatch calls
+// sink.Abort() and cancels the per-call context. The drain loop
+// then keeps draining without invoking the callback again so the
+// producer's Send calls don't wedge on a full buffer while it
+// winds down. Producers honouring abort return their partial
+// result via the normal final-string path.
 func (a *Agent) dispatchStreaming(ctx context.Context, spec toolsreg.Spec, p map[string]any) (string, error) {
 	sink := streaming.NewSink(spec.Name, 0)
 	cb := a.toolStreamCb
 
+	streamCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		aborted := false
 		for f := range sink.Frames() {
-			cb(f)
+			if aborted {
+				continue // drain only — don't invoke callback again
+			}
+			if !cb(f) {
+				aborted = true
+				sink.Abort()
+				cancel()
+			}
 		}
 	}()
 
-	output, err := spec.StreamHandler(ctx, a.deps(), p, sink)
+	output, err := spec.StreamHandler(streamCtx, a.deps(), p, sink)
 	sink.Close()
 	<-done
 	return output, err
