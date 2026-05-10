@@ -539,6 +539,93 @@ func TestSubGHzRxRawStream_DeliversEachLine(t *testing.T) {
 	}
 }
 
+// TestIRRxStream_DeliversEachLine pins per-line delivery for the IR
+// streaming variant. Same contract as the SubGHz / log helpers; the
+// IR variant additionally fires a 120ms vibration buzz on
+// successful completion via the existing withSuccessBuzz wrapper.
+func TestIRRxStream_DeliversEachLine(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("ir"),
+		mock.WithHandler("ir", func(args []string) string {
+			if len(args) >= 1 && args[0] == "rx" {
+				return "NEC, A:00 04, C:0E\n"
+			}
+			return ""
+		}),
+		mock.WithHandler("vibro", func(args []string) string { return "" }),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 400 * time.Millisecond
+	var got []string
+	raw, err := flip.IRRxStream(context.Background(), budget, func(line string) bool {
+		got = append(got, line)
+		return false
+	})
+	if err != nil {
+		t.Fatalf("IRRxStream: %v", err)
+	}
+	if len(got) != 1 || got[0] != "NEC, A:00 04, C:0E" {
+		t.Errorf("onLine got %v, want [NEC, A:00 04, C:0E]", got)
+	}
+	if !strings.Contains(raw, "NEC") {
+		t.Errorf("accumulated raw missing 'NEC': %q", raw)
+	}
+
+	// Buzz wrapper should have dispatched vibro on/off after the
+	// successful capture.
+	var vibroSeen int
+	for _, line := range m.Lines() {
+		if strings.HasPrefix(strings.TrimSpace(line), "vibro") {
+			vibroSeen++
+		}
+	}
+	if vibroSeen != 2 {
+		t.Errorf("expected 2 vibro lines (on+off) on successful IRRxStream, got %d (lines=%v)", vibroSeen, m.Lines())
+	}
+}
+
+// TestIRRxRawStream_DeliversEachLine pins per-line delivery for the
+// raw IR streaming variant. Unlike IRRxStream, the raw flavour does
+// NOT wrap with withSuccessBuzz (raw captures usually run to the
+// duration budget rather than ending on a discrete decoded signal),
+// so this test also asserts no vibro line was sent.
+func TestIRRxRawStream_DeliversEachLine(t *testing.T) {
+	m := mock.Spawn(t,
+		mock.WithSuppressPrompt("ir"),
+		mock.WithHandler("ir", func(args []string) string {
+			if len(args) >= 2 && args[0] == "rx" && args[1] == "raw" {
+				return "RAW T:9000 D:1\nRAW T:4500 D:0\nRAW T:560 D:1\n"
+			}
+			return ""
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	const budget = 400 * time.Millisecond
+	var got []string
+	raw, err := flip.IRRxRawStream(context.Background(), budget, func(line string) bool {
+		got = append(got, line)
+		return false
+	})
+	if err != nil {
+		t.Fatalf("IRRxRawStream: %v", err)
+	}
+	if len(got) != 3 {
+		t.Errorf("onLine called %d times, want 3 (lines=%v)", len(got), got)
+	}
+	for _, want := range []string{"RAW T:9000", "RAW T:4500", "RAW T:560"} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("accumulated raw missing %q: %q", want, raw)
+		}
+	}
+	for _, line := range m.Lines() {
+		if strings.HasPrefix(strings.TrimSpace(line), "vibro") {
+			t.Errorf("IRRxRawStream should NOT send vibro; observed %q", line)
+		}
+	}
+}
+
 // TestNFCDetectTimeoutReturnsNilError verifies that when the scanner budget
 // expires inside the NFC subshell:
 //   - NFCDetect returns nil error (streaming-success semantics)

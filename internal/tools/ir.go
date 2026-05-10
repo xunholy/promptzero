@@ -8,6 +8,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/streaming"
 )
 
 func init() {
@@ -49,8 +50,22 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupFlipperIR,
 		AgentOnly:   false,
+		// Streaming opt-in: each decoded IR line lands at the host's
+		// stream callback as a frame. Particularly useful for the
+		// "press a button" UX — the agent can see the signal arrive
+		// the moment the operator's remote is captured, rather than
+		// waiting for the full timeout.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.IRRx(time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second)
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			timeout := time.Duration(intOr(p, "timeout_seconds", 30)) * time.Second
+			return d.Flipper.IRRxStream(ctx, timeout, func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				return sink.IsAborted()
+			})
 		},
 	})
 

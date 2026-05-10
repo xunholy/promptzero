@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`ir_receive` becomes streaming-capable** — fourth tool wired to
+  v0.55's streaming dispatch path. Each decoded IR line emitted while
+  `ir rx` is running lands at the host's stream callback as a frame —
+  particularly useful for the "press a button" UX since the agent
+  can react the moment the operator's remote is captured rather than
+  waiting for the full timeout. The 120 ms vibration buzz on
+  successful capture (existing `withSuccessBuzz` wrapper) is
+  preserved on the streaming path. `IRRxRawStream` is also added for
+  symmetry with `SubGHzRxRawStream`, but no tool currently opts into
+  it — raw IR reception isn't surfaced as its own tool today.
+
 - **`subghz_rx_raw` becomes streaming-capable** — third tool wired to
   v0.55's streaming dispatch path after `subghz_receive` and
   `log_stream`. Each pulse line emitted while `subghz rx_raw` runs
