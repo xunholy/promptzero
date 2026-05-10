@@ -13,6 +13,7 @@ import (
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/risk"
+	streampkg "github.com/xunholy/promptzero/internal/streaming"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/webhook"
@@ -437,6 +438,52 @@ func runTurnStatusBar(ed *lineEditor, started *atomic.Pointer[time.Time], note *
 
 // --- Tool output preview -------------------------------------------------
 
+// renderStreamFrame formats one streaming-tool partial frame as a
+// single dim, indented line for the REPL scroll area. Mirrors the
+// look of outputPreview / the tool start/finish lines so the frames
+// blend in. Long bytes are truncated to the terminal width minus a
+// small margin; non-printable bytes get the standard %q escape so a
+// noisy capture (control chars, ANSI) does not corrupt the screen.
+func renderStreamFrame(f streampkg.Frame) string {
+	line := strings.TrimRight(string(f.Bytes), "\r\n")
+	line = collapseWS(line)
+	if line == "" {
+		return ""
+	}
+	// Quote anything with control characters or escape sequences so
+	// the operator-facing log can't be hijacked by a hostile capture.
+	if needsQuote(line) {
+		quoted := fmt.Sprintf("%q", line)
+		// strip surrounding quotes for a slightly tighter render
+		line = strings.TrimSuffix(strings.TrimPrefix(quoted, `"`), `"`)
+	}
+	cols := 80
+	if c, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && c > 20 {
+		cols = c
+	}
+	maxW := cols - 12
+	if maxW < 20 {
+		maxW = 20
+	}
+	if len(line) > maxW {
+		line = line[:maxW-1] + "…"
+	}
+	return fmt.Sprintf("    %s· %s%s%s", dim, line, reset, "")
+}
+
+// needsQuote reports whether s contains any byte outside printable
+// ASCII. Newlines were already stripped by the caller; this is the
+// "non-printable / control-char" check.
+func needsQuote(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 0x20 || c == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 // outputPreview returns a single dim line summarising a tool's stdout, or a
 // red one-liner when the tool errored. Returns "" for empty output, or when
 // the output is only a Flipper CLI prompt character — in those cases we
@@ -660,6 +707,26 @@ func enterREPL(deps *REPLDeps) error {
 				wh.Fire(webhook.EventWorkflowCompleted, payload)
 			}
 		}
+	})
+
+	// --- Streaming tool frames ---
+	// Tools that opt into streaming dispatch (e.g. subghz_receive)
+	// emit one frame per partial result. Render each as a dim,
+	// indented line under the running tool — matches the look of
+	// the start/finish status lines from SetToolStatusCallback. The
+	// callback returns true (continue streaming); abort-early UX is
+	// a follow-up that will need product wiring (e.g. a hotkey to
+	// signal "got what I needed, stop").
+	ai.SetToolStreamCallback(func(f streampkg.Frame) bool {
+		// End any in-flight delta stream cleanly so the frame line
+		// doesn't append to a half-flushed assistant token.
+		if streaming.Swap(false) {
+			ed.endDelta()
+		}
+		ed.writeOutput(func() {
+			fmt.Fprintln(os.Stderr, renderStreamFrame(f))
+		})
+		return true
 	})
 
 	// --- Risk confirmation prompt ---
