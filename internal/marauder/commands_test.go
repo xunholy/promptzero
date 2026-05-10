@@ -1,6 +1,8 @@
 package marauder
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -159,4 +161,244 @@ func TestCommandsWireForm(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidationGuardedWrappers pins the allowlist-bearing wrappers
+// that 0%-coverage previously hid: BLESpam, SniffBT,
+// PortScanService, SetSetting. Each rejects unknown values at the
+// Go layer instead of forwarding them as silent firmware no-ops.
+// The valid-path also checks the dispatched bytes so the
+// command-name + flag-shape regression catch from
+// TestCommandsWireForm extends here too.
+func TestValidationGuardedWrappers(t *testing.T) {
+	t.Run("BLESpam_valid", func(t *testing.T) {
+		got, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.BLESpam("apple", 100*time.Millisecond)
+		})
+		if err != nil {
+			t.Fatalf("BLESpam(apple): %v", err)
+		}
+		if got != "blespam -t apple" {
+			t.Errorf("BLESpam wire = %q, want blespam -t apple", got)
+		}
+	})
+	t.Run("BLESpam_invalid_mode", func(t *testing.T) {
+		_, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.BLESpam("nonsense", 100*time.Millisecond)
+		})
+		if err == nil {
+			t.Error("BLESpam(nonsense) should error on invalid mode")
+		}
+	})
+	t.Run("BLESpamCtx_valid", func(t *testing.T) {
+		got, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.BLESpamCtx(context.Background(), "google", 100*time.Millisecond)
+		})
+		if err != nil {
+			t.Fatalf("BLESpamCtx: %v", err)
+		}
+		if got != "blespam -t google" {
+			t.Errorf("BLESpamCtx wire = %q", got)
+		}
+	})
+
+	t.Run("SniffBT_valid", func(t *testing.T) {
+		got, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.SniffBT("airtag", 100*time.Millisecond)
+		})
+		if err != nil {
+			t.Fatalf("SniffBT(airtag): %v", err)
+		}
+		if got != "sniffbt -t airtag" {
+			t.Errorf("SniffBT wire = %q, want sniffbt -t airtag", got)
+		}
+	})
+	t.Run("SniffBT_invalid_target", func(t *testing.T) {
+		_, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.SniffBT("nonsense", 100*time.Millisecond)
+		})
+		if err == nil {
+			t.Error("SniffBT(nonsense) should error on invalid target")
+		}
+	})
+	t.Run("SniffBTCtx_valid", func(t *testing.T) {
+		got, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.SniffBTCtx(context.Background(), "flipper", 100*time.Millisecond)
+		})
+		if err != nil {
+			t.Fatalf("SniffBTCtx: %v", err)
+		}
+		if got != "sniffbt -t flipper" {
+			t.Errorf("SniffBTCtx wire = %q", got)
+		}
+	})
+
+	t.Run("PortScanService_valid", func(t *testing.T) {
+		got, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.PortScanService(2, "http", 100*time.Millisecond)
+		})
+		if err != nil {
+			t.Fatalf("PortScanService(2, http): %v", err)
+		}
+		if got != "portscan -s http -t 2" {
+			t.Errorf("PortScanService wire = %q", got)
+		}
+	})
+	t.Run("PortScanService_invalid", func(t *testing.T) {
+		_, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.PortScanService(0, "nonsense-svc", 100*time.Millisecond)
+		})
+		if err == nil {
+			t.Error("PortScanService(nonsense-svc) should error")
+		}
+	})
+	t.Run("PortScanServiceCtx_valid", func(t *testing.T) {
+		got, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.PortScanServiceCtx(context.Background(), 5, "ssh", 100*time.Millisecond)
+		})
+		if err != nil {
+			t.Fatalf("PortScanServiceCtx: %v", err)
+		}
+		if got != "portscan -s ssh -t 5" {
+			t.Errorf("PortScanServiceCtx wire = %q", got)
+		}
+	})
+
+	t.Run("SetSetting_valid", func(t *testing.T) {
+		got, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.SetSetting("EnableLED", "enable")
+		})
+		if err != nil {
+			t.Fatalf("SetSetting: %v", err)
+		}
+		if got != "settings -s EnableLED enable" {
+			t.Errorf("SetSetting wire = %q", got)
+		}
+	})
+	t.Run("SetSetting_invalid_name", func(t *testing.T) {
+		_, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.SetSetting("UnknownSetting", "enable")
+		})
+		if err == nil {
+			t.Error("SetSetting with invalid name should error")
+		}
+	})
+	t.Run("SetSetting_invalid_value", func(t *testing.T) {
+		_, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.SetSetting("EnableLED", "maybe") // must be enable/disable
+		})
+		if err == nil {
+			t.Error("SetSetting with non-enable/disable value should error")
+		}
+	})
+
+	t.Run("EvilPortalSetHTML_filename", func(t *testing.T) {
+		got, err := wireCmd(t, func(m *Marauder) (string, error) {
+			return m.EvilPortalSetHTML("starbucks.html")
+		})
+		if err != nil {
+			t.Fatalf("EvilPortalSetHTML: %v", err)
+		}
+		if got != `evilportal -c sethtml "starbucks.html"` {
+			t.Errorf("EvilPortalSetHTML wire = %q", got)
+		}
+	})
+}
+
+// TestScanStation_StubbedError pins the ScanStation back-compat
+// shim — the underlying `scansta` command was removed in
+// Marauder v1.11.1 with no replacement, so the wrapper returns a
+// clear "use ScanAll instead" error instead of silently timing
+// out on a no-op.
+func TestScanStation_StubbedError(t *testing.T) {
+	fp := newFakePort()
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	_, err := m.ScanStation(100 * time.Millisecond)
+	if err == nil {
+		t.Fatal("ScanStation should return the v1.11.1+ removal error")
+	}
+	if !strings.Contains(err.Error(), "ScanAll") {
+		t.Errorf("ScanStation error = %q, want pointer to ScanAll", err)
+	}
+}
+
+// TestScanAPParsed_Roundtrip pins the parsed wrapper: calls
+// ScanAPParsed, the fake serves a single-AP scanap response, and
+// the parsed ScanResult.APs slice contains the AP. Catches a
+// regression in the Exec → ParseAPList wiring (the legacy blocking
+// entry point that v0.60+ ctx-threading still delegates through).
+func TestScanAPParsed_Roundtrip(t *testing.T) {
+	fp := newFakePort()
+	fp.respond("scanap", "0 SSID=HomeWifi BSSID=AA:BB:CC:DD:EE:FF CH=6 ENC=WPA2 RSSI=-55")
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	res, err := m.ScanAPParsed(500 * time.Millisecond)
+	if err != nil {
+		t.Fatalf("ScanAPParsed: %v", err)
+	}
+	if res.Count != 1 || len(res.APs) != 1 {
+		t.Fatalf("ScanAPParsed: APs=%d Count=%d, want 1/1 (%#v)", len(res.APs), res.Count, res)
+	}
+	if res.APs[0].SSID != "HomeWifi" {
+		t.Errorf("APs[0].SSID = %q, want HomeWifi", res.APs[0].SSID)
+	}
+	if !strings.EqualFold(res.APs[0].BSSID, "AA:BB:CC:DD:EE:FF") {
+		t.Errorf("APs[0].BSSID = %q, want AA:BB:CC:DD:EE:FF", res.APs[0].BSSID)
+	}
+	if res.APs[0].Channel != 6 {
+		t.Errorf("APs[0].Channel = %d, want 6", res.APs[0].Channel)
+	}
+	if res.APs[0].RSSI != -55 {
+		t.Errorf("APs[0].RSSI = %d, want -55", res.APs[0].RSSI)
+	}
+
+	// Ctx variant should produce the same parsed shape.
+	fp2 := newFakePort()
+	fp2.respond("scanap", "0 SSID=HomeWifi BSSID=AA:BB:CC:DD:EE:FF CH=6 ENC=WPA2 RSSI=-55")
+	m2 := newMarauderWithPort(fp2)
+	t.Cleanup(func() { _ = m2.Close() })
+	resCtx, err := m2.ScanAPParsedCtx(context.Background(), 500*time.Millisecond)
+	if err != nil {
+		t.Fatalf("ScanAPParsedCtx: %v", err)
+	}
+	if len(resCtx.APs) != 1 || resCtx.APs[0].SSID != "HomeWifi" {
+		t.Errorf("ScanAPParsedCtx APs = %+v, want HomeWifi", resCtx.APs)
+	}
+}
+
+// TestListAPsParsedAndListStationsParsed pins the two list-parsed
+// helpers via the standard Exec → parser pipeline.
+func TestListAPsParsedAndListStationsParsed(t *testing.T) {
+	t.Run("APs", func(t *testing.T) {
+		fp := newFakePort()
+		fp.respond("list -a", "0 SSID=HomeWifi BSSID=AA:BB:CC:DD:EE:FF CH=6 ENC=WPA2 RSSI=-55")
+		m := newMarauderWithPort(fp)
+		t.Cleanup(func() { _ = m.Close() })
+		res, err := m.ListAPsParsed()
+		if err != nil {
+			t.Fatalf("ListAPsParsed: %v", err)
+		}
+		if len(res.APs) != 1 || res.APs[0].SSID != "HomeWifi" {
+			t.Errorf("ListAPsParsed APs = %+v, want HomeWifi", res.APs)
+		}
+	})
+	t.Run("Stations", func(t *testing.T) {
+		fp := newFakePort()
+		fp.respond("list -c", "0 MAC=11:22:33:44:55:66 vendor=Apple")
+		m := newMarauderWithPort(fp)
+		t.Cleanup(func() { _ = m.Close() })
+		res, err := m.ListStationsParsed()
+		if err != nil {
+			t.Fatalf("ListStationsParsed: %v", err)
+		}
+		if len(res.Stations) != 1 {
+			t.Fatalf("ListStationsParsed: %d stations, want 1 (%#v)", len(res.Stations), res)
+		}
+		if !strings.EqualFold(res.Stations[0].MAC, "11:22:33:44:55:66") {
+			t.Errorf("Stations[0].MAC = %q, want 11:22:33:44:55:66", res.Stations[0].MAC)
+		}
+	})
 }
