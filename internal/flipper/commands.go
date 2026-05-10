@@ -2218,6 +2218,43 @@ func (f *Flipper) LogStream(duration time.Duration, level string) (string, error
 	return f.ExecLong(cmd, duration)
 }
 
+// LogStreamLines is the line-streaming variant of LogStream. Each log
+// line emitted by firmware is delivered to onLine as it arrives;
+// returning stop=true ends the capture early. Mirrors SubGHzRxStream's
+// shape: budget/cancel-as-success, command-echo filtering, accumulated
+// raw returned regardless of exit reason.
+//
+// Empty level uses the firmware default. Recognised values match
+// LogStream.
+// CLI: log [<level>]
+func (f *Flipper) LogStreamLines(ctx context.Context, duration time.Duration, level string, onLine func(line string) (stop bool)) (string, error) {
+	cmd := "log"
+	if level != "" {
+		cmd += " " + sanitizeArg(level)
+	}
+	streamCtx, cancel := context.WithTimeout(ctx, duration)
+	defer cancel()
+
+	var sb strings.Builder
+	echoSeen := false
+	err := f.StreamCtx(streamCtx, cmd, func(line string) (stop bool) {
+		if !echoSeen && strings.TrimSpace(line) == cmd {
+			echoSeen = true
+			return false
+		}
+		sb.WriteString(line)
+		sb.WriteByte('\n')
+		if onLine != nil {
+			return onLine(line)
+		}
+		return false
+	})
+	if err != nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+		return sb.String(), nil
+	}
+	return sb.String(), err
+}
+
 // PowerRebootDFU reboots the Flipper into the STM32 DFU bootloader. Leaves
 // the device without a running firmware until a host reflashes or the user
 // power-cycles — recovery is physical. Guarded as Critical at the risk layer.
