@@ -147,6 +147,59 @@ system_prompt: hi
 	}
 }
 
+// TestRegistryLoad_ParsesConfidenceMap pins the P3-29 persona-YAML
+// thresholds round-trip into the runtime struct. Two keys are
+// expected (`vision`, `router`), but the parser is tolerant of any
+// string key — operators may add forks.
+func TestRegistryLoad_ParsesConfidenceMap(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tuned.yaml")
+	yaml := `name: tuned
+description: P3-29 thresholds
+system_prompt: hi
+confidence:
+  vision: 0.7
+  router: 0.4
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRegistry()
+	if err := r.Load(path); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	p, ok := r.Get("tuned")
+	if !ok {
+		t.Fatalf("not registered")
+	}
+	if got := p.Confidence["vision"]; got != 0.7 {
+		t.Errorf("vision threshold = %v, want 0.7", got)
+	}
+	if got := p.Confidence["router"]; got != 0.4 {
+		t.Errorf("router threshold = %v, want 0.4", got)
+	}
+}
+
+func TestRegistryLoad_ConfidenceAbsentMapStaysNil(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "noconf.yaml")
+	yaml := `name: nc
+description: no confidence map
+system_prompt: hi
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRegistry()
+	if err := r.Load(path); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := r.Get("nc")
+	if len(p.Confidence) != 0 {
+		t.Errorf("Confidence = %v, want empty/nil", p.Confidence)
+	}
+}
+
 func TestRegistryLoadModelsBlock(t *testing.T) {
 	// Exercise the optional models map: classify on Haiku, plan on
 	// Sonnet, exploit on Opus. Required by the roadmap P0-02 cost-tier

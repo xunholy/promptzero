@@ -9,6 +9,8 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/attack"
+	"github.com/xunholy/promptzero/internal/confidence"
+	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/tools"
 )
 
@@ -211,9 +213,13 @@ func (a *Agent) routeGroups(ctx context.Context, userInput string, available map
 	sort.Strings(groups) // deterministic for caching + debuggability
 
 	system := "You are a fast tool-group router for PromptZero, an AI hardware operator. " +
-		"Given the user's turn, return a JSON array of group names (from the provided list) that hold tools the agent will need. " +
+		"Given the user's turn, decide which tool groups (from the provided list) hold tools the agent will need. " +
 		"Be generous — include adjacent groups if the user's intent spans them — but exclude groups clearly unrelated. " +
-		"Output ONLY the JSON array. No prose, no markdown fences.\n\n" +
+		"Respond with a JSON object: {\"groups\": [<names>], \"confidence\": <0.0-1.0>}. " +
+		"Set confidence near 1.0 when the intent is unambiguous; ≤0.5 when you are guessing. " +
+		"For backward compatibility a bare JSON array (no confidence) is also accepted — " +
+		"prefer the object form so the agent can fall back to the full catalog when you are unsure. " +
+		"Output ONLY JSON. No prose, no markdown fences.\n\n" +
 		"Available groups: " + strings.Join(groups, ", ")
 
 	model := a.modelForLocked(TierClassify)
@@ -238,8 +244,36 @@ func (a *Agent) routeGroups(ctx context.Context, userInput string, available map
 		return nil, nil
 	}
 
+	// Extract confidence first; abstaining beats guessing on a
+	// catalog narrow. ParseClassifierResponse returns score=1.0
+	// when the model returned the legacy bare-array form, so old
+	// behaviour is preserved.
+	score, hasSignal := confidence.ParseClassifierResponse(text)
+	if hasSignal {
+		threshold := a.routerConfidenceThresholdLocked()
+		if confidence.ShouldAbstainAt(score, threshold) {
+			obs.FromCtx(ctx).Info("router_abstain_low_confidence",
+				"score", float64(score),
+				"threshold", float64(threshold))
+			// Nil + nil is the documented "fall back to full
+			// catalog" path on routerFn. The narrower at the call
+			// site treats a nil result as "router opted out".
+			return nil, nil
+		}
+	}
+
+	// Try the object form first; fall through to the legacy bare
+	// array if the response shape is `["wifi","bt"]`.
 	var arr []string
-	if err := json.Unmarshal([]byte(text), &arr); err != nil {
+	if strings.HasPrefix(text, "{") {
+		var obj struct {
+			Groups []string `json:"groups"`
+		}
+		if err := json.Unmarshal([]byte(text), &obj); err != nil {
+			return nil, fmt.Errorf("router returned non-JSON object: %q", text)
+		}
+		arr = obj.Groups
+	} else if err := json.Unmarshal([]byte(text), &arr); err != nil {
 		// A router that babbles prose instead of JSON is worse than no
 		// router — fall back to full catalog.
 		return nil, fmt.Errorf("router returned non-JSON: %q", text)
@@ -252,6 +286,22 @@ func (a *Agent) routeGroups(ctx context.Context, userInput string, available map
 		}
 	}
 	return selected, nil
+}
+
+// routerConfidenceThresholdLocked returns the active persona's
+// router-confidence threshold, or 0 (which ShouldAbstainAt
+// normalises to the default) when no persona is set or no override
+// is configured. Caller MUST hold a.mu.
+func (a *Agent) routerConfidenceThresholdLocked() confidence.Score {
+	p := a.persona
+	if p == nil {
+		return 0
+	}
+	v, ok := p.Confidence[string(confidence.KindRouter)]
+	if !ok {
+		return 0
+	}
+	return confidence.Score(v)
 }
 
 // EnableDynamicCatalog opts the agent into per-turn tool narrowing via

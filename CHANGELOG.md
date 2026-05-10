@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Vision + router classifier-output confidence with persona-tunable
+  abstention** (roadmap P3-29 second half — closes the item). The
+  v0.4-era `confidence.Evaluate` covered tool-input grounding; this
+  release closes the symmetrical gap on classifier *outputs*.
+
+  - `confidence.ParseClassifierResponse` — pure helper that extracts
+    `confidence` from the JSON envelope a classifier emits, clamps to
+    [0, 1], and falls back to no-signal (`hasSignal=false, score=1.0`)
+    when the model returned the legacy bare-array form or free-text
+    prose. Backward-compatible by construction: unchanged callers see
+    "always proceed" semantics.
+  - `confidence.ShouldAbstainAt(score, threshold)` — strict-less-than
+    abstention check; threshold ≤0 falls back to
+    `confidence.DefaultClassifierThreshold` (0.5).
+  - `Persona.Confidence map[string]float64` — per-classifier-surface
+    threshold overrides keyed by `vision`, `router`, etc. Empty map
+    keeps every surface at the 0.5 default.
+  - **Router**: prompt updated to ask for
+    `{"groups":[…],"confidence":<0-1>}`. Below-threshold confidence
+    routes to the documented `nil, nil` "fall back to full catalog"
+    path with a structured `router_abstain_low_confidence` log.
+    Bare-array responses still parse (legacy callers unaffected).
+  - **Vision**: new typed `Result{Text, Confidence, HasConfidence,
+    LowConfidence}`. `Analyzer.AnalyzeFileWithConfidence` /
+    `AnalyzeBase64WithConfidence` are the new entry points; the
+    string-returning `AnalyzeFile` / `AnalyzeBase64` keep working as
+    a thin wrapper. The vision prompt asks the model to wrap its
+    answer in `{"answer":"…","confidence":…}`; an extractor pulls
+    the answer + score and falls through to raw prose if the model
+    returned a bare paragraph.
+
+  19 new tests pin: classifier-helper round-trip + clamping +
+  malformed-input handling + non-numeric-confidence rejection,
+  ShouldAbstainAt threshold defaulting, persona YAML round-trip on
+  the Confidence map (with-and-without override), router threshold
+  lookup across (no persona, no confidence map, override present,
+  vision-only override), abstention helper composition, vision
+  extraction from object-with-answer / object-without-answer / prose
+  / over-range-clamping. `task lint` clean.
+
 - **`test/adversarial/` — centralised adversarial test suite**
   (roadmap P3-30). A unified attacker-shaped corpus + assertion
   harness covering the *combined* parser-then-quarantine-then-
