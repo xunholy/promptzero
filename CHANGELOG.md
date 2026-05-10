@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-05-11
+
+**Marauder cancellation reaches every timed call.** v0.60 proved
+the `ExecCtx` pattern with `wifi_scan_ap`. v0.61 generalises it:
+24 new ctx-aware variants on `internal/marauder/commands.go` plus
+20 tool-handler migrations mean a turn-level Ctrl+C now aborts
+every Marauder-backed timed call (scans, sniffs, attacks, network
+recon, GPS streaming) within ~100 ms. Operators no longer have to
+wait out a 60-second `wifi_sniff_pmkid` or a 30-second
+`wifi_deauth` to cancel a turn.
+
 ### Changed
 
 - **Ctx threading reaches the rest of the Marauder transport.**
@@ -41,6 +52,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     unchanged because the dispatched bytes are identical (the
     delegate `Exec` → `ExecCtx(Background, …)` path is wire-form
     preserving).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-Marauder validator — N/A this release. The 24 new `…Ctx`
+  variants delegate through the same `ExecCtx` path the v0.60
+  cancellation test already pinned; the tool-handler migration is
+  signature-preserving on the wire (verified by the existing
+  `TestCommandsWireForm` table-test which continues to assert the
+  dispatched bytes for every wrapped command).
 
 ## [0.60.0] - 2026-05-11
 
