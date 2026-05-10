@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-05-10
+
+**Roadmap closeout.** v0.55 lands the last two genuinely-open P3
+items: ensemble voting on critical decisions (P3-33) and the
+streaming-tool-output infrastructure (P3-28 first half). The
+breaker half of P3-28 shipped in v0.54.
+
+After this release, every roadmap item that wasn't explicitly
+flagged "defer until X" is in main:
+
+- P0-01..P0-06 (foundations)            ✅ v0.3.0
+- P1-07..P1-18 (quality + diff)         ✅ v0.3.0
+- P2-19..P2-27 (strategic bets)         ✅ v0.51..v0.53
+- P3-28 (streaming + breakers)          ✅ v0.54 (breakers) + v0.55 (streaming)
+- P3-29 (confidence scoring)            ✅ v0.54
+- P3-30 (adversarial test suite)        ✅ v0.54
+- P3-31 (prompt + persona versioning)   ✅ v0.53
+- P3-32 (fine-tune data export)         ✅ v0.53
+- P3-33 (ensemble voting)               ✅ v0.55
+
+The two outstanding P3 items are explicit defer-by-design from the
+roadmap's Anti-goals / "Revisit after…" sections:
+
+- P3-34 (plugins): "defer until plugin demand is real."
+- P3-35 (pwnagotchi-learning): "Revisit after ≥1 year of audit-log
+  data."
+
 ### Added
 
 - **Streaming-tool-output infrastructure** (roadmap P3-28 first half
