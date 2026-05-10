@@ -148,6 +148,17 @@ func sanitizeControlChars(s string) string {
 // NDEF records, filenames on the SD card) is fed back to the model as
 // tool output. The paired clause in the system prompt tells the model
 // to treat content inside these tags as data, not instructions.
+// QuarantineOutput is the exported entry point for cross-package safety
+// tests (`test/adversarial`, P3-30). The agent's normal dispatch path
+// uses the unexported quarantineOutput sibling; this wrapper exists so
+// the adversarial corpus can call into the production sanitiser +
+// wrapper without re-implementing them. Production agent code should
+// continue to call the unexported sibling — keeping that one private
+// nudges in-package callers toward the centralised dispatch routing.
+func QuarantineOutput(toolName, output string, isErr bool) string {
+	return quarantineOutput(toolName, output, isErr)
+}
+
 func quarantineOutput(toolName, output string, isErr bool) string {
 	_ = isErr // hardware errors carry the same risk as successes; wrap both
 	sanitized := sanitizeControlChars(output)
