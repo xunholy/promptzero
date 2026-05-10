@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-tool circuit breaker — second half of P3-28**. Closes the
+  "circuit breakers stop the N-th retry loop" sub-item the roadmap
+  flagged after the loader_close infinite-loop incidents. Streaming
+  tool outputs (the first half) is a larger architectural change
+  touching the tool Spec interface and is deferred.
+
+  - New `internal/breaker/` package: `Counter` tracks per-tool
+    consecutive same-kind error streaks. `Record(tool, errOrOutput)`
+    increments on error, resets on success or different-kind error;
+    threshold defaults to 3. `State` reports `Open=true` once the
+    streak hits the threshold. Same-kind matching is a normalised
+    string compare (trim + lower + collapse whitespace) so a model
+    retrying with a slightly-different prompt but the same
+    underlying error still trips. Per-tool isolation prevents fan-
+    out across tools from accidentally tripping any one breaker.
+  - `breaker.EscalationMessage(state)` produces a structured
+    `<circuit-breaker-open>…</circuit-breaker-open>` block the
+    dispatcher can prepend to the offending tool result so the model
+    sees an explicit "stop hammering this; pick a different
+    approach" cue alongside the original error. Symmetry with the
+    existing `<untrusted-hardware-output>` quarantine routing.
+  - Wired into `Agent.streamOnce` tool dispatch: when the breaker
+    trips, the escalation block is prepended before reflection /
+    detector / quarantine wrapping. A structured
+    `circuit_breaker_open` warn log records the trip with tool +
+    streak + kind for telemetry.
+  - `Agent.SetBreaker` / `Agent.Breaker` are the public attach /
+    detach surface. Nil counter is a usable sentinel — every
+    breaker method is a no-op so the agent's tool dispatch can
+    unconditionally guard with `if a.breakerCounter != nil`.
+  - 17 new tests pin: threshold defaulting, trip-at-threshold,
+    different-kind reset, success reset, per-tool isolation,
+    normalised same-kind detection across whitespace + case,
+    Reset / ResetAll / unknown-tool state, nil-counter no-ops,
+    Snapshot tally, escalation-message shape (only when Open;
+    contains tool + streak + kind), concurrent safety (20×100
+    interleaved Record calls), agent SetBreaker/Breaker round-trip,
+    full-loop integration mirroring the dispatch-side composition.
+
+  `task lint` clean; full short test suite passes.
+
 - **Vision + router classifier-output confidence with persona-tunable
   abstention** (roadmap P3-29 second half — closes the item). The
   v0.4-era `confidence.Evaluate` covered tool-input grounding; this
