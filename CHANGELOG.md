@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-05-11
+
+**Watcher + Marauder validation coverage.** Continues the coverage
+push: `internal/watch` accessors (Paths/Rules/Pause/Resume/Paused/
+Recent) and the Marauder wrappers carrying validation logic
+(BLESpam mode allowlist, SniffBT target allowlist, PortScanService
+service allowlist, SetSetting name+value gate, EvilPortalSetHTML,
+ScanAPParsed/Ctx roundtrip, ListAPsParsed/ListStationsParsed,
+ScanStation stub error). These are the layer that turns a typo'd
+LLM tool argument into a clear Go-side error instead of a silent
+firmware no-op.
+
+### Changed
+
+- **`internal/marauder` validation + parsed-helper coverage.**
+  Eight wrappers had 0 % coverage despite gating against typos
+  that would otherwise no-op on the firmware (allowlists for
+  blespam mode, sniffbt target, portscan service, settings name +
+  value), or parsing structured firmware output (ScanAPParsed,
+  ListAPsParsed, ListStationsParsed). New tests in
+  `commands_test.go`:
+  - `TestValidationGuardedWrappers` (13 sub-tests) — happy-path
+    wire form + invalid-input error path for each allowlist
+    wrapper plus their Ctx variants.
+  - `TestScanStation_StubbedError` — pins the v1.11.1 hard-error
+    stub mentions ScanAll as the replacement.
+  - `TestScanAPParsed_Roundtrip` — Exec → ParseAPList through
+    both the blocking and ctx variants returns `res.APs[0]` with
+    SSID/BSSID/Channel/RSSI fully parsed.
+  - `TestListAPsParsedAndListStationsParsed` — list -a / list -c
+    populate the respective parsed slice.
+
+  Coverage on `internal/marauder` rose **61.3 % → 65.2 %**
+  (+3.9 pp).
+
+- **`internal/watch` accessor coverage.** Five operator-facing
+  accessor methods on `Watcher` had 0 % coverage despite driving
+  the `/watch` slash command's UX. New tests in `watch_test.go`:
+  - `TestPathsAndRulesReturnCopies` — both accessors return
+    copies; mutating the result doesn't leak back into the
+    watcher, and `New()` copies its input so caller-side mutation
+    doesn't leak either.
+  - `TestPauseResumePausedRoundTrip` — Paused reflects state,
+    Pause/Resume are idempotent.
+  - `TestRecentReturnsNewestFirst` — newest-first order, capped
+    at `min(n, len(history))`, empty inputs return empty slice.
+
+  Coverage on `internal/watch` rose **69.6 % → 85.3 %**
+  (+15.7 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A this release. Pure unit tests on
+  the validation gates and parsed-helper plumbing; no transport
+  surface touched.
+
 ## [0.66.0] - 2026-05-11
 
 **Audit accessor coverage.** Four 0 %-coverage methods in
