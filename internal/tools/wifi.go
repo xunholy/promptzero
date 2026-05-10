@@ -65,11 +65,29 @@ func init() {
 		Risk:        risk.Medium,
 		Group:       GroupMarauderWiFi,
 		AgentOnly:   false,
+		// Streaming opt-in: each scanall line lands at the host's
+		// stream callback as a frame in real time. Same Marauder
+		// streaming path as wifi_scan_ap, just without the
+		// AP-list parse layer — scanall's mixed AP+station output
+		// is returned as raw text on both blocking and streaming
+		// paths.
+		Streams: true,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if err := d.RequireMarauder(); err != nil {
 				return "", err
 			}
 			return d.Marauder.ScanAll(time.Duration(intOr(p, "duration_seconds", 15)) * time.Second)
+		},
+		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			if err := d.RequireMarauder(); err != nil {
+				return "", err
+			}
+			timeout := time.Duration(intOr(p, "duration_seconds", 15)) * time.Second
+			return d.Marauder.StreamLines(ctx, "scanall", timeout, func(line string) (stop bool) {
+				sink.Send([]byte(line))
+				return sink.IsAborted()
+			})
 		},
 	})
 
