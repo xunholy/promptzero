@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-05-11
+
+**Audit accessor coverage.** Four 0 %-coverage methods in
+`internal/audit/audit.go` drove load-bearing UX paths — header
+rendering, live-tail polling, and the `/audit export` JSON dump
+operators pipe to `jq`/`grep`. New tests pin their contracts so a
+regression to e.g. `QuerySince` ordering or `Export`'s
+empty-session shape can't silently break operator workflows.
+
 ### Changed
 
 - **`internal/audit` accessor + tail coverage.** Four 0 %-coverage
@@ -27,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     than an error.
 
   Coverage on `internal/audit` rose **70.2 % → 79.2 %** (+9 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A this release. Pure SQL-backed
+  tests on the audit log; no transport or hardware surface.
 
 ## [0.65.0] - 2026-05-11
 
