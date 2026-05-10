@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Ctx threading reaches the Flipper transport.** v0.60–v0.61 did
+  this for the Marauder side; this change brings the same
+  cancellation contract to Flipper-backed handlers. A turn-level
+  Ctrl+C now aborts in-flight Flipper-side timed calls (Sub-GHz
+  receive, IR receive, log streaming, iButton read, RFID emulate,
+  OneWire search) within ~100 ms via the existing
+  `ExecLongCtx` path.
+
+  - **9 new `…Ctx` variants** in `internal/flipper/commands.go` —
+    `SubGHzRxCtx`, `SubGHzRxRawCtx`, `IRRxCtx`, `IRRxRawCtx`,
+    `RFIDEmulateCtx`, `RFIDRawEmulateCtx`, `IButtonReadCtx`,
+    `IButtonEmulateCtx`, `OneWireSearchCtx`, and `LogStreamCtx`.
+    Each follows the same shape as the Marauder migration: the
+    original method now delegates to the new `…Ctx` via
+    `context.Background()`, so any external caller without a
+    meaningful ctx still works. The `withSuccessBuzz` wrapper is
+    preserved for `IRRxCtx`, `IButtonReadCtx`, and
+    `OneWireSearchCtx` — operators rely on the 120 ms vibration to
+    confirm a capture without looking at the screen.
+  - **8 tool handlers migrated** — blocking Handler paths for
+    `subghz_receive`, `subghz_rx_raw`, `ir_receive`, `log_stream`,
+    `ibutton_read`, `ibutton_emulate`, `rfid_emulate`,
+    `rfid_raw_emulate`, `onewire_search` switch from
+    `func(_ context.Context, …)` to `func(ctx context.Context, …)`
+    and each `d.Flipper.X(…)` becomes `d.Flipper.XCtx(ctx, …)`.
+    The StreamHandler paths already threaded ctx; this brings the
+    blocking paths to parity so non-streaming hosts also get
+    cancellation.
+  - No new test — `ExecLongCtx` cancellation is already covered
+    by the existing flipper test suite, and the migrated handlers
+    are signature-preserving on the wire (the existing
+    `TestCommandsWireForm` table-test still passes unchanged).
+
 ## [0.61.0] - 2026-05-11
 
 **Marauder cancellation reaches every timed call.** v0.60 proved

@@ -126,8 +126,8 @@ func init() {
 		// a frame. Hosts without a callback (or with Streams=false
 		// dispatch) fall back to the blocking Handler unchanged.
 		Streams: true,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.LogStream(time.Duration(intOr(p, "duration_seconds", 15))*time.Second, str(p, "level"))
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.LogStreamCtx(ctx, time.Duration(intOr(p, "duration_seconds", 15))*time.Second, str(p, "level"))
 		},
 		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
 			defer sink.Close()

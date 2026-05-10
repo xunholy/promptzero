@@ -45,8 +45,9 @@ func init() {
 		// capture cleanly. Hosts without a callback fall back to the
 		// non-streaming Handler below — semantics unchanged.
 		Streams: true,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			raw, err := d.Flipper.SubGHzRx(
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			raw, err := d.Flipper.SubGHzRxCtx(
+				ctx,
 				uint32(intOr(p, "frequency", 0)),
 				time.Duration(intOr(p, "duration_seconds", 30))*time.Second,
 			)
@@ -145,8 +146,9 @@ func init() {
 		// callback as a frame in real time. Hosts without a callback
 		// fall back to the blocking SubGHzRxRaw Handler unchanged.
 		Streams: true,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.SubGHzRxRaw(
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.SubGHzRxRawCtx(
+				ctx,
 				uint32(intOr(p, "frequency", 0)),
 				time.Duration(intOr(p, "duration_seconds", 30))*time.Second,
 			)

@@ -128,11 +128,19 @@ func (f *Flipper) SubGHzTx(filePath string) (string, error) {
 // device may still be executing the command when the vibro Exec is sent,
 // causing the buzz Exec calls to hang for their full safety-net deadline.
 func (f *Flipper) SubGHzRx(frequency uint32, duration time.Duration) (string, error) {
+	return f.SubGHzRxCtx(context.Background(), frequency, duration)
+}
+
+// SubGHzRxCtx is the context-aware variant of SubGHzRx. ctx
+// cancellation propagates via ExecLongCtx so a turn-level Ctrl+C
+// aborts the in-flight capture without waiting for the duration
+// timer.
+func (f *Flipper) SubGHzRxCtx(ctx context.Context, frequency uint32, duration time.Duration) (string, error) {
 	cmd := fmt.Sprintf("subghz rx %d", frequency)
 	if f.Capabilities().SubGHzNeedsDev {
 		cmd += " 0"
 	}
-	return f.ExecLong(cmd, duration)
+	return f.ExecLongCtx(ctx, cmd, duration)
 }
 
 // SubGHzRxStream is the streaming variant of SubGHzRx. Each line emitted
@@ -224,8 +232,14 @@ func (f *Flipper) IRTxRaw(frequency uint32, dutyCycle float64, data string) (str
 // IRRx listens for an incoming infrared signal.
 // CLI: ir rx
 func (f *Flipper) IRRx(timeout time.Duration) (string, error) {
+	return f.IRRxCtx(context.Background(), timeout)
+}
+
+// IRRxCtx is the context-aware variant of IRRx. Preserves the
+// 120 ms success-buzz wrapper.
+func (f *Flipper) IRRxCtx(ctx context.Context, timeout time.Duration) (string, error) {
 	return f.withSuccessBuzz(func() (string, error) {
-		return f.ExecLong("ir rx", timeout)
+		return f.ExecLongCtx(ctx, "ir rx", timeout)
 	})
 }
 
@@ -246,7 +260,12 @@ func (f *Flipper) IRRxStream(ctx context.Context, timeout time.Duration, onLine 
 // IRRxRaw listens for a raw infrared signal.
 // CLI: ir rx raw
 func (f *Flipper) IRRxRaw(timeout time.Duration) (string, error) {
-	return f.ExecLong("ir rx raw", timeout)
+	return f.IRRxRawCtx(context.Background(), timeout)
+}
+
+// IRRxRawCtx is the context-aware variant of IRRxRaw.
+func (f *Flipper) IRRxRawCtx(ctx context.Context, timeout time.Duration) (string, error) {
+	return f.ExecLongCtx(ctx, "ir rx raw", timeout)
 }
 
 // IRRxRawStream is the line-streaming variant of IRRxRaw. Each pulse
@@ -713,7 +732,12 @@ func rfidDetectionLine(line string) bool {
 // needs to be pointed at the Flipper during the window.
 // CLI: rfid emulate <protocol> <hex_data>
 func (f *Flipper) RFIDEmulate(protocol string, data string, duration time.Duration) (string, error) {
-	return f.ExecLong(fmt.Sprintf("rfid emulate %s %s", sanitizeArg(protocol), sanitizeArg(data)), duration)
+	return f.RFIDEmulateCtx(context.Background(), protocol, data, duration)
+}
+
+// RFIDEmulateCtx is the context-aware variant of RFIDEmulate.
+func (f *Flipper) RFIDEmulateCtx(ctx context.Context, protocol string, data string, duration time.Duration) (string, error) {
+	return f.ExecLongCtx(ctx, fmt.Sprintf("rfid emulate %s %s", sanitizeArg(protocol), sanitizeArg(data)), duration)
 }
 
 // RFIDWrite writes data to an RFID tag.
@@ -727,8 +751,14 @@ func (f *Flipper) RFIDWrite(protocol string, data string) (string, error) {
 // IButtonRead reads an iButton key.
 // CLI: ikey read
 func (f *Flipper) IButtonRead(timeout time.Duration) (string, error) {
+	return f.IButtonReadCtx(context.Background(), timeout)
+}
+
+// IButtonReadCtx is the context-aware variant of IButtonRead.
+// Preserves the 120 ms success-buzz wrapper.
+func (f *Flipper) IButtonReadCtx(ctx context.Context, timeout time.Duration) (string, error) {
 	return f.withSuccessBuzz(func() (string, error) {
-		return f.ExecLong("ikey read", timeout)
+		return f.ExecLongCtx(ctx, "ikey read", timeout)
 	})
 }
 
@@ -739,7 +769,12 @@ func (f *Flipper) IButtonRead(timeout time.Duration) (string, error) {
 // contact with the iButton contacts during the emulation window.
 // CLI: ikey emulate <protocol> <hex_data>
 func (f *Flipper) IButtonEmulate(protocol string, hexData string, duration time.Duration) (string, error) {
-	return f.ExecLong(fmt.Sprintf("ikey emulate %s %s", sanitizeArg(protocol), sanitizeArg(hexData)), duration)
+	return f.IButtonEmulateCtx(context.Background(), protocol, hexData, duration)
+}
+
+// IButtonEmulateCtx is the context-aware variant of IButtonEmulate.
+func (f *Flipper) IButtonEmulateCtx(ctx context.Context, protocol string, hexData string, duration time.Duration) (string, error) {
+	return f.ExecLongCtx(ctx, fmt.Sprintf("ikey emulate %s %s", sanitizeArg(protocol), sanitizeArg(hexData)), duration)
 }
 
 // IButtonWrite writes an iButton key (Dallas only).
@@ -1688,6 +1723,14 @@ func (f *Flipper) LED(channel string, value int) (string, error) {
 // capture, or construct a .sub capture manually via StorageWrite.
 // CLI (Momentum): subghz rx_raw [<frequency>]
 func (f *Flipper) SubGHzRxRaw(frequency uint32, duration time.Duration) (string, error) {
+	return f.SubGHzRxRawCtx(context.Background(), frequency, duration)
+}
+
+// SubGHzRxRawCtx is the context-aware variant of SubGHzRxRaw. The
+// same Momentum-only capability gate as the blocking variant
+// applies — non-Momentum forks return the file-path-required
+// error before any wire traffic.
+func (f *Flipper) SubGHzRxRawCtx(ctx context.Context, frequency uint32, duration time.Duration) (string, error) {
 	caps := f.Capabilities()
 	if caps.SubGHzRxRawHasFilePath {
 		return "", fmt.Errorf("subghz rx_raw on %s firmware requires a file-path argument; use SubGHzRx for capture or StorageWrite to build a .sub file", caps.FriendlyFork())
@@ -1699,7 +1742,7 @@ func (f *Flipper) SubGHzRxRaw(frequency uint32, duration time.Duration) (string,
 	if caps.SubGHzNeedsDev {
 		cmd += " 0"
 	}
-	return f.ExecLong(cmd, duration)
+	return f.ExecLongCtx(ctx, cmd, duration)
 }
 
 // SubGHzRxRawStream is the line-streaming variant of SubGHzRxRaw.
@@ -1893,7 +1936,12 @@ func (f *Flipper) RFIDRawAnalyze(filePath string) (string, error) {
 // transmission — use with authorisation.
 // CLI: rfid raw_emulate <file_path>
 func (f *Flipper) RFIDRawEmulate(filePath string, duration time.Duration) (string, error) {
-	return f.ExecLong(fmt.Sprintf("rfid raw_emulate %s", sanitizeArg(filePath)), duration)
+	return f.RFIDRawEmulateCtx(context.Background(), filePath, duration)
+}
+
+// RFIDRawEmulateCtx is the context-aware variant of RFIDRawEmulate.
+func (f *Flipper) RFIDRawEmulateCtx(ctx context.Context, filePath string, duration time.Duration) (string, error) {
+	return f.ExecLongCtx(ctx, fmt.Sprintf("rfid raw_emulate %s", sanitizeArg(filePath)), duration)
 }
 
 // --- OneWire / iButton helpers ---
@@ -1902,8 +1950,14 @@ func (f *Flipper) RFIDRawEmulate(filePath string, duration time.Duration) (strin
 // success so the user knows something was found.
 // CLI: onewire search
 func (f *Flipper) OneWireSearch(duration time.Duration) (string, error) {
+	return f.OneWireSearchCtx(context.Background(), duration)
+}
+
+// OneWireSearchCtx is the context-aware variant of OneWireSearch.
+// Preserves the 120 ms success-buzz wrapper.
+func (f *Flipper) OneWireSearchCtx(ctx context.Context, duration time.Duration) (string, error) {
 	return f.withSuccessBuzz(func() (string, error) {
-		return f.ExecLong("onewire search", duration)
+		return f.ExecLongCtx(ctx, "onewire search", duration)
 	})
 }
 
@@ -2267,11 +2321,16 @@ func (f *Flipper) LoaderSignal(signal int, argHex string) (string, error) {
 // "default", "error", "warn", "info", "debug", "trace".
 // CLI: log [<level>]
 func (f *Flipper) LogStream(duration time.Duration, level string) (string, error) {
+	return f.LogStreamCtx(context.Background(), duration, level)
+}
+
+// LogStreamCtx is the context-aware variant of LogStream.
+func (f *Flipper) LogStreamCtx(ctx context.Context, duration time.Duration, level string) (string, error) {
 	cmd := "log"
 	if level != "" {
 		cmd += " " + sanitizeArg(level)
 	}
-	return f.ExecLong(cmd, duration)
+	return f.ExecLongCtx(ctx, cmd, duration)
 }
 
 // LogStreamLines is the line-streaming variant of LogStream. Each log
