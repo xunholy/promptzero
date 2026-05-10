@@ -309,6 +309,66 @@ func TestRequireOpen(t *testing.T) {
 	}
 }
 
+// TestPersonaContextResolver_PopulatesEntryFields pins that the
+// resolver hook (P3-31) flows through into the Entry observers see.
+// Mirrors the TechniqueResolver test pattern — derived in-memory
+// only, not persisted to the DB.
+func TestPersonaContextResolver_PopulatesEntryFields(t *testing.T) {
+	log := openTestLog(t)
+	log.SetPersonaContextResolver(func() PersonaContext {
+		return PersonaContext{
+			PersonaVersion: "2026-05-10",
+			PromptHash:     strings.Repeat("a", 64),
+		}
+	})
+
+	var captured Entry
+	log.AddObserver(func(e Entry) { captured = e })
+	log.Record("recon_tool", map[string]string{}, "ok", "low", LevelInfo, 0, true)
+
+	if captured.PersonaVersion != "2026-05-10" {
+		t.Errorf("PersonaVersion = %q, want 2026-05-10", captured.PersonaVersion)
+	}
+	if captured.PromptHash != strings.Repeat("a", 64) {
+		t.Errorf("PromptHash = %q", captured.PromptHash)
+	}
+}
+
+// TestPersonaContextResolver_NilLeavesFieldsEmpty confirms that the
+// audit log degrades cleanly when no resolver is wired (the default
+// for tests + MCP-only callers).
+func TestPersonaContextResolver_NilLeavesFieldsEmpty(t *testing.T) {
+	log := openTestLog(t)
+	var captured Entry
+	log.AddObserver(func(e Entry) { captured = e })
+	log.Record("any_tool", nil, "ok", "low", LevelInfo, 0, true)
+
+	if captured.PersonaVersion != "" {
+		t.Errorf("PersonaVersion = %q, want empty (no resolver)", captured.PersonaVersion)
+	}
+	if captured.PromptHash != "" {
+		t.Errorf("PromptHash = %q, want empty (no resolver)", captured.PromptHash)
+	}
+}
+
+// TestPersonaContextResolver_CalledOncePerRecord pins the contract that
+// the resolver fires exactly once per Record so it doesn't accidentally
+// become a hot-path bottleneck for personas that compute Version /
+// PromptHash dynamically.
+func TestPersonaContextResolver_CalledOncePerRecord(t *testing.T) {
+	log := openTestLog(t)
+	var calls int
+	log.SetPersonaContextResolver(func() PersonaContext {
+		calls++
+		return PersonaContext{}
+	})
+	log.Record("a", nil, "", "low", LevelInfo, 0, true)
+	log.Record("b", nil, "", "low", LevelInfo, 0, true)
+	if calls != 2 {
+		t.Errorf("resolver call count = %d, want 2", calls)
+	}
+}
+
 // TestObserverPanicDoesNotCrashRecord pins the deferred-recover guard
 // inside notify(): a buggy observer that panics must not propagate
 // the panic up through Record and crash the agent's tool-dispatch

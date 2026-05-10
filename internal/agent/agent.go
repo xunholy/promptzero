@@ -408,8 +408,35 @@ func (a *Agent) SetFaultier(c *faultier.Client) { a.faultier = c }
 
 // SetBusPirate attaches a Bus Pirate 5 universal-bus probe client. Nil
 // disables buspirate_* Specs.
-func (a *Agent) SetBusPirate(c *buspirate.Client)        { a.buspirate = c }
-func (a *Agent) SetAuditLog(l *audit.Log)                { a.auditLog = l }
+func (a *Agent) SetBusPirate(c *buspirate.Client) { a.buspirate = c }
+
+// SetAuditLog attaches the audit log and wires the per-session
+// PersonaContextResolver (P3-31) so each recorded entry picks up the
+// active persona's version + a hash of the system prompt that would
+// be presented for the current tool config. The resolver is a closure
+// over the agent so a mid-session persona switch updates the next
+// audit row's PersonaVersion + PromptHash without a re-wire.
+func (a *Agent) SetAuditLog(l *audit.Log) {
+	a.auditLog = l
+	if l == nil {
+		return
+	}
+	l.SetPersonaContextResolver(func() audit.PersonaContext {
+		p := a.personaAtomic.Load()
+		var version string
+		if p != nil {
+			version = p.Version
+		}
+		// hasWiFi/hasWorkflows mirror BuildSystemPrompt's rendering
+		// rules so the hash matches what the agent would have shown
+		// the model on a turn started right now.
+		hasWiFi := a.marauder != nil
+		return audit.PersonaContext{
+			PersonaVersion: version,
+			PromptHash:     SystemPromptHash(p, hasWiFi, true),
+		}
+	})
+}
 func (a *Agent) SetGenerator(g *generate.Generator)      { a.generator = g }
 func (a *Agent) SetGenLLM(p provider.Provider)           { a.genLLM = p }
 func (a *Agent) SetToolStatusCallback(f func(ToolEvent)) { a.toolStatusCb = f }

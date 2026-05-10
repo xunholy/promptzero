@@ -63,6 +63,22 @@ type Entry struct {
 	// DB schema. Enables the /report ATT&CK coverage heatmap to
 	// trust entry-time mappings even if the index changes later.
 	TechniqueIDs []string `json:"technique_ids,omitempty"`
+
+	// PersonaVersion is the operator-supplied version string from the
+	// active persona's `version:` YAML field at recording time
+	// (P3-31). Populated via the per-session PersonaContextResolver.
+	// Carried in-memory only; not persisted to the DB schema. Empty
+	// when the operator hasn't versioned the persona, when no
+	// persona is active, or when the resolver is unset.
+	PersonaVersion string `json:"persona_version,omitempty"`
+
+	// PromptHash is the SHA-256 (hex) of the system prompt the agent
+	// would have presented for this turn (P3-31). Same provenance
+	// rules as PersonaVersion. Lets a regression analyser group
+	// sessions by exact prompt content even if the persona version
+	// string didn't change (e.g. a prompt typo fixed without bumping
+	// the version).
+	PromptHash string `json:"prompt_hash,omitempty"`
 }
 
 // TechniqueResolver is an optional hook that maps a tool name to the
@@ -71,12 +87,28 @@ type Entry struct {
 // slice / nil resolver means entries carry no TechniqueIDs.
 type TechniqueResolver func(toolName string) []string
 
+// PersonaContext is the per-session prompt + persona snapshot recorded
+// on every audit row (P3-31). Populated by the agent at session start
+// and on persona-switch; the audit log reads it on each Record so
+// regression analysis can group rows by the exact prompt content the
+// operator was running.
+type PersonaContext struct {
+	PersonaVersion string
+	PromptHash     string
+}
+
+// PersonaContextResolver is the hook the agent installs so the audit log
+// can pick up the active PersonaContext at record time. The resolver
+// is invoked once per audit row; nil resolver leaves the fields empty.
+type PersonaContextResolver func() PersonaContext
+
 type Log struct {
-	db          *sql.DB
-	sessionID   string
-	path        string
-	lockFile    *os.File
-	techResolve TechniqueResolver
+	db             *sql.DB
+	sessionID      string
+	path           string
+	lockFile       *os.File
+	techResolve    TechniqueResolver
+	personaResolve PersonaContextResolver
 
 	obsMu     sync.RWMutex
 	observers []func(Entry)
@@ -256,18 +288,24 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 	if l.techResolve != nil {
 		techs = l.techResolve(tool)
 	}
+	var pctx PersonaContext
+	if l.personaResolve != nil {
+		pctx = l.personaResolve()
+	}
 	l.notify(Entry{
-		Timestamp:    ts,
-		Tool:         tool,
-		Input:        string(inputJSON),
-		Output:       output,
-		Risk:         risk,
-		Level:        level,
-		SessionID:    l.sessionID,
-		Duration:     duration.Milliseconds(),
-		Success:      success,
-		TraceID:      traceID,
-		TechniqueIDs: techs,
+		Timestamp:      ts,
+		Tool:           tool,
+		Input:          string(inputJSON),
+		Output:         output,
+		Risk:           risk,
+		Level:          level,
+		SessionID:      l.sessionID,
+		Duration:       duration.Milliseconds(),
+		Success:        success,
+		TraceID:        traceID,
+		TechniqueIDs:   techs,
+		PersonaVersion: pctx.PersonaVersion,
+		PromptHash:     pctx.PromptHash,
 	})
 }
 
@@ -277,6 +315,15 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 // accept the race (the next entry picks up the new resolver).
 func (l *Log) SetTechniqueResolver(fn TechniqueResolver) {
 	l.techResolve = fn
+}
+
+// SetPersonaContextResolver installs the per-session hook used to
+// populate Entry.PersonaVersion + Entry.PromptHash on each audit row
+// (P3-31). Pass nil to disable. The same race-tolerance contract as
+// SetTechniqueResolver — call once at agent startup; mid-session
+// persona switches simply update the closure the agent installs.
+func (l *Log) SetPersonaContextResolver(fn PersonaContextResolver) {
+	l.personaResolve = fn
 }
 
 // AddObserver registers a callback fired after every successful Record

@@ -44,6 +44,18 @@ type Persona struct {
 	DefaultRiskThreshold string            `yaml:"default_risk_threshold,omitempty"`
 	Models               map[string]string `yaml:"models,omitempty"`
 
+	// Version is an operator-supplied identifier for this persona
+	// snapshot — typically a SemVer string ("1.0.0") or a date
+	// ("2026-05-10"). Recorded on every audit row through the
+	// per-session persona-context resolver (see internal/audit) so
+	// regression analysis and the future fine-tuning data exporter
+	// (P3-32) can filter sessions by the exact prompt + tool config
+	// the operator was running against. Empty when the operator
+	// hasn't versioned their persona yet (the safe default — the
+	// audit row records "" and the analyser can group by content
+	// hash instead). Roadmap P3-31.
+	Version string `yaml:"version,omitempty"`
+
 	// Tools is an optional allowlist of tool names. When non-empty,
 	// FilterTools narrows the catalog to just these names so the LLM
 	// doesn't see anything else.
