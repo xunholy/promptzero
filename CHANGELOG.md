@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-05-10
+
+P2 closeout + P3 down-payment. Three commits closing the last P2
+roadmap item (semantic cache for generated payloads) plus the two
+P3 items that pair directly with the future fine-tuning track:
+prompt + persona versioning on every audit row (P3-31), and the
+fine-tune dataset exporter learning the `--since` and
+`--persona-version` filters that work with those new fields (P3-32).
+
+After this release, P0 + P1 + every P2 item is in main, P3-31 +
+P3-32 are in main, and P3-29 input-grounding confidence is partial
+(input-side abstention shipped in earlier releases; classifier-output
+confidence — vision, intent router — is still backlog). Remaining
+P3 items: 28 streaming, 29 (vision/router half), 30 adversarial test
+suite, 33 ensemble voting, 34 plugins, 35 pwnagotchi-learning.
+
 ### Added
 
 - **Fine-tune dataset export upgrades** (roadmap P3-32). The
