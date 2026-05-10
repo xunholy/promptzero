@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`wifi_scan_all` becomes streaming-capable** — same Marauder
+  streaming path as `wifi_scan_ap`, just without the AP-list parse
+  layer; `scanall`'s mixed AP + station output is returned as raw
+  text on both the blocking and streaming paths so the LLM-facing
+  tool_result is identical to today's behaviour. Streams=true +
+  StreamHandler land via the same `Marauder.StreamLines` adapter
+  as `wifi_scan_ap`; no new transport plumbing needed.
+
 - **`wifi_scan_ap` becomes streaming-capable** — first Marauder-backed
   streaming tool, after the four Flipper-backed ones in v0.56–v0.57
   (`subghz_receive`, `subghz_rx_raw`, `log_stream`, `ir_receive`).
