@@ -32,8 +32,13 @@ func (f *Flipper) SubGHzTxKeyDevice(keyHex string, freq uint32, te uint32, repea
 // explicitly. Long-running; the caller bounds it with a duration.
 // CLI: subghz chat <frequency> -d <device>
 func (f *Flipper) SubGHzChatDevice(frequency uint32, duration time.Duration, device int) (string, error) {
+	return f.SubGHzChatDeviceCtx(context.Background(), frequency, duration, device)
+}
+
+// SubGHzChatDeviceCtx is the context-aware variant of SubGHzChatDevice.
+func (f *Flipper) SubGHzChatDeviceCtx(ctx context.Context, frequency uint32, duration time.Duration, device int) (string, error) {
 	cmd := fmt.Sprintf("subghz chat %d -d %d", frequency, device)
-	return f.ExecLong(cmd, duration)
+	return f.ExecLongCtx(ctx, cmd, duration)
 }
 
 // ─── Crypto enclave ───────────────────────────────────────────────────────────

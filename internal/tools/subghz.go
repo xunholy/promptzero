@@ -172,8 +172,9 @@ func init() {
 		Risk:        risk.High,
 		Group:       GroupFlipperSubGHz,
 		AgentOnly:   false,
-		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			return d.Flipper.SubGHzChat(
+		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
+			return d.Flipper.SubGHzChatCtx(
+				ctx,
 				uint32(intOr(p, "frequency", 0)),
 				time.Duration(intOr(p, "duration_seconds", 60))*time.Second,
 			)
