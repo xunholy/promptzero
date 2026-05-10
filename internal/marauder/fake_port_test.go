@@ -35,14 +35,36 @@ type fakePort struct {
 	// noNewlinePrompt, when true, emits the '> ' prompt without a trailing
 	// \r\n — matching the actual Marauder wire format.
 	noNewlinePrompt bool
+	// suppressPromptFor lists command tokens (first whitespace-
+	// separated word of the line) for which the fake withholds the
+	// trailing "> " prompt entirely. Models long-running streaming
+	// commands (sniffbeacon, scanap-when-untouched, sniffpmkid) that
+	// hold the line open until the host sends stopscan / Ctrl+C —
+	// real firmware never emits a prompt mid-stream. Without this
+	// suppression, the Marauder Stream goroutine reads the auto-
+	// prompt and exits via the prompt path before any stopscan is
+	// dispatched, which makes TestStreamCancelViaDone race-prone
+	// under parallel -race execution.
+	suppressPromptFor map[string]bool
 }
 
 func newFakePort() *fakePort {
 	return &fakePort{
-		responses: map[string]string{},
-		readWait:  5 * time.Millisecond,
-		timeout:   5 * time.Second,
+		responses:         map[string]string{},
+		suppressPromptFor: map[string]bool{},
+		readWait:          5 * time.Millisecond,
+		timeout:           5 * time.Second,
 	}
+}
+
+// suppressPrompt instructs the fake to NOT emit a trailing "> "
+// prompt for commands whose first whitespace-separated token is
+// `token`. Useful for modelling streaming firmware commands that
+// hold the line open until cancelled.
+func (f *fakePort) suppressPrompt(token string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.suppressPromptFor[token] = true
 }
 
 // respond registers a canned response body (without the trailing prompt)
@@ -107,6 +129,14 @@ func (f *fakePort) Write(p []byte) (int, error) {
 		f.in.Next(idx + 1)
 		line := strings.TrimSpace(string(lineBytes))
 		f.lineQueue = append(f.lineQueue, line)
+		// Suppress the trailing prompt for streaming commands like
+		// "sniffbeacon" that real firmware would never auto-terminate.
+		// Token is the first whitespace-separated word of the line.
+		token := line
+		if i := strings.IndexAny(line, " \t"); i >= 0 {
+			token = line[:i]
+		}
+		suppressPrompt := f.suppressPromptFor[token]
 		if body, ok := f.responses[line]; ok {
 			fmt.Fprintf(&f.out, "#%s\r\n", line)
 			if body != "" {
@@ -115,12 +145,19 @@ func (f *fakePort) Write(p []byte) (int, error) {
 					f.out.WriteString("\r\n")
 				}
 			}
-			f.writePrompt()
+			if !suppressPrompt {
+				f.writePrompt()
+			}
 		} else {
 			// Unscripted commands still receive an echo + prompt so
-			// readUntilPrompt doesn't hang on timeout in the happy path.
+			// readUntilPrompt doesn't hang on timeout in the happy
+			// path. Streaming commands declared via suppressPrompt
+			// opt out of the prompt and are expected to be ended by
+			// the host (stopscan / Ctrl+C / done-close).
 			fmt.Fprintf(&f.out, "#%s\r\n", line)
-			f.writePrompt()
+			if !suppressPrompt {
+				f.writePrompt()
+			}
 		}
 		if f.onWrite != nil {
 			f.onWrite(line)
@@ -200,8 +237,15 @@ func TestReadUntilPromptTimeout(t *testing.T) {
 // TestStreamCancelViaDone starts a streaming command with no scripted
 // completion, then closes the done channel. The Marauder should send
 // "stopscan\n" and the output channel should close promptly.
+//
+// The fake's prompt is suppressed for "sniffbeacon" so the Stream
+// goroutine has to wait for done — without this, the prompt arrives
+// first and the goroutine exits via the prompt path before
+// dispatching stopscan, racing the test's done-close. The race
+// manifested as an intermittent flake under parallel -race.
 func TestStreamCancelViaDone(t *testing.T) {
 	fp := newFakePort()
+	fp.suppressPrompt("sniffbeacon")
 	m := newMarauderWithPort(fp)
 	t.Cleanup(func() { _ = m.Close() })
 
