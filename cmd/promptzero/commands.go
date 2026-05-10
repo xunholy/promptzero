@@ -743,13 +743,15 @@ func renderCampaignResult(r campaign.RunResult) {
 //	/export training-set <path> --format=chat                OpenAI chat format
 //	/export training-set <path> --success-only               drop failed calls
 //	/export training-set <path> --min-level=warning          critical + warnings only
+//	/export training-set <path> --since=2026-04-01           drop entries before date (P3-32)
+//	/export training-set <path> --persona-version=1.2.0      restrict to one persona version
 func handleExport(auditLog *audit.Log, args []string) {
 	if auditLog == nil {
 		fmt.Fprintf(os.Stderr, "  %s● audit log not initialised — nothing to export%s\n", red, reset)
 		return
 	}
 	if len(args) < 2 || strings.ToLower(args[0]) != "training-set" {
-		fmt.Fprintf(os.Stderr, "  %susage: /export training-set <path> [--format=chat] [--success-only] [--min-level=warning|critical]%s\n", dim, reset)
+		fmt.Fprintf(os.Stderr, "  %susage: /export training-set <path> [--format=chat] [--success-only] [--min-level=warning|critical] [--since=YYYY-MM-DD] [--persona-version=VER]%s\n", dim, reset)
 		return
 	}
 	path := args[1]
@@ -764,6 +766,17 @@ func handleExport(auditLog *audit.Log, args []string) {
 			opts.MinLevel = audit.Level(strings.TrimPrefix(a, "--min-level="))
 		case strings.HasPrefix(a, "--system-prompt="):
 			opts.SystemPrompt = strings.TrimPrefix(a, "--system-prompt=")
+		case strings.HasPrefix(a, "--since="):
+			raw := strings.TrimPrefix(a, "--since=")
+			ts, err := trainset.ParseSince(raw)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  %s● --since: %v%s\n", red, err, reset)
+				return
+			}
+			opts.Since = ts
+		case strings.HasPrefix(a, "--persona-version="):
+			raw := strings.TrimPrefix(a, "--persona-version=")
+			opts.PersonaVersions = append(opts.PersonaVersions, raw)
 		default:
 			fmt.Fprintf(os.Stderr, "  %s● unknown flag %q%s\n", red, a, reset)
 			return

@@ -50,6 +50,143 @@ func sampleEntries() []audit.Entry {
 	}
 }
 
+// TestExport_SinceFilter pins the P3-32 "since" filter behaviour:
+// entries strictly before the cutoff are dropped; entries at or after
+// it survive. Date-only input anchors at midnight UTC.
+func TestExport_SinceFilter(t *testing.T) {
+	entries := []audit.Entry{
+		{Tool: "early", Timestamp: time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC), Input: `{}`, Level: audit.LevelInfo},
+		{Tool: "boundary", Timestamp: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC), Input: `{}`, Level: audit.LevelInfo},
+		{Tool: "after", Timestamp: time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC), Input: `{}`, Level: audit.LevelInfo},
+	}
+	cutoff, err := ParseSince("2026-04-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	n, err := Export(entries, &buf, Options{Since: cutoff})
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("rows = %d, want 2 (boundary + after)", n)
+	}
+	if !strings.Contains(buf.String(), `"tool":"boundary"`) {
+		t.Error("boundary entry should survive the cutoff")
+	}
+	if strings.Contains(buf.String(), `"tool":"early"`) {
+		t.Error("early entry should be dropped")
+	}
+}
+
+func TestExport_PersonaVersionFilter(t *testing.T) {
+	entries := []audit.Entry{
+		{Tool: "v1tool", PersonaVersion: "1.0.0", Input: `{}`, Level: audit.LevelInfo, Timestamp: time.Now()},
+		{Tool: "v2tool", PersonaVersion: "2.0.0", Input: `{}`, Level: audit.LevelInfo, Timestamp: time.Now()},
+		{Tool: "noversion", PersonaVersion: "", Input: `{}`, Level: audit.LevelInfo, Timestamp: time.Now()},
+	}
+	var buf bytes.Buffer
+	n, err := Export(entries, &buf, Options{PersonaVersions: []string{"2.0.0"}})
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("rows = %d, want 1 (only v2)", n)
+	}
+	if !strings.Contains(buf.String(), `"tool":"v2tool"`) {
+		t.Errorf("v2tool not in output: %s", buf.String())
+	}
+}
+
+func TestExport_RecordIncludesPersonaVersionAndPromptHash(t *testing.T) {
+	hash := strings.Repeat("a", 64)
+	entries := []audit.Entry{{
+		Tool:           "x",
+		Input:          `{}`,
+		Level:          audit.LevelInfo,
+		Timestamp:      time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC),
+		PersonaVersion: "1.2.3",
+		PromptHash:     hash,
+	}}
+	var buf bytes.Buffer
+	if _, err := Export(entries, &buf, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	var rec Record
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("decode JSONL row: %v", err)
+	}
+	if rec.PersonaVersion != "1.2.3" {
+		t.Errorf("PersonaVersion = %q, want 1.2.3", rec.PersonaVersion)
+	}
+	if rec.PromptHash != hash {
+		t.Errorf("PromptHash = %q", rec.PromptHash)
+	}
+}
+
+func TestExport_ChatMetaIncludesPersonaVersionAndPromptHash(t *testing.T) {
+	entries := []audit.Entry{{
+		Tool:           "x",
+		Input:          `{}`,
+		Level:          audit.LevelInfo,
+		Timestamp:      time.Now(),
+		PersonaVersion: "v9",
+		PromptHash:     "deadbeef",
+	}}
+	var buf bytes.Buffer
+	if _, err := Export(entries, &buf, Options{Format: FormatChat}); err != nil {
+		t.Fatal(err)
+	}
+	var row ChatRow
+	if err := json.Unmarshal(buf.Bytes(), &row); err != nil {
+		t.Fatalf("decode chat row: %v", err)
+	}
+	if got := row.Meta["persona_version"]; got != "v9" {
+		t.Errorf("Meta.persona_version = %v, want v9", got)
+	}
+	if got := row.Meta["prompt_hash"]; got != "deadbeef" {
+		t.Errorf("Meta.prompt_hash = %v", got)
+	}
+}
+
+func TestParseSince(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantZero bool
+		wantErr  bool
+		want     time.Time
+	}{
+		{in: "", wantZero: true},
+		{in: "   ", wantZero: true},
+		{in: "2026-04-01", want: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)},
+		{in: "2026-04-01T15:30:00Z", want: time.Date(2026, 4, 1, 15, 30, 0, 0, time.UTC)},
+		{in: "garbage", wantErr: true},
+		{in: "2026-13-99", wantErr: true},
+	}
+	for _, tc := range cases {
+		got, err := ParseSince(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("ParseSince(%q): expected error, got %v", tc.in, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("ParseSince(%q): unexpected error %v", tc.in, err)
+			continue
+		}
+		if tc.wantZero {
+			if !got.IsZero() {
+				t.Errorf("ParseSince(%q) = %v, want zero", tc.in, got)
+			}
+			continue
+		}
+		if !got.Equal(tc.want) {
+			t.Errorf("ParseSince(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestExport_JSONLDefault(t *testing.T) {
 	var buf bytes.Buffer
 	n, err := Export(sampleEntries(), &buf, Options{})
