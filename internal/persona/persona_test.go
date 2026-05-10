@@ -147,6 +147,57 @@ system_prompt: hi
 	}
 }
 
+// TestRegistryLoad_ParsesConsensusList pins the P3-33 persona-YAML
+// consensus list round-trips into the runtime struct.
+func TestRegistryLoad_ParsesConsensusList(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ensemble.yaml")
+	yaml := `name: ensemble
+description: P3-33 consensus
+system_prompt: hi
+consensus:
+  - claude-haiku-4-5
+  - claude-sonnet-4-6
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRegistry()
+	if err := r.Load(path); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	p, ok := r.Get("ensemble")
+	if !ok {
+		t.Fatalf("not registered")
+	}
+	if len(p.Consensus) != 2 {
+		t.Fatalf("Consensus = %v, want 2 entries", p.Consensus)
+	}
+	if p.Consensus[0] != "claude-haiku-4-5" || p.Consensus[1] != "claude-sonnet-4-6" {
+		t.Errorf("Consensus members = %v", p.Consensus)
+	}
+}
+
+func TestRegistryLoad_ConsensusAbsentStaysNil(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "no-consensus.yaml")
+	yaml := `name: nc
+description: no consensus configured
+system_prompt: hi
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRegistry()
+	if err := r.Load(path); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := r.Get("nc")
+	if len(p.Consensus) != 0 {
+		t.Errorf("Consensus = %v, want empty", p.Consensus)
+	}
+}
+
 // TestRegistryLoad_ParsesConfidenceMap pins the P3-29 persona-YAML
 // thresholds round-trip into the runtime struct. Two keys are
 // expected (`vision`, `router`), but the parser is tolerant of any

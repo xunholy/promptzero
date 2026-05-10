@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Ensemble voting on critical-risk decisions** (roadmap P3-33).
+  Closes the item. When the active persona declares
+  `consensus: [model-a, model-b, …]` and the about-to-fire tool is
+  `risk == critical`, the agent runs the prospective-critique prompt
+  once per listed model and aggregates the verdicts. Disagreement
+  prepends a `<consensus-disagreement>` block on the tool result so
+  the model stops and surfaces the split to the operator;
+  unanimity falls through to the existing single-model prospective
+  path with no behavioural change.
+
+  - New `internal/consensus/` package — pure logic, no I/O. `Vote`
+    tallies a slice of `Verdict{Model, Risk, Critique}` and returns
+    a `Result` with `Unanimous` + `AgreedRisk` + an `Abstentions`
+    tally. Risk values are normalised to the canonical `ok` /
+    `unclear` / `risky` set; unrecognised values count as
+    abstention so a typo can't masquerade as agreement. A single
+    non-abstain voter still passes (a Haiku rate-limit shouldn't
+    block the call when Sonnet votes ok). All-abstain produces no
+    signal (`Unanimous=false, AgreedRisk=""`).
+  - `consensus.DisagreementMessage` produces the structured
+    `<consensus-disagreement>…</consensus-disagreement>` block:
+    one line per non-abstain verdict listing the model + risk +
+    one-line critique excerpt (cap 200 chars), plus an abstention
+    tally. Empty when the panel is unanimous OR when fewer than
+    two models actually voted (no real split to escalate).
+  - `Persona.Consensus []string` — operator-supplied list of model
+    identifiers; YAML key `consensus`. Empty disables ensemble
+    voting; the existing single-model prospective check still runs.
+  - Agent integration: new `consensus.go` with
+    `runEnsembleProspective` + `prospectiveWithModel` +
+    `extractRiskFromCritique`. Wired alongside the existing
+    `maybeProspectiveReflect` in dispatch — additive, no change
+    to the single-model path. Logs
+    `ensemble_consensus_disagreement` (warn) on a real split.
+  - 19 new tests pin: empty input, all-agree, disagreement,
+    case/whitespace normalisation, unknown-risk-as-abstention,
+    all-abstain-no-signal, single-voter-passes, disagreement
+    message structure (open + close tags, model + risk + excerpt
+    rendering, abstention tally singular/plural), summarise-
+    critique cap, extract-risk-from-critique parsing across
+    valid/missing/malformed/empty, no-client safety, empty/blank
+    models filtered. Persona YAML round-trip + absent-stays-nil.
+
+  `task lint` clean; full short test suite passes.
+
 ## [0.54.0] - 2026-05-10
 
 P3 sweep — three more roadmap items closed. v0.54 finishes the

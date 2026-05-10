@@ -44,6 +44,20 @@ type Persona struct {
 	DefaultRiskThreshold string            `yaml:"default_risk_threshold,omitempty"`
 	Models               map[string]string `yaml:"models,omitempty"`
 
+	// Consensus is an optional list of model identifiers used for
+	// ensemble voting on critical-risk tool calls (roadmap P3-33).
+	// When non-empty, the agent runs the prospective critique once
+	// per listed model and treats any disagreement as a hard escalate
+	// — surfacing a `<consensus-disagreement>` block to the operator
+	// instead of letting the call through. Empty disables ensemble
+	// voting; the single-model prospective check still runs.
+	//
+	// Each entry is a model name resolvable via the agent's per-tier
+	// model map, e.g. "claude-haiku-4-5", "claude-sonnet-4-6". Names
+	// the agent doesn't recognise are skipped with a warn log so a
+	// typo doesn't silently disable the gate.
+	Consensus []string `yaml:"consensus,omitempty"`
+
 	// Confidence is per-classifier-surface abstention thresholds in
 	// [0.0, 1.0] (roadmap P3-29). Keys are the names declared in
 	// internal/confidence (`vision`, `router`); values below the
