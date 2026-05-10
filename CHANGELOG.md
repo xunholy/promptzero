@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Ctx threading reaches the rest of the Marauder transport.**
+  v0.60 added `ExecCtx` and migrated `wifi_scan_ap` as a single
+  call site to prove the pattern. v0.60.x extends the migration
+  across the full timed-command surface so a turn-level Ctrl+C
+  aborts every Marauder-backed call within ~100 ms instead of
+  blocking until its duration timer fires.
+
+  - **24 new ctx-aware variants** in `internal/marauder/commands.go`
+    — one per timed wrapper (ScanAP/ScanAll, the deauth + beacon
+    + probe-flood + CSA + SAE attack family, all 7 sniff
+    variants, BLESpam, SniffBT, SniffSkimmer, PingScan, ARPScan,
+    PortScan, PortScanService, NMEA). Each follows the same
+    shape: the original method now delegates to the new `…Ctx`
+    via `context.Background()` so the 95 existing call sites
+    keep working unchanged.
+  - **20 tool handlers migrated** in `internal/tools/wifi.go`
+    and `internal/tools/marauder.go`. The Handler signature
+    changes from `func(_ context.Context, …)` to `func(ctx
+    context.Context, …)` and each `d.Marauder.X(…)` call becomes
+    `d.Marauder.XCtx(ctx, …)`. Tools migrated: wifi_scan_all,
+    wifi_deauth, wifi_deauth_station_list, wifi_beacon_spam +
+    random + clone + rickroll + funny, wifi_probe_flood,
+    wifi_csa_attack, wifi_sae_flood, wifi_sniff_pmkid + beacon +
+    deauth + probe + pwnagotchi + raw + sae, wifi_ble_spam,
+    wifi_sniff_bt, wifi_sniff_skimmer, wifi_ping_scan,
+    wifi_arp_scan, wifi_port_scan + service, marauder_nmea.
+  - No new test — `TestExecCtx_HonoursCancellation` already pins
+    the cancellation contract at the transport layer; the
+    wire-form assertions in `commands_test.go` continue to pass
+    unchanged because the dispatched bytes are identical (the
+    delegate `Exec` → `ExecCtx(Background, …)` path is wire-form
+    preserving).
+
 ## [0.60.0] - 2026-05-11
 
 **Cancellation propagates to the Marauder.** v0.59 closed the
