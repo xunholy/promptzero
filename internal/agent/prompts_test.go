@@ -61,3 +61,60 @@ func TestBuildSystemPrompt_PersonaOverrideStillAppends(t *testing.T) {
 		t.Fatalf("WiFi should append even when persona overrides the base:\n%s", got)
 	}
 }
+
+// TestPromptTemplateHash_StableAndDistinct pins that each embedded
+// template produces a deterministic 64-char hex hash and that the
+// three known templates have distinct hashes (no accidental dupe).
+func TestPromptTemplateHash_StableAndDistinct(t *testing.T) {
+	names := []string{"wifi_append.tmpl", "workflows_append.tmpl", "trust_append.tmpl"}
+	seen := make(map[string]string, len(names))
+	for _, n := range names {
+		h := PromptTemplateHash(n)
+		if len(h) != 64 {
+			t.Errorf("%s hash length = %d, want 64", n, len(h))
+		}
+		// Stable across calls.
+		if PromptTemplateHash(n) != h {
+			t.Errorf("%s hash unstable across calls", n)
+		}
+		if other, dup := seen[h]; dup {
+			t.Errorf("%s hash collides with %s", n, other)
+		}
+		seen[h] = n
+	}
+}
+
+func TestPromptTemplateHash_UnknownNameReturnsEmpty(t *testing.T) {
+	if got := PromptTemplateHash("nonexistent.tmpl"); got != "" {
+		t.Errorf("unknown template hash = %q, want empty", got)
+	}
+}
+
+// TestSystemPromptHash_DistinctForDifferentInputs pins that the
+// assembled-prompt hash changes when persona / hasWiFi / hasWorkflows
+// changes — so audit-row regression analysis can group sessions by
+// the *exact* prompt the model saw.
+func TestSystemPromptHash_DistinctForDifferentInputs(t *testing.T) {
+	base := SystemPromptHash(nil, false, false)
+	withWiFi := SystemPromptHash(nil, true, false)
+	withWorkflows := SystemPromptHash(nil, false, true)
+	withCustom := SystemPromptHash(&persona.Persona{
+		Name: "test", SystemPrompt: "I am a different system prompt entirely.",
+	}, false, false)
+
+	if base == withWiFi || base == withWorkflows || base == withCustom {
+		t.Errorf("hashes collide:\n base=%s\n wifi=%s\n wf=%s\n custom=%s",
+			base, withWiFi, withWorkflows, withCustom)
+	}
+	if len(base) != 64 {
+		t.Errorf("hash length = %d", len(base))
+	}
+}
+
+func TestSystemPromptHash_StableForSameInputs(t *testing.T) {
+	a := SystemPromptHash(nil, true, true)
+	b := SystemPromptHash(nil, true, true)
+	if a != b {
+		t.Errorf("hash unstable: %s vs %s", a, b)
+	}
+}

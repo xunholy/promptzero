@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Prompt + persona versioning on every audit row** (roadmap P3-31).
+  Closes the first P3 item. Regression analysis and the future
+  fine-tuning data exporter (P3-32) need to know *exactly* which
+  prompt + persona configuration produced an audit row, otherwise
+  a prompt typo fix can't be distinguished from a new persona
+  rollout.
+
+  - `Persona.Version` (YAML `version:`) — operator-supplied,
+    typically a SemVer string or a date. Empty for unversioned
+    personas (the safe default; analysers can group by content
+    hash instead).
+  - `agent.PromptTemplateHash(name)` and `agent.SystemPromptHash(p,
+    hasWiFi, hasWorkflows)` — pure functions returning 64-char hex
+    SHA-256 of the embedded template / fully-assembled system
+    prompt the agent would present for the given args. Hashes are
+    in-memory only; the prompt content itself is never persisted.
+  - `audit.PersonaContext{PersonaVersion, PromptHash}` plus
+    `Log.SetPersonaContextResolver(fn)` mirror the existing
+    `TechniqueResolver` pattern: a per-session hook the agent
+    installs once at startup; the audit log invokes it on each
+    `Record` to populate `Entry.PersonaVersion` and
+    `Entry.PromptHash`. Nil resolver leaves both empty.
+  - `Agent.SetAuditLog` now wires the resolver as a closure over
+    `personaAtomic` so a mid-session `/persona` switch updates the
+    next audit row's PersonaVersion + PromptHash without re-wiring.
+  - 9 new tests pin the contract: YAML round-trip, template hashes
+    are stable + distinct + 64-char-hex, assembled-prompt hashes
+    differ across persona / hasWiFi / hasWorkflows changes,
+    resolver flows through to Entry observers, nil resolver leaves
+    fields empty, resolver fires exactly once per Record, agent
+    wiring captures correct hash + version, persona-switch updates
+    next row, nil log is a no-op.
+
+  `task lint` clean; full short suite passes.
+
 - **`internal/semcache` — durable, file-backed semantic cache for
   generated payloads** (roadmap P2-27). Closes the second-to-last
   P2 item. Key idea: identical generation inputs (task label,

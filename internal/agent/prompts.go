@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"strings"
 
 	"github.com/xunholy/promptzero/internal/persona"
@@ -26,6 +28,45 @@ var (
 	workflowsAppend = mustReadPrompt("workflows_append.tmpl")
 	trustAppend     = mustReadPrompt("trust_append.tmpl")
 )
+
+// PromptTemplateHash returns the SHA-256 hash (hex, full 64-char) of the
+// embedded prompt template by name. Returns "" for unknown names — callers
+// pre-validate against the known set; an unknown name almost certainly
+// signals a typo and should fail loudly at the call site rather than
+// silently match a different template.
+//
+// Roadmap P3-31: prompt hashes are recorded on each audit row so
+// regression analysis and the future fine-tune data exporter can
+// distinguish sessions that ran against different prompt versions.
+func PromptTemplateHash(name string) string {
+	var content string
+	switch name {
+	case "wifi_append.tmpl":
+		content = wifiAppend
+	case "workflows_append.tmpl":
+		content = workflowsAppend
+	case "trust_append.tmpl":
+		content = trustAppend
+	default:
+		return ""
+	}
+	sum := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(sum[:])
+}
+
+// SystemPromptHash returns the SHA-256 hash (hex) of the assembled system
+// prompt that BuildSystemPrompt would produce for the same arguments. Pure
+// function of its inputs — safe to compute at audit time without re-
+// rendering the full prompt. The hash is what the audit exporter records;
+// the prompt content itself remains in memory only, never persisted to the
+// audit DB.
+//
+// A nil persona uses the default-persona prompt (matches BuildSystemPrompt).
+func SystemPromptHash(p *persona.Persona, hasWiFi, hasWorkflows bool) string {
+	prompt := BuildSystemPrompt(p, hasWiFi, hasWorkflows)
+	sum := sha256.Sum256([]byte(prompt))
+	return hex.EncodeToString(sum[:])
+}
 
 // defaultPersonaPrompt returns the canonical fallback system prompt — the
 // "default" built-in persona's. v0.20.0 collapsed the formerly-separate

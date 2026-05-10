@@ -98,6 +98,55 @@ default_risk_threshold: medium
 	}
 }
 
+// TestRegistryLoad_ParsesVersionField pins that the Version field
+// (roadmap P3-31) round-trips through YAML for downstream audit.Entry
+// recording. Empty version stays empty (the default for unversioned
+// personas).
+func TestRegistryLoad_ParsesVersionField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "versioned.yaml")
+	yaml := `name: opslab
+description: test
+version: 2026-05-10
+system_prompt: |
+  hello world
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRegistry()
+	if err := r.Load(path); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	p, ok := r.Get("opslab")
+	if !ok {
+		t.Fatalf("not registered")
+	}
+	if p.Version != "2026-05-10" {
+		t.Errorf("Version = %q, want %q", p.Version, "2026-05-10")
+	}
+}
+
+func TestRegistryLoad_EmptyVersionWhenAbsent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "unversioned.yaml")
+	yaml := `name: noversion
+description: test
+system_prompt: hi
+`
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRegistry()
+	if err := r.Load(path); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := r.Get("noversion")
+	if p.Version != "" {
+		t.Errorf("Version = %q, want empty", p.Version)
+	}
+}
+
 func TestRegistryLoadModelsBlock(t *testing.T) {
 	// Exercise the optional models map: classify on Haiku, plan on
 	// Sonnet, exploit on Opus. Required by the roadmap P0-02 cost-tier
