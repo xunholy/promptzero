@@ -35,6 +35,11 @@ const (
 	keyCtrlW // delete word backward
 	keyCtrlK // kill to end of line
 	keyCtrlR // reverse-incremental history search
+	// v0.59.0 — abort streaming-tool capture (operator decided "got
+	// what I needed, stop"). Distinct from Ctrl+C: Ctrl+C cancels
+	// the whole turn; Ctrl+G ends only the current streaming tool
+	// so the agent can continue the turn with the partial result.
+	keyCtrlG
 	keyEOF
 	// keyPaste carries a bracketed-paste payload in text. Literal bytes
 	// (including \r/\n) are preserved so pastes never auto-submit — the
@@ -139,6 +144,9 @@ func readKeys(out chan<- keyEvent) {
 				i++
 			case 0x05:
 				out <- keyEvent{kind: keyCtrlE}
+				i++
+			case 0x07:
+				out <- keyEvent{kind: keyCtrlG}
 				i++
 			case 0x08, 0x7f:
 				out <- keyEvent{kind: keyBackspace}
