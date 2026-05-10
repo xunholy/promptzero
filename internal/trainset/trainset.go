@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/audit"
@@ -59,21 +60,41 @@ type Options struct {
 	// SystemPrompt is the chat-format system message. Ignored for
 	// JSONL. When empty, a sensible default is used.
 	SystemPrompt string
+
+	// Since drops entries with Timestamp strictly before this cutoff.
+	// Zero (the default) disables the filter and exports everything.
+	// Roadmap P3-32 calls this out explicitly: a `--since <date>`
+	// filter so an operator can carve a fine-tune dataset out of the
+	// most recent N weeks of audit history without dragging in
+	// pre-improvement noise.
+	Since time.Time
+
+	// PersonaVersions, when non-empty, restricts the export to entries
+	// whose Entry.PersonaVersion is in this set. Pairs with the P3-31
+	// versioning work: an operator who fixes a prompt typo bumps
+	// PersonaVersion from "1.0.0" → "1.0.1" and exports only the
+	// post-fix sessions for fine-tuning. Empty disables the filter.
+	PersonaVersions []string
 }
 
 // Record is the JSONL-format row. Fields mirror audit.Entry but
-// omit internal bookkeeping (DB row ID, lock state).
+// omit internal bookkeeping (DB row ID, lock state). PersonaVersion +
+// PromptHash were added with P3-31 so a downstream fine-tune pipeline
+// can filter / weight rows by the exact prompt + persona config that
+// produced them.
 type Record struct {
-	Timestamp    time.Time       `json:"timestamp"`
-	Tool         string          `json:"tool"`
-	Input        json.RawMessage `json:"input"`
-	Output       string          `json:"output"`
-	Success      bool            `json:"success"`
-	Risk         string          `json:"risk"`
-	Level        string          `json:"level"`
-	Duration     int64           `json:"duration_ms"`
-	TechniqueIDs []string        `json:"technique_ids,omitempty"`
-	SessionID    string          `json:"session_id,omitempty"`
+	Timestamp      time.Time       `json:"timestamp"`
+	Tool           string          `json:"tool"`
+	Input          json.RawMessage `json:"input"`
+	Output         string          `json:"output"`
+	Success        bool            `json:"success"`
+	Risk           string          `json:"risk"`
+	Level          string          `json:"level"`
+	Duration       int64           `json:"duration_ms"`
+	TechniqueIDs   []string        `json:"technique_ids,omitempty"`
+	SessionID      string          `json:"session_id,omitempty"`
+	PersonaVersion string          `json:"persona_version,omitempty"`
+	PromptHash     string          `json:"prompt_hash,omitempty"`
 }
 
 // ChatMessage is one message in the OpenAI chat format.
@@ -164,11 +185,53 @@ func Export(entries []audit.Entry, w io.Writer, opts Options) (int, error) {
 	return count, nil
 }
 
+// ParseSince parses a `--since` flag value into a UTC time.Time.
+// Accepts either an ISO-8601 date ("2026-04-01") or a full RFC3339
+// timestamp ("2026-04-01T12:00:00Z"). The date-only form anchors at
+// midnight UTC — that's what an operator typing "since April 1st"
+// almost always means; running with a local-tz cutoff would surprise
+// pipelines that consume the JSONL.
+//
+// Empty input yields a zero time.Time so opts.Since stays disabled,
+// which lets the CLI handler treat `--since=` (with an explicit empty
+// value) as "no filter" rather than an error.
+func ParseSince(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, nil
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t.UTC(), nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC(), nil
+	}
+	return time.Time{}, fmt.Errorf("unrecognised date %q (want YYYY-MM-DD or RFC3339)", s)
+}
+
+// containsString reports whether s appears in xs. Linear scan; the
+// PersonaVersions slice is operator-supplied and tiny (typically 1-3
+// entries) so a map allocation isn't worth the per-call overhead.
+func containsString(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
 func keep(e audit.Entry, opts Options) bool {
 	if opts.SuccessOnly && !e.Success {
 		return false
 	}
 	if opts.MinLevel != "" && !levelAtLeast(e.Level, opts.MinLevel) {
+		return false
+	}
+	if !opts.Since.IsZero() && e.Timestamp.Before(opts.Since) {
+		return false
+	}
+	if len(opts.PersonaVersions) > 0 && !containsString(opts.PersonaVersions, e.PersonaVersion) {
 		return false
 	}
 	return true
@@ -194,16 +257,18 @@ func toRecord(e audit.Entry) Record {
 		input = b
 	}
 	return Record{
-		Timestamp:    e.Timestamp,
-		Tool:         e.Tool,
-		Input:        input,
-		Output:       e.Output,
-		Success:      e.Success,
-		Risk:         e.Risk,
-		Level:        string(e.Level),
-		Duration:     e.Duration,
-		TechniqueIDs: e.TechniqueIDs,
-		SessionID:    e.SessionID,
+		Timestamp:      e.Timestamp,
+		Tool:           e.Tool,
+		Input:          input,
+		Output:         e.Output,
+		Success:        e.Success,
+		Risk:           e.Risk,
+		Level:          string(e.Level),
+		Duration:       e.Duration,
+		TechniqueIDs:   e.TechniqueIDs,
+		SessionID:      e.SessionID,
+		PersonaVersion: e.PersonaVersion,
+		PromptHash:     e.PromptHash,
 	}
 }
 
@@ -226,10 +291,12 @@ func toChatRow(e audit.Entry, systemPrompt string) ChatRow {
 			{Role: "assistant", Content: assistant},
 		},
 		Meta: map[string]any{
-			"tool":          e.Tool,
-			"success":       e.Success,
-			"level":         string(e.Level),
-			"technique_ids": e.TechniqueIDs,
+			"tool":            e.Tool,
+			"success":         e.Success,
+			"level":           string(e.Level),
+			"technique_ids":   e.TechniqueIDs,
+			"persona_version": e.PersonaVersion,
+			"prompt_hash":     e.PromptHash,
 		},
 	}
 }

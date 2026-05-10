@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Fine-tune dataset export upgrades** (roadmap P3-32). The
+  `internal/trainset` JSONL/chat exporter learns three new dimensions
+  that pair directly with the P3-31 audit-row enrichment shipped this
+  release window:
+
+  - `Options.Since` — drop entries with `Timestamp` strictly before a
+    cutoff. Wired in the REPL via `--since=YYYY-MM-DD` (anchored at
+    midnight UTC) or `--since=2026-04-01T15:30:00Z` for finer slicing.
+    `trainset.ParseSince` is exposed so other call sites (a future
+    headless `promptzero export` subcommand) can reuse the format
+    contract.
+  - `Options.PersonaVersions` — restrict the export to entries whose
+    `Entry.PersonaVersion` matches one of the listed values. CLI
+    `--persona-version=1.2.0` (repeat to allow multiple). Mirrors the
+    typical workflow: bump the persona version after a prompt fix,
+    export only the post-fix sessions for the next fine-tune cycle,
+    leave the pre-fix sessions out.
+  - `Record.PersonaVersion` + `Record.PromptHash` flow into JSONL
+    rows; `ChatRow.Meta["persona_version"]` + `Meta["prompt_hash"]`
+    flow into the OpenAI-chat format. Downstream pipelines can group
+    rows by exact prompt content even when the operator forgot to
+    bump the version string.
+
+  5 new tests pin: since-filter boundary semantics, persona-version
+  filter, JSONL Record carries the new fields, ChatRow Meta carries
+  the new fields, `ParseSince` accepts ISO-8601 date and RFC3339,
+  rejects garbage, and treats empty as zero-time. `task lint` clean.
+
 - **Prompt + persona versioning on every audit row** (roadmap P3-31).
   Closes the first P3 item. Regression analysis and the future
   fine-tuning data exporter (P3-32) need to know *exactly* which
