@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-05-11
+
+**Container-bridge helper coverage.** Five 0 %-covered pure
+helpers across firmware_extract.go, faultier.go, and canbus.go
+shape load-bearing operator-visible output (firmware tree
+summarisation, "interesting files" classifier, output-tail
+truncation, faultier outcome labels, CAN bus result envelope).
+A regression silently produces wrong tool results — for
+example, `faultierOutcomeString` mapping `0x04 "ok"` →
+`"crash"` would mislead operators about whether a glitch
+attempt actually succeeded. Direct unit tests are the cheapest
+insurance.
+
+### Changed
+
+- **`internal/tools` container-bridge helper coverage.** New
+  `helpers_test.go` pins 5 helpers across 3 files:
+  - `summariseTree` — recursive temp-dir walk, files-only,
+    maxFiles cap enforced, nonexistent root silenced (returns
+    empty, no error — partial output > nothing).
+  - `classifyInteresting` — case-insensitive "look-here-first"
+    pattern match across 12 representative paths;
+    multi-pattern files (`rcS` matches both "rcS" and "init")
+    dedup via break to one hit; negative cases excluded.
+  - `tail` — under-budget verbatim, at-budget verbatim,
+    over-budget prefixes `"...[truncated N bytes]...\n"` and
+    keeps last n bytes, nil / empty → `""`.
+  - `faultierOutcomeString` — full 0x00..0x04 mapping plus
+    `unknown(0xNN)` fallback for unrecognised bytes.
+  - `wrapCANResult` — JSON envelope: nil error →
+    `status=ok` + `raw_output`, no error key; non-nil error →
+    `raw_output` + `error` message, error propagated, no
+    status key.
+
+  Coverage on `internal/tools` rose **43.5 % → 44.8 %**
+  (+1.3 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure unit tests on helpers
+  that don't touch the wire.
+
 ## [0.71.0] - 2026-05-11
 
 **Defense classifier helper coverage.** Four pure helpers in
