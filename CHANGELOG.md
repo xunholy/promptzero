@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-05-11
+
+**Constructor + option coverage.** Two more 0%-coverage helpers
+get tests: the Vision `Analyzer` constructor (default-model
+fallback + verbatim model passthrough) and the rpc `OpenOption`
+helpers (`WithSkipStartRPCSession`, `WithPipeline`). Both are
+pure config mutators / constructors that drive significant
+downstream behaviour, so a regression here would silently route
+to the wrong model or fall back to legacy handshake timing.
+
+### Changed
+
+- **`internal/vision` constructor coverage.** `New` was 0 %
+  covered despite being the only entry point. New `TestNew`
+  pins:
+  - Empty model string → falls back to `claude-opus-4-7`.
+  - Explicit model preserved verbatim (no allowlist
+    validation).
+  - Custom / future model names pass through as-is.
+  - Client pointer stored verbatim including nil (documented
+    "you must construct with a real client" contract).
+
+  Coverage on `internal/vision` rose **34.9 % → 39.7 %**
+  (+4.8 pp).
+
+- **`internal/flipper/rpc` option coverage.** Two `OpenOption`
+  helpers were 0 % covered:
+  - `WithSkipStartRPCSession` — the BLE-Serial opt-in (firmware
+    is already in RPC mode at transport open time, sending the
+    text preamble would poison the protobuf decoder). Pinned
+    idempotent.
+  - `WithPipeline` — positive `HandshakePolicy` values land in
+    `openConfig.retryAttempts` / `retryDelay`; zero / negative
+    values must NOT clobber existing config so callers can
+    compose options safely (partial overrides are the
+    documented contract).
+  - Plus `TestOpenOptions_ComposeOrder` — successive options
+    apply in order and compose without conflict.
+
+  Coverage on `internal/flipper/rpc` rose **41.1 % → 42.4 %**
+  (+1.3 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure tests on a constructor
+  and two option mutators; no transport surface touched.
+
 ## [0.69.0] - 2026-05-11
 
 **Transport helper coverage + flake fix.** Continues the coverage
