@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.164.0] - 2026-05-12
+
+**`audit_query` tool returns "[]" for an empty result, not "null".**
+Sibling of v0.163's `audit.Export` fix on the LLM tool-result path.
+`audit.Log.Query` returns `nil` (not an empty slice) when no rows
+match, and `json.MarshalIndent(nil, ...)` produces the literal
+`"null"`. The LLM tool-call output ended up as the four-character
+string `null` rather than the parseable JSON array `[]`, forcing
+the model to special-case "null means empty" instead of just
+iterating an empty list.
+
+### Fixed
+
+- Substitute an empty `[]audit.Entry{}` before `json.MarshalIndent`
+  in the `audit_query` handler. Same fix idiom as v0.163.
+  `explain_last_result` was already protected (it short-circuits
+  with a friendly string when `len(entries) == 0`).
+- Regression test `TestAuditQueryTool_EmptyResultIsJSONArray`
+  opens a fresh audit log with zero entries, calls the handler,
+  and asserts the result is `"[]"` and round-trips through
+  `json.Unmarshal` to a `[]map[string]any`.
+
 ## [0.163.0] - 2026-05-12
 
 **`audit.Log.Export` always returns a JSON array.** `Export` of an

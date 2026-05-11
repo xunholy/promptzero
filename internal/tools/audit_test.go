@@ -2,7 +2,9 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xunholy/promptzero/internal/audit"
@@ -30,6 +32,38 @@ func TestAuditToolsNilTolerance(t *testing.T) {
 				t.Errorf("%s with nil Audit = %q, want %q", toolName, out, "Audit logging not enabled")
 			}
 		})
+	}
+}
+
+// TestAuditQueryTool_EmptyResultIsJSONArray pins the v0.164 contract:
+// when no audit entries match, the tool result is the literal "[]"
+// (a parseable JSON array), not "null". Pre-fix json.MarshalIndent
+// on a nil []audit.Entry returned "null" and the LLM had to know
+// "null means no entries" rather than just iterating an empty list.
+// Same defect class as the v0.163 audit.Export fix.
+func TestAuditQueryTool_EmptyResultIsJSONArray(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	log, err := audit.Open(logPath)
+	if err != nil {
+		t.Fatalf("audit.Open: %v", err)
+	}
+	defer log.Close()
+	// No Record() calls — the audit log is intentionally empty.
+
+	spec, _ := Get("audit_query")
+	out, err := spec.Handler(context.Background(), &Deps{Audit: log},
+		map[string]any{"limit": 20})
+	if err != nil {
+		t.Fatalf("audit_query: %v", err)
+	}
+	trimmed := strings.TrimSpace(out)
+	if trimmed != "[]" {
+		t.Errorf("empty audit_query = %q, want \"[]\" (v0.164: always a JSON array)", trimmed)
+	}
+	// Round-trip to confirm parseability as a JSON array.
+	var parsed []map[string]any
+	if jerr := json.Unmarshal([]byte(out), &parsed); jerr != nil {
+		t.Errorf("empty audit_query output not parseable JSON array: %v\nbody: %s", jerr, out)
 	}
 }
 
