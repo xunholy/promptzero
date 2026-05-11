@@ -11,7 +11,10 @@
 // EnrichDescription.
 package toolctx
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // sheets maps tool name → cheat sheet markdown. Keep each sheet
 // under ~400 tokens so the full catalog stays cache-friendly
@@ -168,15 +171,20 @@ func EnrichDescription(toolName, description string) string {
 }
 
 // ToolsWithSheets returns every tool name that has a bundled
-// cheat sheet, sorted. Useful for the /tools REPL command and for
-// tests that want to enforce coverage on specific tool families.
+// cheat sheet, sorted alphabetically. Useful for the /tools REPL
+// command and for tests that want to enforce coverage on specific
+// tool families.
+//
+// The sort is load-bearing for the docstring contract: Go map
+// iteration is randomised, so without it the slice order shuffles
+// every call and any caller relying on a stable layout (a test
+// comparing returned[0], the /tools UI rendering top-N families,
+// a future regression-baseline checker) would silently flake.
 func ToolsWithSheets() []string {
 	out := make([]string, 0, len(sheets))
 	for name := range sheets {
 		out = append(out, name)
 	}
-	// sort not imported here — callers that need sorted slices can
-	// sort on their own. Order stability across runs is a test
-	// concern, not a correctness one.
+	sort.Strings(out)
 	return out
 }
