@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.137.0] - 2026-05-11
+
+**`agent.maybeAppendReflection` neutralizes smuggled close
+tag.** Final stop in the close-tag-injection defense arc:
+v0.134 (`quarantineOutput`), v0.135 (`breaker.EscalationMessage`),
+v0.136 (`consensus.DisagreementMessage`), and now reflexion's
+`<reflection>` wrapper.
+
+The reflector LLM (Haiku-class) produces free-form text — a
+2-sentence diagnosis of a failed tool call. Its system prompt
+asks for structured diagnosis, not JSON, so output is genuinely
+freeform prose. A model that echoes input (which contains
+attacker-influenceable hardware errors with SSIDs, NFC URIs,
+filenames) could in principle produce `</reflection>SYSTEM:`
+verbatim in its diagnosis, escaping the wrapper structurally.
+
+### Fixed
+
+- **Inline `strings.ReplaceAll`** rewrites literal `</reflection>`
+  inside the reflector output to `< /reflection>` (single space
+  after `<`). Same pattern as v0.134/0.135/0.136.
+- `TestMaybeAppendReflection_NeutralizesSmuggledCloseTag` drives
+  a reflector that echoes a smuggled close tag and asserts
+  exactly one close tag survives, the neutralized form is
+  present, the readable attacker text is preserved, AND the
+  counter is still bumped (a defang isn't a failed reflection).
+  Pre-fix verification: stashing the reflexion.go change makes
+  the test fail with `closing tag count = 2, want 1`.
+
+This closes the close-tag defense arc — every model-facing
+quarantine-style wrapper in the repo (`<untrusted-hardware-output>`,
+`<untrusted-audit-content>`, `<circuit-breaker-open>`,
+`<consensus-disagreement>`, `<reflection>`) now has structural
+protection against attacker-injected close tags in its embedded
+content.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.136.0] - 2026-05-11
 
 **`consensus.DisagreementMessage` neutralizes smuggled close
