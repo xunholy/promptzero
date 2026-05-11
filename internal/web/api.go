@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ import (
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
+	"github.com/xunholy/promptzero/internal/campaign"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/obs"
@@ -64,6 +66,9 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/rewind", s.requireAuth(s.handleRewindList))
 	mux.HandleFunc("POST /api/rewind/restore", s.requireAuth(s.handleRewindRestore))
+
+	mux.HandleFunc("POST /api/campaign/validate", s.requireAuth(s.handleCampaignValidate))
+	mux.HandleFunc("POST /api/campaign/run", s.requireAuth(s.handleCampaignRun))
 
 	mux.HandleFunc("GET /api/watch", s.requireAuth(s.handleWatch))
 	mux.HandleFunc("POST /api/watch/pause", s.requireAuth(s.handleWatchPause))
@@ -356,6 +361,91 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respondJSON(w, http.StatusOK, body)
+}
+
+// handleCampaignValidate parses the request body as a campaign YAML
+// and reports the result. Body is the raw YAML text; Content-Type
+// is not enforced (the CLI accepts paths, the web accepts inline
+// text). Mirrors CLI `/campaign validate <file>` minus the file-
+// read half — clients embed the YAML in the request body directly.
+func (s *Server) handleCampaignValidate(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read body: "+err.Error())
+		return
+	}
+	c, err := campaign.ParseYAML(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid campaign: "+err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"valid":      true,
+		"name":       c.Name,
+		"step_count": len(c.Steps),
+	})
+}
+
+// handleCampaignRun parses the request body as a campaign YAML and
+// executes it synchronously against the agent's tool dispatch.
+// Mirrors CLI `/campaign run <file>` semantics, including the 10-
+// minute total-time budget. Returns the full RunResult envelope —
+// step results, durations, error per step.
+//
+// Synchronous on purpose: campaigns are operator-driven workflows
+// where mid-run aborts already happen via ctx cancellation
+// (closing the HTTP connection cancels ctx; the runner honours it
+// between steps). Async/SSE wiring is future work — for now the
+// timeout mirrors the CLI.
+func (s *Server) handleCampaignRun(w http.ResponseWriter, r *http.Request) {
+	if s.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "agent not configured")
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read body: "+err.Error())
+		return
+	}
+	c, err := campaign.ParseYAML(body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid campaign: "+err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+	defer cancel()
+	runner := campaign.NewRunner(campaign.AgentExecutor{Dispatcher: s.agent})
+	result := runner.Run(ctx, c)
+
+	// Project StepResult into JSON-friendly DTOs (the campaign
+	// package uses time.Time and *Step fields we don't want
+	// exposed verbatim).
+	steps := make([]map[string]any, 0, len(result.StepResults))
+	for _, sr := range result.StepResults {
+		row := map[string]any{
+			"step_id":     sr.StepID,
+			"tool":        sr.Tool,
+			"started_at":  sr.StartedAt.UTC().Format(time.RFC3339),
+			"duration_ms": sr.Duration.Milliseconds(),
+			"output":      sr.Output,
+			"skipped":     sr.Skipped,
+		}
+		if sr.SkipReason != "" {
+			row["skip_reason"] = sr.SkipReason
+		}
+		if sr.Err != nil {
+			row["error"] = sr.Err.Error()
+		}
+		steps = append(steps, row)
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"campaign":     result.Campaign,
+		"succeeded":    result.Succeeded(),
+		"started_at":   result.StartedAt.UTC().Format(time.RFC3339),
+		"ended_at":     result.EndedAt.UTC().Format(time.RFC3339),
+		"duration_ms":  result.Duration().Milliseconds(),
+		"step_results": steps,
+	})
 }
 
 // handleRewindList returns the per-session snapshot entries newest-

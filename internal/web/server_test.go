@@ -21,19 +21,22 @@ import (
 // runFn is invoked from Run inside a goroutine so tests can drive the three
 // registered callbacks (textDelta, toolStatus, confirm) mid-turn.
 type fakeAgent struct {
-	mu           sync.Mutex
-	textDeltaCb  func(agent.TextDelta)
-	toolStatusCb func(agent.ToolEvent)
-	confirmCb    agent.ConfirmFunc
-	runFn        func(ctx context.Context, input string, f *fakeAgent) (string, error)
-	resetCalls   int
-	lastRunInput string
-	persona      *persona.Persona
-	opMode       mode.Mode
-	readOnly     bool
-	attackIDs    []string
-	snapshotMgr  *snapshot.Manager
-	sessionID    string
+	mu                sync.Mutex
+	textDeltaCb       func(agent.TextDelta)
+	toolStatusCb      func(agent.ToolEvent)
+	confirmCb         agent.ConfirmFunc
+	runFn             func(ctx context.Context, input string, f *fakeAgent) (string, error)
+	resetCalls        int
+	lastRunInput      string
+	persona           *persona.Persona
+	opMode            mode.Mode
+	readOnly          bool
+	attackIDs         []string
+	snapshotMgr       *snapshot.Manager
+	sessionID         string
+	runToolFn         func(tool string, params map[string]interface{}) (string, error)
+	lastRunToolName   string
+	lastRunToolParams map[string]interface{}
 }
 
 func (f *fakeAgent) Run(ctx context.Context, input string) (string, error) {
@@ -145,6 +148,19 @@ func (f *fakeAgent) SessionID() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.sessionID
+}
+
+func (f *fakeAgent) RunTool(_ context.Context, tool string, params map[string]interface{}) (string, error) {
+	f.mu.Lock()
+	if f.runToolFn != nil {
+		fn := f.runToolFn
+		f.mu.Unlock()
+		return fn(tool, params)
+	}
+	f.lastRunToolName = tool
+	f.lastRunToolParams = params
+	f.mu.Unlock()
+	return "ok", nil
 }
 
 func (f *fakeAgent) emitDelta(t agent.TextDelta) {
