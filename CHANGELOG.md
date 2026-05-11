@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-05-11
+
+**Generate + fap-build helper coverage.** Five more 0%-covered
+pure helpers in the generate.go (payload generator) and
+fap_build.go (FAP compiler bridge) paths gain tests. The
+generator paths shape what files land where on the SD card —
+a regression to `genDefaultPath` could silently route a
+generated `.nfc` to `/ext/subghz` where the NFC viewer wouldn't
+see it; a regression to `genMapNFCType` could mis-route the
+NFC builder's protocol detection.
+
+### Changed
+
+- **`internal/tools` generate + fap-build coverage.** New
+  `generate_helpers_test.go` pins:
+  - `genDefaultPath` — payload-type → SD-card path map for
+    evil_portal / badusb / subghz / ir / nfc, with empty fall-
+    back for unknown / case-mismatched / whitespace-bearing
+    inputs.
+  - `genMapNFCType` — case-insensitive substring match across
+    NTAG213/215/216 + Mifare Ultralight/Classic/DESFire/Plus;
+    unrecognised types → `"NFC"` (the generic builder's catch-
+    all device type).
+  - `genSanitizeFilename` — UID sanitiser with the same
+    contract as the workflows-layer twin: alphanumeric / `_` /
+    `-` pass through, everything else → `_`, empty / all-
+    stripped → `"unknown"`.
+  - `genRenderValidatorReport` — three render modes: no findings
+    (one-liner), findings with `Line > 0` (`L<n>` prefix),
+    findings with `Line == 0` (no prefix). Trailing newline
+    trimmed.
+  - `exitCode` — `cmd.ProcessState == nil` → `-1` sentinel,
+    `/bin/true` → 0, `/bin/false` → 1.
+
+  Coverage on `internal/tools` rose **44.8 % → 46.1 %**
+  (+1.3 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure unit tests on path /
+  string / process-state helpers.
+
 ## [0.72.0] - 2026-05-11
 
 **Container-bridge helper coverage.** Five 0 %-covered pure
