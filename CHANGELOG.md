@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-05-11
+
+**`/budget set` enforcement fix.** Continues the silent-failure
+audit. Operators launching without `--budget` and no
+`cost.budget_usd` in config could later raise a cap at runtime
+with `/budget set 10` — the cap surfaced in `/budget` / `/cost`
+output, but the warn/hit banners never fired and the agent's
+pre-flight gate never refused new turns past the cap. The cap
+was inert; spend would keep accumulating with no audible signal.
+
+### Fixed
+
+- **`/budget set` now actually enforces the cap when the session
+  started unbudgeted.** `setupBudget` returned early when
+  startup cap was zero, skipping the `tracker.SetBudget(...)`
+  callback installation *and* `ai.SetBudgetCheckCallback(...)`.
+  Runtime `/budget set` calls `UpdateBudgetCap`, which only
+  flips the cap field — the docstring promised "preserves
+  existing warn/hit cbs" but there were no existing cbs to
+  preserve.
+  - `setupBudget` no longer short-circuits at usdCap == 0. It
+    installs the warn/hit callbacks (threshold firing in
+    `(*Tracker).Add()` is already gated on `budgetUSD > 0`, so
+    they stay dormant until a cap is set) and the agent's
+    `SetBudgetCheckCallback` (the `BudgetExceeded()` predicate
+    returns false when no cap is configured). The operator-
+    visible "Session budget …" banner stays gated on
+    `usdCap > 0` so it remains accurate.
+  - `TestSetupBudget_WiresCallbacksEvenWithoutCap` pins the
+    fix: setupBudget with cap=0 → `tracker.UpdateBudgetCap(10)`
+    → AddUsage past $10 → both 80% warn and 100% hit banners
+    fire to stderr, `BudgetExceeded()` reports true.
+  - `TestSetupBudget_QuietWhenNoCap` pins the inverse: with
+    cap=0, no "Session budget" line is printed (the wiring runs
+    silently — operators with no cap see no false advertising).
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task vet` — clean.
+- `go test -race -count=1 -short ./...` — all packages pass,
+  including new `TestSetupBudget_*` cases.
+
 ## [0.80.0] - 2026-05-11
 
 **Mode + ReadOnly runtime coupling fix.** Another silent-failure
