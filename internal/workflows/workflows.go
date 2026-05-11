@@ -108,8 +108,20 @@ func (r Result) MarshalJSON() ([]byte, error) {
 	if len(r.NextSteps) > 0 {
 		base["next_steps"] = r.NextSteps
 	}
+	// Collision-check against the full stable-field name set, not just
+	// the keys currently in `base`. Without this, a workflow whose
+	// NextSteps is empty but whose Extra carries a "next_steps" key
+	// (perhaps a typo, perhaps a sub-workflow proxy) would have that
+	// Extra value end up in the top-level "next_steps" slot — the
+	// docstring promises stable-field wins, and an empty stable field
+	// is still a stable field.
+	stableFields := map[string]struct{}{
+		"summary":    {},
+		"phases":     {},
+		"next_steps": {},
+	}
 	for k, v := range r.Extra {
-		if _, exists := base[k]; exists {
+		if _, reserved := stableFields[k]; reserved {
 			continue
 		}
 		base[k] = v
