@@ -8,6 +8,7 @@ import (
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
 	flippermock "github.com/xunholy/promptzero/internal/flipper/mock"
+	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/testmocks"
 )
 
@@ -540,5 +541,51 @@ func TestForget_NoArgs_ShowsUsage(t *testing.T) {
 	})
 	if !strings.Contains(out, "usage: /forget") {
 		t.Fatalf("usage line missing: %q", out)
+	}
+}
+
+// TestRulesCmd_ListSubcommand pins the v0.82 fix: the no-args usage
+// message and the godoc both advertise `list` as a valid subcommand,
+// so `/rules list` must produce the listing (not the
+// "unknown subcommand" error). Pre-fix the explicit form fell into
+// the default branch and printed an error that named `list` in the
+// "want list|pause|resume|test" hint — a self-contradicting error.
+func TestRulesCmd_ListSubcommand(t *testing.T) {
+	eng := rules.New(rules.Deps{})
+	eng.Register(rules.Rule{Name: "demo", Description: "demo rule", Enabled: true})
+
+	// Empty-args form: existing behaviour, expected to list.
+	emptyOut := captureStderr(t, func() {
+		handleRulesCmd(eng, nil)
+	})
+	if !strings.Contains(emptyOut, "demo") {
+		t.Fatalf("no-args /rules: missing rule name in output: %q", emptyOut)
+	}
+
+	// Explicit `list` form: must produce the same content. Pre-fix it
+	// produced "unknown subcommand list" instead.
+	listOut := captureStderr(t, func() {
+		handleRulesCmd(eng, []string{"list"})
+	})
+	if !strings.Contains(listOut, "demo") {
+		t.Errorf("/rules list: missing rule name in output: %q", listOut)
+	}
+	if strings.Contains(listOut, "unknown") {
+		t.Errorf("/rules list: docstring advertises 'list' but handler reports unknown subcommand: %q", listOut)
+	}
+}
+
+// TestRulesCmd_UnknownSubcommand keeps the negative path honest: a
+// genuinely unknown subcommand still gets the helpful error.
+func TestRulesCmd_UnknownSubcommand(t *testing.T) {
+	eng := rules.New(rules.Deps{})
+	out := captureStderr(t, func() {
+		handleRulesCmd(eng, []string{"explode"})
+	})
+	if !strings.Contains(out, "unknown") {
+		t.Errorf("expected 'unknown' for bogus subcommand, got: %q", out)
+	}
+	if !strings.Contains(out, "list|pause|resume|test") {
+		t.Errorf("expected subcommand hint, got: %q", out)
 	}
 }

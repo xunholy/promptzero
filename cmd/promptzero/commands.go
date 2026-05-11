@@ -1702,6 +1702,32 @@ func humanSince(t time.Time) string {
 	}
 }
 
+// printRulesList renders one row per registered rule. Shared by the
+// no-args path and the explicit `/rules list` form so both produce
+// identical output.
+func printRulesList(eng *rules.Engine) {
+	snaps := eng.List()
+	if len(snaps) == 0 {
+		fmt.Fprintf(os.Stderr, "  %sno rules registered%s\n", dim, reset)
+		return
+	}
+	for _, s := range snaps {
+		state := green + "●" + reset
+		if !s.Enabled {
+			state = yellow + "○" + reset
+		}
+		fmt.Fprintf(os.Stderr, "  %s %s %s(fires=%d", state, s.Name, dim, s.Fires)
+		if !s.LastFire.IsZero() {
+			fmt.Fprintf(os.Stderr, ", last %s ago", humanSince(s.LastFire))
+		}
+		fmt.Fprintf(os.Stderr, ")%s", reset)
+		if s.Description != "" {
+			fmt.Fprintf(os.Stderr, " — %s", s.Description)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+}
+
 // handleRulesCmd serves the /rules REPL command: list, pause <name>,
 // resume <name>, test <name>. Writes directly to stderr through the
 // provided style fields so it plays nicely with the line-editor's
@@ -1711,27 +1737,12 @@ func handleRulesCmd(eng *rules.Engine, args []string) {
 		fmt.Fprintf(os.Stderr, "  %srules engine unavailable%s\n", dim, reset)
 		return
 	}
-	if len(args) == 0 {
-		snaps := eng.List()
-		if len(snaps) == 0 {
-			fmt.Fprintf(os.Stderr, "  %sno rules registered%s\n", dim, reset)
-			return
-		}
-		for _, s := range snaps {
-			state := green + "●" + reset
-			if !s.Enabled {
-				state = yellow + "○" + reset
-			}
-			fmt.Fprintf(os.Stderr, "  %s %s %s(fires=%d", state, s.Name, dim, s.Fires)
-			if !s.LastFire.IsZero() {
-				fmt.Fprintf(os.Stderr, ", last %s ago", humanSince(s.LastFire))
-			}
-			fmt.Fprintf(os.Stderr, ")%s", reset)
-			if s.Description != "" {
-				fmt.Fprintf(os.Stderr, " — %s", s.Description)
-			}
-			fmt.Fprintln(os.Stderr)
-		}
+	// No args defaults to listing. The error message at the bottom of
+	// this function advertises "list" as a valid subcommand, so an
+	// explicit "/rules list" must produce the same listing — otherwise
+	// the documented contract lies. Same handling for both shapes.
+	if len(args) == 0 || strings.EqualFold(args[0], "list") {
+		printRulesList(eng)
 		return
 	}
 	sub := strings.ToLower(args[0])
