@@ -23,6 +23,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/cost"
+	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
@@ -41,6 +42,9 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/personas", s.requireAuth(s.handlePersonasList))
 	mux.HandleFunc("POST /api/personas/switch", s.requireAuth(s.handlePersonasSwitch))
+
+	mux.HandleFunc("GET /api/mode", s.requireAuth(s.handleModeGet))
+	mux.HandleFunc("POST /api/mode", s.requireAuth(s.handleModeSet))
 
 	mux.HandleFunc("GET /api/watch", s.requireAuth(s.handleWatch))
 	mux.HandleFunc("POST /api/watch/pause", s.requireAuth(s.handleWatchPause))
@@ -326,6 +330,65 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respondJSON(w, http.StatusOK, body)
+}
+
+// handleModeGet returns the active operation mode plus the catalogue
+// of alternatives — same surface as the CLI's `/mode` (no-args)
+// listing. Pre-v0.98 web operators couldn't see or change the mode
+// at runtime; they had to relaunch with --mode <name>.
+func (s *Server) handleModeGet(w http.ResponseWriter, _ *http.Request) {
+	if s.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "agent not configured")
+		return
+	}
+	current := s.agent.Mode()
+	all := mode.All()
+	available := make([]map[string]any, 0, len(all))
+	for _, m := range all {
+		available = append(available, map[string]any{
+			"name":             string(m),
+			"display":          m.DisplayName(),
+			"description":      m.Description(),
+			"read_restrictive": m.IsReadRestrictive(),
+		})
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"active":             string(current),
+		"active_display":     current.DisplayName(),
+		"active_description": current.Description(),
+		"read_only":          s.agent.ReadOnly(),
+		"available":          available,
+	})
+}
+
+// handleModeSet switches the active mode. Body: {"name": "recon"}.
+// Read-restrictive modes (recon/intel/stealth) also engage the
+// ReadOnly safety rail — mirrors handleMode's runtime behaviour
+// (v0.80 fix) and setupMode's startup behaviour. Echoes the
+// resulting state via handleModeGet so the cockpit header updates
+// in a single round-trip.
+func (s *Server) handleModeSet(w http.ResponseWriter, r *http.Request) {
+	if s.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "agent not configured")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+		return
+	}
+	target, err := mode.ParseMode(body.Name)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.agent.SetMode(target)
+	if target.IsReadRestrictive() {
+		s.agent.SetReadOnly(true)
+	}
+	s.handleModeGet(w, r)
 }
 
 // handleBudgetGet returns the current session budget cap, spent, and

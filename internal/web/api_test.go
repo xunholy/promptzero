@@ -17,6 +17,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/cost"
+	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/watch"
@@ -314,6 +315,81 @@ func TestCostSnapshot(t *testing.T) {
 	// distinguishes "disabled" from "0/0" by absence).
 	if _, ok := body["budget"]; ok {
 		t.Errorf("budget block should be omitted when no cap is set")
+	}
+}
+
+// TestModeGet_ListsAllModes pins the GET /api/mode surface: active +
+// available catalogue with display names, descriptions, and the
+// read-restrictive flag. Mirrors the CLI's `/mode` (no-args) listing.
+func TestModeGet_ListsAllModes(t *testing.T) {
+	fa := &fakeAgent{opMode: mode.ModeRecon, readOnly: true}
+	_, ts := apiServer(t, fa)
+	code, body := getJSON(t, ts, "/api/mode")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	if active, _ := body["active"].(string); active != "recon" {
+		t.Errorf("active = %v, want recon", body["active"])
+	}
+	if ro, _ := body["read_only"].(bool); !ro {
+		t.Errorf("read_only = false, want true (recon engages it)")
+	}
+	avail, ok := body["available"].([]any)
+	if !ok || len(avail) == 0 {
+		t.Fatalf("available list missing or empty: %v", body["available"])
+	}
+}
+
+// TestModeSet_SwitchesMode pins the operator-facing POST: body
+// {"name": "stealth"} switches the active mode AND engages ReadOnly
+// (stealth is read-restrictive). Matches handleMode's runtime
+// behaviour (v0.80 fix).
+func TestModeSet_SwitchesMode(t *testing.T) {
+	fa := &fakeAgent{opMode: mode.ModeStandard, readOnly: false}
+	_, ts := apiServer(t, fa)
+	code, body := postJSON(t, ts, "/api/mode", map[string]any{"name": "stealth"})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d, body=%s", code, body)
+	}
+	if got := fa.Mode(); got != mode.ModeStealth {
+		t.Errorf("Mode() = %v, want stealth", got)
+	}
+	if !fa.ReadOnly() {
+		t.Errorf("ReadOnly() = false; stealth is read-restrictive and must engage it")
+	}
+}
+
+// TestModeSet_StandardDoesNotEngageReadOnly pins the negative
+// branch: switching to standard mode does NOT touch the ReadOnly
+// flag. The CLI handleMode only engages ReadOnly when the new mode
+// is read-restrictive; standard is not.
+func TestModeSet_StandardDoesNotEngageReadOnly(t *testing.T) {
+	fa := &fakeAgent{opMode: mode.ModeRecon, readOnly: true}
+	_, ts := apiServer(t, fa)
+	code, _ := postJSON(t, ts, "/api/mode", map[string]any{"name": "standard"})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	if got := fa.Mode(); got != mode.ModeStandard {
+		t.Errorf("Mode() = %v, want standard", got)
+	}
+	// ReadOnly stays where it was — matches handleMode's "engage only
+	// on entering restrictive mode" behaviour. The operator can
+	// switch ReadOnly off via a separate mechanism if needed.
+}
+
+// TestModeSet_RejectsUnknown pins the input-validation contract:
+// unknown mode names get 400 with the same error shape as the CLI's
+// ParseMode error. The cockpit can render that verbatim.
+func TestModeSet_RejectsUnknown(t *testing.T) {
+	fa := &fakeAgent{opMode: mode.ModeStandard}
+	_, ts := apiServer(t, fa)
+	code, _ := postJSON(t, ts, "/api/mode", map[string]any{"name": "wrong-name"})
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400", code)
+	}
+	if got := fa.Mode(); got != mode.ModeStandard {
+		t.Errorf("Mode() = %v, want standard (rejected POST shouldn't mutate)", got)
 	}
 }
 
