@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.84.0] - 2026-05-11
+
+**Help text + nil-flip hardening.** Two close-together fixes from
+the slash-command audit. The /help line for `/audit tail`
+advertised a behaviour ("Enter to stop") the implementation never
+supported, and `printStatus` had a latent nil-deref that the
+first branch's `flip != nil` guard was visibly trying (and
+failing) to cover.
+
+### Fixed
+
+- **`/help` no longer promises `/audit tail` accepts Enter to
+  stop.** `tailAudit` only handles SIGINT (Ctrl+C); the function
+  godoc and the runtime banner ("tailing audit from id N
+  (Ctrl+C to stop)…") were already correct. Only the /help line
+  promised "Ctrl+C or Enter to stop" — operators pressing Enter
+  got nothing. Stopping the tail mid-stream requires reading
+  from the line editor's key channel, which the tail loop
+  intentionally doesn't subscribe to; aligning /help with the
+  actual contract is the honest fix.
+  - `TestPrintHelp_AuditTailLineMatchesRuntime` pins the new
+    help text and the negative assertion ("Ctrl+C or Enter to
+    stop" must not reappear) so a future regression that re-adds
+    the false promise without implementing the keystroke gets
+    caught here.
+
+- **`printStatus` no longer has a latent nil-flip deref.** The
+  first branch correctly guarded `flip != nil &&
+  flip.IsSuspended()`, but the `else if tx := flip.Transport()`
+  next branch would deref a nil `flip` if the first branch
+  short-circuited. Currently unreachable in production (REPL
+  startup requires a connected Flipper; only `--web` permits
+  `flip == nil` and `--web` skips the REPL), but the function's
+  Device section already nil-checks `flip` so symmetry argues
+  for hardening here too. Restructured as a `switch` with an
+  explicit `case flip == nil:` branch, matching the existing
+  Device-section pattern.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./...` — all packages pass.
+
 ## [0.83.0] - 2026-05-11
 
 **`/stats tokens` honors its own contract.** Continues the
