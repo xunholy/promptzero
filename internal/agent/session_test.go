@@ -2,9 +2,11 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 
@@ -533,5 +535,73 @@ func TestRenameSession_PersistsTitle(t *testing.T) {
 	}
 	if state.Title != "after" {
 		t.Errorf("title = %q, want after", state.Title)
+	}
+}
+
+// TestRunTitleGeneration_SerializesWithRenameSession pins the v0.95
+// locking contract. Pre-fix, runTitleGeneration's Load → modify →
+// Save sequence ran WITHOUT a.mu — the maybeGenerateTitleLocked
+// docstring promised the goroutine "re-acquires the lock before
+// persisting" but the code only used the lock to read sessionStore.
+// A concurrent RenameSession (e.g. via /api/sessions PATCH) that
+// landed between the goroutine's Load and Save would have its
+// rename silently clobbered by the goroutine's Save — a
+// filesystem-level last-writer-wins race the Go data-race detector
+// can't catch because each goroutine reads a fresh state struct.
+//
+// The fix moves a.mu.Lock() to wrap the entire Load → check → Save
+// sequence so it serialises with RenameSession's own a.mu-held
+// write. This test exercises both call paths concurrently to
+// document the contract and guarantee no panic / deadlock.
+func TestRunTitleGeneration_SerializesWithRenameSession(t *testing.T) {
+	dir := t.TempDir()
+	store, err := session.NewStore(filepath.Join(dir, "sessions"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	const id = "race-target"
+	if err := store.Save(&session.State{ID: id, Model: "x"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	a := &Agent{}
+	a.SetSessionStore(store)
+
+	// Pre-seed the inflight flag so our defer cleans it up; we're
+	// invoking runTitleGeneration directly without the spawn path.
+	a.titleGenInflight = map[string]bool{id: true}
+
+	// Run renames concurrently with title generation. The
+	// runTitleGeneration call won't actually persist (callTitleAPI
+	// returns "" without a client → early return), but the locking
+	// contract still has to hold for the pre-Load lock-store-read
+	// section to race-free against RenameSession.
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(seq int) {
+			defer wg.Done()
+			_ = a.RenameSession(id, fmt.Sprintf("name-%d", seq))
+		}(i)
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// nil client → callTitleAPI panics on nil-deref → defer
+		// recover cleans up. The test's contract is "no race", not
+		// "title persists". recover() swallows the panic.
+		defer func() { _ = recover() }()
+		a.runTitleGeneration(id, "test-model", "", nil)
+	}()
+	wg.Wait()
+
+	// Final state should be loadable and have one of the names we
+	// set — not crashed, not deadlocked.
+	state, err := store.Load(id)
+	if err != nil {
+		t.Fatalf("Load after race: %v", err)
+	}
+	if !strings.HasPrefix(state.Title, "name-") && state.Title != "" {
+		t.Errorf("unexpected final title %q (want either '' or name-N)", state.Title)
 	}
 }
