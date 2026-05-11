@@ -81,7 +81,13 @@ func firmwareExtractHandler(ctx context.Context, _ *Deps, args map[string]any) (
 			return "", fmt.Errorf("firmware_extract: create temp output dir: %w", err)
 		}
 	} else {
-		if err := os.MkdirAll(outDir, 0o755); err != nil {
+		// 0o700 matches the v0.124-v0.127 operator-data baseline: an
+		// unblob extraction produces firmware bytes and embedded
+		// secrets (keys, certificates, hash material) recoverable by
+		// any other account on a multi-user host. MkdirAll is a no-op
+		// for existing dirs, so an operator who explicitly wants
+		// shared output can pre-create with the wider mode.
+		if err := os.MkdirAll(outDir, 0o700); err != nil {
 			return "", fmt.Errorf("firmware_extract: create %s: %w", outDir, err)
 		}
 	}

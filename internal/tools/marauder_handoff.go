@@ -75,7 +75,13 @@ func marauderHandoffHashcatHandler(ctx context.Context, _ *Deps, args map[string
 			return "", fmt.Errorf("marauder_handoff_hashcat: create temp output dir: %w", err)
 		}
 	} else {
-		if err := os.MkdirAll(outDir, 0o755); err != nil {
+		// 0o700 matches the v0.124-v0.127 operator-data baseline: the
+		// hc22000 output contains WPA handshake material crackable
+		// offline into the target's password, so it must not be
+		// world-readable. MkdirAll is a no-op for existing dirs, so
+		// an operator who explicitly wants a shared output dir can
+		// pre-create it themselves with the wider mode.
+		if err := os.MkdirAll(outDir, 0o700); err != nil {
 			return "", fmt.Errorf("marauder_handoff_hashcat: create %s: %w", outDir, err)
 		}
 	}

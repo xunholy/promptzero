@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.147.0] - 2026-05-12
+
+**Tool output dirs default to `0o700`.** Three operator-output sites
+(`marauder_handoff_hashcat`, `firmware_extract`, `fap_build`) created
+their output directory with `0o755` when the operator supplied a
+path that didn't yet exist. Other accounts on the host could then
+read the produced artefacts. The rest of the operator-data tree
+(audit / session / snapshot / targetmem / signal_library / semcache)
+has been on `0o700` since v0.124-v0.127; these three sites were
+inconsistent with that baseline.
+
+The artefacts each surface produces are operationally sensitive:
+
+  - `marauder_handoff_hashcat` writes hc22000 files — WPA handshake
+    material crackable offline into the target network's password.
+  - `firmware_extract` writes unblob output — embedded secrets
+    (keys, certificates, hash material) recovered from a firmware
+    image.
+  - `fap_build` writes built FAP artefacts — may include operator-
+    authored badusb payloads / exploit-research source snippets.
+
+### Fixed
+
+- Tighten all three `os.MkdirAll(outDir, ...)` calls to `0o700`.
+  `MkdirAll` is a no-op for existing directories, so an operator
+  who explicitly wants a wider-shared output can pre-create the
+  directory and the tool will write into it unchanged.
+- Regression test
+  (`TestMarauderHandoffHashcat_CreatesOutputDirRestrictivePerms`)
+  exercises the create branch with a never-existed `output_dir`
+  and asserts `mode == 0o700`.
+
 ## [0.146.0] - 2026-05-12
 
 **`flipper/transport.httpDialer` rejects over-cap `?timeout_ms=`.**

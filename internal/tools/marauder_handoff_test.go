@@ -104,3 +104,39 @@ func TestMarauderHandoffHashcat_AbsentTool_DefaultWordlist(t *testing.T) {
 		t.Errorf("default wordlist = %q", wl)
 	}
 }
+
+// TestMarauderHandoffHashcat_CreatesOutputDirRestrictivePerms pins
+// the v0.147 perm-consolidation contract: when output_dir is
+// operator-supplied and doesn't yet exist, the handler creates it
+// with 0o700 so the hc22000 captures (WPA handshakes crackable
+// offline into network passwords) are not world-readable. Pre-fix
+// the handler used 0o755 — inconsistent with the v0.124-v0.127
+// operator-data baseline applied to audit / session / targetmem /
+// signal_library / semcache.
+func TestMarauderHandoffHashcat_CreatesOutputDirRestrictivePerms(t *testing.T) {
+	dir := t.TempDir()
+	pcap := filepath.Join(dir, "test.pcap")
+	if err := os.WriteFile(pcap, []byte{}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Point output_dir at a NEW (not-yet-existing) subdir so the
+	// handler's MkdirAll runs the create branch.
+	newOut := filepath.Join(dir, "fresh-out")
+	t.Setenv("PATH", "") // short-circuit before LookPath finds hcxpcapngtool
+
+	_, err := marauderHandoffHashcatHandler(context.Background(), nil, map[string]any{
+		"pcap_path":  pcap,
+		"output_dir": newOut,
+	})
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	info, err := os.Stat(newOut)
+	if err != nil {
+		t.Fatalf("output dir not created: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o700 {
+		t.Errorf("output dir perms = %o, want 0o700 (operator-data baseline)", mode)
+	}
+}
