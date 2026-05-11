@@ -204,6 +204,78 @@ func TestStats_ReportsRootCapacityEntries(t *testing.T) {
 	}
 }
 
+// TestPut_FilePermissionsLockedDown pins the security fix: cached
+// content (BadUSB payloads, evil-portal HTML with target SSIDs,
+// NFC dumps with badge UIDs, generated SubGHz keys) must not be
+// world-readable. Pre-fix the cache dir was 0o755 and per-entry
+// files were 0o644 — the only writable-by-world cache under
+// ~/.promptzero, the audit DB / session JSON / snapshots all sat
+// at 0o600 / 0o700. Operator-data leakage to other accounts on the
+// host is in scope.
+func TestPut_FilePermissionsLockedDown(t *testing.T) {
+	root := t.TempDir() + "/cache"
+	c := New(root, 4)
+	if err := c.Put(Key("payload"), Entry{Content: "STRING rm -rf /\n"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	// Directory must be 0o700 (operator-only). Pre-fix 0o755 leaked
+	// the listing of cached payloads to every account on the host.
+	info, err := os.Stat(root)
+	if err != nil {
+		t.Fatalf("stat dir: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o700 {
+		t.Errorf("cache dir mode = %#o, want 0o700", mode)
+	}
+
+	// Cache file must be 0o600. Pre-fix 0o644 leaked the bytes
+	// themselves — payloads, SSIDs, badge UIDs — to local users.
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 cache entry, got %d", len(entries))
+	}
+	fi, err := os.Stat(filepath.Join(root, entries[0].Name()))
+	if err != nil {
+		t.Fatalf("stat file: %v", err)
+	}
+	if mode := fi.Mode().Perm(); mode != 0o600 {
+		t.Errorf("cache file mode = %#o, want 0o600", mode)
+	}
+}
+
+// TestGet_RewritePreservesRestrictivePerms pins that the
+// LastAccessed-rewrite path in Get doesn't widen permissions back
+// to 0o644. WriteFile passes the mode arg only when the file is
+// being created; on existing files the prior mode is preserved by
+// Go's syscall — but the explicit 0o600 keeps the contract clear
+// for a reader and matches the create-time mode.
+func TestGet_RewritePreservesRestrictivePerms(t *testing.T) {
+	root := t.TempDir() + "/cache"
+	c := New(root, 4)
+	key := Key("payload")
+	if err := c.Put(key, Entry{Content: "secret"}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if _, ok := c.Get(key); !ok {
+		t.Fatal("Get reported miss for just-stored key")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("readdir: %v / len=%d", err, len(entries))
+	}
+	fi, err := os.Stat(filepath.Join(root, entries[0].Name()))
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if mode := fi.Mode().Perm(); mode != 0o600 {
+		t.Errorf("after Get rewrite, mode = %#o, want 0o600", mode)
+	}
+}
+
 func TestDefaultRoot_ReturnsHomeRootedPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
