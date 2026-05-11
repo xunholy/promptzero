@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-05-11
+
+**Ctrl+G hotkey UX fixes.** Two operator-visible bugs in the
+stream-abort hotkey shipped in v0.59. Both produced wrong
+behaviour without crashing — exactly the kind of regression
+that goes unnoticed until an operator spends time figuring out
+why their next streaming tool aborted out of nowhere.
+
+### Fixed
+
+- **Ctrl+G during reverse-i-search no longer leaks into the
+  stream-abort flag.** The `lineedit.cancelSearch` comment
+  promised `"Esc / Ctrl+C / Ctrl+G all route here"` but the
+  search-mode key switch in `repl.go` only handled Ctrl+C and
+  Ctrl+D. Pressing Ctrl+G to back out of a `(reverse-i-search)`
+  prompt fell through to the main switch, latched
+  `streamAbortRequested`, and the next streaming tool in the
+  session — possibly multiple turns later — would be aborted
+  mid-frame for no apparent reason. Now Ctrl+G in search mode
+  routes to `cancelSearch()` exactly as documented.
+- **Ctrl+G at idle no longer shows a misleading "stop
+  requested" hint.** When no turn was running, pressing Ctrl+G
+  still printed `(stop requested — Ctrl+C cancels the whole
+  turn instead)` even though there was nothing to stop. The
+  latch was eventually cleared by the `dispatchTurn`-start
+  reset, but the operator was lied to in the meantime. Now
+  Ctrl+G at idle prints `(nothing to stop — Ctrl+G aborts a
+  streaming tool mid-turn)` and skips the flag latch entirely.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure keystroke-routing fixes
+  in the REPL surface; no transport touched.
+
 ## [0.77.0] - 2026-05-11
 
 **Snapshot + quarantine + session export coverage.** More 0 %-
