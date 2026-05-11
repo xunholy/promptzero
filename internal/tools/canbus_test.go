@@ -6,6 +6,7 @@
 package tools
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -164,4 +165,72 @@ func TestCanbusInjectRejectsInjection(t *testing.T) {
 	if err == nil {
 		t.Error("inject: expected error for injected data_hex, got nil")
 	}
+}
+
+// TestCanbusInit_BitrateBounds pins the v0.174 fix on canbusInitHandler.
+// Two contract gaps closed at once:
+//
+//  1. Argument validation must run BEFORE the Flipper-connected check so
+//     the LLM sees a useful "bitrate out of range" message even when the
+//     device is disconnected. Pre-fix every bad-bitrate call surfaced as
+//     "Flipper not connected", masking the actual problem.
+//  2. An LLM could pass a wildly out-of-range bitrate (e.g. 9_999_999)
+//     and the handler forwarded it to RawCLI verbatim. The MCP2515
+//     ceiling is 1 Mbps; some firmware forks crash on absurd values and
+//     leave the bus wedged until a Flipper reboot.
+func TestCanbusInit_BitrateBounds(t *testing.T) {
+	spec, ok := Get("canbus_init")
+	if !ok {
+		t.Fatal("canbus_init not registered")
+	}
+
+	t.Run("above_mcp2515_ceiling", func(t *testing.T) {
+		_, err := spec.Handler(t.Context(), &Deps{Flipper: nil}, map[string]any{
+			"bitrate_kbps": float64(9_999_999),
+		})
+		if err == nil {
+			t.Fatal("expected error for absurd bitrate; got nil")
+		}
+		if !strings.Contains(err.Error(), "MCP2515") {
+			t.Errorf("err = %v; want MCP2515 ceiling mentioned", err)
+		}
+	})
+
+	t.Run("at_ceiling_passes_validation", func(t *testing.T) {
+		// 1000 kbps is exactly at the ceiling — must pass validation
+		// and fall through to the not-connected check.
+		_, err := spec.Handler(t.Context(), &Deps{Flipper: nil}, map[string]any{
+			"bitrate_kbps": float64(1000),
+		})
+		if err == nil {
+			t.Fatal("expected not-connected error; got nil")
+		}
+		if !strings.Contains(err.Error(), "not connected") {
+			t.Errorf("err = %v; want Flipper-not-connected (validation must pass at ceiling)", err)
+		}
+	})
+
+	t.Run("zero_rejected_with_bitrate_message", func(t *testing.T) {
+		_, err := spec.Handler(t.Context(), &Deps{Flipper: nil}, map[string]any{
+			"bitrate_kbps": float64(0),
+		})
+		if err == nil {
+			t.Fatal("expected error for zero bitrate; got nil")
+		}
+		if !strings.Contains(err.Error(), "bitrate_kbps") {
+			t.Errorf("err = %v; want bitrate_kbps mentioned (must run before not-connected check)", err)
+		}
+	})
+
+	t.Run("negative_rejected_with_bitrate_message", func(t *testing.T) {
+		_, err := spec.Handler(t.Context(), &Deps{Flipper: nil}, map[string]any{
+			"bitrate_kbps": float64(-1),
+		})
+		if err == nil {
+			t.Fatal("expected error for negative bitrate; got nil")
+		}
+		if !strings.Contains(err.Error(), "bitrate_kbps") {
+			t.Errorf("err = %v; want bitrate_kbps mentioned", err)
+		}
+	})
 }
