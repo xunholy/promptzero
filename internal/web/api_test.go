@@ -395,6 +395,52 @@ func TestCampaignValidate_RejectsMalformed(t *testing.T) {
 	}
 }
 
+// TestWithRESTTimeout_CarvesOutCampaignRun pins the v0.107 fix.
+// The 30-second REST timeout wrapper was truncating
+// /api/campaign/run at 30s even though the handler sets its own
+// 10-minute budget — the wrapper writes 503 to the client while
+// the handler keeps running. Now /api/campaign/run is in the
+// long-running carve-out and the handler's deadline wins.
+//
+// The test wraps a slow handler with withRESTTimeout(d=50ms) and
+// confirms that GET /other times out (503) while POST
+// /api/campaign/run reaches the handler and returns 200.
+func TestWithRESTTimeout_CarvesOutCampaignRun(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /other", func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("POST /api/campaign/run", func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	wrapped := withRESTTimeout(mux, 50*time.Millisecond)
+	ts := httptest.NewServer(wrapped)
+	t.Cleanup(ts.Close)
+
+	// /other → bounded by 50ms wrapper → 503.
+	resp1, err := ts.Client().Get(ts.URL + "/other")
+	if err != nil {
+		t.Fatalf("GET /other: %v", err)
+	}
+	resp1.Body.Close()
+	if resp1.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("GET /other status = %d, want 503 (wrapper should clamp at 50ms)", resp1.StatusCode)
+	}
+
+	// /api/campaign/run → carved out → handler's 200 reaches the client.
+	resp2, err := ts.Client().Post(ts.URL+"/api/campaign/run", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST /api/campaign/run: %v", err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("POST /api/campaign/run status = %d, want 200 (long-running carve-out should allow handler past 50ms)", resp2.StatusCode)
+	}
+}
+
 // TestPersonasSwitch_RejectsOversizedBody pins the v0.106
 // shared body cap. Every /api/* JSON-decode call now flows
 // through decodeJSONBody, which wraps r.Body in MaxBytesReader

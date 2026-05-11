@@ -1306,14 +1306,34 @@ func hostOf(addr string) string {
 // connection. A 30s default is generous for genuine REST work
 // (uploads, validators) and tight enough that slow-loris can't pin a
 // worker indefinitely.
+//
+// Carve-out: `/api/campaign/run` has its own 10-minute budget (set
+// by the handler) because a multi-step campaign can legitimately run
+// for minutes. Without this exemption the v0.104 endpoint would get
+// truncated with a 503 at 30s — the handler kept running internally
+// but the operator saw a timeout. Long-running endpoints that don't
+// fit the default cap belong in isLongRunningRequest.
 func withRESTTimeout(next http.Handler, d time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isWebSocketUpgrade(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if isLongRunningRequest(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		http.TimeoutHandler(next, d, "request timed out").ServeHTTP(w, r)
 	})
+}
+
+// isLongRunningRequest reports whether the request bypasses the
+// default 30-second REST cap. Endpoints in this list MUST enforce
+// their own per-handler timeout — the bypass is not "no timeout",
+// it's "let the handler's own deadline win". Today the only such
+// endpoint is /api/campaign/run (handler sets a 10-minute budget).
+func isLongRunningRequest(r *http.Request) bool {
+	return r.Method == http.MethodPost && r.URL.Path == "/api/campaign/run"
 }
 
 func isWebSocketUpgrade(r *http.Request) bool {
