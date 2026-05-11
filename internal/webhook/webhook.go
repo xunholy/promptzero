@@ -267,7 +267,15 @@ func New(subs []Subscription) Dispatcher {
 
 // Fire enqueues an event for delivery. Payload is marshaled to JSON by the
 // worker; pass any structure with a natural JSON shape.
+//
+// Safe to call concurrently with Close. closeMu serialises the closed-check
+// and the channel send so a late Fire racing past `<-d.closed` cannot
+// observe an open `d.queue` and then panic on a `send on closed channel`
+// once Close completes. Each critical section is bounded — the inner select
+// has a `default` so a saturated queue drops rather than blocks.
 func (d *dispatcher) Fire(ev Event, payload any) {
+	d.closeMu.Lock()
+	defer d.closeMu.Unlock()
 	select {
 	case <-d.closed:
 		return
@@ -284,7 +292,12 @@ func (d *dispatcher) Fire(ev Event, payload any) {
 // whose name matches. The Events allowlist on that subscription is
 // bypassed — the rule's intent IS the filter. Subscriptions without
 // a matching name are silent (the call is fire-and-forget).
+//
+// Same closeMu discipline as Fire — protects against the
+// `send on closed channel` panic when Close runs concurrently.
 func (d *dispatcher) FireByName(name string, payload any) {
+	d.closeMu.Lock()
+	defer d.closeMu.Unlock()
 	select {
 	case <-d.closed:
 		return
