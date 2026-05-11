@@ -192,7 +192,18 @@ func summariseCritique(s string) string {
 			continue
 		}
 		if len(line) > 200 {
-			line = line[:200] + "…"
+			// UTF-8-aware: walk back from a continuation byte
+			// (10xxxxxx) so an emoji / accented char straddling
+			// byte 200 isn't split into a half-rune that downstream
+			// JSON marshaling renders as U+FFFD. Mirrors the same
+			// fix in validator/badusb.go (v0.120), rag.Snippet
+			// (v0.123), generate.truncate (v0.133), and the audit
+			// row truncate.
+			cut := 200
+			for cut > 0 && line[cut]&0xC0 == 0x80 {
+				cut--
+			}
+			line = line[:cut] + "…"
 		}
 		return line
 	}

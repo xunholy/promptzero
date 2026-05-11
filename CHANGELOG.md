@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.155.0] - 2026-05-12
+
+**`consensus.summariseCritique` walks back from UTF-8 continuation
+bytes.** The function caps the first non-empty line at 200 bytes
+and appends `…`. The raw-byte cut could land inside a multi-byte
+rune (emoji, accented char, smart quote) in the LLM-produced
+critique text — the resulting `<consensus-disagreement>` block
+carried half-runes that downstream JSON marshaling rendered as
+U+FFFD. This was a missed mirror of the v0.120 / v0.123 / v0.133
+truncate-fix arc applied across validator, rag, generate.
+
+### Fixed
+
+- Walk back from a UTF-8 continuation byte (`b&0xC0 == 0x80`) at
+  the cut point so the cap lands on the previous rune-start
+  boundary. Identical pattern used elsewhere in the codebase.
+- Regression test (`TestSummariseCritique_UTF8BoundarySafe`)
+  stages a 198-byte ASCII prefix followed by a 4-byte emoji, then
+  asserts the truncated output round-trips through
+  `utf8.ValidString`. Pre-fix the cut produced
+  `xxx...\xf0\x9f…` and failed the validity check.
+
 ## [0.154.0] - 2026-05-12
 
 **`subghz.Parse` handles `RAW_Data:` lines longer than 64 KiB.**

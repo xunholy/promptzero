@@ -3,6 +3,7 @@ package consensus
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestVote_EmptyInput(t *testing.T) {
@@ -192,6 +193,27 @@ func TestSummariseCritique_FirstNonEmptyLineCapped(t *testing.T) {
 	got := summariseCritique(long)
 	if len(got) <= 200 || !strings.HasSuffix(got, "…") {
 		t.Errorf("long line not capped: len=%d, suffix=%q", len(got), got[max(0, len(got)-3):])
+	}
+}
+
+// TestSummariseCritique_UTF8BoundarySafe pins the v0.155 fix:
+// the 200-byte cap must walk back from a UTF-8 continuation byte so
+// a multi-byte rune straddling the boundary isn't sliced in half.
+// Pre-fix the cut produced invalid UTF-8 (the partial bytes of the
+// emoji); downstream JSON-marshaling rendered them as U+FFFD inside
+// the <consensus-disagreement> block. Mirrors the v0.120 / v0.123 /
+// v0.133 truncate-fix arc applied here.
+func TestSummariseCritique_UTF8BoundarySafe(t *testing.T) {
+	// 198 ASCII bytes + a 4-byte emoji (😀 = F0 9F 98 80). The
+	// emoji starts at byte index 198; byte 200 is its second
+	// continuation byte. The naive cut splits the rune.
+	line := strings.Repeat("x", 198) + "😀more"
+	got := summariseCritique(line)
+	if !utf8.ValidString(got) {
+		t.Errorf("summariseCritique returned invalid UTF-8 (split a multi-byte rune at the 200-byte cap)\nout = %q", got)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("expected ellipsis suffix on truncated output: %q", got)
 	}
 }
 
