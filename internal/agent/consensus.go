@@ -100,6 +100,20 @@ func (a *Agent) prospectiveWithModel(ctx context.Context, toolName string, input
 		},
 	})
 	if err != nil {
+		// The Persona.Consensus docstring promises "Names the agent
+		// doesn't recognise are skipped with a warn log so a typo
+		// doesn't silently disable the gate." Pre-fix the API error
+		// was dropped silently and the operator never learned that
+		// `consensus: [calude-sonnet-4-6]` (typo) was effectively
+		// abstaining on every critical-risk call. Logging the model
+		// + error preserves the safe-abstention semantics while
+		// surfacing the cause. Single-model prospective() makes no
+		// such promise and stays quiet by design.
+		obs.FromCtx(ctx).Warn("ensemble_voter_api_error",
+			"tool", toolName,
+			"model", model,
+			"err", err.Error(),
+		)
 		return ""
 	}
 	var raw string
