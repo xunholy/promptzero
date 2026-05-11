@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-05-11
+
+**`port_scan_tcp` and `http_enum_common` clamp concurrency to >= 1.**
+Both handlers capped `concurrency > N` but had no lower-bound check.
+An LLM tool call with `{"concurrency": -1}` flowed through
+`intOr` (which decodes JSON-int → float64 → -1) into
+`make(chan int, -1)` / `make(chan string, -1)`, which panics with
+`makechan: size out of range`. The agent's dispatch-level panic
+recovery wrapped the panic into a generic "tool panicked"
+tool_error rather than a clean rejection — so the LLM saw a
+confusing failure plus a full stack trace in the logs instead of
+a graceful clamp. Mirrors the lower-bound pattern already in
+`hash_crack_dictionary`.
+
+### Fixed
+
+- **`port_scan_tcp`**: `concurrency < 1` now clamps to 1 before
+  the existing `> 256` cap is applied.
+- **`http_enum_common`**: same clamp before the `> 100` cap.
+- `TestPortScan_NegativeConcurrency_Clamped` and
+  `TestHTTPEnum_NegativeConcurrency_Clamped` pass `float64(-1)`
+  (mirroring what `json.Unmarshal` produces from
+  `{"concurrency": -1}` — a Go-int literal would silently fall
+  through `intOr`'s type switch to the fallback) and assert no
+  panic propagates. Pre-fix verification: stashing the
+  security.go change makes both tests fail with the recover
+  message `makechan: size out of range`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.112.0] - 2026-05-11
 
 **`audit.Log.Query` clamps non-positive limits.** SQLite treats
