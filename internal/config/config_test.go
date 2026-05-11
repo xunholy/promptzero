@@ -188,6 +188,39 @@ func TestLoad_FallsBackToHomeDir(t *testing.T) {
 	}
 }
 
+// TestLoad_ParseErrorReferencesFallbackPath pins that when the
+// requested config is absent and the ~/.promptzero/config.yaml
+// fallback exists but has malformed YAML, the parse error names the
+// fallback path (the file actually read) — not the requested path
+// (which was never read). Pre-v0.140 the error attributed the failure
+// to the missing requested path, sending the operator to edit a file
+// that didn't exist.
+func TestLoad_ParseErrorReferencesFallbackPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	pzDir := filepath.Join(home, ".promptzero")
+	if err := os.MkdirAll(pzDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fallback := filepath.Join(pzDir, "config.yaml")
+	if err := os.WriteFile(fallback, []byte("model: [unclosed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	requested := filepath.Join(t.TempDir(), "missing.yaml")
+	_, err := Load(requested)
+	if err == nil {
+		t.Fatal("expected error for malformed fallback YAML")
+	}
+	if strings.Contains(err.Error(), requested) {
+		t.Errorf("error references requested path %q; it should reference the fallback %q\nerr=%v",
+			requested, fallback, err)
+	}
+	if !strings.Contains(err.Error(), fallback) {
+		t.Errorf("error should reference fallback path %q\nerr=%v", fallback, err)
+	}
+}
+
 func TestLoad_EnvVarsOverrideConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

@@ -391,6 +391,11 @@ func Load(path string) (*Config, error) {
 	}
 
 	data, err := os.ReadFile(path)
+	// Track which path was actually read so a parse failure later names
+	// the file the operator must edit. Without this the fallback branch
+	// below would leak the requested (missing!) path into the parse-
+	// error message and send the operator chasing a phantom file.
+	loadedPath := path
 	if os.IsNotExist(err) {
 		// Fall back to ~/.promptzero/config.yaml when the requested path
 		// isn't present. This is the standard per-user location so users
@@ -399,6 +404,7 @@ func Load(path string) (*Config, error) {
 			fallback := filepath.Join(home, ".promptzero", "config.yaml")
 			if fdata, ferr := os.ReadFile(fallback); ferr == nil {
 				data, err = fdata, nil
+				loadedPath = fallback
 			}
 		}
 	}
@@ -408,7 +414,7 @@ func Load(path string) (*Config, error) {
 
 	if err == nil && len(data) > 0 {
 		if err := yaml.Unmarshal(data, cfg); err != nil {
-			return nil, fmt.Errorf("parsing config from %q: %w", path, err)
+			return nil, fmt.Errorf("parsing config from %q: %w", loadedPath, err)
 		}
 	}
 
