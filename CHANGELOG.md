@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-05-11
+
+**`/api/sessions/{id}/resume` now distinguishes 404 from 500.**
+Last of the session-endpoint status-code audit. Pre-v0.110
+ResumeSession's errors were all mapped to 404 — operators
+couldn't tell a typo'd id from a corrupted session file on
+disk. The corruption case (parse failure, I/O during Load)
+deserves 500 so the cockpit can render the right hint.
+
+### Fixed
+
+- **`POST /api/sessions/{id}/resume`** classifies the
+  ResumeSession error via `errors.Is(err, fs.ErrNotExist)`:
+  NotExist → 404, anything else → 500. Same pattern v0.108
+  and v0.109 applied to webhooks and the other session
+  endpoints.
+  - `TestSessionResume_404OnMissing` pins the typo case.
+  - `TestSessionResume_500OnNonNotExistError` pins the
+    corruption/I/O case. Pre-fix this would return 404.
+  - Pre-existing `TestSessionResume_PropagatesAgentError`
+    was pinning the BUGGY blanket-404 behaviour — updated to
+    assert 500 for the non-NotExist case it tests.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.109.0] - 2026-05-11
 
 **Session endpoints distinguish "not found" from "I/O error".**
