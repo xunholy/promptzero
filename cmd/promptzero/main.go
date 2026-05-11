@@ -242,6 +242,7 @@ func run() error {
 			Flipper:        flip,
 			FlipperOnline:  flip != nil,
 			MarauderOnline: hasMarauder,
+			Webhooks:       wh,
 			WebShare:       f.webShare,
 		})
 	}

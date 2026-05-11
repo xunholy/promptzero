@@ -1470,6 +1470,7 @@ type WebDeps struct {
 	Flipper        *flipper.Flipper
 	FlipperOnline  bool
 	MarauderOnline bool
+	Webhooks       webhook.Dispatcher
 	// WebShare opts into the v0.22.0 copy-pasteable URL print. Refuses
 	// to print when no auth token is set (exposing an unauthenticated
 	// endpoint by URL share is the wrong default).
@@ -1521,6 +1522,9 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 	}
 	if deps.RulesEngine != nil {
 		srv.SetRulesEngine(deps.RulesEngine)
+	}
+	if deps.Webhooks != nil {
+		srv.SetWebhooks(deps.Webhooks)
 	}
 	if deps.Flipper != nil {
 		srv.SetFlipper(deps.Flipper)

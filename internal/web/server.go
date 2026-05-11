@@ -62,6 +62,7 @@ import (
 	"github.com/xunholy/promptzero/internal/version"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
+	"github.com/xunholy/promptzero/internal/webhook"
 )
 
 //go:embed static
@@ -158,6 +159,7 @@ type Server struct {
 	rulesEngine *rules.Engine
 	flipper     *flipper.Flipper
 	sessions    sessionDriver
+	webhooks    webhook.Dispatcher
 	// flipperRPC, when non-nil, is used for RPC screen-stream acquisition.
 	// Set automatically by SetFlipper when the concrete type satisfies
 	// flipperRPCProvider; overridable in tests via SetFlipperRPC.
@@ -366,6 +368,12 @@ func (s *Server) SetCostTracker(t *cost.Tracker) { s.costs = t }
 // SetRulesEngine wires the reactive-rules engine into the server so
 // /api/rules can list, pause, resume, and test rule fires.
 func (s *Server) SetRulesEngine(e *rules.Engine) { s.rulesEngine = e }
+
+// SetWebhooks wires the outbound webhook dispatcher so /api/webhooks
+// can surface configured subscriptions and recent delivery results.
+// Pass nil to disable — the endpoint then returns 503 and the
+// cockpit hides the webhooks panel.
+func (s *Server) SetWebhooks(wh webhook.Dispatcher) { s.webhooks = wh }
 
 // SetSessionDriver wires the persisted-session surface so /api/sessions
 // can list, resume, rename, and delete entries from the on-disk store.

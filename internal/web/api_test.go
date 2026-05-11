@@ -22,6 +22,7 @@ import (
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/watch"
+	"github.com/xunholy/promptzero/internal/webhook"
 )
 
 // apiServer is startTestServer's equivalent for the HTTP JSON routes —
@@ -332,6 +333,106 @@ func TestCostSnapshot(t *testing.T) {
 	// distinguishes "disabled" from "0/0" by absence).
 	if _, ok := body["budget"]; ok {
 		t.Errorf("budget block should be omitted when no cap is set")
+	}
+}
+
+// TestToolsList_ReturnsCatalog pins the GET /api/tools surface:
+// every registered tool with name + description, count + total
+// scalars, and the has_marauder boolean. Mirrors CLI /tools.
+func TestToolsList_ReturnsCatalog(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	code, body := getJSON(t, ts, "/api/tools")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	if total, _ := body["total"].(float64); total < 50 {
+		t.Errorf("total = %v, want >= 50 (catalogue should be substantial)", total)
+	}
+	tools, _ := body["tools"].([]any)
+	if len(tools) == 0 {
+		t.Fatalf("tools array empty")
+	}
+	// Spot-check: every entry has name + description fields.
+	first, _ := tools[0].(map[string]any)
+	if _, ok := first["name"].(string); !ok {
+		t.Errorf("first entry missing name: %v", first)
+	}
+}
+
+// TestToolsList_FilterNarrows pins the ?filter=... behaviour. The
+// CLI's /tools <filter> uses the same substring-match-on-name rule.
+func TestToolsList_FilterNarrows(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	codeAll, bodyAll := getJSON(t, ts, "/api/tools")
+	if codeAll != http.StatusOK {
+		t.Fatalf("unfiltered code = %d", codeAll)
+	}
+	allTotal := int(bodyAll["total"].(float64))
+
+	code, body := getJSON(t, ts, "/api/tools?filter=flipper")
+	if code != http.StatusOK {
+		t.Fatalf("filtered code = %d", code)
+	}
+	count := int(body["count"].(float64))
+	if count >= allTotal {
+		t.Errorf("filter=flipper yielded %d, total catalogue is %d — filter didn't narrow", count, allTotal)
+	}
+	if count == 0 {
+		t.Errorf("filter=flipper returned 0 entries; catalogue should have many flipper_* tools")
+	}
+}
+
+// TestWebhooksList_503WhenUnset returns 503 when no dispatcher is
+// wired, mirroring the pattern other panels use.
+func TestWebhooksList_503WhenUnset(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	code, _ := getJSON(t, ts, "/api/webhooks")
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("code = %d, want 503", code)
+	}
+}
+
+// TestWebhooksList_ReturnsSubscriptions pins the happy path. Two
+// subscriptions configured → list returns both, with secret hidden
+// (only the `signed` boolean exposed).
+func TestWebhooksList_ReturnsSubscriptions(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	wh := webhook.New([]webhook.Subscription{
+		{Name: "ops", URL: "https://ops.example/hook"},
+		{Name: "secure", URL: "https://sec.example/hook", Secret: "shhh"},
+	})
+	t.Cleanup(func() { _ = wh.Close(context.Background()) })
+	s.SetWebhooks(wh)
+
+	code, body := getJSON(t, ts, "/api/webhooks")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	subs, _ := body["subscriptions"].([]any)
+	if len(subs) != 2 {
+		t.Fatalf("subscriptions len = %d, want 2", len(subs))
+	}
+	// Find the signed one and verify the secret is NOT in the body.
+	for _, s := range subs {
+		row, _ := s.(map[string]any)
+		if row["name"] == "secure" {
+			if signed, _ := row["signed"].(bool); !signed {
+				t.Errorf("signed=false for subscription with non-empty Secret")
+			}
+			if _, leaked := row["secret"]; leaked {
+				t.Errorf("secret leaked into response body: %v", row)
+			}
+		}
+	}
+}
+
+// TestReconnect_503WhenFlipperMissing returns 503 when no Flipper
+// is attached — the cockpit shows the reconnect button greyed out.
+func TestReconnect_503WhenFlipperMissing(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	code, _ := postJSON(t, ts, "/api/reconnect", nil)
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("code = %d, want 503", code)
 	}
 }
 
