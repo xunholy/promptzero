@@ -299,15 +299,25 @@ func (r *Runner) Run(ctx context.Context, c *Campaign) RunResult {
 		}
 
 		stepCtx := ctx
+		var cancel context.CancelFunc
 		if step.Timeout != "" {
 			if d, err := time.ParseDuration(step.Timeout); err == nil && d > 0 {
-				var cancel context.CancelFunc
 				stepCtx, cancel = context.WithTimeout(ctx, d)
-				defer cancel()
 			}
 		}
 
 		out, err := r.exec.Run(stepCtx, step.Tool, step.Params)
+		// Release the per-step timer immediately rather than waiting
+		// for function exit — `defer cancel()` inside a for-loop is a
+		// known anti-pattern: every iteration's cancel accumulates on
+		// the defer stack and the timer context stays alive (held by
+		// the closure in defer) until Run returns. Long campaigns with
+		// many timed steps would build up unbounded pending cancels.
+		// Matches the pattern in rewindSteps which also runs context-
+		// per-iteration writes.
+		if cancel != nil {
+			cancel()
+		}
 		stepRes.Output = out
 		stepRes.Err = err
 		stepRes.Duration = time.Since(stepRes.StartedAt)
