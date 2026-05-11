@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.141.0] - 2026-05-12
+
+**`containerbridge.Available()` cache is concurrent-safe.** The
+docker-binary lookup was cached behind a plain closure that read and
+wrote two unsynchronised variables (`checked`, `ok`). Every
+container-using tool (`firmware_extract`, `urh`, `hardnested`) calls
+`Available()` from its dispatch handler, and the agent runs
+`parallel_tool_use` — so a fresh process could call `Available()`
+from several goroutines simultaneously before the first `LookPath`
+returned. The race detector flagged a memory race; result was
+typically still correct, but undefined under the Go memory model.
+
+### Fixed
+
+- Guard the cached lookup with `sync.Once`. First caller does the
+  `exec.LookPath("docker")`; subsequent callers read the cached
+  `ok` after `Once.Do` returns.
+- Regression test (`TestAvailable_ConcurrentSafe`) fires 32
+  concurrent `Available()` calls and is intended for the
+  `go test -race` lane. Pre-fix produced a "race detected" failure
+  in well under 10 iterations.
+
 ## [0.140.0] - 2026-05-12
 
 **`config.Load` parse-error names the file actually read.** When the
