@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-05-11
+
+**Mode parity audit, phase 2f: web gets `/api/report`.** Engagement
+report generation was the next priority web parity gap.
+Pre-v0.102 web operators had no way to render the markdown or
+JSON engagement report mid-session — they had to drop to a
+parallel REPL to run `/report`. CLI `/report` has been around
+since v0.21.
+
+### Added
+
+- **`GET /api/report[?format=md|json][&session=<id>]`** — renders
+  the engagement report for a session. Defaults to the audit
+  log's current session and markdown format. Returns the raw
+  rendered body with the appropriate Content-Type
+  (`text/markdown; charset=utf-8` or `application/json`) so the
+  cockpit can render in-place or trigger save-as. Mirrors CLI
+  `/report [session] [json]` minus the file-save half (web
+  clients save the response body themselves).
+- 503 when audit log isn't wired (the report needs entries to
+  summarise). 400 when `format` is anything other than `md` or
+  `json`. 400 when no session id is available (neither query
+  param nor audit log's current session).
+  - Tests: `TestReport_503WhenAuditMissing`,
+    `TestReport_DefaultMarkdownBody` (default format + content
+    type + markdown title heading present),
+    `TestReport_JSONFormat` (correct content type + decodable
+    JSON with `session_id`), `TestReport_RejectsBadFormat`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.101.0] - 2026-05-11
 
 **Mode parity audit, phase 2e: web gets `/api/tools`, `/api/webhooks`,
