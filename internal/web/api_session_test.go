@@ -1,10 +1,12 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -363,6 +365,82 @@ func TestSessionDelete_RotatesActive(t *testing.T) {
 	if driver.SessionID() != "new-session" {
 		t.Errorf("active after delete = %q, want new-session", driver.SessionID())
 	}
+}
+
+// TestSessionDelete_404OnMissing pins the v0.109 status-code fix.
+// Pre-v0.109 every DeleteSession error mapped to 500 — the cockpit
+// couldn't distinguish a typo'd id from a real disk failure.
+// Now "file does not exist" maps to 404.
+func TestSessionDelete_404OnMissing(t *testing.T) {
+	fa := &fakeAgent{}
+	srv, ts := apiServer(t, fa)
+	driver := newFakeSessionDriver(t)
+	srv.SetSessionDriver(driver)
+
+	req, _ := http.NewRequestWithContext(
+		context.Background(), http.MethodDelete, ts.URL+"/api/sessions/does-not-exist", nil,
+	)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("DELETE: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 (typo'd id should be 404 not 500)", resp.StatusCode)
+	}
+}
+
+// TestSessionPatch_500OnIOError pins the v0.109 tightening on the
+// PATCH side. Pre-v0.109 every RenameSession error mapped to 404;
+// real I/O errors now map to 500. We simulate by replacing the
+// store directory with a file so Save fails with a non-NotExist
+// error (any directory-creation/access error).
+func TestSessionPatch_500OnIOError(t *testing.T) {
+	fa := &fakeAgent{}
+	srv, ts := apiServer(t, fa)
+	driver := newFakeSessionDriver(t)
+	driver.seed(t)
+	srv.SetSessionDriver(driver)
+
+	// Inject a custom driver that returns a non-NotExist error to
+	// exercise the 500 branch. We can't easily make session.Store
+	// fail at the I/O layer without modifying its root, so we
+	// override RenameSession on a wrapper driver.
+	srv.SetSessionDriver(&errorDriver{base: driver, err: errors.New("disk failed")})
+
+	resp := httpPatch(t, ts, "/api/sessions/beta", map[string]any{"title": "x"})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 (non-NotExist error)", resp.StatusCode)
+	}
+}
+
+// errorDriver wraps a sessionDriver and forces RenameSession to
+// return a custom error — used by TestSessionPatch_500OnIOError
+// to exercise the non-NotExist path of the v0.109 fix.
+type errorDriver struct {
+	base sessionDriver
+	err  error
+}
+
+func (e *errorDriver) SessionID() string                      { return e.base.SessionID() }
+func (e *errorDriver) NewSession() string                     { return e.base.NewSession() }
+func (e *errorDriver) ListSessions() ([]session.State, error) { return e.base.ListSessions() }
+func (e *errorDriver) ResumeSession(id string) error          { return e.base.ResumeSession(id) }
+func (e *errorDriver) RenameSession(_, _ string) error        { return e.err }
+func (e *errorDriver) DeleteSession(_ string) error           { return e.err }
+
+// httpPatch is a small PATCH helper for the api_session tests.
+func httpPatch(t *testing.T, ts *httptest.Server, path string, payload any) *http.Response {
+	t.Helper()
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPatch, ts.URL+path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("PATCH %s: %v", path, err)
+	}
+	return resp
 }
 
 func TestSessionNew_CallsDriver(t *testing.T) {
