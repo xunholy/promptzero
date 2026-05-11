@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-05-11
+
+**`campaign.evalWhen` returns true for unparseable `length` clauses.**
+The docstring promised "Unknown / unparseable clauses conservatively
+return true so a typo never silently blocks a step" but the
+implementation enforced this for empty clauses only. Any length
+comparison beyond the two documented forms (`length > 0` and
+`length == 0`) fell through to the bare-substring branch — which
+would almost never hit on real tool output and would silently skip
+the step. Exactly the failure mode the conservative-return clause
+was supposed to prevent.
+
+### Fixed
+
+- **`evalWhen` detects `length`-prefixed clauses that don't match
+  the two supported forms** and returns true so the step proceeds.
+  Typical operator failure mode: writing `length > 5` expecting
+  "at least 6 bytes of output". Pre-fix the runner searched for
+  the literal string "length > 5" in the tool output, missed, and
+  silently skipped the step. Post-fix the step proceeds with no
+  signal lost.
+- Three regression cases pin the bug: `length > 5`, `length != 0`,
+  and `LENGTH > 0` (case-insensitive match preserved). Pre-fix
+  verification: stashing the campaign.go change makes the first
+  two fail with `evalWhen(…) = false, want true`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.118.0] - 2026-05-11
 
 **`BuildHandoff` strips `<ui-context>` and `<handoff-resume>` from
