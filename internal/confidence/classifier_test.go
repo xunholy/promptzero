@@ -72,6 +72,21 @@ func TestShouldAbstainAt(t *testing.T) {
 		{"explicit threshold high", 0.7, 0.8, true},
 		{"explicit threshold low", 0.7, 0.5, false},
 		{"negative threshold normalises to default", 0.6, -1, false},
+
+		// Pre-fix: threshold > 1 forced abstention on every score
+		// (since clampScore caps scores at 1.0 and the check was
+		// strict `score < threshold`). The Persona.Confidence
+		// docstring promises clamping prevents "always-abstain
+		// territory"; without the >1 clamp a misconfigured persona
+		// with confidence: { router: 2.0 } would silently disable
+		// the dynamic-catalog feature. Score=1.0 + threshold=1.5
+		// is the cleanest distinguisher: pre-fix says abstain,
+		// post-fix clamps to 1.0 so `1.0 < 1.0` is false.
+		{"over-1 threshold clamped to 1 — perfect score does not abstain", 1.0, 1.5, false},
+		// And a sanity case: with threshold clamped to 1.0, any
+		// score strictly below 1.0 still abstains — operator
+		// intent of "strict" is preserved up to the clamp.
+		{"over-1 threshold clamped to 1 — sub-1 score still abstains", 0.99, 1.5, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

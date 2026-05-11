@@ -72,9 +72,22 @@ func ParseClassifierResponse(text string) (Score, bool) {
 // Used by the agent at vision and router call sites to decide whether
 // to act on the classifier output or route to a clarifying user
 // question (vision) / full-catalog fallback (router).
+//
+// Out-of-range thresholds are clamped: <=0 falls back to the default
+// (a misconfigured persona shouldn't disable the gate), and >1 clamps
+// to 1.0. The >1 clamp enforces the Persona.Confidence docstring's
+// "can't push the agent into always-abstain territory" promise —
+// without it a persona with `confidence: { router: 2.0 }` would make
+// every score (which clampScore caps at 1.0) strictly less than the
+// threshold and force abstention on every classifier call, defeating
+// the dynamic-catalog / vision-abstention features the operator
+// presumably wanted to tune more aggressively.
 func ShouldAbstainAt(score Score, threshold Score) bool {
 	if threshold <= 0 {
 		threshold = DefaultClassifierThreshold
+	}
+	if threshold > 1 {
+		threshold = 1
 	}
 	return score < threshold
 }
