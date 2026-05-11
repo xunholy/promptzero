@@ -38,11 +38,17 @@ type flipperRPCProvider interface {
 func (s *Server) handleScreenAcquire(c *sessionConn) {
 	s.screenMu.Lock()
 	if s.screenHolder != nil {
+		// Snapshot the holder's id inside the lock so a concurrent
+		// releaseScreen that nils screenHolder between our Unlock and
+		// the field read cannot nil-deref. Pre-v0.143 the read of
+		// s.screenHolder.id happened AFTER Unlock, and a parallel-
+		// acquire test reliably tripped a SIGSEGV.
+		holderID := s.screenHolder.id
 		s.screenMu.Unlock()
 		s.sendTo(c, map[string]any{
 			"type":              "screen_state",
 			"active":            true,
-			"holder_session_id": s.screenHolder.id,
+			"holder_session_id": holderID,
 			"reason":            "taken",
 		})
 		return
@@ -66,10 +72,17 @@ func (s *Server) handleScreenAcquire(c *sessionConn) {
 	rpcClient, release, err := s.flipperRPC.EnterRPC(streamCtx)
 	if err != nil {
 		cancel()
+		// Clear holder and mirrorActive atomically under screenMu so a
+		// racing handleScreenAcquire that takes the lock between our
+		// Unlock and the prior Store(false) cannot end up with
+		// screenHolder set while we stomp mirrorActive back to false.
+		// Both flags are read by different paths (screenMu-guarded
+		// holder checks vs. fast-path mirrorActive.Load() in
+		// refuseIfMirrorActive), so they must transition together.
 		s.screenMu.Lock()
 		s.screenHolder = nil
-		s.screenMu.Unlock()
 		s.mirrorActive.Store(false)
+		s.screenMu.Unlock()
 		s.sendTo(c, map[string]any{
 			"type":    "screen_error",
 			"code":    "rpc_open_failed",
@@ -208,12 +221,22 @@ func (s *Server) releaseScreen(reason string) {
 	s.screenCancel = nil
 	s.screenRelease = nil
 	s.screenActiveRPC = nil
+	// Clear the fast-path guard inside screenMu so it transitions
+	// atomically with screenHolder. The previous form stored false
+	// AFTER unlocking, which let a racing handleScreenAcquire claim
+	// the holder between our Unlock and Store — its Store(true) would
+	// then be stomped by our trailing Store(false), leaving
+	// screenHolder!=nil but mirrorActive==false. HTTP handlers using
+	// refuseIfMirrorActive would then admit fs/input/device requests
+	// while the screen mirror was actively running.
+	//
+	// The "fast-path guard before release closure" intent the prior
+	// comment captured is preserved — we still clear mirrorActive
+	// before invoking the (potentially slow) release() below. We just
+	// do it under the same lock as the holder reset.
+	s.mirrorActive.Store(false)
 	s.screenMu.Unlock()
 
-	// Clear the fast-path guard before running the release closure so HTTP
-	// handlers don't see a transient false-409 during the post-RPC handshake
-	// recovery. CLI ops still block on f.mu until release() unlocks it.
-	s.mirrorActive.Store(false)
 	if cancel != nil {
 		cancel()
 	}

@@ -575,3 +575,62 @@ func TestDebugSnapshotIncludesMirrorActive(t *testing.T) {
 		t.Errorf("state.mirror_active = %v, want true", val)
 	}
 }
+
+// TestScreen_MirrorActiveStaysConsistent_ConcurrentAcquire pins the
+// v0.143 fix: mirrorActive and screenHolder transition together
+// under screenMu. Pre-fix, handleScreenAcquire's EnterRPC-failure
+// recovery path did:
+//
+//	s.screenMu.Lock()
+//	s.screenHolder = nil
+//	s.screenMu.Unlock()
+//	s.mirrorActive.Store(false)
+//
+// — so a racing handleScreenAcquire taking the lock between Unlock
+// and Store(false) could land its own Store(true), only to be stomped
+// when the first goroutine's trailing Store(false) ran. The end
+// state had screenHolder != nil but mirrorActive == false; HTTP
+// handlers using refuseIfMirrorActive would then admit fs/input/
+// device requests while a screen mirror was actively held.
+//
+// The fix moves both Store(false) calls inside screenMu. This test
+// fires 64 parallel handleScreenAcquire calls with an EnterRPC
+// provider that always fails — each goroutine traces the recovery
+// path. After all settle, mirrorActive must match screenHolder!=nil.
+func TestScreen_MirrorActiveStaysConsistent_ConcurrentAcquire(t *testing.T) {
+	rpc := &fakeRPCProvider{enterErr: errors.New("forced failure for invariant test")}
+	s, _ := screenServer(t, rpc)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Each fake conn needs a buffer large enough that
+			// sendTo / broadcast never block this goroutine; the
+			// frames are never consumed in this test.
+			c := &sessionConn{
+				id:     "race-conn",
+				out:    make(chan []byte, 8),
+				outBin: make(chan []byte, 8),
+			}
+			s.handleScreenAcquire(c)
+		}()
+	}
+	wg.Wait()
+
+	s.screenMu.Lock()
+	holder := s.screenHolder
+	s.screenMu.Unlock()
+	active := s.mirrorActive.Load()
+
+	// All 64 acquires hit the EnterRPC failure path, so holder must be
+	// nil and mirrorActive must be false. The invariant violation
+	// pre-fix was holder=nil + active=true.
+	if holder != nil {
+		t.Errorf("post-state: screenHolder=%+v, want nil (every EnterRPC failed)", holder)
+	}
+	if active {
+		t.Errorf("post-state: mirrorActive=true with holder=nil — fast-path guard desynced from holder")
+	}
+}
