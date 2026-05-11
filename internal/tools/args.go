@@ -18,13 +18,25 @@ func str(p map[string]any, key string) string {
 	return ""
 }
 
-// intOr extracts an integer from p[key]. Handles float64 (JSON default) and
-// string representations. Returns fallback when the key is absent or
-// unparseable.
+// intOr extracts an integer from p[key]. Handles every numeric and
+// string representation the value might arrive as: float64 (the
+// json.Unmarshal default for numbers — primary LLM tool-call path),
+// float32, int, int32, int64 (Go-native callers and tests that build
+// the param map directly without JSON round-trip), plus string-encoded
+// decimals. Returns fallback when the key is absent or the value can't
+// be coerced — matches the docstring's "absent or unparseable" promise.
 func intOr(p map[string]any, key string, fallback int) int {
 	if v, ok := p[key]; ok {
 		switch n := v.(type) {
 		case float64:
+			return int(n)
+		case float32:
+			return int(n)
+		case int:
+			return n
+		case int32:
+			return int(n)
+		case int64:
 			return int(n)
 		case string:
 			if i, err := strconv.Atoi(n); err == nil {
@@ -35,15 +47,26 @@ func intOr(p map[string]any, key string, fallback int) int {
 	return fallback
 }
 
-// floatOr extracts a float64 from p[key]. Returns fallback when the key is
-// absent or the value is not a float64.
+// floatOr extracts a float64 from p[key]. Mirrors intOr's accepted set:
+// float64 (JSON default) plus int / int32 / int64 / float32 (Go-native
+// callers building the param map directly). Returns fallback when the
+// key is absent or the value can't be coerced.
 // Wave 2+ handlers (subghz_receive duty-cycle, ir_transmit_raw) call this.
 //
 //nolint:unused
 func floatOr(p map[string]any, key string, fallback float64) float64 {
 	if v, ok := p[key]; ok {
-		if f, ok := v.(float64); ok {
-			return f
+		switch n := v.(type) {
+		case float64:
+			return n
+		case float32:
+			return float64(n)
+		case int:
+			return float64(n)
+		case int32:
+			return float64(n)
+		case int64:
+			return float64(n)
 		}
 	}
 	return fallback
