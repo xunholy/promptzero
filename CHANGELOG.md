@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-05-11
+
+**REPL bug-fix sweep.** Three operator-visible bugs caught by
+reading the keystroke and slash-command routing against their
+documentation. All silent failures — no crash, no error log,
+just the wrong thing happening.
+
+### Fixed
+
+- **`/stats` subcommands now receive their args.** Duplicate
+  `case "/stats":` at lines 118 and 174 of
+  `cmd/promptzero/commands.go`. Go's switch matches the first
+  case; the second was dead code. The first called
+  `handleStats(deps, nil)`, so every operator who typed
+  `/stats cache`, `/stats tokens`, `/stats budget`, or any other
+  documented subcommand silently routed to the no-arg "full
+  summary" branch with their selector discarded. Fix: drop the
+  broken first case so the remaining case (with `fields[1:]`)
+  routes subcommands correctly. (Documented in `/help` and
+  `handleStats`'s own godoc, so the regression was visible
+  every time an operator scrolled the help.)
+- **Unhandled keys during reverse-i-search now accept-and-fall-
+  through.** Any key not in the search-mode switch (arrows,
+  Ctrl+W, Ctrl+K, Ctrl+L, …) fell through to the main switch
+  while `ed.searching` was still true. The main switch mutated
+  the buffer (e.g. arrows cycled history) but `ed.searching`
+  stayed set, so the next rune the operator typed unexpectedly
+  landed in `runeInSearch` instead of the now-mutated buffer.
+  Fix matches the bash/zsh readline convention: a `default:`
+  branch in the search switch calls `acceptSearch()` and falls
+  through, so the key applies to the now-current line and
+  search state is cleared.
+
+(The v0.78 Ctrl+G fixes already shipped in their own release;
+this release groups the two further keystroke/slash-command
+bugs that surfaced while reading nearby code.)
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure REPL-side bug fixes; no
+  transport surface touched.
+
 ## [0.78.0] - 2026-05-11
 
 **Ctrl+G hotkey UX fixes.** Two operator-visible bugs in the
