@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-05-11
+
+**`WebConfig.CORSOrigins` now actually permits cross-origin /api
+calls.** The field's docstring promised the allow-list governed
+both WebSocket connections AND "/api cross-origin" — but the
+server emitted no CORS response headers and the OPTIONS preflight
+returned 405 for every method-routed path (`PUT /api/budget`,
+`PATCH /api/sessions/{id}`, …), so browsers blocked the request
+before it reached the handler. The documented feature was dead.
+
+### Added
+
+- **`withCORS` middleware** wired between the mux and the
+  REST-timeout wrapper. Mirrors the WebSocket Origin-allowlist
+  posture: an Origin in `corsOrigins` (or any when
+  `allowAnyOrigin`) gets `Access-Control-Allow-Origin: <origin>`,
+  `Vary: Origin`, and `Access-Control-Allow-Credentials: true`
+  echoed on the response. OPTIONS preflights on `/api/*` return
+  204 with `Allow-Methods`, `Allow-Headers` (`Authorization`,
+  `Content-Type`), and a 10-minute `Max-Age` when the Origin
+  matches — no per-handler OPTIONS registration needed.
+- Never echoes a literal `"*"` for ACAO. Pairing wildcard with
+  `Allow-Credentials: true` is a spec violation browsers reject,
+  so `allowAnyOrigin` still mirrors the specific Origin header.
+- Same-origin and curl-style callers (no Origin header, or
+  not in the allow-list) pass through unchanged — server-side
+  dispatch is still gated by the existing bearer-token check,
+  never by CORS.
+
+### Verified
+
+- Six regression tests in `internal/web/cors_test.go` cover the
+  load-bearing matrix: allowed-origin GET, allowed-origin
+  preflight, disallowed origin, `allowAnyOrigin` echoing the
+  specific origin, no-Origin requests, and non-/api paths.
+  Pre-fix verification: stashing the server.go change makes the
+  preflight test fail with `status = 405, want 204` — the exact
+  405 the docstring promise relied on browsers tolerating but
+  they don't.
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.116.0] - 2026-05-11
 
 **`PROMPTZERO_MCP_ALLOW_CRITICAL=1` now actually implies
