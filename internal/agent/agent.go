@@ -577,6 +577,27 @@ func safeCallToolStatus(cb func(ToolEvent), e ToolEvent) {
 	cb(e)
 }
 
+// safeCallToolStream is the recover-wrapped invocation for the
+// per-frame stream callback (toolStreamCb). Mirrors safeCallToolStatus
+// — the consumer goroutine in dispatchStreaming reads frames in a
+// tight loop, and a panic in the host callback (REPL UI writing to a
+// closed terminal, web cockpit reading from a closed WS connection,
+// etc.) would otherwise crash the agent process mid-dispatch. We
+// log + treat the panic as `keep=false` so the stream aborts and the
+// drain proceeds cleanly.
+func safeCallToolStream(cb func(streaming.Frame) bool, f streaming.Frame) (keep bool) {
+	keep = true
+	defer func() {
+		if r := recover(); r != nil {
+			obs.Default().Warn("agent_tool_stream_cb_panicked",
+				"tool", f.Tool, "seq", f.Seq,
+				"recovered", fmt.Sprintf("%v", r))
+			keep = false
+		}
+	}()
+	return cb(f)
+}
+
 // SetConfirmIdleTimeout overrides how long confirmWithIdleTimeout waits for
 // an operator response before treating silence as a deny. A zero or negative
 // value restores the default (5 minutes).
@@ -1624,7 +1645,13 @@ func (a *Agent) dispatchStreaming(ctx context.Context, spec toolsreg.Spec, p map
 			if aborted {
 				continue // drain only — don't invoke callback again
 			}
-			if !cb(f) {
+			// safeCallToolStream wraps cb in recover so a panicking
+			// host callback (REPL UI / web cockpit disconnect mid-
+			// stream) doesn't kill the agent process. A recovered
+			// panic is treated as "consumer wants out", same as a
+			// `false` return — sink.Abort + ctx cancel fire and
+			// the drain continues without re-invoking cb.
+			if !safeCallToolStream(cb, f) {
 				aborted = true
 				sink.Abort()
 				cancel()
