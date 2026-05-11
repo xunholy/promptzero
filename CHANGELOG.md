@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.158.0] - 2026-05-12
+
+**Workflows arg helpers match the v0.157 numeric-type set.** The
+`paramInt` and `paramIntList` helpers in
+`internal/workflows/workflows.go` accepted `float64` (JSON default),
+`int` (Go-native), and `string` (numeric), but not `int32`, `int64`,
+or `float32`. Same defect class v0.157 fixed in
+`internal/tools/args.go`'s `intOr` / `floatOr` — internal callers
+building a workflow param map directly without a JSON round-trip
+silently got the fallback for any Go-native non-`int` numeric type.
+
+### Fixed
+
+- Extend `paramInt`'s type switch to cover `int32`, `int64`, `float32`
+  in addition to the existing `float64`, `int`, `string`.
+- Extend `paramIntList`'s per-element switch with the same set so
+  mixed-type arrays flatten correctly.
+- Three regression tests in `internal/workflows/args_test.go`:
+  `TestParamInt_GoNativeNumericTypes` (positive coverage of the new
+  types), `TestParamInt_FallbackPath` (negative coverage of
+  missing/bool/empty/non-numeric/slice values), and
+  `TestParamIntList_GoNativeNumericTypes` (mixed-type array, including
+  the skip behaviour for non-numeric elements like bool / non-numeric
+  string).
+
 ## [0.157.0] - 2026-05-12
 
 **`intOr` / `floatOr` accept Go-native numeric types in addition to
