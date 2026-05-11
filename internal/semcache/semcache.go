@@ -123,8 +123,13 @@ func (c *Cache) Get(key string) (Entry, bool) {
 	if rewritten, err := json.Marshal(&e); err == nil {
 		// Best-effort rewrite; a failure here just means the next Get
 		// won't see the freshened LastAccessed (still correct, just
-		// less LRU-aware).
-		_ = os.WriteFile(path, rewritten, 0o644)
+		// less LRU-aware). 0o600 because the cached content can carry
+		// operator-sensitive material (BadUSB payload bytes, evil
+		// portal HTML with target SSIDs, NFC dumps with badge UIDs)
+		// and the rest of the codebase tightens the same class of
+		// file (audit DB, session JSON, snapshots) — see Put for the
+		// long-form rationale.
+		_ = os.WriteFile(path, rewritten, 0o600)
 	}
 	return e, true
 }
@@ -148,7 +153,15 @@ func (c *Cache) Put(key string, e Entry) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := os.MkdirAll(c.root, 0o755); err != nil {
+	// 0o700 directory + 0o600 files: the cached content is whatever
+	// the LLM generated to fulfil a prior turn — BadUSB payloads,
+	// evil-portal HTML with target SSIDs, NFC dumps with badge UIDs,
+	// generated SubGHz keys. Operator-data leakage to other accounts
+	// on the host is in scope. The audit log, session JSON, and
+	// snapshot tree all sit at 0o600 for the same reason; semcache
+	// drifted to 0o644 / 0o755 and was the only writable-by-world
+	// cache under ~/.promptzero. Match the convention.
+	if err := os.MkdirAll(c.root, 0o700); err != nil {
 		return fmt.Errorf("semcache mkdir: %w", err)
 	}
 
@@ -168,7 +181,7 @@ func (c *Cache) Put(key string, e Entry) error {
 		return fmt.Errorf("semcache marshal: %w", err)
 	}
 	path := c.pathFor(key)
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		return fmt.Errorf("semcache write: %w", err)
 	}
 	c.evictLocked()
