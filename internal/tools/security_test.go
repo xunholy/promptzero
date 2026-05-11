@@ -662,6 +662,36 @@ func TestPortScan_InvalidPortSpec_Error(t *testing.T) {
 	}
 }
 
+// TestPortScan_NegativeConcurrency_Clamped pins the fix for the panic
+// `makechan: size out of range` raised when an LLM tool call passed
+// {"concurrency": -1}. Pre-fix the handler only checked > 256 — a
+// negative value flew through to make(chan int, -1). The agent's
+// panic-recovery wrapped it into a generic "tool panicked" tool_error
+// rather than refusing the bad input outright, so the LLM saw a
+// confusing failure instead of a clean clamp.
+func TestPortScan_NegativeConcurrency_Clamped(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("port_scan_tcp panicked on concurrency=-1 (pre-fix bug): %v", r)
+		}
+	}()
+	// Scan a single tight port with a wall timeout to keep the test fast.
+	_, err := invokeSpec(t, "port_scan_tcp", map[string]any{
+		"target": "127.0.0.1",
+		"ports":  "1",
+		// float64(-1) mirrors what `json.Unmarshal` produces from
+		// `{"concurrency": -1}` — intOr's type switch only matches
+		// float64/string, so a Go-int literal would silently fall
+		// through to the fallback and miss the bug entirely.
+		"concurrency":     float64(-1),
+		"timeout_ms":      50,
+		"wall_timeout_ms": 200,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error after clamp: %v", err)
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TestHTTPEnum — unit tests for the http_enum_common spec
 // ─────────────────────────────────────────────────────────────────────────────
@@ -768,6 +798,37 @@ func TestHTTPEnum_MissingBaseURL_Error(t *testing.T) {
 	_, err := invokeSpec(t, "http_enum_common", map[string]any{})
 	if err == nil {
 		t.Error("expected error for missing base_url, got nil")
+	}
+}
+
+// TestHTTPEnum_NegativeConcurrency_Clamped mirrors the port_scan_tcp
+// fix for http_enum_common, whose `make(chan string, concurrency)`
+// would otherwise panic on a negative value passed by an LLM. Uses
+// a tiny test server + single-word list so the call completes quickly.
+func TestHTTPEnum_NegativeConcurrency_Clamped(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("http_enum_common panicked on concurrency=-1 (pre-fix bug): %v", r)
+		}
+	}()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	wl := writeTempWordlist(t, "nonexistent")
+	_, err := invokeSpec(t, "http_enum_common", map[string]any{
+		"base_url": srv.URL,
+		"wordlist": wl,
+		// float64(-1) mirrors what `json.Unmarshal` produces from
+		// `{"concurrency": -1}` — intOr's type switch only matches
+		// float64/string, so a Go-int literal would silently fall
+		// through to the fallback and miss the bug entirely.
+		"concurrency":     float64(-1),
+		"timeout_ms":      200,
+		"wall_timeout_ms": 5000,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error after clamp: %v", err)
 	}
 }
 
