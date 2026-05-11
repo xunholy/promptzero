@@ -72,3 +72,23 @@ func TestCoverage_SheetsAreBounded(t *testing.T) {
 		}
 	}
 }
+
+// TestToolsWithSheets_Sorted pins the docstring's "sorted
+// alphabetically" promise. Pre-fix the function returned tool names
+// in Go's randomised map-iteration order — the inline comment even
+// admitted "sort not imported here". Any caller relying on a stable
+// layout (a /tools UI baseline, a regression test comparing
+// returned[0]) would silently flake across runs. The fix imports
+// sort and applies sort.Strings to the output.
+func TestToolsWithSheets_Sorted(t *testing.T) {
+	got := ToolsWithSheets()
+	if len(got) == 0 {
+		t.Fatal("ToolsWithSheets returned empty — sheets map should not be empty")
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i-1] > got[i] {
+			t.Errorf("ToolsWithSheets not sorted: %q comes before %q at indices %d/%d",
+				got[i-1], got[i], i-1, i)
+		}
+	}
+}
