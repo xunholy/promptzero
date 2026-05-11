@@ -739,6 +739,22 @@ func (s *Server) handleWebhooksTest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing 'name'")
 		return
 	}
+	// Pre-flight existence check so an unknown subscription name
+	// returns 404 (the operator typed the wrong slug) instead of
+	// 502 (which would mean "endpoint unreachable"). Pre-v0.108 a
+	// typo and a real upstream outage produced identical responses
+	// — the cockpit couldn't distinguish them.
+	found := false
+	for _, sub := range s.webhooks.Subscriptions() {
+		if sub.Name == body.Name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("no subscription named %q", body.Name))
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	if err := s.webhooks.TestSubscription(ctx, body.Name); err != nil {

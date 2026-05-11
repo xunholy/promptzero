@@ -808,6 +808,80 @@ func TestWebhooksList_ReturnsSubscriptions(t *testing.T) {
 	}
 }
 
+// TestWebhooksTest_503WhenNoDispatcher returns 503 so the cockpit
+// hides the "test delivery" button when the host didn't wire a
+// webhook dispatcher.
+func TestWebhooksTest_503WhenNoDispatcher(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	code, _ := postJSON(t, ts, "/api/webhooks/test", map[string]any{"name": "ops"})
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("code = %d, want 503", code)
+	}
+}
+
+// TestWebhooksTest_404OnUnknownName pins the v0.108 status-code
+// fix. Pre-fix an unknown name returned 502 ("test delivery
+// failed: no subscription named X") — the cockpit couldn't
+// distinguish a typo from a real upstream outage. The pre-flight
+// existence check now maps unknown to 404.
+func TestWebhooksTest_404OnUnknownName(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	wh := webhook.New([]webhook.Subscription{
+		{Name: "ops", URL: "https://ops.example/hook"},
+	})
+	t.Cleanup(func() { _ = wh.Close(context.Background()) })
+	s.SetWebhooks(wh)
+
+	code, _ := postJSON(t, ts, "/api/webhooks/test", map[string]any{"name": "does-not-exist"})
+	if code != http.StatusNotFound {
+		t.Errorf("code = %d, want 404 (unknown subscription name)", code)
+	}
+}
+
+// TestWebhooksTest_400OnMissingName pins the empty-name branch.
+func TestWebhooksTest_400OnMissingName(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	wh := webhook.New(nil)
+	t.Cleanup(func() { _ = wh.Close(context.Background()) })
+	s.SetWebhooks(wh)
+
+	code, _ := postJSON(t, ts, "/api/webhooks/test", map[string]any{})
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400 (missing name)", code)
+	}
+}
+
+// TestWebhooksTest_DeliversToReachableEndpoint pins the happy
+// path: a configured subscription pointing at an httptest server
+// gets a synthetic session_started payload and returns 200.
+func TestWebhooksTest_DeliversToReachableEndpoint(t *testing.T) {
+	delivered := make(chan bool, 1)
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		delivered <- true
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(receiver.Close)
+
+	s, ts := apiServer(t, &fakeAgent{})
+	t.Setenv("PROMPTZERO_WEBHOOK_ALLOW_INTERNAL", "1") // httptest URLs are 127.0.0.1
+	wh := webhook.New([]webhook.Subscription{
+		{Name: "ops", URL: receiver.URL},
+	})
+	t.Cleanup(func() { _ = wh.Close(context.Background()) })
+	s.SetWebhooks(wh)
+
+	code, _ := postJSON(t, ts, "/api/webhooks/test", map[string]any{"name": "ops"})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d, want 200", code)
+	}
+	select {
+	case <-delivered:
+		// Receiver got the payload — happy path complete.
+	case <-time.After(2 * time.Second):
+		t.Errorf("synthetic webhook never reached the receiver")
+	}
+}
+
 // TestReconnect_503WhenFlipperMissing returns 503 when no Flipper
 // is attached — the cockpit shows the reconnect button greyed out.
 func TestReconnect_503WhenFlipperMissing(t *testing.T) {
