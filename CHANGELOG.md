@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.178.0] - 2026-05-12
+
+**Extend validate-before-transport to the two Faultier handlers that
+take user input, and add a missing ordering invariant on
+`glitch_sweep`.** Fifth release in the arc (canbus v0.174/v0.175,
+buspirate v0.176, Bruce v0.177).
+
+Pre-fix, `glitch_set_pulse` and `glitch_sweep` called `RequireFaultier`
+before validating their timing args. An LLM that called
+`glitch_set_pulse` without `delay_us` saw `"faultier not connected"`
+instead of `"delay_us must be >= 0"`.
+
+`glitch_sweep` had a second defect: nothing rejected `end_us < start_us`.
+The handler computed `(end-start)/step + 1` for the response's `steps`
+field, which went negative for reversed ranges. The firmware then
+either ran the sweep in an unexpected direction or returned nonsense.
+
+### Fixed
+
+- Both Faultier handlers now validate timing args above
+  `d.RequireFaultier()`.
+- `glitch_sweep` now rejects `end_us < start_us` with a clear
+  message naming both values.
+- `TestFaultierHandlers_ValidateBeforeTransport` table-driven
+  regression with six sub-cases: two for `glitch_set_pulse`, four
+  for `glitch_sweep` (including the new ordering check).
+
 ## [0.177.0] - 2026-05-12
 
 **Extend the validate-before-transport contract to the six Bruce
