@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-05-11
+
+**Agent setter + ConfirmDelayGate coverage.** Several pure
+setter / accessor methods on `*Agent` plus the
+`ConfirmDelayGate` 2-second pre-approval helper were 0 %
+covered. These are not feature paths — they're the glue that
+wires hardware clients, UI state, and confirm-window timing into
+the agent at boot. A regression silently leaves the agent without
+a transport pointer, or opens the high-risk-confirm gate before
+the operator has time to react.
+
+### Changed
+
+- **`internal/agent` setter + helper coverage.** New
+  `setters_test.go` adds 9 tests / 14 sub-tests:
+  - `TestAgentHardwareSetters` — Marauder / Bruce / Faultier /
+    BusPirate / Generator / GenLLM setter+getter round-trip,
+    nil-store tolerated.
+  - `TestAgentPersonaReset` — Reset() clears history (verified
+    via HistorySnapshot), empty-agent Reset is safe.
+  - `TestAgentPersonaAccessors` — Persona() / PersonaSnapshot()
+    dual-read pattern returns nil for unconfigured agent.
+  - `TestAgentUIContext` — SetUIContext / UIContext round-trip;
+    later set overrides earlier (last-write-wins).
+  - `TestAgentSetDetectorEngine`, `TestAgentSetCallbacks`,
+    `TestAgentSetConfirmIdleTimeout` — nil-store path doesn't
+    panic; values accepted verbatim.
+  - `TestHasWiFiTool` (5 sub-tests) — empty catalog → false,
+    `wifi_*` tool present → true, nil-`OfTool` entries skipped
+    gracefully.
+  - `TestConfirmDelayGate` (5 sub-tests) — closed before Show(),
+    zero-delay immediately open, opens after delay elapses,
+    Show resets clock on re-show, injectable `now` for
+    determinism (advances clock without sleep).
+
+  Coverage on `internal/agent` rose **70.4 % → 72.9 %**
+  (+2.5 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure unit tests on setters
+  and a time-gate helper.
+
 ## [0.75.0] - 2026-05-11
 
 **Marauder BLE URL parser coverage.** The two parsers that
