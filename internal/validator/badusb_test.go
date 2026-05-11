@@ -102,6 +102,35 @@ func TestValidate_DefenseDisableIsCritical(t *testing.T) {
 	}
 }
 
+// TestValidate_HighestSeverityWinsPerLine pins the v0.149 contract:
+// when a single line matches multiple rules, the highest-severity
+// match is the one reported. Pre-fix the validator used "first
+// match wins" — a line carrying both a Warn-tier rule (e.g. the
+// persist_runkey registry-Run-key pattern) and a Critical-tier rule
+// (e.g. powershell_enc, the base64-encoded PowerShell pattern)
+// reported only the Warn finding because persist_runkey appears
+// earlier in the rule slice. A real attacker payload that combines
+// "drop in HKCU\...\Run" with "execute base64 powershell" would
+// have been gated as Warn instead of Critical, dropping below
+// validator.AllowCritical's intent.
+func TestValidate_HighestSeverityWinsPerLine(t *testing.T) {
+	// Single line that matches BOTH:
+	//   - persist_runkey (Warn)     — `reg add ...\Run`
+	//   - powershell_enc (Critical) — `powershell -enc <base64>`
+	src := `STRING reg add HKLM\Software\Microsoft\Windows\CurrentVersion\Run /v evil /d "powershell -enc QUFBQUFBQUFBQUFB"`
+	rep := Validate("priority.txt", src)
+
+	if rep.Severity != SeverityCritical {
+		t.Fatalf("rep.Severity = %v, want Critical (line clearly invokes base64-encoded PowerShell)", rep.Severity)
+	}
+	if len(rep.Findings) != 1 {
+		t.Errorf("findings count = %d, want exactly one (highest-priority wins, one per line)", len(rep.Findings))
+	}
+	if len(rep.Findings) > 0 && rep.Findings[0].Rule != "powershell_enc" {
+		t.Errorf("winning rule = %q, want powershell_enc (highest-severity match)", rep.Findings[0].Rule)
+	}
+}
+
 // TestValidate_LOLBASRules exercises the LOLBAS download/execute and
 // lateral-execution patterns. Each is a real, well-documented attack
 // technique a DuckyScript payload can type into the target — the
