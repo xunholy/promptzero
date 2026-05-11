@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-05-11
+
+**Mode parity audit, phase 2g: web gets `/api/rewind`.** Snapshot
+list + restore for SD-card undo, mirroring CLI `/rewind`. The
+agent already captures pre-write snapshots through every
+fileformat_edit / *_build path; pre-v0.103 web operators couldn't
+restore any of them without dropping back to a parallel REPL.
+
+### Added
+
+- **`GET /api/rewind`** — returns per-session snapshot entries
+  newest-first (id, taken_at as RFC3339, size_bytes,
+  original_path). Mirrors CLI `/rewind` no-args listing.
+- **`POST /api/rewind/restore`** — body
+  `{"id": "<snapshot-id>", "dry_run": false}`. Loads the
+  snapshot and writes it back to its `original_path` on the
+  Flipper. `dry_run=true` reports `would_write` size without
+  invoking the device, matching CLI's dry-run flag. Mirrors
+  CLI `/rewind <id> [dry-run]`. Pop-N mode is intentionally NOT
+  exposed (multi-write batch over an HTTP single-response is
+  confusing on partial failure — the cockpit issues N restore
+  calls from the GET listing if it wants pop-N semantics).
+- Extended `agentDriver` with `SnapshotManager()` and
+  `SessionID()`. The test fake gained matching methods +
+  fields (`snapshotMgr`, `sessionID`).
+  - Tests: `TestRewindList_503WhenNoSnapshotMgr`,
+    `TestRewindList_400WhenNoActiveSession`,
+    `TestRewindList_ReturnsEntries` (two snapshots stored, both
+    returned), `TestRewindRestore_DryRun` (would_write matches
+    bytes; no flipper invocation needed),
+    `TestRewindRestore_404OnUnknownID`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/ ./cmd/promptzero/`
+  — all pass.
+
 ## [0.102.0] - 2026-05-11
 
 **Mode parity audit, phase 2f: web gets `/api/report`.** Engagement
