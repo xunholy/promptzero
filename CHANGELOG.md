@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.179.0] - 2026-05-12
+
+**`Flipper.InputSend` validates `button` against an allowlist (same
+shape as the existing `eventType` allowlist).** The docstring on
+`InputSend` and the schema on `input_send` both list six valid
+buttons (up, down, left, right, ok, back), but only `eventType` was
+host-side validated. A typo like `"OK"` or `"back\t"` slipped past
+`sanitizeArg` (which only strips control bytes + double-quote) and
+reached the firmware as an unrecognised arg, surfacing as an opaque
+firmware error.
+
+The schema on `input_send` also documented `"repeat"` as a valid
+event type, but `validInputEventTypes` never accepted it — fixed
+the schema to match the runtime allowlist.
+
+### Fixed
+
+- Add `validInputButtons` allowlist with the six d-pad/action
+  buttons. `InputSend` now rejects unknown buttons with a clear
+  message naming the valid set.
+- `button` check runs before `eventType` check so the LLM sees the
+  most informative error when both args are bad.
+- Schema description on `input_send` no longer lists `"repeat"`.
+- Three regression tests in `internal/flipper/input_send_test.go`:
+  five bad-button cases (case mismatch, typo, empty, leading /
+  trailing whitespace), the existing `"repeat"` event-type
+  rejection, and the precedence check.
+
 ## [0.178.0] - 2026-05-12
 
 **Extend validate-before-transport to the two Faultier handlers that
