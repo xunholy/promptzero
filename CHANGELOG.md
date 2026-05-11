@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.129.0] - 2026-05-11
+
+**`flipper.SetPipelineBundle` actually rejects a zero-valued bundle.**
+The Pipeline docstring says "Zero values are not valid" and
+SetPipelineBundle's docstring promised the function rejects a
+zero bundle: "Stores nil-as-zero-bundle is rejected (a zero
+Pipeline would zero out every timeout); pass
+ProfileSettings(ProfileBalanced) to reset." But the body just
+stored whatever was passed.
+
+Real failure mode: a caller doing `var p Pipeline;
+f.SetPipelineBundle(p)` — easy to trigger via misconfigured
+config parsing, a future auto-tuner emitting an unfinished
+bundle, or a test that forgot to populate fields — silently
+wedged the agent's CLI dispatch. Every Exec / WriteFile /
+Connect timeout landed at 0, so the very next ExecCtx fired
+`context.DeadlineExceeded` immediately, and every subsequent
+command did the same. No log line, no surface in `/status`.
+
+### Fixed
+
+- **`SetPipelineBundle` detects the zero value** via a new
+  `isZeroPipeline` helper (load-bearing timeouts all 0) and
+  warn-and-ignores instead of storing it. The lazy fallback in
+  `pipeline()` means a caller whose first-ever
+  `SetPipelineBundle` was the zero value still gets working
+  Balanced timeouts on the next dispatch.
+- Two regression tests pin both paths: rejecting a zero after a
+  known-good Balanced was installed (no overwrite), and rejecting
+  a zero from the unset state (lazy Balanced fallback fires).
+  Pre-fix verification: stashing the pipeline.go change makes both
+  fail with the all-zero bundle showing up in `f.pipeline()`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.128.0] - 2026-05-11
 
 **`diff.Unified` truncation marker reports the real remainder.**
