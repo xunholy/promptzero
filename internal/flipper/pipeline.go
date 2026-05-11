@@ -3,6 +3,8 @@ package flipper
 import (
 	"strings"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // PipelineProfile names a bundled retry/timeout policy applied across the
@@ -175,12 +177,32 @@ func (f *Flipper) SetPipeline(p PipelineProfile) {
 // by callers (and tests) that have already resolved a Pipeline by hand
 // — e.g. tests asserting a specific timeout, or a future auto-tuner
 // emitting bundles that don't correspond to one of the three named
-// profiles. Stores nil-as-zero-bundle is rejected (a zero Pipeline
-// would zero out every timeout); pass ProfileSettings(ProfileBalanced)
-// to reset.
+// profiles. A zero-valued Pipeline is rejected with a warn log (every
+// timeout would be 0, so ExecCtx / WriteFileCtx would fire
+// context.DeadlineExceeded immediately on every call); pass
+// ProfileSettings(ProfileBalanced) to reset.
+//
+// The reject path was promised by the docstring but pre-this-fix not
+// enforced — a caller passing `Pipeline{}` silently wedged the agent's
+// CLI dispatch on the next command.
 func (f *Flipper) SetPipelineBundle(p Pipeline) {
+	if isZeroPipeline(p) {
+		obs.Default().Warn("flipper_set_pipeline_bundle_rejected_zero",
+			"reason", "all timeouts zero — every CLI dispatch would expire immediately. "+
+				"Pass ProfileSettings(ProfileBalanced) to reset.")
+		return
+	}
 	bundle := p
 	f.pipelineCfg.Store(&bundle)
+}
+
+// isZeroPipeline reports whether p is the zero value (every timeout
+// 0). Used by SetPipelineBundle to honour the docstring's rejection
+// promise. We check the load-bearing timeout fields (Exec, WriteFile,
+// Connect) rather than every field — a future Pipeline addition with
+// a meaningful zero default shouldn't false-positive here.
+func isZeroPipeline(p Pipeline) bool {
+	return p.Exec == 0 && p.WriteFile == 0 && p.Connect == 0
 }
 
 // pipeline returns the current resolved Pipeline. When no profile has
