@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.152.0] - 2026-05-12
+
+**Bruce tool-result JSON uses `json.Marshal`, not Go-string
+quoting.** Four `bruce_*` handler return paths
+(`bruce_wifi_deauth`, `bruce_evil_twin`, `bruce_ir_send`,
+`bruce_badusb_run`) constructed their `{"status":..., "ssid":...,
+"bssid":..., ...}` tool-results via `fmt.Sprintf("...%q...", ...)`.
+That's `strconv.Quote` — Go-string semantics — applied to
+operator-/firmware-supplied strings. An SSID with an embedded BEL
+byte (IEEE 802.11 SSIDs are 32 raw octets; spoofed APs can carry
+arbitrary bytes) produced a tool-result containing `\a` instead
+of ``, which downstream JSON parsers (audit log,
+`/api/audit/find`, `/report` renderer, the model's tool-result
+view) silently rejected. Same defect class v0.150 fixed in audit
+and v0.151 fixed in the agent confirm gate.
+
+### Fixed
+
+- Replace the four `fmt.Sprintf` JSON builders with explicit
+  `json.Marshal(map[string]any{...})` so control bytes survive as
+  JSON-valid `\u00NN` escapes regardless of what the firmware /
+  operator pushed through.
+- `bruce_lora_scan` is unchanged — its tool-result format
+  contains only a float, no user-supplied string — but a sentinel
+  test (`TestBruce_LoRaScan_StillProducesValidJSON`) now pins the
+  JSON-validity contract so a future refactor can't accidentally
+  re-introduce the defect there.
+- Four positive regression tests cover the migrated sites with
+  hostile inputs (`\x07` BEL, `\x0B` VT, `\x00` NUL in
+  ssid/bssid/code/filename) and assert the result round-trips
+  through `json.Unmarshal`.
+
 ## [0.151.0] - 2026-05-12
 
 **Agent confirm-gate marshal-error fallbacks use `json.Marshal`,

@@ -130,7 +130,18 @@ func init() {
 			if err := d.Bruce.Deauth(ctx, bssid, channel); err != nil {
 				return "", err
 			}
-			return fmt.Sprintf(`{"status":"deauth sent","bssid":%q,"channel":%d}`, bssid, channel), nil
+			// Build via json.Marshal not fmt.Sprintf("%q"): control
+			// bytes in operator-supplied BSSIDs (firmware scan
+			// output can carry arbitrary bytes from spoofed APs)
+			// would otherwise produce Go-string escapes (\a, \v,
+			// \xNN) that downstream JSON parsers reject. Same
+			// contract as the v0.150/v0.151 marshal-error fix.
+			b, _ := json.Marshal(map[string]any{
+				"status":  "deauth sent",
+				"bssid":   bssid,
+				"channel": channel,
+			})
+			return string(b), nil
 		},
 	})
 
@@ -160,7 +171,15 @@ func init() {
 			if err := d.Bruce.EvilTwin(ctx, ssid, bssid); err != nil {
 				return "", err
 			}
-			return fmt.Sprintf(`{"status":"evil twin started","ssid":%q,"bssid":%q}`, ssid, bssid), nil
+			// Spoofed SSIDs can carry arbitrary bytes — build via
+			// json.Marshal so control bytes survive as \u00NN
+			// rather than Go-string \a / \v / \xNN. See v0.152.
+			b, _ := json.Marshal(map[string]any{
+				"status": "evil twin started",
+				"ssid":   ssid,
+				"bssid":  bssid,
+			})
+			return string(b), nil
 		},
 	})
 
@@ -245,7 +264,12 @@ func init() {
 			if err := d.Bruce.IRSend(ctx, protocol, code); err != nil {
 				return "", err
 			}
-			return fmt.Sprintf(`{"status":"ir sent","protocol":%q,"code":%q}`, protocol, code), nil
+			b, _ := json.Marshal(map[string]any{
+				"status":   "ir sent",
+				"protocol": protocol,
+				"code":     code,
+			})
+			return string(b), nil
 		},
 	})
 
@@ -296,7 +320,11 @@ func init() {
 			if err := d.Bruce.BadUSBRun(ctx, filename); err != nil {
 				return "", err
 			}
-			return fmt.Sprintf(`{"status":"badusb executed","filename":%q}`, filename), nil
+			b, _ := json.Marshal(map[string]any{
+				"status":   "badusb executed",
+				"filename": filename,
+			})
+			return string(b), nil
 		},
 	})
 
