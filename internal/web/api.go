@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -569,7 +570,18 @@ func (s *Server) handleRewindRestore(w http.ResponseWriter, r *http.Request) {
 	}
 	entry, content, err := mgr.Restore(sessionID, body.ID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "snapshot restore: "+err.Error())
+		// Distinguish "snapshot id doesn't exist" (typical user typo,
+		// 404 is correct) from genuine I/O errors (disk corruption,
+		// permissions, malformed meta JSON — 500 is correct). Pre-
+		// v0.162 every error mapped to 404, conflating the two and
+		// telling the cockpit "no such snapshot" when the snapshot
+		// existed but the disk failed to read it. Mirrors the v0.109
+		// fix on session.RenameSession.
+		if errors.Is(err, fs.ErrNotExist) {
+			writeError(w, http.StatusNotFound, "snapshot restore: "+err.Error())
+		} else {
+			writeError(w, http.StatusInternalServerError, "snapshot restore: "+err.Error())
+		}
 		return
 	}
 	if body.DryRun {

@@ -618,6 +618,40 @@ func TestRewindRestore_404OnUnknownID(t *testing.T) {
 	}
 }
 
+// TestRewindRestore_500OnIOError pins the v0.162 fix: a snapshot
+// whose metadata is unreadable due to disk corruption (synthesised
+// here by writing an unparseable .json) must return 500, not 404.
+// Pre-fix every error mapped to 404 — telling the cockpit "no such
+// snapshot" when the snapshot existed but the disk failed to parse
+// it. Mirrors the v0.109 fix on session.RenameSession's NotFound vs
+// 500 split.
+func TestRewindRestore_500OnCorruptMeta(t *testing.T) {
+	root := t.TempDir()
+	mgr := snapshot.NewManager(root)
+	s, ts := apiServer(t, &fakeAgent{snapshotMgr: mgr, sessionID: "sess-1"})
+	s.flipper = sentinelFlipper(t)
+
+	// Stage a snapshot whose .bak exists but .json is corrupt — this
+	// triggers mgr.Restore's "snapshot meta parse" branch (not
+	// fs.ErrNotExist) so the handler must take the 500 path.
+	sessDir := filepath.Join(root, "sess-1")
+	if err := os.MkdirAll(sessDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	id := "broken-meta"
+	if err := os.WriteFile(filepath.Join(sessDir, id+".json"), []byte("not-json{{{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sessDir, id+".bak"), []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, body := postJSON(t, ts, "/api/rewind/restore", map[string]any{"id": id})
+	if code != http.StatusInternalServerError {
+		t.Errorf("code = %d, want 500 (corrupt meta is I/O, not 404)\nbody=%v", code, body)
+	}
+}
+
 // sentinelFlipper returns a non-nil *flipper.Flipper for tests that
 // just need the nil-check to pass — we never call any of its
 // methods in dry-run or 404 paths.
