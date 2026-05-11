@@ -86,3 +86,131 @@ func TestBleAddrKindString_Marauder(t *testing.T) {
 		t.Errorf("bleAddrKind(99).String() = %q, want address (fallback)", got)
 	}
 }
+
+// TestParseMarauderBLEAddress pins the MAC / UUID / name
+// classifier used by --marauder-ble URL handling. Each form has
+// a normalisation step: MACs are upper-cased, UUIDs are
+// lower-cased, names pass through verbatim (case-insensitive
+// matching happens at scan time downstream).
+func TestParseMarauderBLEAddress(t *testing.T) {
+	t.Run("MAC_upper_canonical", func(t *testing.T) {
+		kind, addr, err := parseMarauderBLEAddress("aa:bb:cc:dd:ee:ff")
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if kind != bleAddrKindMAC {
+			t.Errorf("kind = %v, want MAC", kind)
+		}
+		if addr != "AA:BB:CC:DD:EE:FF" {
+			t.Errorf("addr = %q, want upper-canonical AA:BB:...", addr)
+		}
+	})
+	t.Run("MAC_mixed_case", func(t *testing.T) {
+		_, addr, err := parseMarauderBLEAddress("AA:bB:Cc:dd:EE:ff")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if addr != "AA:BB:CC:DD:EE:FF" {
+			t.Errorf("addr = %q, want fully upper-canonical", addr)
+		}
+	})
+	t.Run("MAC_with_whitespace", func(t *testing.T) {
+		// Surrounding whitespace stripped before classification.
+		_, addr, err := parseMarauderBLEAddress("  80:E1:26:69:6E:55  ")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if addr != "80:E1:26:69:6E:55" {
+			t.Errorf("addr = %q", addr)
+		}
+	})
+	t.Run("UUID_lower_canonical", func(t *testing.T) {
+		kind, addr, err := parseMarauderBLEAddress("E127EFC1-05EC-1234-5678-9ABCDEF01234")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if kind != bleAddrKindUUID {
+			t.Errorf("kind = %v, want UUID", kind)
+		}
+		if addr != "e127efc1-05ec-1234-5678-9abcdef01234" {
+			t.Errorf("addr = %q, want lower-canonical", addr)
+		}
+	})
+	t.Run("name_passes_through", func(t *testing.T) {
+		// Anything that's not a MAC or UUID shape is treated as a
+		// LocalName. Preserves casing verbatim; scan-time matching
+		// is case-insensitive.
+		kind, addr, err := parseMarauderBLEAddress("Unholy")
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		if kind != bleAddrKindName {
+			t.Errorf("kind = %v, want name", kind)
+		}
+		if addr != "Unholy" {
+			t.Errorf("addr = %q, want verbatim", addr)
+		}
+	})
+	t.Run("name_with_whitespace_trimmed", func(t *testing.T) {
+		_, addr, _ := parseMarauderBLEAddress("  MyMarauder  ")
+		if addr != "MyMarauder" {
+			t.Errorf("addr = %q, want trimmed", addr)
+		}
+	})
+	t.Run("empty_returns_error", func(t *testing.T) {
+		_, _, err := parseMarauderBLEAddress("")
+		if err == nil {
+			t.Error("empty input: want error, got nil")
+		}
+	})
+	t.Run("whitespace_only_returns_error", func(t *testing.T) {
+		_, _, err := parseMarauderBLEAddress("   \t\n  ")
+		if err == nil {
+			t.Error("whitespace-only: want error, got nil")
+		}
+	})
+}
+
+// TestStripBLEScheme pins the URL parser: tolerates a bare
+// address (no scheme), accepts the `ble://` scheme, rejects
+// foreign schemes, strips trailing `?query` for forward-compat.
+// Hand-rolled (not net/url.Parse) because MAC addresses
+// "AA:BB:..." trip "invalid port" errors in the standard parser.
+func TestStripBLEScheme(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		want    string
+		wantErr bool
+	}{
+		// Happy paths.
+		{"bare MAC", "AA:BB:CC:DD:EE:FF", "AA:BB:CC:DD:EE:FF", false},
+		{"bare UUID", "e127efc1-05ec-1234-5678-9abcdef01234", "e127efc1-05ec-1234-5678-9abcdef01234", false},
+		{"bare name", "MyMarauder", "MyMarauder", false},
+		{"ble scheme MAC", "ble://AA:BB:CC:DD:EE:FF", "AA:BB:CC:DD:EE:FF", false},
+		{"ble scheme name", "ble://MyMarauder", "MyMarauder", false},
+		{"trailing query stripped", "ble://AA:BB:CC:DD:EE:FF?retries=3", "AA:BB:CC:DD:EE:FF", false},
+		{"empty query stripped", "ble://AA:BB:CC:DD:EE:FF?", "AA:BB:CC:DD:EE:FF", false},
+		{"surrounding whitespace trimmed", "  ble://Unholy  ", "Unholy", false},
+
+		// Error paths.
+		{"empty input", "", "", true},
+		{"whitespace-only", "   ", "", true},
+		{"foreign scheme", "http://example.com", "", true},
+		{"unknown scheme", "tcp://AA:BB:CC:DD:EE:FF", "", true},
+		{"ble scheme but empty path", "ble://", "", true},
+		{"ble scheme empty path with query", "ble://?retries=3", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := stripBLEScheme(tc.in)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("stripBLEScheme(%q) err = %v, wantErr=%v", tc.in, err, tc.wantErr)
+				return
+			}
+			if !tc.wantErr && got != tc.want {
+				t.Errorf("stripBLEScheme(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
