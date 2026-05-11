@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.127.0] - 2026-05-11
+
+**Document + test the audit WAL/SHM permission inheritance.**
+Follow-up to the v0.122-v0.126 security-mode consolidation. The
+audit log already enjoys `0o600` permissions on its WAL/SHM
+sidecars transitively — SQLite (modernc.org/sqlite included)
+clones the main DB's mode onto `-wal` and `-shm` when it creates
+them, and `audit.Open` chmods the main DB to `0o600` before
+enabling WAL mode. But:
+
+1. The chmod's transitive effect wasn't called out in
+   `audit.Open`'s comment. A maintainer reading it could
+   reasonably remove the chmod (the parent dir is already
+   `0o700`) or reorder it without realising the sidecars
+   inherit from it.
+2. No test pinned the WAL/SHM mode end-to-end. A future SQLite
+   library change — CGo build, modernc upgrade, alternate
+   driver — that didn't preserve the inheritance would slip
+   through CI.
+
+### Changed
+
+- **`audit.Open` comment** now spells out the WAL-sidecar
+  inheritance and the load-bearing chmod-before-PRAGMA ordering.
+- **`TestOpen_WALSidecarsInheritMainDBPerms`** drives an
+  end-to-end Open + first Record + stat sequence and asserts
+  both `-wal` and `-shm` at `0o600`, skipping `-shm` gracefully
+  on SQLite builds that defer its creation.
+
+No code paths changed; pure invariant-locking work to keep the
+recent permission-consolidation guarantees stable across future
+refactors.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.126.0] - 2026-05-11
 
 **`~/.promptzero/freqman/` tightened to `0o700` / `0o600`.** Third
