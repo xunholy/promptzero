@@ -44,6 +44,24 @@ func TestBuildUIContextBlock(t *testing.T) {
 		{"path only", "", "/ext/subghz/garage.sub", "<ui-context view=\"\" path=\"/ext/subghz/garage.sub\"/>\n"},
 		{"both", "preview", "/ext/nfc/card.nfc", "<ui-context view=\"preview\" path=\"/ext/nfc/card.nfc\"/>\n"},
 		{"strip control chars", "preview", "/ext/foo\x00\x07bar", "<ui-context view=\"preview\" path=\"/ext/foobar\"/>\n"},
+
+		// XML-attribute-special characters must be stripped so the
+		// emitted block stays well-formed for the LLM. Pre-fix `%q`
+		// emitted Go-escapes (e.g. `path="foo\"bar"`) which aren't
+		// valid XML attribute syntax, and `&` / `<` would have made
+		// the prefix actively malformed XML. The previous docstring
+		// asserted upstream validation prevented this, but
+		// setUIContextFromWS only checks NUL + length, leaving
+		// Flipper filenames containing these characters as a real
+		// path the cockpit can navigate to.
+		{"strip double-quote in path", "files", `/ext/foo"bar.sub`,
+			`<ui-context view="files" path="/ext/foobar.sub"/>` + "\n"},
+		{"strip ampersand in path", "files", `/ext/a&b.sub`,
+			`<ui-context view="files" path="/ext/ab.sub"/>` + "\n"},
+		{"strip angle brackets in path", "files", `/ext/<tag>.sub`,
+			`<ui-context view="files" path="/ext/tag.sub"/>` + "\n"},
+		{"strip apostrophe in path", "files", `/ext/it's.sub`,
+			`<ui-context view="files" path="/ext/its.sub"/>` + "\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
