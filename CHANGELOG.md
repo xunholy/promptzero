@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-05-11
+
+**Session endpoints distinguish "not found" from "I/O error".**
+Continuation of the v0.108 status-code audit. The session
+endpoints had inverse problems:
+`DELETE /api/sessions/{id}` mapped every error to **500**
+(so a typo'd id looked like a disk failure);
+`PATCH /api/sessions/{id}` mapped every error to **404**
+(so a disk failure during rename looked like a missing
+session). Same root cause: blanket error handling without
+classifying by `errors.Is(err, fs.ErrNotExist)`.
+
+### Fixed
+
+- **`DELETE /api/sessions/{id}` returns 404 when the session
+  doesn't exist** (matches the typo case the operator will
+  most likely hit). Real I/O errors still map to 500 so the
+  cockpit can render the right message.
+- **`PATCH /api/sessions/{id}` returns 500 on I/O errors** that
+  aren't "not found" (the 404 path stays for typo'd ids).
+  - `TestSessionDelete_404OnMissing` posts a DELETE for a
+    non-existent id and asserts 404. Pre-fix returns 500.
+  - `TestSessionPatch_500OnIOError` injects a custom
+    sessionDriver that returns a non-NotExist error from
+    RenameSession and asserts 500. Pre-fix returns 404.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.108.0] - 2026-05-11
 
 **`/api/webhooks/test` distinguishes 404 from 502.** v0.101's
