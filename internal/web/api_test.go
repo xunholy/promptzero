@@ -117,6 +117,22 @@ func putJSON(t *testing.T, ts *httptest.Server, path string, payload any) (int, 
 	return resp.StatusCode, out
 }
 
+// deleteReq performs a DELETE without a body and decodes the JSON
+// response. Used by /api/attack DELETE — first DELETE in the API
+// surface aside from /api/sessions/{id} which has its own pattern.
+func deleteReq(t *testing.T, ts *httptest.Server, path string) (int, map[string]any) {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodDelete, ts.URL+path, nil)
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("DELETE %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	var body map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	return resp.StatusCode, body
+}
+
 // ---------------------------------------------------------------------------
 // Personas
 // ---------------------------------------------------------------------------
@@ -316,6 +332,88 @@ func TestCostSnapshot(t *testing.T) {
 	// distinguishes "disabled" from "0/0" by absence).
 	if _, ok := body["budget"]; ok {
 		t.Errorf("budget block should be omitted when no cap is set")
+	}
+}
+
+// TestAttackGet_EmptyByDefault returns an empty techniques list when
+// no constraint has been set. Cockpit uses the empty/non-empty
+// distinction to render a "constrained to ATT&CK ..." chip.
+func TestAttackGet_EmptyByDefault(t *testing.T) {
+	fa := &fakeAgent{}
+	_, ts := apiServer(t, fa)
+	code, body := getJSON(t, ts, "/api/attack")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	techniques, _ := body["techniques"].([]any)
+	if len(techniques) != 0 {
+		t.Errorf("expected empty list, got %v", techniques)
+	}
+}
+
+// TestAttackSet_NormalisesAndApplies pins the happy path: case-folded
+// lowercase input ("t1557.004") + whitespace are accepted and stored
+// in canonical uppercase. Mirrors the CLI's normaliseAttackIDs.
+func TestAttackSet_NormalisesAndApplies(t *testing.T) {
+	fa := &fakeAgent{}
+	_, ts := apiServer(t, fa)
+	code, body := postJSON(t, ts, "/api/attack", map[string]any{
+		"techniques": []string{"t1557.004", "  T1499 "},
+	})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d, body=%s", code, body)
+	}
+	got := fa.AttackConstraint()
+	if len(got) != 2 || got[0] != "T1557.004" || got[1] != "T1499" {
+		t.Errorf("AttackConstraint = %v, want [T1557.004 T1499]", got)
+	}
+}
+
+// TestAttackSet_RejectsBadID pins the validation contract: anything
+// that doesn't match T#### or T####.### gets 400 with the same
+// error shape the CLI surfaces. State unchanged on rejection.
+func TestAttackSet_RejectsBadID(t *testing.T) {
+	fa := &fakeAgent{attackIDs: []string{"T1234"}}
+	_, ts := apiServer(t, fa)
+	code, _ := postJSON(t, ts, "/api/attack", map[string]any{
+		"techniques": []string{"BogusID"},
+	})
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400", code)
+	}
+	got := fa.AttackConstraint()
+	if len(got) != 1 || got[0] != "T1234" {
+		t.Errorf("AttackConstraint mutated despite 400: got %v", got)
+	}
+}
+
+// TestAttackSet_EmptyTechniquesRejected pins the contract that
+// "set with no IDs" is a 400 — use DELETE /api/attack to clear.
+// This avoids the silent "set nothing = clear" footgun.
+func TestAttackSet_EmptyTechniquesRejected(t *testing.T) {
+	fa := &fakeAgent{}
+	_, ts := apiServer(t, fa)
+	code, _ := postJSON(t, ts, "/api/attack", map[string]any{"techniques": []string{}})
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400 (use DELETE to clear)", code)
+	}
+}
+
+// TestAttackClear_RemovesConstraint pins the DELETE path: the
+// constraint is wiped. Mirrors CLI `/attack clear`.
+func TestAttackClear_RemovesConstraint(t *testing.T) {
+	fa := &fakeAgent{attackIDs: []string{"T1557.004"}}
+	_, ts := apiServer(t, fa)
+	code, body := deleteReq(t, ts, "/api/attack")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	techniques, _ := body["techniques"].([]any)
+	if len(techniques) != 0 {
+		t.Errorf("expected empty list after clear, got %v", techniques)
+	}
+	if fa.AttackConstraint() != nil {
+		t.Errorf("AttackConstraint not nil after DELETE: %v", fa.AttackConstraint())
 	}
 }
 

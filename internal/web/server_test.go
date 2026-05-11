@@ -30,6 +30,7 @@ type fakeAgent struct {
 	persona      *persona.Persona
 	opMode       mode.Mode
 	readOnly     bool
+	attackIDs    []string
 }
 
 func (f *fakeAgent) Run(ctx context.Context, input string) (string, error) {
@@ -107,6 +108,27 @@ func (f *fakeAgent) ReadOnly() bool {
 func (f *fakeAgent) SetReadOnly(v bool) {
 	f.mu.Lock()
 	f.readOnly = v
+	f.mu.Unlock()
+}
+
+func (f *fakeAgent) AttackConstraint() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.attackIDs == nil {
+		return nil
+	}
+	out := make([]string, len(f.attackIDs))
+	copy(out, f.attackIDs)
+	return out
+}
+
+func (f *fakeAgent) SetAttackConstraint(ids []string) {
+	f.mu.Lock()
+	if ids == nil {
+		f.attackIDs = nil
+	} else {
+		f.attackIDs = append([]string(nil), ids...)
+	}
 	f.mu.Unlock()
 }
 
