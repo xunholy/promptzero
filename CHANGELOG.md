@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.173.0] - 2026-05-12
+
+**`canbus_inject` rejects odd-length hex `data_hex`.** CAN payloads
+are byte-oriented (DLC 0..8 bytes), so the hex encoding must be even-
+length. The pre-fix `[0-9a-f]{0,16}` validator accepted half-byte
+values like `"abc"` or `"abcdef0"` — the firmware then either
+silently truncates the last nibble or returns an opaque error the
+LLM can't pattern-match on.
+
+### Fixed
+
+- Tighten `reCanHexData` to `^([0-9a-f]{2}){0,8}$` so only
+  even-length hex strings (encoding 0..8 whole bytes) pass.
+- Error message updated to "expected an even number of hex chars,
+  0..16, encoding 0..8 bytes" so the LLM sees why a 7-char input
+  was rejected.
+- Regression coverage in `TestValidateCanHexData`: four odd-length
+  cases (`"a"`, `"abc"`, `"12345"`, `"abcdef0"`) all rejected.
+
 ## [0.172.0] - 2026-05-12
 
 **`fap_build` envelope always carries JSON arrays for `fap_paths`
