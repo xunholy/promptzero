@@ -1,6 +1,7 @@
 package targetmem
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +22,35 @@ func TestOpen_CreatesSchema(t *testing.T) {
 	s := newTestStore(t)
 	if s == nil {
 		t.Fatal("Open returned nil")
+	}
+}
+
+// TestOpen_DBFilePermissionsLockedDown pins the security fix: the
+// targetmem DB stores BSSIDs + SSIDs the operator has scanned, NFC
+// UIDs, and free-form Facts JSON the agent recorded across past
+// engagements. Operator-data leakage to other accounts on the host
+// is in scope. SQLite creates files via the process umask
+// (typically 0o644); audit.Open already chmods to 0o600 for the
+// same reason and semcache was tightened last release. targetmem
+// had drifted out of step — the parent dir was 0o700 but the DB
+// itself was world-readable.
+//
+// Open the store, stat the on-disk file, assert 0o600. Pre-fix the
+// file came up at the process umask (0o644 on a typical login).
+func TestOpen_DBFilePermissionsLockedDown(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "targetmem.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o600 {
+		t.Errorf("targetmem db mode = %#o, want 0o600 (operator-only)", mode)
 	}
 }
 
