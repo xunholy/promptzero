@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.128.0] - 2026-05-11
+
+**`diff.Unified` truncation marker reports the real remainder.**
+The unified-diff renderer's `[... N lines truncated ...]` marker
+always read `[... 1 lines truncated ...]` regardless of how much
+content was actually dropped — the counter incremented once on the
+first rejected flush and the inner+outer loops then broke
+immediately, so the value stayed at 1 forever. For an operator
+looking at a confirmation prompt, "1 lines truncated" on a 700-
+line replacement diff was actively misleading: no way to tell
+whether the cap shaved off 1 line or 600. The marker exists
+precisely to give a sizing signal.
+
+### Fixed
+
+- **Track `(stopHunk, stopOp)` indices at the bail point** and
+  compute the real remainder by summing ops left in the bailed-
+  inside hunk (stopOp..end) plus header + every op for hunks
+  after that. Output cap behaviour is unchanged; only the marker
+  text now reports an accurate count.
+- `TestUnified_TruncationCounterReflectsRemaining` creates a
+  `maxLines+200` replacement diff (~400 unflushed ops), parses
+  the marker, and asserts >= 100 lines reported. Pre-fix
+  verification: stashing the diff.go change fails with `marker
+  reports the off-by-far '1 lines truncated' regardless of
+  remainder`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.127.0] - 2026-05-11
 
 **Document + test the audit WAL/SHM permission inheritance.**
