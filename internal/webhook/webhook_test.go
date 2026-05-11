@@ -272,3 +272,66 @@ func TestDispatcher_TestSubscription(t *testing.T) {
 	}
 	_ = d.Close(context.Background())
 }
+
+// TestDispatcher_FireConcurrentWithClose pins the v0.86 race fix:
+// Fire and FireByName must not panic with "send on closed channel"
+// when called concurrently with Close. Pre-fix the close-detect via
+// `<-d.closed` was TOCTOU racy against `close(d.queue)` — Fire could
+// observe d.closed open, then try to send to a queue Close had just
+// closed.
+//
+// Webhook fires happen from many goroutines (audit, agent, rules).
+// A late event during shutdown was a real production crash path; the
+// race is reproducible under `-race` by hammering Fire from N
+// goroutines while Close runs.
+//
+// The test never asserts a specific delivery count — that's racy by
+// nature. The contract is "no panic, no deadlock, Close completes."
+func TestDispatcher_FireConcurrentWithClose(t *testing.T) {
+	// Slow handler so Close has work to drain; we just need the
+	// dispatcher to be live for the fire loop.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	d := New([]Subscription{{Name: "race", URL: srv.URL}})
+
+	// Hammer Fire from many goroutines until told to stop.
+	stop := make(chan struct{})
+	var producers sync.WaitGroup
+	const workers = 8
+	for i := 0; i < workers; i++ {
+		producers.Add(1)
+		go func() {
+			defer producers.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				d.Fire(EventSessionEnded, map[string]int{"i": 1})
+				d.FireByName("race", map[string]int{"i": 2})
+			}
+		}()
+	}
+
+	// Let the producers warm up so the queue is hot when Close fires.
+	time.Sleep(20 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := d.Close(ctx); err != nil {
+		// Cancellation here would mean Close didn't complete in 5 s —
+		// the producer hammer is supposed to be cheap.
+		close(stop)
+		producers.Wait()
+		t.Fatalf("Close returned %v under concurrent Fire — race-induced deadlock?", err)
+	}
+
+	// Producers should observe the closed channel and exit cleanly;
+	// any panic would have already failed the test under -race.
+	close(stop)
+	producers.Wait()
+}
