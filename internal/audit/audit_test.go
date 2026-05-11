@@ -531,9 +531,10 @@ func TestQuerySince(t *testing.T) {
 }
 
 // TestExport pins the JSON-export contract used by /audit export.
-// Output is an indented JSON array (or "null" / "[]" for an empty
-// session). Operators pipe this to grep / jq, so an undocumented
-// format change would break workflows.
+// Output is always an indented JSON array — even for an empty
+// session, the body is "[]" rather than "null" (v0.163 contract).
+// Operators pipe this to grep / jq, so an undocumented format
+// change would break workflows.
 func TestExport(t *testing.T) {
 	log := openTestLog(t)
 	log.sessionID = "session-export-test"
@@ -562,7 +563,11 @@ func TestExport(t *testing.T) {
 		t.Errorf("Export output is not indented JSON: %s", out)
 	}
 
-	// Empty session (different sessionID) → empty JSON document.
+	// Empty session must yield a parseable JSON array, not the
+	// "null" literal. Pre-v0.163 json.MarshalIndent on a nil
+	// []Entry returned "null", forcing every consumer (cockpit,
+	// report renderer, CLI piping to jq) to special-case the
+	// empty-session path.
 	emptyLog := openTestLog(t)
 	emptyLog.sessionID = "session-empty-test"
 	emptyOut, err := emptyLog.Export()
@@ -570,8 +575,14 @@ func TestExport(t *testing.T) {
 		t.Fatalf("Export on empty session: %v", err)
 	}
 	trimmed := strings.TrimSpace(emptyOut)
-	if trimmed != "null" && trimmed != "[]" {
-		t.Errorf("Export on empty session = %q, want \"null\" or \"[]\"", trimmed)
+	if trimmed != "[]" {
+		t.Errorf("Export on empty session = %q, want \"[]\" (v0.163: always a JSON array)", trimmed)
+	}
+	// Round-trip to confirm the body is parseable as a JSON array
+	// rather than a literal "null".
+	var parsed []map[string]any
+	if err := json.Unmarshal([]byte(emptyOut), &parsed); err != nil {
+		t.Errorf("Export empty-session output is not parseable JSON array: %v\nbody: %s", err, emptyOut)
 	}
 }
 

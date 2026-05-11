@@ -678,6 +678,15 @@ func (l *Log) Export() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Ensure the marshalled body is always a JSON array, even for an
+	// empty session. json.MarshalIndent on a nil slice returns the
+	// literal "null", which forces every downstream consumer
+	// (cockpit, report generator, CLI `/audit export`) to special-case
+	// the empty-session path. Substituting an empty []Entry preserves
+	// the array shape so callers can iterate unconditionally.
+	if entries == nil {
+		entries = []Entry{}
+	}
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return "", err
