@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.162.0] - 2026-05-12
+
+**`/api/rewind/restore` distinguishes 404-not-found from 500-I/O-error.**
+Same defect class as v0.109 fixed in `session.RenameSession`. The
+handler mapped every error from `snapshot.Manager.Restore` to HTTP
+404, conflating "snapshot id doesn't exist" (typical operator typo,
+404 is correct) with "snapshot meta corrupt / disk read failed /
+permissions" (genuine I/O error, 500 is correct). The cockpit got
+"no such snapshot" when the snapshot existed but the disk failed
+to parse it.
+
+### Fixed
+
+- Check `errors.Is(err, fs.ErrNotExist)` and route only that case
+  to 404; everything else (the unparseable-meta path, generic I/O
+  errors) returns 500. Errors are wrapped with `%w` by
+  `snapshot.Restore` so the `errors.Is` chain works.
+- Regression test `TestRewindRestore_500OnCorruptMeta` synthesises
+  a snapshot with valid `.bak` but unparseable `.json` and asserts
+  the handler returns 500. Existing
+  `TestRewindRestore_404OnUnknownID` still pins the legitimate 404
+  branch.
+
 ## [0.161.0] - 2026-05-12
 
 **`Agent.ThinkingBudgetFor` clamps the upper bound that the docstring
