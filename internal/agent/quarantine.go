@@ -168,11 +168,34 @@ func quarantineOutput(toolName, output string, isErr bool) string {
 	case quarantineAudit:
 		// Trim trailing whitespace so the closing tag lands on its own line.
 		sanitized = strings.TrimRight(sanitized, " \t\r\n")
+		// Neutralize attacker-controlled occurrences of the closing
+		// tag inside the content. See neutralizeCloseTag below.
+		sanitized = neutralizeCloseTag(sanitized, "untrusted-audit-content")
 		return "<untrusted-audit-content>\n" + sanitized + "\n</untrusted-audit-content>"
 	case quarantineHardware:
 		fallthrough
 	default:
 		sanitized = strings.TrimRight(sanitized, " \t\r\n")
+		sanitized = neutralizeCloseTag(sanitized, "untrusted-hardware-output")
 		return "<untrusted-hardware-output>\n" + sanitized + "\n</untrusted-hardware-output>"
 	}
+}
+
+// neutralizeCloseTag replaces literal `</NAME>` occurrences inside
+// the wrapped content with `< /NAME>` (a space after `<`). The two
+// strings render almost identically to a human reader but the
+// second is structurally NOT a close tag — so a smuggled
+// `</untrusted-hardware-output>` in an attacker-controlled SSID,
+// NFC URI, or filename can't end the quarantine boundary
+// prematurely.
+//
+// Before this hardening, the only safety net was the LLM noticing
+// that two close tags appeared and choosing the one at the outer
+// boundary. That worked in practice but relied on model behaviour
+// rather than structure. The previous
+// TestTagEscapeAttempts_StayInsideQuarantine test even documented
+// closeCount=2 as the "expected safe shape" — it's now
+// closeCount=1 because the structural defense moved upstream.
+func neutralizeCloseTag(content, name string) string {
+	return strings.ReplaceAll(content, "</"+name+">", "< /"+name+">")
 }
