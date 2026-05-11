@@ -8,10 +8,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -333,6 +335,102 @@ func TestCostSnapshot(t *testing.T) {
 	// distinguishes "disabled" from "0/0" by absence).
 	if _, ok := body["budget"]; ok {
 		t.Errorf("budget block should be omitted when no cap is set")
+	}
+}
+
+// TestReport_503WhenAuditMissing returns 503 so the cockpit can
+// hide the report button when no audit log is wired.
+func TestReport_503WhenAuditMissing(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	code, _ := getJSON(t, ts, "/api/report")
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("code = %d, want 503", code)
+	}
+}
+
+// TestReport_DefaultMarkdownBody pins the happy path: GET with no
+// query params returns markdown for the audit log's current session.
+// The cockpit can render the body in-place or trigger save-as.
+func TestReport_DefaultMarkdownBody(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	l, _ := audit.Open(logPath)
+	t.Cleanup(func() { _ = l.Close() })
+	l.Record("subghz_rx", nil, "ok", "low", audit.LevelAction, 0, true)
+	s.SetAuditLog(l)
+
+	resp, err := ts.Client().Get(ts.URL + "/api/report")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("code = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") {
+		t.Errorf("content-type = %q, want text/markdown prefix", ct)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "# PromptZero Session Report") {
+		end := 200
+		if len(body) < end {
+			end = len(body)
+		}
+		t.Errorf("body missing markdown title heading; got: %q", body[:end])
+	}
+}
+
+// TestReport_JSONFormat pins the format=json branch. The body is
+// the raw JSON renderer output with application/json content-type
+// so the cockpit can parse it directly.
+func TestReport_JSONFormat(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	l, _ := audit.Open(logPath)
+	t.Cleanup(func() { _ = l.Close() })
+	l.Record("subghz_rx", nil, "ok", "low", audit.LevelAction, 0, true)
+	s.SetAuditLog(l)
+
+	resp, err := ts.Client().Get(ts.URL + "/api/report?format=json")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("code = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("content-type = %q, want application/json", ct)
+	}
+	var dto map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&dto); err != nil {
+		t.Fatalf("json decode: %v", err)
+	}
+	if _, ok := dto["session_id"]; !ok {
+		keys := make([]string, 0, len(dto))
+		for k := range dto {
+			keys = append(keys, k)
+		}
+		t.Errorf("JSON report missing session_id; got keys %v", keys)
+	}
+}
+
+// TestReport_RejectsBadFormat pins the validation contract: any
+// format other than md|json gets 400.
+func TestReport_RejectsBadFormat(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	l, _ := audit.Open(logPath)
+	t.Cleanup(func() { _ = l.Close() })
+	s.SetAuditLog(l)
+
+	code, _ := getJSON(t, ts, "/api/report?format=xml")
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400", code)
 	}
 }
 
