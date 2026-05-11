@@ -59,6 +59,47 @@ func TestThinkingBudgetFor_RaisesBelowMinimum(t *testing.T) {
 	}
 }
 
+// TestThinkingBudgetFor_ClampsAboveMaximum pins the v0.161 upper-
+// bound clamp. Pre-fix a misspecified persona with a huge thinking
+// budget (operator typo, experimental setting) produced a request
+// with MaxTokens = budget + responseBudget that the Anthropic API
+// rejected with a cryptic 400 — the old docstring claimed
+// buildCachedRequest clamped at send time but the actual code just
+// scaled MaxTokens to fit. v0.161 moves the clamp into the helper
+// so misspecified personas always produce a valid request.
+func TestThinkingBudgetFor_ClampsAboveMaximum(t *testing.T) {
+	const oneBillion int64 = 1_000_000_000 // operator typo
+	p := &persona.Persona{
+		Name:     "huge-budget",
+		Thinking: map[string]int64{TierPlan: oneBillion},
+	}
+	a := agentForModelTest("claude-sonnet-4-6", p)
+	got := a.ThinkingBudgetFor(TierPlan)
+	if got >= oneBillion {
+		t.Errorf("budget %d not clamped, got %d", oneBillion, got)
+	}
+	const maxBudget int64 = 64 * 1024
+	if got != maxBudget {
+		t.Errorf("budget = %d, want %d (the v0.161 maxBudget)", got, maxBudget)
+	}
+}
+
+// TestThinkingBudgetFor_AcceptsExactMaximum is the boundary case —
+// the exact `maxBudget` value (64 KiB) is allowed without clamping.
+// Verifies the clamp uses a strict `>` check, not `>=`, so the
+// documented inclusive upper bound stays correct.
+func TestThinkingBudgetFor_AcceptsExactMaximum(t *testing.T) {
+	const maxBudget int64 = 64 * 1024
+	p := &persona.Persona{
+		Name:     "max-budget",
+		Thinking: map[string]int64{TierPlan: maxBudget},
+	}
+	a := agentForModelTest("claude-sonnet-4-6", p)
+	if got := a.ThinkingBudgetFor(TierPlan); got != maxBudget {
+		t.Errorf("exact-max budget should pass through unchanged; got %d want %d", got, maxBudget)
+	}
+}
+
 func TestBuildCachedRequestWithThinking_PopulatesConfig(t *testing.T) {
 	params := buildCachedRequestWithThinking("claude-sonnet-4-6", "sys", nil, nil, 4096)
 	body, err := json.Marshal(params)

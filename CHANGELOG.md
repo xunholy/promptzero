@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.161.0] - 2026-05-12
+
+**`Agent.ThinkingBudgetFor` clamps the upper bound that the docstring
+already promised.** The function's docstring claimed values "above
+the per-request MaxTokens are clamped by buildCachedRequest at send
+time," but `buildCachedRequest` actually scales `MaxTokens` to fit
+the budget — there was no clamp at all. A misspecified persona with
+`thinking: { plan: 1000000000 }` (operator typo) produced a request
+with `MaxTokens ≈ 1G + 4 K` that the Anthropic API rejected with a
+cryptic 400; the v0.115 lower-bound clamp had a sibling docstring
+claim that was just wrong on the upper side.
+
+### Fixed
+
+- Add upper-bound clamp to `maxBudget = 64 KiB` inside
+  `thinkingBudgetForLocked`. 64 KiB sits comfortably under every
+  supported Claude model's output ceiling once the 4 KiB
+  responseBudget is added, while bounded enough to refuse
+  pathological values. Same fail-loud-at-helper pattern v0.115
+  used for the lower bound.
+- Two regression tests:
+  `TestThinkingBudgetFor_ClampsAboveMaximum` stages a 1-billion-
+  token persona and asserts the clamp lands at 64 KiB;
+  `TestThinkingBudgetFor_AcceptsExactMaximum` pins the strict-`>`
+  check so the boundary case (exact `maxBudget`) passes through
+  unchanged.
+- Update the `ThinkingBudgetFor` docstring to match what the code
+  actually does — both bounds are documented and enforced in the
+  helper now, not deferred to a phantom send-time clamp.
+
 ## [0.160.0] - 2026-05-12
 
 **Two remaining inline-`switch` arg-parsers brought onto the v0.157

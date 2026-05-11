@@ -90,9 +90,20 @@ func (a *Agent) modelForLocked(tier string) string {
 
 // ThinkingBudgetFor returns the extended-thinking token budget for
 // the given tier. Returns 0 when no budget is configured (thinking
-// disabled). Values below the Anthropic minimum of 1024 are raised
-// to 1024; values above the per-request MaxTokens are clamped by
-// buildCachedRequest at send time. Takes a.mu briefly.
+// disabled). Values are clamped to the supported range so a
+// misspecified persona always produces a valid request instead of
+// surfacing the Anthropic API error to the operator:
+//
+//   - below 1024 (Anthropic minimum) → raised to 1024.
+//   - above maxThinkingBudget (64 Ki tokens, comfortably under every
+//     model's output ceiling once added to responseBudget) →
+//     clamped to maxThinkingBudget. Pre-v0.161 the docstring claimed
+//     these values were "clamped by buildCachedRequest at send time"
+//     but the actual code scaled MaxTokens to fit, so a typo'd
+//     persona with `thinking: { plan: 1000000000 }` produced a
+//     request the API rejected with a cryptic 400.
+//
+// Takes a.mu briefly.
 func (a *Agent) ThinkingBudgetFor(tier string) int64 {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -115,6 +126,16 @@ func (a *Agent) thinkingBudgetForLocked(tier string) int64 {
 	const minBudget int64 = 1024
 	if budget < minBudget {
 		return minBudget
+	}
+	// Upper cap: every supported Claude model's output ceiling sits
+	// comfortably above 64 Ki tokens, and 64 Ki + responseBudget
+	// (4 Ki) is well below the API's MaxTokens limit. A persona
+	// asking for a huge thinking budget (operator typo,
+	// experimental setting) silently overshooting and producing an
+	// opaque 400 from the API is poor UX; clamp here instead.
+	const maxBudget int64 = 64 * 1024
+	if budget > maxBudget {
+		return maxBudget
 	}
 	return budget
 }
