@@ -227,6 +227,15 @@ func isInternalHost(host string) bool {
 	return true
 }
 
+// cgnatRange is RFC 6598's carrier-grade NAT block (100.64.0.0/10).
+// Go's net.IP.IsPrivate covers RFC1918 only — not CGNAT, which some
+// on-prem deployments route to internal services. A webhook pointed
+// at 100.64.x.x would otherwise bypass the SSRF guard.
+var cgnatRange = net.IPNet{
+	IP:   net.IPv4(100, 64, 0, 0),
+	Mask: net.CIDRMask(10, 32),
+}
+
 func isInternalIP(ip net.IP) bool {
 	return ip.IsLoopback() ||
 		ip.IsPrivate() ||
@@ -237,7 +246,8 @@ func isInternalIP(ip net.IP) bool {
 		// metadata link-local /32. IsLinkLocalUnicast covers
 		// 169.254.0.0/16 which includes 169.254.169.254 — defensive
 		// double-check for clarity.
-		ip.Equal(net.IPv4(169, 254, 169, 254))
+		ip.Equal(net.IPv4(169, 254, 169, 254)) ||
+		cgnatRange.Contains(ip)
 }
 
 func internalAllowed() bool {

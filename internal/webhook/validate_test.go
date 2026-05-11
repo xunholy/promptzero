@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"net"
 	"strings"
 	"testing"
 )
@@ -49,6 +50,46 @@ func TestValidateSubscription_RejectsRFC1918(t *testing.T) {
 		err := ValidateSubscription(Subscription{Name: "t", URL: raw})
 		if err == nil {
 			t.Errorf("URL %q must be rejected (RFC1918)", raw)
+		}
+	}
+}
+
+// TestValidateSubscription_RejectsCGNAT pins the v0.169 contract
+// addition: 100.64.0.0/10 (RFC 6598 carrier-grade NAT) joins the
+// internal-IP block-list. On-prem deployments routing CGNAT to
+// internal services would otherwise have a webhook bypass the
+// SSRF guard — Go's net.IP.IsPrivate only covers RFC1918, not
+// CGNAT.
+func TestValidateSubscription_RejectsCGNAT(t *testing.T) {
+	cases := []string{
+		"http://100.64.0.1/hook",      // start of range
+		"http://100.127.255.254/hook", // end of range
+		"http://100.100.100.100/hook", // middle
+	}
+	for _, raw := range cases {
+		err := ValidateSubscription(Subscription{Name: "t", URL: raw})
+		if err == nil {
+			t.Errorf("URL %q must be rejected (CGNAT 100.64.0.0/10)", raw)
+		}
+	}
+}
+
+// TestValidateSubscription_AcceptsJustOutsideCGNAT pins the
+// boundary — addresses just outside the 100.64.0.0/10 range must
+// still pass so legitimate public IPs that happen to start with
+// "100." (e.g. 100.0.0.1, 100.128.0.0) aren't blocked.
+func TestValidateSubscription_AcceptsJustOutsideCGNAT(t *testing.T) {
+	// We can't easily test acceptance against a public-routable IP
+	// without DNS resolution. Use isInternalIP directly to pin the
+	// boundary semantics without resolving anything.
+	cases := []string{
+		"100.63.255.255", // last IP before CGNAT
+		"100.128.0.0",    // first IP after CGNAT
+	}
+	for _, ip := range cases {
+		parsed := net.ParseIP(ip)
+		if isInternalIP(parsed) {
+			t.Errorf("isInternalIP(%s) = true; want false (just outside CGNAT range)", ip)
 		}
 	}
 }
