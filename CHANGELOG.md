@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.170.0] - 2026-05-12
+
+**Webhook SSRF guard covers all multicast scopes and deprecated
+IPv6 site-local.** Two more bypass vectors closed alongside v0.169's
+CGNAT addition:
+
+- `IsLinkLocalMulticast` only flags `ff02::*` (link-local). Site-
+  local (`ff05::*`) and org-local (`ff08::*`) multicast scopes
+  silently bypassed — both are valid LAN-multicast attack surfaces.
+- `fec0::/10` (RFC 3879 deprecated site-local unicast) isn't flagged
+  by Go's `IsPrivate` or any sibling helper. Some legacy systems
+  still route it to internal services.
+
+### Fixed
+
+- Switch the multicast check from `IsLinkLocalMulticast` to
+  `IsMulticast`. Captures every multicast scope including IPv4
+  224.0.0.0/4. Legitimate webhooks are unicast HTTP/HTTPS — no
+  legitimate use case for multicast targets.
+- Add `ipv6SiteLocalRange = fec0::/10` net.IPNet check alongside
+  the existing CGNAT range.
+- Two regression tests:
+  `TestIsInternalIP_IPv6BypassGaps` covers `ff05::`, `ff08::`,
+  `fec0::` plus an IPv4 multicast sanity case;
+  `TestIsInternalIP_PublicIPv6Passes` pins the boundary so
+  Cloudflare / Google public DNS addresses still validate.
+
 ## [0.169.0] - 2026-05-12
 
 **Webhook SSRF guard rejects RFC 6598 CGNAT range (100.64.0.0/10).**

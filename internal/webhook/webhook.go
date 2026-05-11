@@ -236,18 +236,35 @@ var cgnatRange = net.IPNet{
 	Mask: net.CIDRMask(10, 32),
 }
 
+// ipv6SiteLocalRange is RFC 3879's deprecated site-local IPv6 prefix
+// (fec0::/10). Officially deprecated but some legacy systems still
+// route it to internal services; defense-in-depth includes it in
+// the internal-IP block-list. Go's IsPrivate / IsLinkLocalUnicast
+// helpers don't flag fec0::*.
+var ipv6SiteLocalRange = net.IPNet{
+	IP:   net.IP{0xfe, 0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	Mask: net.CIDRMask(10, 128),
+}
+
 func isInternalIP(ip net.IP) bool {
 	return ip.IsLoopback() ||
 		ip.IsPrivate() ||
 		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
+		// IsMulticast covers every multicast scope — link-local
+		// (ff02::), site-local (ff05::), org-local (ff08::), and
+		// IPv4 multicast 224.0.0.0/4. The narrower
+		// IsLinkLocalMulticast used pre-v0.170 caught only
+		// ff02::, leaving ff05:: and ff08:: as bypass vectors
+		// for LAN-multicast SSRF.
+		ip.IsMulticast() ||
 		ip.IsUnspecified() ||
 		// IsPrivate doesn't currently flag the AWS / GCP / Azure
 		// metadata link-local /32. IsLinkLocalUnicast covers
 		// 169.254.0.0/16 which includes 169.254.169.254 — defensive
 		// double-check for clarity.
 		ip.Equal(net.IPv4(169, 254, 169, 254)) ||
-		cgnatRange.Contains(ip)
+		cgnatRange.Contains(ip) ||
+		ipv6SiteLocalRange.Contains(ip)
 }
 
 func internalAllowed() bool {

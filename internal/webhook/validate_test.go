@@ -94,6 +94,46 @@ func TestValidateSubscription_AcceptsJustOutsideCGNAT(t *testing.T) {
 	}
 }
 
+// TestIsInternalIP_IPv6BypassGaps pins the v0.170 additions:
+// site-local multicast (ff05::), org-local multicast (ff08::), and
+// deprecated site-local unicast (fec0::/10) all join the
+// internal-IP block-list. Go's IsLinkLocalMulticast covers only
+// ff02::, and no helper flags fec0::* — both are documented
+// SSRF-bypass vectors for IPv6 LAN attacks.
+func TestIsInternalIP_IPv6BypassGaps(t *testing.T) {
+	cases := []struct {
+		ip   string
+		note string
+	}{
+		{"ff05::1", "site-local multicast (RFC 4291)"},
+		{"ff08::1", "org-local multicast (RFC 4291)"},
+		{"fec0::1", "deprecated site-local unicast (RFC 3879)"},
+		// Sanity: IPv4 multicast also flagged via IsMulticast.
+		{"224.0.0.1", "IPv4 link-local multicast"},
+	}
+	for _, c := range cases {
+		parsed := net.ParseIP(c.ip)
+		if !isInternalIP(parsed) {
+			t.Errorf("isInternalIP(%s) = false; want true (%s)", c.ip, c.note)
+		}
+	}
+}
+
+// TestIsInternalIP_PublicIPv6Passes pins the boundary — well-formed
+// public IPv6 addresses outside the new ranges still validate.
+func TestIsInternalIP_PublicIPv6Passes(t *testing.T) {
+	cases := []string{
+		"2606:4700:4700::1111", // Cloudflare DNS
+		"2001:4860:4860::8888", // Google DNS
+	}
+	for _, ip := range cases {
+		parsed := net.ParseIP(ip)
+		if isInternalIP(parsed) {
+			t.Errorf("isInternalIP(%s) = true; want false (public IPv6)", ip)
+		}
+	}
+}
+
 // TestValidateSubscription_RejectsNonHTTPSchemes ensures file://,
 // ftp://, javascript:, etc. don't slip through the URL parse.
 func TestValidateSubscription_RejectsNonHTTPSchemes(t *testing.T) {
