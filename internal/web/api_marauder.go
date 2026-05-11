@@ -423,9 +423,16 @@ func (s *Server) handleMarauderAcquire(c *sessionConn) {
 		})
 		return
 	}
+	// Set marauderHolder and marauderActive together under
+	// marauderMu so they transition atomically — mirrors the v0.143
+	// fix on the Flipper screen mirror. Previously
+	// marauderActive.Store(true) ran after Unlock, opening a window
+	// where a racing releaseMarauder's trailing Store(false) could
+	// stomp this Store(true) and leave marauderHolder!=nil but
+	// marauderActive==false.
 	s.marauderHolder = c
-	s.marauderMu.Unlock()
 	s.marauderActive.Store(true)
+	s.marauderMu.Unlock()
 
 	port, fw := "", ""
 	s.marauderInfoMu.Lock()
@@ -736,11 +743,16 @@ func (s *Server) releaseMarauder(reason string) {
 	s.marauderHolder = nil
 	s.marauderCancel = nil
 	s.marauderRunning = ""
+	// Clear marauderActive inside marauderMu so it transitions
+	// atomically with the holder reset — same v0.143 contract used
+	// for the Flipper screen mirror. The previous form stored false
+	// after Unlock, letting a racing handleMarauderAcquire's
+	// Store(true) land in between and then be stomped.
+	s.marauderActive.Store(false)
 	s.marauderMu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
-	s.marauderActive.Store(false)
 	_ = reason // reserved for audit hookup later
 }
 

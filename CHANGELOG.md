@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.144.0] - 2026-05-12
+
+**Marauder-mirror state transitions are atomic under `marauderMu`.**
+The Marauder mirror control plane carried the same Load-then-Store-
+outside-the-lock pattern that v0.143 fixed on the Flipper screen
+mirror. `handleMarauderAcquire` did `marauderHolder = c; Unlock;
+marauderActive.Store(true)`, and `releaseMarauder` did
+`marauderHolder = nil; Unlock; marauderActive.Store(false)` — so a
+racing acquire+release pair could leave the two flags desynced
+(holder set with `marauderActive==false` or vice versa).
+`refuseIfMirrorActive`'s sibling check on the Marauder side would
+then read an incorrect fast-path state.
+
+### Fixed
+
+- Move both `marauderActive.Store(...)` calls inside the
+  `marauderMu` critical section so `marauderHolder` and
+  `marauderActive` transition together. Symmetric with the
+  v0.143 Flipper-screen fix; the two mirrors now follow the same
+  contract.
+- Regression test
+  (`TestMarauder_ActiveStaysConsistent_ConcurrentAcquireRelease`)
+  interleaves 64 acquire goroutines against 64 release goroutines
+  and asserts the invariant `holder==nil ↔ marauderActive==false`
+  at quiesce.
+
 ## [0.143.0] - 2026-05-12
 
 **Screen-mirror state transitions are atomic under `screenMu`.** Two

@@ -1026,3 +1026,60 @@ func TestMarauderConfirmTooFastRejected(t *testing.T) {
 		}
 	}
 }
+
+// TestMarauder_ActiveStaysConsistent_ConcurrentAcquireRelease pins
+// the v0.144 parallel of the v0.143 screen-mirror fix: marauderActive
+// and marauderHolder transition together under marauderMu. Pre-fix:
+//
+//	s.marauderMu.Lock()
+//	s.marauderHolder = c
+//	s.marauderMu.Unlock()
+//	s.marauderActive.Store(true)
+//
+// and the symmetric release path stored false after Unlock. A
+// concurrent acquire+release pair could leave marauderHolder!=nil
+// with marauderActive==false (or vice versa) when the trailing Store
+// of one path stomped the in-lock state set by the other.
+//
+// This test fires interleaved acquire+release calls from many
+// goroutines, then asserts the invariant
+// (holder==nil ↔ marauderActive==false) at quiesce.
+func TestMarauder_ActiveStaysConsistent_ConcurrentAcquireRelease(t *testing.T) {
+	fm := newFakeMarauder()
+	s, _ := marauderServer(t, fm)
+
+	const rounds = 64
+	var wg sync.WaitGroup
+	for i := 0; i < rounds; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			c := &sessionConn{
+				id:     "race-acq",
+				out:    make(chan []byte, 8),
+				outBin: make(chan []byte, 8),
+			}
+			s.handleMarauderAcquire(c)
+		}()
+		go func() {
+			defer wg.Done()
+			s.releaseMarauder("race")
+		}()
+	}
+	wg.Wait()
+
+	// Drain to a known terminal state.
+	s.releaseMarauder("final")
+
+	s.marauderMu.Lock()
+	holder := s.marauderHolder
+	s.marauderMu.Unlock()
+	active := s.marauderActive.Load()
+
+	if holder != nil {
+		t.Errorf("post-final-release: marauderHolder=%+v, want nil", holder)
+	}
+	if active {
+		t.Errorf("post-final-release: marauderActive=true with holder=nil — fast-path guard desynced")
+	}
+}
