@@ -294,6 +294,14 @@ func (a *Agent) DeleteSession(id string) error {
 	a.mu.Lock()
 	store := a.sessionStore
 	mgr := a.snapshotMgr
+	// Capture whether the operator is deleting the currently-active
+	// session so we can rotate in-memory state after the disk delete
+	// completes. Without this rotation /forget <current-id> would
+	// silently undo itself: autosave on the next turn re-creates
+	// id.json from a.history, and the next snapshot recreates
+	// snapshots/<id>/ — the operator thinks the session is gone but
+	// it reappears on the next REPL turn.
+	isCurrent := id != "" && id == a.sessionID
 	a.mu.Unlock()
 	if store == nil {
 		return fmt.Errorf("session store not configured")
@@ -308,6 +316,18 @@ func (a *Agent) DeleteSession(id string) error {
 		if err := mgr.Purge(id); err != nil {
 			obs.Default().Warn("session_snapshot_purge_failed", "session_id", id, "err", err)
 		}
+	}
+	if isCurrent {
+		a.mu.Lock()
+		// Re-check under the lock — a concurrent ResumeSession /
+		// NewSession could have rotated sessionID after we snapshotted
+		// isCurrent. Only rotate when the field still matches the id
+		// the operator asked us to forget.
+		if a.sessionID == id {
+			a.history = nil
+			a.sessionID = fmt.Sprintf("session-%d", time.Now().UnixNano())
+		}
+		a.mu.Unlock()
 	}
 	return nil
 }
