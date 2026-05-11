@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -45,6 +46,10 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/mode", s.requireAuth(s.handleModeGet))
 	mux.HandleFunc("POST /api/mode", s.requireAuth(s.handleModeSet))
+
+	mux.HandleFunc("GET /api/attack", s.requireAuth(s.handleAttackGet))
+	mux.HandleFunc("POST /api/attack", s.requireAuth(s.handleAttackSet))
+	mux.HandleFunc("DELETE /api/attack", s.requireAuth(s.handleAttackClear))
 
 	mux.HandleFunc("GET /api/watch", s.requireAuth(s.handleWatch))
 	mux.HandleFunc("POST /api/watch/pause", s.requireAuth(s.handleWatchPause))
@@ -337,6 +342,85 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respondJSON(w, http.StatusOK, body)
+}
+
+// attackIDRE is the same regex the CLI's normaliseAttackIDs uses
+// (commands.go:909). MITRE format: T + 4 digits, optionally a
+// 3-digit sub-technique suffix.
+var attackIDRE = regexp.MustCompile(`^T\d{4}(\.\d{3})?$`)
+
+// normaliseAttackIDsWeb mirrors the CLI's normaliseAttackIDs.
+// Uppercase + trim, reject empties via final length check, reject
+// any token that doesn't match the MITRE shape with a clear error.
+// Same vocabulary as the CLI so operators don't relearn.
+func normaliseAttackIDsWeb(in []string) ([]string, error) {
+	out := make([]string, 0, len(in))
+	for _, raw := range in {
+		id := strings.ToUpper(strings.TrimSpace(raw))
+		if id == "" {
+			continue
+		}
+		if !attackIDRE.MatchString(id) {
+			return nil, fmt.Errorf("invalid technique id %q (want format like T1557 or T1557.004)", raw)
+		}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("at least one technique id required")
+	}
+	return out, nil
+}
+
+// handleAttackGet returns the active ATT&CK technique constraint.
+// Empty list means "no constraint" (all tools allowed). Mirrors the
+// CLI's `/attack` (no-args) listing.
+func (s *Server) handleAttackGet(w http.ResponseWriter, _ *http.Request) {
+	if s.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "agent not configured")
+		return
+	}
+	ids := s.agent.AttackConstraint()
+	if ids == nil {
+		ids = []string{}
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"techniques": ids})
+}
+
+// handleAttackSet pins the session to the given ATT&CK technique
+// IDs. Body: {"techniques": ["T1557.004", "T1499"]}. Empty list or
+// missing key is rejected with 400 — to clear the constraint use
+// DELETE /api/attack. Mirrors CLI `/attack set T1557.004 …`.
+func (s *Server) handleAttackSet(w http.ResponseWriter, r *http.Request) {
+	if s.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "agent not configured")
+		return
+	}
+	var body struct {
+		Techniques []string `json:"techniques"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+		return
+	}
+	ids, err := normaliseAttackIDsWeb(body.Techniques)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.agent.SetAttackConstraint(ids)
+	respondJSON(w, http.StatusOK, map[string]any{"techniques": s.agent.AttackConstraint()})
+}
+
+// handleAttackClear removes the constraint. Mirrors CLI
+// `/attack clear`. DELETE is the more REST-idiomatic verb for
+// "remove the resource" than POST with a magic body shape.
+func (s *Server) handleAttackClear(w http.ResponseWriter, _ *http.Request) {
+	if s.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "agent not configured")
+		return
+	}
+	s.agent.SetAttackConstraint(nil)
+	respondJSON(w, http.StatusOK, map[string]any{"techniques": []string{}})
 }
 
 // auditEntryDTO mirrors audit.Entry but trims to the operator-relevant

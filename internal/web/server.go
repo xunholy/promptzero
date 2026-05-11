@@ -88,6 +88,12 @@ type agentDriver interface {
 	SetMode(m mode.Mode)
 	ReadOnly() bool
 	SetReadOnly(v bool)
+
+	// Attack constraint: web equivalent of the CLI's /attack set/clear.
+	// The dispatch narrows the per-turn catalog to tools tagged with
+	// the supplied ATT&CK technique IDs.
+	AttackConstraint() []string
+	SetAttackConstraint(ids []string)
 }
 
 // sessionDriver is the optional surface Server needs to expose persisted
