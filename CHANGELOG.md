@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.143.0] - 2026-05-12
+
+**Screen-mirror state transitions are atomic under `screenMu`.** Two
+related correctness issues in `handleScreenAcquire` and
+`releaseScreen`:
+
+1. `mirrorActive` was stored outside the `screenMu` critical section
+   while `screenHolder` was set inside it. A racing acquire could
+   land its own `Store(true)` between the holder reset and the
+   trailing `Store(false)`, leaving `screenHolder != nil` but
+   `mirrorActive == false`. The `refuseIfMirrorActive` fast-path
+   guard would then admit fs/input/device requests while a screen
+   mirror was actively running.
+2. The "already taken" branch of `handleScreenAcquire` read
+   `s.screenHolder.id` AFTER releasing the lock. A concurrent
+   `releaseScreen` nilling the holder between the unlock and the
+   field read produced a nil-dereference SIGSEGV — reproduced
+   reliably by the new parallel-acquire test.
+
+### Fixed
+
+- `mirrorActive.Store(false)` now runs inside the `screenMu` lock
+  alongside the holder reset in both the EnterRPC-failure recovery
+  and `releaseScreen`. State transitions either-both-or-neither.
+- Snapshot `s.screenHolder.id` into a local inside the lock before
+  unlocking on the "taken" branch.
+- Regression test
+  (`TestScreen_MirrorActiveStaysConsistent_ConcurrentAcquire`)
+  fires 64 parallel `handleScreenAcquire` calls with a forced
+  EnterRPC failure and asserts both flags are consistent at quiesce
+  (`holder==nil` ↔ `mirrorActive==false`). Pre-fix it nil-derefed
+  inside the first iteration.
+
 ## [0.142.0] - 2026-05-12
 
 **Rules engine in-flight cap holds under concurrent `Handle`.** The
