@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.138.0] - 2026-05-11
+
+**`agent.maybeProspectiveReflect` neutralizes smuggled close
+tag.** I claimed v0.137 closed the close-tag-injection defense
+arc — it didn't. `<prospective-critique>` wraps Haiku-generated
+critique JSON whose `concerns` array and `recommendation` string
+field are free-form, and a classifier that echoes
+attacker-influenceable input into either field would produce a
+literal `</prospective-critique>` inside the wrapper. Same
+shape as the five wrappers already hardened in v0.134-v0.137.
+
+### Fixed
+
+- **Inline `strings.ReplaceAll`** rewrites literal
+  `</prospective-critique>` inside the returned critique to
+  `< /prospective-critique>` (single space after `<`). Same
+  pattern as v0.134/0.135/0.136/0.137.
+- `TestMaybeProspectiveReflect_NeutralizesSmuggledCloseTag`
+  drives a prospective fn that returns a critique with the
+  smuggled tag in `recommendation` and asserts: exactly one
+  close tag survives, neutralized form is present, attacker
+  text preserved, counter still bumped. Pre-fix verification:
+  stashing the prospective.go change makes the test fail with
+  `closing tag count = 2, want 1`.
+
+This *actually* closes the arc — every model-facing
+quarantine-style wrapper now has structural defense:
+`<untrusted-hardware-output>`, `<untrusted-audit-content>`,
+`<circuit-breaker-open>`, `<consensus-disagreement>`,
+`<reflection>`, `<prospective-critique>`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.137.0] - 2026-05-11
 
 **`agent.maybeAppendReflection` neutralizes smuggled close
