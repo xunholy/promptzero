@@ -183,6 +183,58 @@ func TestBuildHandoff_IgnoresSyntheticPrefixes(t *testing.T) {
 	}
 }
 
+// TestBuildHandoff_StripsUIContextPrefixFromOpenThread pins the bug
+// where the inline prefix check only matched "<device-state>" and
+// "<handoff>" — so a turn arriving from the web cockpit wrapped in
+// "<ui-context>{...}</ui-context>actual prompt" landed in
+// OpenThreads with the raw markup still attached. The /report and
+// /session-resume views then showed the synthetic wrapper instead
+// of the operator-typed text.
+func TestBuildHandoff_StripsUIContextPrefixFromOpenThread(t *testing.T) {
+	const userTyped = "read the badge"
+	hist := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock(
+			"<ui-context>{\"view\":\"fs\",\"path\":\"/ext/nfc\"}</ui-context>\n\n" + userTyped)),
+		// No assistant text reply — the user turn stays open.
+		{Role: anthropic.MessageParamRoleAssistant, Content: []anthropic.ContentBlockParamUnion{{
+			OfToolUse: &anthropic.ToolUseBlockParam{ID: "toolu_x", Name: "nfc_detect"},
+		}}},
+	}
+	h := BuildHandoff(hist)
+	if len(h.OpenThreads) != 1 {
+		t.Fatalf("expected 1 open thread, got %d: %+v", len(h.OpenThreads), h.OpenThreads)
+	}
+	got := h.OpenThreads[0].Text
+	if strings.Contains(got, "<ui-context>") {
+		t.Errorf("open thread carries raw <ui-context> markup; want stripped. got %q", got)
+	}
+	if !strings.Contains(got, userTyped) {
+		t.Errorf("open thread = %q, want it to contain %q", got, userTyped)
+	}
+}
+
+// TestBuildHandoff_IgnoresHandoffResumePrefix pins the second half of
+// the same bug: <handoff-resume> doesn't start with "<handoff>" (note
+// the trailing ">"), so the inline HasPrefix check let the resume
+// envelope through as if it were a fresh user prompt. /report would
+// then show "session resumed from previous handoff: …" as the open
+// thread instead of the operator's first real message.
+func TestBuildHandoff_IgnoresHandoffResumePrefix(t *testing.T) {
+	hist := []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock(
+			HandoffResumeSentinel + "\n{\"findings\":[]}")),
+		// Tool-use only assistant reply — user turn would normally
+		// stay open under the heuristic.
+		{Role: anthropic.MessageParamRoleAssistant, Content: []anthropic.ContentBlockParamUnion{{
+			OfToolUse: &anthropic.ToolUseBlockParam{ID: "toolu_y", Name: "device_info"},
+		}}},
+	}
+	h := BuildHandoff(hist)
+	if len(h.OpenThreads) != 0 {
+		t.Fatalf("handoff-resume sentinel must not appear in OpenThreads, got %+v", h.OpenThreads)
+	}
+}
+
 // TestTruncatePreview_Short pins the no-op path: input under cap
 // returns trimmed but otherwise unchanged.
 func TestTruncatePreview_Short(t *testing.T) {

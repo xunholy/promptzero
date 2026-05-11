@@ -145,19 +145,31 @@ func BuildHandoff(history []anthropic.MessageParam) HandoffArtifact {
 					out.Blocked = append(out.Blocked, extractBlocked(name, preview))
 				}
 			case block.OfText != nil:
-				txt := strings.TrimSpace(block.OfText.Text)
-				if msg.Role == anthropic.MessageParamRoleUser && txt != "" {
-					// Skip our own synthetic state-oracle / quarantine prefixes.
-					if !strings.HasPrefix(txt, "<device-state>") && !strings.HasPrefix(txt, "<handoff>") {
-						lastUserText = txt
+				// extractUserContent strips the synthetic <device-state>
+				// / <ui-context> wrappers the agent injects on every
+				// turn, and returns "" for the <handoff-resume>
+				// sentinel. Previously this branch did an inline
+				// HasPrefix check for "<device-state>" and "<handoff>"
+				// only — so a turn that arrived as
+				// `<ui-context>{...}</ui-context>actual prompt` landed
+				// in OpenThreads with the raw markup still attached,
+				// and `<handoff-resume>...` did the same because the
+				// prefix is "<handoff-resume>" not "<handoff>". The
+				// resume summary surfaced the noise instead of the
+				// operator-typed text.
+				switch msg.Role {
+				case anthropic.MessageParamRoleUser:
+					if user := extractUserContent(block.OfText.Text); user != "" {
+						lastUserText = user
 					}
-				}
-				if msg.Role == anthropic.MessageParamRoleAssistant && txt != "" {
-					// Assistant produced a final text reply — clear the
-					// open-thread candidate. Tool-use-only turns don't
-					// contribute a text block, so they leave the user
-					// turn still "open" per this heuristic.
-					lastUserText = ""
+				case anthropic.MessageParamRoleAssistant:
+					if strings.TrimSpace(block.OfText.Text) != "" {
+						// Assistant produced a final text reply — clear
+						// the open-thread candidate. Tool-use-only turns
+						// don't contribute a text block, so they leave
+						// the user turn still "open" per this heuristic.
+						lastUserText = ""
+					}
 				}
 			}
 		}
