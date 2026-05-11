@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-05-11
+
+**Marauder BLE helper coverage.** Closes a symmetry gap: the
+`reverseUUID` / `uuidsMatch` / `bleAddrKind.String` helpers exist
+verbatim in both `internal/flipper/transport` (covered in v0.69)
+and `internal/marauder/transport_ble.go` (still at 0 %). Same
+shape, same regression-risk surface — a copy in either package
+could silently misclassify GATT characteristics or scramble the
+`ble://` URL parser's address-form labels. Test now lives in
+both places.
+
+### Changed
+
+- **`internal/marauder/transport_ble.go` helper coverage.** New
+  `transport_ble_helpers_test.go` (build-tagged `!darwin ||
+  (darwin && cgo)` to mirror the source) pins:
+  - `reverseUUID` — 128-bit byte-reversal with involution check
+    (`reverseUUID(reverseUUID(x)) == x`).
+  - `uuidsMatch` — equality treats a UUID and its byte-reversed
+    form as equivalent; symmetric, reflexive.
+  - `bleAddrKind.String` — MAC / UUID / name labels operators
+    read via `--marauder-ble-discover`, plus the out-of-range
+    `"address"` fallback.
+
+  Coverage on `internal/marauder` rose **65.2 % → 67.7 %**
+  (+2.5 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure UUID-math + enum-label
+  tests; no transport or hardware surface touched.
+
 ## [0.73.0] - 2026-05-11
 
 **Generate + fap-build helper coverage.** Five more 0%-covered
