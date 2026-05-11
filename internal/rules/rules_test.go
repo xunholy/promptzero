@@ -375,3 +375,60 @@ func TestEngine_ToolActionPanicRecovered(t *testing.T) {
 		t.Errorf("inFlight=%d after panic recovery, expected 0 (defer did not run)", eng.inFlight.Load())
 	}
 }
+
+// TestRegister_DefaultsEnabledTrue pins the Rule docstring's contract:
+// "Enabled defaults true when the rule is registered; flip it via
+// Pause." Pre-this-fix Register stored the rule with whatever Enabled
+// the caller had set — and Go's zero value for bool is false. So a
+// caller writing the natural shape
+//
+//	eng.Register(rules.Rule{Name: "X", Match: ..., Actions: ...})
+//
+// would silently register a never-firing rule because Handle's
+// `if !r.Enabled { continue }` skipped it. The fix forces
+// cp.Enabled = true at Register time. Operators wanting an initially-
+// paused rule still call Pause(name) afterwards.
+func TestRegister_DefaultsEnabledTrue(t *testing.T) {
+	var fires int
+	eng := New(Deps{
+		WebhookFire: func(_ string, _ map[string]any) { fires++ },
+	})
+
+	// Deliberately omit the Enabled field — exactly what the docstring
+	// promises is safe to do.
+	eng.Register(Rule{
+		Name:    "default-on",
+		Match:   Match{Tool: "tool_x"},
+		Actions: []Action{{Kind: ActionWebhook, Webhook: "ops"}},
+	})
+
+	eng.Handle(audit.Entry{Tool: "tool_x"})
+	if fires != 1 {
+		t.Fatalf("rule with implicit-true Enabled did not fire: got %d webhook calls, want 1", fires)
+	}
+
+	// Sanity: explicit Enabled: false at Register-time is OVERRIDDEN
+	// to true per the contract (operators wanting paused-at-register
+	// call Pause afterwards). The previous "Enabled: false silently
+	// kept off" path was the bug.
+	eng.Register(Rule{
+		Name:    "even-false-becomes-true",
+		Match:   Match{Tool: "tool_y"},
+		Actions: []Action{{Kind: ActionWebhook, Webhook: "ops"}},
+		Enabled: false,
+	})
+	eng.Handle(audit.Entry{Tool: "tool_y"})
+	if fires != 2 {
+		t.Fatalf("Register did not normalise Enabled to true: got %d total fires after the second event, want 2", fires)
+	}
+
+	// And the Pause path — the documented way to disable a rule —
+	// still works after the Register-time normalisation.
+	if !eng.Pause("default-on") {
+		t.Fatal("Pause returned false for a registered rule")
+	}
+	eng.Handle(audit.Entry{Tool: "tool_x"})
+	if fires != 2 {
+		t.Fatalf("paused rule fired anyway: got %d fires after Pause+Handle, want 2", fires)
+	}
+}
