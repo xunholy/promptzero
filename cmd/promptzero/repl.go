@@ -974,6 +974,19 @@ func enterREPL(deps *REPLDeps) error {
 					ed.cancelSearch()
 					ed.render()
 					continue
+				default:
+					// Any other key (arrow, Ctrl+W, Ctrl+K, …)
+					// accepts the current search match (matching
+					// the bash/zsh readline convention) and then
+					// falls through to the main switch so the key
+					// applies to the now-current line. Without this
+					// default the editor stayed in a hybrid state
+					// where ed.searching was true but the main
+					// switch had already mutated the buffer — the
+					// next rune would unexpectedly land in
+					// runeInSearch instead of the buffer.
+					ed.acceptSearch()
+					// no continue — fall through to main switch
 				}
 			}
 			switch k.kind {
