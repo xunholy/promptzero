@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
+	"github.com/xunholy/promptzero/internal/mcp"
 	"github.com/xunholy/promptzero/internal/risk"
 )
 
@@ -177,5 +180,60 @@ func TestSetupBudget_QuietWhenNoCap(t *testing.T) {
 
 	if strings.Contains(out, "Session budget") {
 		t.Errorf("setupBudget with cap=0 should not print the budget banner; stderr: %q", out)
+	}
+}
+
+// TestWireMCPSidecars_OpensAuditLog pins the v0.96 parity fix: MCP
+// mode now wires the same audit log the REPL/web mode uses, so a
+// parallel REPL session running /audit query sees MCP-driven tool
+// calls. Pre-v0.96 runMCPMode bypassed setupAuditLog entirely
+// and tool calls were invisible to the audit surface.
+//
+// The test points HOME at a temp dir, calls wireMCPSidecars with an
+// empty config (no sidecars), and verifies the audit.db file landed
+// at the canonical ~/.promptzero/audit.db path. The cleanup closure
+// must run successfully without panicking on a half-wired server.
+func TestWireMCPSidecars_OpensAuditLog(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	srv := mcp.NewServer(nil, nil)
+	cfg := &config.Config{}
+
+	cleanup := wireMCPSidecars(context.Background(), cfg, srv)
+	t.Cleanup(cleanup)
+
+	dbPath := tmpHome + "/.promptzero/audit.db"
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Errorf("expected audit.db at %s, got %v — wireMCPSidecars didn't open it", dbPath, err)
+	}
+}
+
+// TestWireMCPSidecars_NoSidecarsConfigured covers the negative path:
+// when cfg.Bruce.Port / cfg.Faultier.Port / cfg.BusPirate.Port are
+// all empty, the wiring runs cleanly without trying to dial anything.
+// The cleanup closure must still succeed (it has only the audit-log
+// close to do).
+func TestWireMCPSidecars_NoSidecarsConfigured(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	srv := mcp.NewServer(nil, nil)
+	cfg := &config.Config{} // all sidecar ports empty
+
+	out := captureStderr(t, func() {
+		cleanup := wireMCPSidecars(context.Background(), cfg, srv)
+		cleanup()
+	})
+
+	// No connecting-to-Bruce/Faultier/BusPirate lines should appear
+	// when those ports are unset — silence is the right behaviour.
+	for _, banned := range []string{"connecting to Bruce", "connecting to Faultier", "connecting to Bus Pirate"} {
+		if strings.Contains(out, banned) {
+			t.Errorf("unconfigured sidecar triggered connect attempt: stderr contains %q", banned)
+		}
+	}
+	if !strings.Contains(out, "MCP audit logging") {
+		t.Errorf("audit log banner missing from MCP wiring; got: %q", out)
 	}
 }
