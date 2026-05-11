@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-05-11
+
+**Mode parity audit, phase 2h (final web phase): `/api/campaign`.**
+Validate + run for multi-step campaign YAMLs, the last big CLI
+slash-command surface that hadn't crossed over to web. Web
+operators can now drive end-to-end engagement playbooks (parse +
+execute against the agent's tool dispatch) without the REPL.
+
+### Added
+
+- **`POST /api/campaign/validate`** — body is raw YAML text.
+  Parses + cross-checks; returns `{valid: true, name, step_count}`.
+  Mirrors CLI `/campaign validate <file>` minus the file-read
+  half (clients embed the YAML in the request body).
+- **`POST /api/campaign/run`** — body is raw YAML text. Parses,
+  then executes synchronously against `campaign.AgentExecutor{
+  Dispatcher: s.agent}` with a 10-minute total-time budget.
+  Response is a JSON envelope: `campaign`, `succeeded`,
+  `started_at` / `ended_at` (RFC3339), `duration_ms`, and a
+  `step_results` array (one entry per step with `step_id`,
+  `tool`, `started_at`, `duration_ms`, `output`, `skipped`,
+  optional `skip_reason` / `error`).
+- Extended `agentDriver` with `RunTool(ctx, tool, params)` — the
+  same surface the rules engine and the MCP server already use
+  to invoke tools without driving a full agent turn. Test fake
+  gained `RunTool` + a `runToolFn` injection point for
+  behaviour-driven tests.
+- New `postRaw` test helper for endpoints whose body isn't JSON
+  (campaign YAML, future text/event-stream wiring).
+  - Tests: `TestCampaignValidate_AcceptsYAML`,
+    `TestCampaignValidate_RejectsMalformed` (400 on a campaign
+    missing required `steps`), `TestCampaignRun_ExecutesEachStep`
+    (two-step campaign → RunTool invoked twice; response
+    `step_results` has both, `succeeded=true`).
+
+Web ↔ CLI parity is now substantially complete. Remaining gaps
+are minor doc / cosmetic surfaces.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/ ./cmd/promptzero/`
+  — all pass.
+
 ## [0.103.0] - 2026-05-11
 
 **Mode parity audit, phase 2g: web gets `/api/rewind`.** Snapshot
