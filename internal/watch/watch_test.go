@@ -387,3 +387,50 @@ func TestRecentReturnsNewestFirst(t *testing.T) {
 		t.Errorf("Recent on empty history returned %d events, want 0", len(got))
 	}
 }
+
+// TestScheduleDispatch_RecoversPanickingHandler pins the v0.94 fix.
+// time.AfterFunc runs its callback in its own goroutine; without a
+// recover wrapper a panicking host handler crashes the agent
+// process (the outer fsnotify Run loop's obs.SafeGo doesn't reach
+// the debounced timer goroutine). Mirrors the recover pattern
+// agent.safeCallToolStream and agent.safeCallToolStatus apply on
+// the other host-callback paths.
+//
+// The test calls scheduleDispatch directly with a panicking
+// handler, waits for the debounce window to fire, and verifies
+// the process is still alive. Pre-fix the time.AfterFunc goroutine
+// would panic without recovery and the test runner would crash.
+func TestScheduleDispatch_RecoversPanickingHandler(t *testing.T) {
+	dir := t.TempDir()
+	tmpFile := filepath.Join(dir, "x.sub")
+	if err := os.WriteFile(tmpFile, []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	w := New([]string{dir}, []Rule{{
+		Pattern: "*.sub",
+		Prompt:  "decode {{path}}",
+	}})
+	// Tight debounce so the test doesn't wait long.
+	w.debounce = 10 * time.Millisecond
+
+	handler := func(_ Rule, _ string) error {
+		panic("simulated host handler crash")
+	}
+
+	w.scheduleDispatch(tmpFile, handler)
+
+	// Wait long enough for the debounce timer to fire + recover to
+	// run. If the panic escapes the goroutine the test binary
+	// crashes before this returns.
+	time.Sleep(100 * time.Millisecond)
+
+	// Sanity: the pending map entry should be gone (dispatch ran
+	// far enough to remove it before the panic).
+	w.mu.Lock()
+	_, stillPending := w.pending[tmpFile]
+	w.mu.Unlock()
+	if stillPending {
+		t.Errorf("scheduleDispatch entry still pending after timer fired — debounce path didn't run")
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -182,6 +183,21 @@ func (w *Watcher) scheduleDispatch(path string, handler Handler) {
 		t.Stop()
 	}
 	w.pending[path] = time.AfterFunc(w.debounce, func() {
+		// time.AfterFunc runs this in its own goroutine — a panicking
+		// host handler would otherwise crash the agent process. The
+		// outer fsnotify Run loop is wrapped in obs.SafeGo by the
+		// caller, but this debounced-dispatch goroutine isn't reached
+		// by that wrapper. Recover here, log with full context, and
+		// let the watcher continue serving other paths. Mirrors the
+		// agent.safeCallToolStream / safeCallToolStatus pattern.
+		defer func() {
+			if r := recover(); r != nil {
+				obs.Default().Error("watch_dispatch_panicked",
+					"path", path,
+					"recovered", fmt.Sprintf("%v", r),
+					"stack", string(debug.Stack()))
+			}
+		}()
 		w.mu.Lock()
 		delete(w.pending, path)
 		w.mu.Unlock()
