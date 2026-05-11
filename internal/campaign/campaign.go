@@ -358,6 +358,15 @@ func evalWhen(clause, output string) bool {
 			return true
 		}
 		return strings.Contains(output, needle)
+	case strings.HasPrefix(lower, "length"):
+		// Looks like a length comparison the operator typed but a
+		// form we don't support (e.g. "length > 5", "length != 0").
+		// The docstring promises unknown / unparseable clauses return
+		// true so a typo doesn't silently block a step — without this
+		// branch the clause would fall through to the bare-substring
+		// match below, which would almost never hit on tool output
+		// and would silently skip the step.
+		return true
 	}
 	// Bare text: substring match against the trimmed clause.
 	return strings.Contains(output, c)
