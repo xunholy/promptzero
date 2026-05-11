@@ -101,6 +101,33 @@ RAW_Data: 400 -400
 	}
 }
 
+// TestParse_LongRawDataExceedsScannerDefault pins the v0.154 fix:
+// the .sub parser must accept RAW_Data lines longer than
+// bufio.Scanner's default 64 KiB token cap. Each pulse is roughly
+// 6 ASCII bytes (4 digits + sign + space) so a multi-second
+// sub-GHz capture (~13 k pulses) already crosses the boundary —
+// pre-fix the parser surfaced `bufio.Scanner: token too long` and
+// the file never loaded.
+func TestParse_LongRawDataExceedsScannerDefault(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("Filetype: Flipper SubGhz RAW File\nVersion: 1\nFrequency: 433920000\n")
+	b.WriteString("Preset: FuriHalSubGhzPresetOok650Async\nProtocol: RAW\n")
+	b.WriteString("RAW_Data:")
+	// 20 000 pulses × ~11 bytes each = ~220 KB — comfortably past
+	// the 64 KB default and well under the 8 MiB cap we install.
+	for i := 0; i < 20000; i++ {
+		b.WriteString(" 1234 -5678")
+	}
+	b.WriteByte('\n')
+	sf, err := Parse(strings.NewReader(b.String()))
+	if err != nil {
+		t.Fatalf("Parse of large RAW_Data failed: %v", err)
+	}
+	if got := len(sf.Pulses); got != 40000 {
+		t.Errorf("len(Pulses) = %d, want 40000", got)
+	}
+}
+
 func TestParseInvalidVersion(t *testing.T) {
 	const src = `Filetype: Flipper SubGhz Key File
 Version: notanumber
