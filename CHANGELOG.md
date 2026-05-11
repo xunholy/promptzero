@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.176.0] - 2026-05-12
+
+**Extend the validate-before-transport contract (v0.174/v0.175) to
+the five Bus Pirate handlers that take user input.** Same defect
+class third time in a row — different tool family, same UX failure.
+
+Pre-fix the five buspirate handlers (`mode`, `spi_dump`,
+`uart_bridge`, `pin_set`, `pin_read`) all called `RequireBusPirate`
+before validating their arguments. An LLM passing `pin: 99` to
+`buspirate_pin_set` saw `"bus pirate 5 not connected — set
+buspirate.port in config or pass --buspirate"` instead of `"pin
+must be 1-8"`. The LLM then chased a probe-wiring fix when the
+real problem was its own argument.
+
+### Fixed
+
+- All five buspirate handlers now validate their arguments above
+  the `d.RequireBusPirate()` short-circuit.
+- New `TestBuspirateHandlers_ValidateBeforeTransport` table-driven
+  regression with six sub-cases covers each handler's bad-arg
+  paths.
+
 ## [0.175.0] - 2026-05-12
 
 **Extend the v0.174 contract — validate canbus args BEFORE the

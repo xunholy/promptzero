@@ -55,12 +55,15 @@ var buspirateModeSpec = Spec{
 	Group:     GroupFlipperHW,
 	AgentOnly: false,
 	Handler: func(ctx context.Context, d *Deps, args map[string]any) (string, error) {
-		if err := d.RequireBusPirate(); err != nil {
-			return "", err
-		}
+		// Validate args BEFORE the transport check (v0.176). Otherwise a
+		// missing/empty name masquerades as "not connected", masking the
+		// real defect — same pattern as the canbus v0.174/v0.175 fixes.
 		name := str(args, "name")
 		if name == "" {
 			return "", fmt.Errorf("buspirate_mode: name is required")
+		}
+		if err := d.RequireBusPirate(); err != nil {
+			return "", err
 		}
 		if err := d.BusPirate.Mode(ctx, name); err != nil {
 			return "", fmt.Errorf("buspirate_mode: %w", err)
@@ -117,12 +120,13 @@ var buspirateSPIDumpSpec = Spec{
 	Group:     GroupFlipperHW,
 	AgentOnly: false,
 	Handler: func(ctx context.Context, d *Deps, args map[string]any) (string, error) {
-		if err := d.RequireBusPirate(); err != nil {
-			return "", err
-		}
+		// Validate before transport (v0.176).
 		n := intOr(args, "n", 0)
 		if n <= 0 {
 			return "", fmt.Errorf("buspirate_spi_dump: n must be > 0")
+		}
+		if err := d.RequireBusPirate(); err != nil {
+			return "", err
 		}
 		data, err := d.BusPirate.SPIDump(ctx, n)
 		if err != nil {
@@ -153,12 +157,13 @@ var buspirateUARTBridgeSpec = Spec{
 	Group:     GroupFlipperHW,
 	AgentOnly: false,
 	Handler: func(ctx context.Context, d *Deps, args map[string]any) (string, error) {
-		if err := d.RequireBusPirate(); err != nil {
-			return "", err
-		}
+		// Validate before transport (v0.176).
 		raw, err := hex.DecodeString(str(args, "send_hex"))
 		if err != nil {
 			return "", fmt.Errorf("buspirate_uart_bridge: send_hex: %w", err)
+		}
+		if err := d.RequireBusPirate(); err != nil {
+			return "", err
 		}
 		resp, err := d.BusPirate.UARTBridge(ctx, raw)
 		if err != nil {
@@ -214,14 +219,15 @@ var buspiratePinSetSpec = Spec{
 	Group:     GroupFlipperHW,
 	AgentOnly: false,
 	Handler: func(ctx context.Context, d *Deps, args map[string]any) (string, error) {
-		if err := d.RequireBusPirate(); err != nil {
-			return "", err
-		}
+		// Validate before transport (v0.176).
 		pin := intOr(args, "pin", 0)
 		if pin < 1 || pin > 8 {
 			return "", fmt.Errorf("buspirate_pin_set: pin must be 1-8")
 		}
 		v := args["value"]
+		if err := d.RequireBusPirate(); err != nil {
+			return "", err
+		}
 		if err := d.BusPirate.PinSet(ctx, pin, v); err != nil {
 			return "", fmt.Errorf("buspirate_pin_set: %w", err)
 		}
@@ -247,12 +253,13 @@ var buspiratePinReadSpec = Spec{
 	Group:     GroupFlipperHW,
 	AgentOnly: false,
 	Handler: func(ctx context.Context, d *Deps, args map[string]any) (string, error) {
-		if err := d.RequireBusPirate(); err != nil {
-			return "", err
-		}
+		// Validate before transport (v0.176).
 		pin := intOr(args, "pin", 0)
 		if pin < 1 || pin > 8 {
 			return "", fmt.Errorf("buspirate_pin_read: pin must be 1-8")
+		}
+		if err := d.RequireBusPirate(); err != nil {
+			return "", err
 		}
 		v, err := d.BusPirate.PinRead(ctx, pin)
 		if err != nil {
