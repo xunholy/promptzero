@@ -662,3 +662,18 @@ func TestPrintHelp_AuditTailLineMatchesRuntime(t *testing.T) {
 		t.Errorf("/help should describe /audit tail as 'Ctrl+C to stop' (matching tailAudit's banner); got: %q", out)
 	}
 }
+
+// TestPrintHelp_ListsStatsSubcommands pins the v0.91 polish: the
+// /help line for /stats originally said "/stats [section]" — vague
+// enough that an operator couldn't tell from /help alone what
+// `section` values were valid. The handleStats godoc, the
+// unknown-section error, and the README all list cache|tokens|all
+// explicitly. /help should match.
+func TestPrintHelp_ListsStatsSubcommands(t *testing.T) {
+	out := captureStderr(t, func() {
+		printHelp()
+	})
+	if !strings.Contains(out, "/stats [cache|tokens|all]") {
+		t.Errorf("/help should list /stats sub-commands explicitly (cache|tokens|all); got: %q", out)
+	}
+}
