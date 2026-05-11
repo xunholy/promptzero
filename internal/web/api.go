@@ -24,10 +24,12 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/obs"
+	"github.com/xunholy/promptzero/internal/report"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
 )
@@ -57,6 +59,8 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/webhooks", s.requireAuth(s.handleWebhooksList))
 	mux.HandleFunc("POST /api/webhooks/test", s.requireAuth(s.handleWebhooksTest))
 	mux.HandleFunc("POST /api/reconnect", s.requireAuth(s.handleReconnect))
+
+	mux.HandleFunc("GET /api/report", s.requireAuth(s.handleReport))
 
 	mux.HandleFunc("GET /api/watch", s.requireAuth(s.handleWatch))
 	mux.HandleFunc("POST /api/watch/pause", s.requireAuth(s.handleWatchPause))
@@ -349,6 +353,64 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respondJSON(w, http.StatusOK, body)
+}
+
+// handleReport renders an engagement report for a session.
+// Query params:
+//   - format=md|json (default md)
+//   - session=<id> (default: the audit log's current session)
+//
+// The response is the raw rendered body (text/markdown or
+// application/json) with the appropriate Content-Type so the
+// cockpit can render in-place or save-as. Mirrors CLI
+// `/report [session] [json] [save]` minus the file-save half —
+// web clients save the response body themselves.
+func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
+	if s.auditLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "audit log not configured")
+		return
+	}
+	q := r.URL.Query()
+	format := strings.ToLower(strings.TrimSpace(q.Get("format")))
+	if format == "" {
+		format = "md"
+	}
+	if format != "md" && format != "json" {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("format=%s: want md|json", format))
+		return
+	}
+	sessionID := strings.TrimSpace(q.Get("session"))
+	if sessionID == "" {
+		sessionID = s.auditLog.SessionID()
+	}
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "no active session; pass ?session=<id>")
+		return
+	}
+	entries, err := s.auditLog.QueryBySession(sessionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "report query: "+err.Error())
+		return
+	}
+	summary := report.Summarise(sessionID, entries, attack.NewDefaultIndex())
+	var (
+		body []byte
+		ct   string
+	)
+	if format == "json" {
+		body, err = report.JSONRenderer{}.Render(summary)
+		ct = "application/json"
+	} else {
+		body, err = report.MarkdownRenderer{}.Render(summary)
+		ct = "text/markdown; charset=utf-8"
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "report render: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", ct)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
 }
 
 // handleToolsList returns every registered tool with name +
