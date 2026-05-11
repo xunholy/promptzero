@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-05-11
+
+**Webhook dispatcher race fix.** `Fire` and `FireByName` could
+panic with "send on closed channel" when called concurrently
+with `Close`. The pre-fix close-detect (`select { case <-d.closed:
+return; default: }`) was TOCTOU racy against `close(d.queue)` —
+a late-arriving fire from any of the many producer goroutines
+(audit, agent, rules) could observe `d.closed` still open, then
+try to send to a queue Close had just closed. The race is
+reproducible under `-race`; in production it was a process crash
+at shutdown.
+
+### Fixed
+
+- **`webhook.Fire` / `FireByName` are now safe to call
+  concurrently with `Close`.** Both methods acquire `closeMu`
+  around the closed-check + send, so once `Close` enters its
+  critical section no Fire can be in-flight when `close(d.queue)`
+  runs. The inner select retains its `default` branch so a
+  saturated queue still drops without blocking — the new lock
+  only serialises against `Close`, not against worker drain.
+  - `TestDispatcher_FireConcurrentWithClose` hammers Fire and
+    FireByName from 8 producer goroutines while Close runs,
+    asserting no panic and no deadlock. Reproduces the original
+    race under `-race`: the test fails with `WARNING: DATA RACE`
+    + `send on closed channel` if the fix is reverted, passes
+    cleanly with the lock.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/webhook/` — all pass,
+  including the new race-stress test.
+- `go test -race -count=1 -short ./...` — every package passes.
+
 ## [0.85.0] - 2026-05-11
 
 **`/audit find since=-7d` now errors the same way as `-30m`.**
