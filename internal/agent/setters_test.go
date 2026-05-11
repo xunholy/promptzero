@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -261,4 +264,131 @@ func TestConfirmDelayGate(t *testing.T) {
 			t.Errorf("with injected clock past delay: Open() = false (Remaining=%v)", g.Remaining())
 		}
 	})
+}
+
+// TestAgentSetSnapshotManager pins the /rewind snapshot wiring.
+// Set + Get round-trip; nil store accepted (snapshots disabled).
+func TestAgentSetSnapshotManager(t *testing.T) {
+	a := NewForTest("test-model")
+	if got := a.SnapshotManager(); got != nil {
+		t.Errorf("fresh agent SnapshotManager() = %v, want nil", got)
+	}
+	a.SetSnapshotManager(nil) // disable
+	if got := a.SnapshotManager(); got != nil {
+		t.Errorf("after SetSnapshotManager(nil): SnapshotManager() = %v, want nil", got)
+	}
+}
+
+// TestAgentSetRAGIndex pins the docs_search index wiring. Nil
+// disables custom index — the next docs_search call falls back
+// to the embedded corpus. Must not panic on nil-store.
+func TestAgentSetRAGIndex(t *testing.T) {
+	a := NewForTest("test-model")
+	a.SetRAGIndex(nil)
+	// Reset is safe even when called twice.
+	a.SetRAGIndex(nil)
+}
+
+// TestAgentSetRetryNotifyCallback pins the retry-observer wiring.
+// Set / clear round-trip. Production wiring (in cmd/promptzero)
+// renders retry notices to the operator REPL.
+func TestAgentSetRetryNotifyCallback(t *testing.T) {
+	a := NewForTest("test-model")
+	a.SetRetryNotifyCallback(func(_ RetryNotice) {})
+	a.SetRetryNotifyCallback(nil)
+}
+
+// TestAgentSessionIDFresh pins the SessionID accessor: a
+// freshly-constructed Agent returns empty string when no
+// session store is attached.
+func TestAgentSessionIDFresh(t *testing.T) {
+	a := NewForTest("test-model")
+	if got := a.SessionID(); got != "" {
+		t.Errorf("fresh agent SessionID() = %q, want \"\"", got)
+	}
+}
+
+// TestDefaultSessionStore creates the default store under
+// $HOME/.promptzero/sessions. We swap HOME to a temp directory
+// so the test doesn't pollute the operator's real home.
+func TestDefaultSessionStore(t *testing.T) {
+	tmp := t.TempDir()
+	prevHome := os.Getenv("HOME")
+	if err := os.Setenv("HOME", tmp); err != nil {
+		t.Fatalf("setenv HOME: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Setenv("HOME", prevHome) })
+
+	store, err := DefaultSessionStore()
+	if err != nil {
+		t.Fatalf("DefaultSessionStore: %v", err)
+	}
+	if store == nil {
+		t.Fatal("DefaultSessionStore returned nil store with nil error")
+	}
+
+	// The store's directory should have been created under our
+	// temp HOME — verify by listing $HOME/.promptzero/sessions.
+	sessionsDir := tmp + "/.promptzero/sessions"
+	if _, err := os.Stat(sessionsDir); err != nil {
+		t.Errorf("DefaultSessionStore did not create %s: %v", sessionsDir, err)
+	}
+}
+
+// TestNewToolErrorForTest pins the eval-harness export of the
+// internal newToolError. The wrapped ToolError preserves the
+// tool name and error message; both surface as struct fields so
+// the eval scenario can assert on them directly.
+func TestNewToolErrorForTest(t *testing.T) {
+	innerErr := errors.New("transport disconnect")
+	te := NewToolErrorForTest("subghz_receive", innerErr, "...partial output...")
+	if te.Tool != "subghz_receive" {
+		t.Errorf("Tool = %q, want subghz_receive", te.Tool)
+	}
+	if !strings.Contains(te.Message, "transport disconnect") {
+		t.Errorf("Message = %q, want it to contain 'transport disconnect'", te.Message)
+	}
+	if te.Code == "" {
+		t.Errorf("Code = %q, want non-empty classification", te.Code)
+	}
+}
+
+// TestQuarantineForTest_HardwareWrap pins the eval-harness
+// export of quarantineOutput. Hardware-origin tools have output
+// wrapped in <untrusted-hardware-output>…</> regardless of error
+// state — the wrapping is the prompt-injection countermeasure.
+func TestQuarantineForTest_HardwareWrap(t *testing.T) {
+	out := QuarantineForTest("wifi_scan_ap", "SSID: Free-Wifi, BSSID: AA:BB:CC...")
+	if !strings.Contains(out, "<untrusted-hardware-output>") {
+		t.Errorf("hardware-origin output not wrapped: %q", out)
+	}
+	if !strings.Contains(out, "</untrusted-hardware-output>") {
+		t.Errorf("hardware-origin output missing closing tag: %q", out)
+	}
+	if !strings.Contains(out, "Free-Wifi") {
+		t.Errorf("payload missing from wrapped output: %q", out)
+	}
+}
+
+// TestQuarantineForTest_NoWrapForInternal pins the allowlist:
+// structured-internal tools (audit_query, persona, etc.) are
+// NOT wrapped — their output is already trusted-shape JSON.
+func TestQuarantineForTest_NoWrapForInternal(t *testing.T) {
+	// audit_query is on the notWrappedTools allowlist.
+	out := QuarantineForTest("audit_query", `{"rows":[{"tool":"x"}]}`)
+	if strings.Contains(out, "<untrusted-hardware-output>") {
+		t.Errorf("internal tool output wrongly wrapped: %q", out)
+	}
+}
+
+// TestQuarantineOutput_ExportedSurface pins the QuarantineOutput
+// export (alias of quarantineOutput) used by callers that want to
+// wrap explicitly. Same contract as QuarantineForTest plus the
+// isErr parameter (which doesn't affect wrapping today).
+func TestQuarantineOutput_ExportedSurface(t *testing.T) {
+	// isErr=true on a hardware-origin tool still wraps.
+	out := QuarantineOutput("subghz_receive", "spurious 433.92MHz pulse", true)
+	if !strings.Contains(out, "<untrusted-hardware-output>") {
+		t.Errorf("isErr=true should still wrap hardware output: %q", out)
+	}
 }
