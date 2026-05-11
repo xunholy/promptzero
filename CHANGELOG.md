@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-05-11
+
+**Session title generation now retries after a transient failure.**
+Pre-fix the title-gen goroutine set `titleGenInflight[id] = true`
+before spawning but never cleared it. A single failed
+callTitleAPI call (network timeout, rate-limit response,
+5-second context deadline) left the session permanently locked
+out of future title generations — every subsequent autosave saw
+inflight=true and skipped maybeGenerateTitleLocked. Sessions
+that hit the failure path stayed with the auto-derived first-
+message preview as their sidebar label forever.
+
+### Fixed
+
+- **`runTitleGeneration` defers `delete(titleGenInflight, id)`**
+  under the lock so the flag clears on EVERY exit path
+  (success, early return on empty title, store load failure,
+  operator-overrode title, persist failure, or panic). On the
+  success path the clear is a no-op against retry —
+  `maybeGenerateTitleLocked` already short-circuits via
+  `state.Title != "" && state.Title != derived` once a real
+  title has been persisted. The clear only enables retries when
+  the previous attempt left the persisted title empty.
+  - `TestRunTitleGeneration_ClearsInflightOnFailure` invokes
+    `runTitleGeneration` with a nil client so callTitleAPI's
+    first line panics on a nil pointer deref; the deferred
+    cleanup must run during panic unwind, leaving
+    `titleGenInflight['locked-session']` cleared. `recover()`
+    in the test scope catches the panic to keep the test from
+    failing on the synthetic crash.
+  - Pre-fix verification: stashing the session.go change makes
+    the test fail with "titleGenInflight['locked-session']
+    still true after runTitleGeneration — failure path leaves
+    the session permanently locked", matching the bug.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/agent/` — all pass
+  including the new failure-clears-inflight case.
+
 ## [0.88.0] - 2026-05-11
 
 **`/forget <current-session>` no longer silently undoes itself.**
