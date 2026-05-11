@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-05-11
+
+**`/stats tokens` honors its own contract.** Continues the
+doc-vs-code audit. `handleStats`' godoc advertised
+`/stats tokens — input/output/cache token totals`, but
+`renderTokenStats` only emitted input, output, and cost — no
+cache totals. Operators triaging Anthropic spend with
+`/stats tokens` had to also run `/stats cache` to see the cache
+reads/creates that drive prompt-cache savings.
+
+### Fixed
+
+- **`/stats tokens` now shows cache_read and cache_creation
+  totals** alongside input/output/cost, matching the documented
+  contract. `cache_*` was visible only under `/stats cache`
+  pre-fix, even though `cache token totals` is part of the
+  `tokens` subcommand's promise. Field labels are aligned for
+  easy eyeballing.
+  - `TestStatsTokens_IncludesCacheTotals` pins every documented
+    field (`input:`, `output:`, `cache_read:`, `cache_creation:`,
+    `cost:`) and spot-checks the cache values to ensure a future
+    renderer refactor doesn't silently drop the rows.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./...` — all packages pass.
+
 ## [0.82.0] - 2026-05-11
 
 **`/rules list` honors its own documentation.** The doc-vs-code
