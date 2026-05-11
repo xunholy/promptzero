@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-05-11
+
+**`audit.Log.Query` clamps non-positive limits.** SQLite treats
+`LIMIT -1` (and any negative value) as "no upper bound", so an
+`audit_query` tool call with `{"limit": -1}` reached the handler in
+`internal/tools/audit.go` — whose only guard was `> MaxQueryLimit` —
+short-circuited the cap entirely and dumped the whole audit DB. The
+`MaxQueryLimit` const's docstring promised callers consult it so the
+cap "can't be bypassed by routing through a different surface"; an
+LLM passing `-1` falsified that.
+
+### Fixed
+
+- **`Query` clamps `limit <= 0` to 100** (mirroring `QueryFiltered`'s
+  existing default) and caps at `MaxQueryLimit`. The clamp moves
+  into the package itself so future in-process callers — not just
+  the HTTP handler, REPL command, and tool — can't drift.
+- **`QueryFiltered` gains the matching upper cap.** The
+  `handleAuditFind` handler 400s on `limit > MaxQueryLimit` today,
+  but the cap now lives in the package as defense in depth.
+- `TestQuery_NegativeLimitClamped` inserts 105 rows and calls
+  `Query(-1)`. Pre-fix verification: stashing the audit.go change
+  makes the test fail with `Query(-1) returned 105 rows; expected
+  clamp to <=100` — confirming SQLite's unbounded-LIMIT semantics
+  really did bypass the cap.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `task test` — full short suite passes.
+
 ## [0.111.0] - 2026-05-11
 
 **WebSocket dispatcher surfaces unknown message types.** Pre-v0.111
