@@ -47,6 +47,8 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/watch/resume", s.requireAuth(s.handleWatchResume))
 
 	mux.HandleFunc("GET /api/cost", s.requireAuth(s.handleCost))
+	mux.HandleFunc("GET /api/budget", s.requireAuth(s.handleBudgetGet))
+	mux.HandleFunc("PUT /api/budget", s.requireAuth(s.handleBudgetPut))
 
 	mux.HandleFunc("GET /api/rules", s.requireAuth(s.handleRulesList))
 	mux.HandleFunc("POST /api/rules/{name}/pause", s.requireAuth(s.handleRulePause))
@@ -324,6 +326,70 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respondJSON(w, http.StatusOK, body)
+}
+
+// handleBudgetGet returns the current session budget cap, spent, and
+// remaining. Mirrors the CLI's `/budget` (no-args) summary. Returns
+// `{"disabled": true}` when no cap is configured so the frontend can
+// render the same "set one with PUT" hint the CLI prints.
+func (s *Server) handleBudgetGet(w http.ResponseWriter, _ *http.Request) {
+	if s.costs == nil {
+		writeError(w, http.StatusServiceUnavailable, "cost tracker not configured")
+		return
+	}
+	snap := s.costs.Snapshot()
+	if snap.BudgetUSD <= 0 {
+		respondJSON(w, http.StatusOK, map[string]any{
+			"disabled":  true,
+			"spent_usd": round4(snap.TotalUSD),
+		})
+		return
+	}
+	spent := snap.TotalUSD
+	remaining := snap.BudgetUSD - spent
+	if remaining < 0 {
+		remaining = 0
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"disabled":      false,
+		"cap_usd":       round4(snap.BudgetUSD),
+		"spent_usd":     round4(spent),
+		"remaining_usd": round4(remaining),
+		"percent":       round4((spent / snap.BudgetUSD) * 100),
+	})
+}
+
+// handleBudgetPut sets the session budget cap. Body: {"usd": 10.5}.
+// usd=0 disables the cap (matches the CLI's `/budget off`). Negative
+// values are rejected with 400 to mirror handleBudget's rejection of
+// negative inputs.
+//
+// Callbacks (80% warn, 100% hit, agent pre-flight refuse) are wired by
+// setupBudget at startup regardless of the initial cap (v0.81 fix), so
+// updating via this endpoint reuses those callbacks — no need to re-
+// install them on every PUT.
+func (s *Server) handleBudgetPut(w http.ResponseWriter, r *http.Request) {
+	if s.costs == nil {
+		writeError(w, http.StatusServiceUnavailable, "cost tracker not configured")
+		return
+	}
+	var body struct {
+		USD float64 `json:"usd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+		return
+	}
+	if body.USD < 0 {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("usd=%.2f is negative; pass 0 to disable", body.USD))
+		return
+	}
+	s.costs.UpdateBudgetCap(body.USD)
+	// Echo the resulting state in the same shape as handleBudgetGet so
+	// the frontend doesn't need a second round-trip to reflect the
+	// change in the header pill.
+	s.handleBudgetGet(w, r)
 }
 
 // round4 trims noise from the running USD total for display. Cents carry

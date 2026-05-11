@@ -85,6 +85,36 @@ func postJSON(t *testing.T, ts *httptest.Server, path string, payload any) (int,
 	return resp.StatusCode, out
 }
 
+// putJSON is the PUT analogue of postJSON. Used by the /api/budget
+// PUT tests; the rest of the suite stayed on POST until v0.97
+// introduced the first PUT endpoint.
+func putJSON(t *testing.T, ts *httptest.Server, path string, payload any) (int, []byte) {
+	t.Helper()
+	var buf bytes.Buffer
+	if payload != nil {
+		_ = json.NewEncoder(&buf).Encode(payload)
+	}
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPut, ts.URL+path, &buf)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("PUT %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	out := make([]byte, 0, 512)
+	buf2 := make([]byte, 1024)
+	for {
+		n, rerr := resp.Body.Read(buf2)
+		if n > 0 {
+			out = append(out, buf2[:n]...)
+		}
+		if rerr != nil {
+			break
+		}
+	}
+	return resp.StatusCode, out
+}
+
 // ---------------------------------------------------------------------------
 // Personas
 // ---------------------------------------------------------------------------
@@ -284,6 +314,108 @@ func TestCostSnapshot(t *testing.T) {
 	// distinguishes "disabled" from "0/0" by absence).
 	if _, ok := body["budget"]; ok {
 		t.Errorf("budget block should be omitted when no cap is set")
+	}
+}
+
+// TestBudgetGet_NoTracker returns 503 so the frontend can hide the
+// budget tile when the host hasn't wired a cost tracker.
+func TestBudgetGet_NoTracker(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	code, _ := getJSON(t, ts, "/api/budget")
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("code = %d, want 503", code)
+	}
+}
+
+// TestBudgetGet_DisabledWhenNoCap returns {disabled: true} mirroring
+// the CLI's "budget: disabled (spent $X)" line. Pre-v0.97 there was no
+// such endpoint — web operators had no way to see the budget without
+// reading the /api/cost rollup.
+func TestBudgetGet_DisabledWhenNoCap(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	tr := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	s.SetCostTracker(tr)
+	code, body := getJSON(t, ts, "/api/budget")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	if disabled, _ := body["disabled"].(bool); !disabled {
+		t.Errorf("disabled = %v, want true", body["disabled"])
+	}
+}
+
+// TestBudgetGet_ShowsCapWhenSet pins the operator-visible block:
+// cap_usd / spent_usd / remaining_usd / percent. Same shape as the
+// budget block under /api/cost so the cockpit can use either.
+func TestBudgetGet_ShowsCapWhenSet(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	tr := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.SetBudget(5.00, nil, nil)
+	tr.AddUsageFull(0, 100000, 0, 0) // ~$1.50 spend → 30%
+	s.SetCostTracker(tr)
+	code, body := getJSON(t, ts, "/api/budget")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	if disabled, _ := body["disabled"].(bool); disabled {
+		t.Errorf("disabled = true, want false (cap is set)")
+	}
+	if cap, _ := body["cap_usd"].(float64); cap != 5.0 {
+		t.Errorf("cap_usd = %v, want 5.0", body["cap_usd"])
+	}
+}
+
+// TestBudgetPut_SetsCap pins the runtime set path, mirroring the
+// CLI's /budget set 10. Pre-v0.97 web operators had no way to raise
+// or lower the cap mid-session — they had to restart with a new
+// --budget flag.
+func TestBudgetPut_SetsCap(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	tr := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	s.SetCostTracker(tr)
+
+	code, body := putJSON(t, ts, "/api/budget", map[string]any{"usd": 12.5})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d, body=%s", code, body)
+	}
+	if got := tr.Snapshot().BudgetUSD; got != 12.5 {
+		t.Errorf("BudgetUSD = %v, want 12.5", got)
+	}
+}
+
+// TestBudgetPut_DisablesOnZero pins the disable path: usd=0 mirrors
+// the CLI's /budget off and turns the cap off without removing the
+// underlying callbacks.
+func TestBudgetPut_DisablesOnZero(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	tr := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.SetBudget(5.00, nil, nil)
+	s.SetCostTracker(tr)
+
+	code, _ := putJSON(t, ts, "/api/budget", map[string]any{"usd": 0})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	if got := tr.Snapshot().BudgetUSD; got != 0 {
+		t.Errorf("BudgetUSD = %v, want 0", got)
+	}
+}
+
+// TestBudgetPut_RejectsNegative pins the input-validation contract.
+// The CLI's handleBudget also rejects negative values; the web
+// endpoint must match so a fat-fingered -5 doesn't silently set 0.
+func TestBudgetPut_RejectsNegative(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	tr := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.SetBudget(5.00, nil, nil)
+	s.SetCostTracker(tr)
+
+	code, _ := putJSON(t, ts, "/api/budget", map[string]any{"usd": -1.0})
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400", code)
+	}
+	if got := tr.Snapshot().BudgetUSD; got != 5.0 {
+		t.Errorf("BudgetUSD = %v, want 5.0 (rejected PUT shouldn't mutate)", got)
 	}
 }
 
