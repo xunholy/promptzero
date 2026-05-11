@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.132.0] - 2026-05-11
+
+**`agent.buildUIContextBlock` strips XML-special chars from path.**
+The previous docstring claimed "XML-special characters are not
+escaped — filesystem paths never contain them and path validation
+upstream rejects anything that would require escaping." Both
+halves were wrong: `setUIContextFromWS` only validates NUL byte
+and length <= 240, and a Flipper SD-card filename like
+`foo"bar.sub`, `a&b.sub`, or `<tag>.sub` is a perfectly legal
+filename the cockpit can navigate to. The block uses `%q` which
+Go-escapes `"` as `\"` (not valid XML attribute syntax) and
+doesn't touch `&` / `<` at all, so a path containing any of those
+malformed the `<ui-context …/>` element the LLM sees as a prefix.
+
+### Fixed
+
+- **`buildUIContextBlock` strips the five XML-attribute-special
+  chars** (`<`, `>`, `"`, `&`, `'`) alongside the existing
+  control-char strip. View remains allowlisted upstream so no
+  escaping is needed there.
+- Four regression cases (one per special char) lock the behaviour.
+  Pre-fix verification: stashing the state_prompt.go change makes
+  all four fail with the raw special char surviving into the
+  rendered attribute (e.g. `path="/ext/foo\"bar.sub"`).
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.131.0] - 2026-05-11
 
 **`rules.Engine.Register` defaults `Enabled` to true per docstring.**
