@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,5 +117,48 @@ func TestFindFAP_OnlyScansSingleDir(t *testing.T) {
 
 	if len(got) != 1 || got[0] != distFAP {
 		t.Errorf("findFAP(dist) = %v, want [%s] only — sibling .fap must NOT be discovered", got, distFAP)
+	}
+}
+
+// TestFindFAP_EmptyMarshalsAsArray pins the v0.172 fix.
+// fap_build's tool envelope places findFAP output under "fap_paths".
+// Pre-fix the function returned `var out []string`, which stayed nil for
+// directories holding zero .fap files (failed build, wrong path, fresh
+// tmpdir). The nil slice marshalled to JSON `null`, surfacing as
+// `"fap_paths":null` in the error envelope and confusing LLM clients
+// that expect a JSON array.
+func TestFindFAP_EmptyMarshalsAsArray(t *testing.T) {
+	got := findFAP(t.TempDir())
+	if got == nil {
+		t.Fatalf("findFAP on empty dir: got nil slice; want non-nil empty slice")
+	}
+	b, err := json.Marshal(map[string]any{"fap_paths": got})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(b) != `{"fap_paths":[]}` {
+		t.Errorf("marshalled = %s; want {\"fap_paths\":[]}", string(b))
+	}
+}
+
+// TestPushFAPs_EmptyPushedMarshalsAsArray pins the same contract on
+// pushFAPs: when no files are successfully pushed (all reads or writes
+// failed), the "deploy_pushed" key of the envelope must hold [] not null.
+func TestPushFAPs_EmptyPushedMarshalsAsArray(t *testing.T) {
+	// faps slice empty -> loop runs zero times -> pushed stays
+	// whatever pushFAPs initialised it to.
+	pushed, err := pushFAPs(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("pushFAPs(nil, nil): %v", err)
+	}
+	if pushed == nil {
+		t.Fatalf("pushFAPs empty input returned nil slice; want non-nil empty slice")
+	}
+	b, jerr := json.Marshal(map[string]any{"deploy_pushed": pushed})
+	if jerr != nil {
+		t.Fatalf("marshal: %v", jerr)
+	}
+	if string(b) != `{"deploy_pushed":[]}` {
+		t.Errorf("marshalled = %s; want {\"deploy_pushed\":[]}", string(b))
 	}
 }

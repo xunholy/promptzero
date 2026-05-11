@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.172.0] - 2026-05-12
+
+**`fap_build` envelope always carries JSON arrays for `fap_paths`
+and `deploy_pushed`, never `null`.** Seventh release in the nil-slice
+JSON arc (v0.163-v0.167, v0.171). Two more accumulator slices fixed:
+
+- `findFAP` returned `var out []string`, which stayed nil for the
+  legitimate failure mode "build succeeded but no .fap found" —
+  the very case where the LLM needs to inspect the empty array
+  rather than handle a `null`.
+- `pushFAPs` returned `var pushed []string`, which stayed nil if
+  every read or write failed (e.g. all .fap files unreadable).
+  Envelope surfaced as `"deploy_pushed":null` alongside a
+  `deploy_error` string.
+
+### Fixed
+
+- `findFAP` accumulator switched to `out := []string{}`.
+- `pushFAPs` accumulator switched to `pushed := []string{}`.
+- Two regression tests: `TestFindFAP_EmptyMarshalsAsArray` (empty
+  dir → `{"fap_paths":[]}`) and `TestPushFAPs_EmptyPushedMarshalsAsArray`
+  (no input → `{"deploy_pushed":[]}`).
+
 ## [0.171.0] - 2026-05-12
 
 **`/api/fs/list` returns `entries:[]` for empty directories, not
