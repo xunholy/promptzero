@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-05-11
+
+**Streaming dispatch survives a panicking host callback.** The
+consumer goroutine in `dispatchStreaming` invoked the host-
+installed `toolStreamCb` directly without recover. A panicking
+callback (REPL UI writing to a closed terminal, web cockpit
+losing its WebSocket mid-stream, custom host integration with a
+bug) crashed the entire agent process instead of just aborting
+the in-flight stream. The sibling `toolStatusCb` already had
+`safeCallToolStatus` for exactly this reason; the streaming path
+had drifted.
+
+### Fixed
+
+- **`dispatchStreaming` now invokes `toolStreamCb` through a
+  recover-wrapped `safeCallToolStream` helper** that mirrors the
+  existing `safeCallToolStatus`. A recovered panic is treated as
+  if the callback returned `false` — the stream aborts, the
+  drain loop continues without re-invoking the callback, and the
+  producer's `Send` calls are absorbed silently. Panic is logged
+  with `tool` + `seq` for forensics.
+  - `TestDispatchStreaming_PanickingCallbackDoesNotCrashAgent`
+    registers a streaming tool whose host callback panics on the
+    first frame and asserts dispatch returns cleanly with the
+    producer's normal completion string. Pre-fix verification:
+    stashing the agent.go change makes the test crash with
+    "panic: simulated host crash mid-stream" propagating out of
+    the consumer goroutine and aborting the test runner — the
+    documented production-crash path.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/agent/` — all pass.
+
 ## [0.92.0] - 2026-05-11
 
 **Campaign runner releases per-step timer contexts immediately.**
