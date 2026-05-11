@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-05-11
+
+**WebSocket dispatcher surfaces unknown message types.** Pre-v0.111
+the `/ws` handler's `switch msg.Type` had no `default` branch —
+unknown types were silently dropped. A client typo (e.g.
+`"marauder-acquire"` instead of `"marauder_acquire"`) looked
+identical to a working request because the JSON parser accepted
+the shape; the cockpit had no feedback channel for "you spelled
+the type wrong".
+
+### Fixed
+
+- **Default branch on the WS message switch** writes an
+  `{"type": "error", "content": "unknown message type \"X\""}`
+  frame so the client sees the typo immediately. Matches the
+  existing `"invalid message format"` error frame for JSON
+  shape failures.
+  - `TestUnknownMessageTypeSurfaces` sends a bogus type and
+    asserts the error frame arrives with the offending type
+    quoted. Pre-fix verification: stashing the server.go change
+    makes the test fail with "context deadline exceeded" after
+    3 seconds — the client really did hang waiting for a frame
+    that never came.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.110.0] - 2026-05-11
 
 **`/api/sessions/{id}/resume` now distinguishes 404 from 500.**
