@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.118.0] - 2026-05-11
+
+**`BuildHandoff` strips `<ui-context>` and `<handoff-resume>` from
+OpenThreads.** The OpenThreads heuristic filtered `<device-state>`
+and `<handoff>` prefixes inline, but the agent actually injects two
+other synthetic wrappers that the check never caught — and resumed
+sessions / `/report` surfaced raw markup instead of the
+operator-typed prompt that followed.
+
+### Fixed
+
+- **`<ui-context>` wrapper.** The web cockpit prefixes every user
+  message with `<ui-context>{...}</ui-context>` so the LLM has
+  current-view grounding for "this file" / "this AP".
+  `HasPrefix("<device-state>") || HasPrefix("<handoff>")` both
+  missed it, so the entire wrapper landed in `OpenThreads[0].Text`
+  as raw markup.
+- **`<handoff-resume>` sentinel.** `HasPrefix("<handoff>")` does NOT
+  match `<handoff-resume>` because the prefixes differ at byte 8
+  (`>` vs `-`). Resumed sessions therefore surfaced the resume
+  envelope itself as the open thread.
+- Route the user-text branch through `extractUserContent` — the
+  same helper `session.go` uses to derive titles and replay
+  messages — which strips both wrappers via `stripContextPrefixes`
+  and returns `""` for the resume sentinel. Behaviour is now
+  consistent across the three places the agent extracts
+  "what did the operator actually type".
+
+### Verified
+
+- `TestBuildHandoff_StripsUIContextPrefixFromOpenThread` and
+  `TestBuildHandoff_IgnoresHandoffResumePrefix` pin the bug.
+  Pre-fix verification: stashing the handoff.go change makes both
+  fail, showing the raw markup landing in `OpenThreads[0].Text`.
+  The pre-existing `TestBuildHandoff_IgnoresSyntheticPrefixes` still
+  passes — it relied on the assistant-reply clearing path which is
+  unaffected.
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.117.0] - 2026-05-11
 
 **`WebConfig.CORSOrigins` now actually permits cross-origin /api
