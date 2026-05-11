@@ -120,6 +120,10 @@ var AuditToolNames = []string{
 	"audit_query",
 	"audit_export",
 	"audit_stats",
+	// explain_last_result returns audit rows; classification fixed
+	// in v0.156 to match audit_query / audit_export rather than
+	// falling through to the hardware-output default.
+	"explain_last_result",
 }
 
 // StructuredInternalToolNames are the always-trusted, never-wrapped
