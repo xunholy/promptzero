@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.85.0] - 2026-05-11
+
+**`/audit find since=-7d` now errors the same way as `-30m`.**
+Symmetry fix in `parseWhen`. Negative durations of the form
+`-30m`/`-1h` produced the friendly "negative duration (use 30m
+not -30m)" error, but `-7d` / `-1D` (the day-suffix special case)
+fell through to the generic "cannot parse as duration or RFC3339"
+error. Same concept, two different error messages depending on
+the suffix the operator typed.
+
+### Fixed
+
+- **`parseWhen` reports negative-day durations with the same
+  friendly error as negative hour/minute durations.** Pre-fix the
+  days handler only returned a value when `days >= 0`; negative
+  inputs silently fell through to ParseDuration (which doesn't
+  recognise "d") and then RFC3339 (which doesn't match either),
+  producing "cannot parse %q as duration or RFC3339 timestamp"
+  with no hint that the leading `-` was the problem. Now matches
+  the existing negative-duration branch behaviour: clear error
+  pointing at the leading minus.
+  - `TestParseWhen_RejectsNegativeDuration` extended to cover
+    `-7d` and `-1D`, plus a positive assertion that every
+    rejected case's error contains "negative duration" — so a
+    future regression that re-introduces the message asymmetry
+    fails loudly rather than silently.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./cmd/promptzero/` — all pass,
+  including the extended `TestParseWhen_*` cases.
+
 ## [0.84.0] - 2026-05-11
 
 **Help text + nil-flip hardening.** Two close-together fixes from
