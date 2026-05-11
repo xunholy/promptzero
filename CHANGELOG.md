@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-05-11
+
+**Mode parity audit, phase 2b: web gets `/api/mode`.** Runtime
+operation-mode switching was the next-highest-priority missing
+web endpoint from the parity survey. Pre-v0.98, web operators
+couldn't switch between `standard|recon|intel|stealth|assault`
+mid-session — they had to relaunch with `--mode <name>`. CLI
+`/mode` has been around since v0.20; the v0.80 fix added runtime
+ReadOnly engagement for read-restrictive modes, but that
+behaviour was REPL-only.
+
+### Added
+
+- **`GET /api/mode`** returns the active mode plus the catalogue
+  of alternatives — same surface as the CLI's `/mode` (no-args)
+  listing. Each entry has `name`, `display`, `description`,
+  `read_restrictive`. Response also surfaces the current
+  `read_only` flag so the cockpit can render the safety overlay
+  pill alongside the mode chip.
+- **`POST /api/mode`** switches the active mode. Body:
+  `{"name": "recon"}`. Read-restrictive modes (recon/intel/
+  stealth) also engage the ReadOnly safety rail — mirrors
+  handleMode's runtime behaviour (v0.80 fix) and setupMode's
+  startup behaviour. Unknown mode names get 400 with the same
+  error shape ParseMode returns, so the cockpit can render it
+  verbatim. Echoes the post-mutation state via the same shape
+  GET returns, so the cockpit's mode chip updates in one
+  round-trip.
+- Extended `agentDriver` interface (the narrow surface Server
+  needs from `*agent.Agent`) with `Mode()`, `SetMode()`,
+  `ReadOnly()`, `SetReadOnly()`. The test fake gained matching
+  methods and `opMode` / `readOnly` fields so the new endpoints
+  are unit-testable without a real agent.
+  - Tests: `TestModeGet_ListsAllModes`,
+    `TestModeSet_SwitchesMode` (stealth engages ReadOnly),
+    `TestModeSet_StandardDoesNotEngageReadOnly` (negative
+    branch — standard mode doesn't clobber ReadOnly),
+    `TestModeSet_RejectsUnknown` (400 on bad name, no mutation).
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/ ./cmd/promptzero/`
+  — all pass.
+
 ## [0.97.0] - 2026-05-11
 
 **Mode parity audit, phase 2: web gets `/api/budget`.** The cost-
