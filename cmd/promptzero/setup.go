@@ -678,20 +678,28 @@ func setupMode(cfg *config.Config, modeFlag string, ai *agent.Agent) {
 		raw = modeFlag
 	}
 
-	// Read-restrictive modes engage ReadOnly as a defence-in-depth
-	// overlay. The dispatch path consults readOnly first and
-	// short-circuits before the per-mode group check.
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "recon", "intel", "stealth":
-		ai.SetReadOnly(true)
-	}
-
 	m, err := mode.ParseMode(raw)
 	if err != nil {
 		statusWarn(fmt.Sprintf("%v — falling back to standard", err))
 		m = mode.ModeStandard
 	}
 	ai.SetMode(m)
+
+	// Read-restrictive modes engage ReadOnly as a defence-in-depth
+	// overlay. The dispatch path consults readOnly first and
+	// short-circuits before the per-mode group check.
+	//
+	// Centralised via Mode.IsReadRestrictive so the runtime /mode
+	// switch and this startup path agree on which modes engage
+	// the overlay. Earlier the switch was open-coded with raw
+	// string matching against ["recon","intel","stealth"] —
+	// passing through ParseMode (which already lowercases /
+	// trims) gives the same result for valid input and silently
+	// drops the coupling for invalid input (preserving the
+	// "typo falls back to Standard" behaviour described below).
+	if m.IsReadRestrictive() {
+		ai.SetReadOnly(true)
+	}
 	switch m {
 	case mode.ModeStandard:
 		// Default is silent — same banner real estate as today when
