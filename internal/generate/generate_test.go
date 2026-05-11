@@ -123,6 +123,30 @@ func TestTruncate_LeavesShortAlone(t *testing.T) {
 	}
 }
 
+// TestTruncate_UTF8Boundary pins the rune-aware truncate. Pre-fix,
+// `s[:n] + "..."` could split a multi-byte rune (smart quotes in
+// evil-portal HTML, emoji in BadUSB STRING lines, accented chars in
+// international target names) and produce invalid UTF-8 in the
+// Preview field. The Preview gets audit-logged + JSON-serialised
+// downstream, so a partial rune corrupts the entire row. The fix
+// applies the same walk-back capSize already used — the file had
+// two truncators with inconsistent UTF-8 behaviour until now.
+func TestTruncate_UTF8Boundary(t *testing.T) {
+	// Place 2-byte "é" (0xc3 0xa9) so the natural cut at byte 9
+	// lands on the 0xa9 continuation byte.
+	in := strings.Repeat("x", 8) + "é" + strings.Repeat("x", 8)
+	got := truncate(in, 9)
+	if !utf8.ValidString(got) {
+		t.Fatalf("truncate produced invalid UTF-8: % x", got)
+	}
+	// Should walk back to byte 8 (before é) and append "..." —
+	// total length 8 + 3 = 11.
+	want := strings.Repeat("x", 8) + "..."
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // TestDefaultPath_KnownTypes locks every type the deploy step knows
 // about. If anyone changes one of these paths, downstream tooling
 // (wrappers, docs, MCP advertisements) must be updated together.

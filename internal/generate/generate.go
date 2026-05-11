@@ -479,9 +479,23 @@ func cleanOutput(s string, lang string) string {
 	return strings.TrimSpace(s)
 }
 
+// truncate caps s at n bytes with a "..." suffix, walking back from
+// the cut point if it lands inside a UTF-8 continuation byte so the
+// result is always valid UTF-8. The sibling capSize in this file
+// already used the same walk-back pattern; truncate had been raw-byte
+// cut, and a Preview built from HTML/BadUSB output containing
+// non-ASCII chars (smart quotes, emoji in evil-portal copy, accented
+// characters in international targets) could land mid-rune and
+// corrupt the audit/log JSON downstream. Mirrors the same fix
+// applied across validator.truncate, rag.backToRuneStart,
+// session.clipTitle, and agent.truncatePreview.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "..."
+	cut := n
+	for cut > 0 && s[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return s[:cut] + "..."
 }
