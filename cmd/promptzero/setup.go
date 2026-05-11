@@ -568,11 +568,14 @@ func setupBudget(cfg *config.Config, flagBudget float64, ai *agent.Agent, tracke
 	if flagBudget > 0 {
 		usdCap = flagBudget
 	}
-	if usdCap <= 0 {
-		return
-	}
-	statusOK(fmt.Sprintf("Session budget %s($%.2f USD; warns at 80%%, refuses new turns at 100%%)%s",
-		dim, usdCap, reset))
+	// Always wire the warn/hit callbacks and the pre-flight gate, even
+	// when usdCap == 0. Threshold firing in (*Tracker).Add() is gated on
+	// budgetUSD > 0 and BudgetExceeded() returns false when no cap is
+	// set, so the wiring is dormant until /budget set <USD> raises a
+	// cap at runtime. This closes the gap where an operator who started
+	// without a budget could set one mid-session with /budget set but
+	// the agent's dispatch gate stayed unwired and the 80/100% warnings
+	// never fired — the cap was silently inert.
 	tracker.SetBudget(usdCap,
 		func(spent, capUSD float64) {
 			statusWarn(fmt.Sprintf("Session at $%.4f / $%.2f (80%% of budget) — consider /budget set $X or wrap up",
@@ -583,18 +586,17 @@ func setupBudget(cfg *config.Config, flagBudget float64, ai *agent.Agent, tracke
 				spent, capUSD))
 		},
 	)
-
-	// Wire the pre-flight gate — closes the v0.21 gap where the 100%
-	// callback emitted a warning but did nothing to actually stop
-	// further spend. The callback is a thin predicate: read the
-	// tracker's BudgetExceeded() boolean, return ErrBudgetExceeded
-	// when true. The agent renders the error in the REPL.
 	ai.SetBudgetCheckCallback(func() error {
 		if tracker.BudgetExceeded() {
 			return agent.ErrBudgetExceeded
 		}
 		return nil
 	})
+
+	if usdCap > 0 {
+		statusOK(fmt.Sprintf("Session budget %s($%.2f USD; warns at 80%%, refuses new turns at 100%%)%s",
+			dim, usdCap, reset))
+	}
 }
 
 // setupPersona loads built-in + user personas, picks the active one per

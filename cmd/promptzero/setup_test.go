@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/config"
+	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/risk"
 )
 
@@ -115,5 +118,64 @@ func TestResolveConfirmRisk_UnknownReturnsErrorPlusFallback(t *testing.T) {
 	}
 	if !enabled {
 		t.Errorf("fallback enabled = false; misconfigured operator should still get the gate on")
+	}
+}
+
+// TestSetupBudget_WiresCallbacksEvenWithoutCap pins the v0.81 fix:
+// when the operator starts with no --budget flag and no
+// cost.budget_usd configured, setupBudget still installs the warn/hit
+// callbacks on the tracker. Otherwise a later /budget set <USD> raises
+// a cap that the threshold logic in (*Tracker).Add() never reports on,
+// and operators silently lose the 80 / 100 percent banners.
+//
+// The companion ai.SetBudgetCheckCallback wiring lives in the same
+// code path; agent-side enforcement is covered by
+// internal/agent.TestBudgetCheckCallback_RefusesAtCap.
+func TestSetupBudget_WiresCallbacksEvenWithoutCap(t *testing.T) {
+	a := agent.NewForTest("claude-sonnet-4-6")
+	tracker := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+
+	// Unbudgeted start — neither the flag nor the config field sets a cap.
+	cfg := &config.Config{}
+	setupBudget(cfg, 0, a, tracker)
+
+	// Operator raises a cap at runtime via /budget set 10. The threshold
+	// callbacks must fire when spend crosses 80% and 100% — pre-fix they
+	// were never installed because setupBudget returned early.
+	tracker.UpdateBudgetCap(10.00)
+
+	out := captureStderr(t, func() {
+		// At $3/MTok input + $15/MTok output, 1M output tokens = $15.
+		// One Add call crosses both the 80% and 100% thresholds, firing
+		// both warn and hit callbacks in the same invocation.
+		tracker.AddUsage(0, 1_000_000)
+	})
+
+	if !strings.Contains(out, "80% of budget") {
+		t.Errorf("warn callback didn't fire after /budget set on unbudgeted start; stderr: %q", out)
+	}
+	if !strings.Contains(out, "BUDGET EXHAUSTED") {
+		t.Errorf("hit callback didn't fire after /budget set on unbudgeted start; stderr: %q", out)
+	}
+	if !tracker.BudgetExceeded() {
+		t.Errorf("BudgetExceeded() = false after spending $15 against a $10 cap")
+	}
+}
+
+// TestSetupBudget_QuietWhenNoCap verifies the operator-visible banner
+// stays gated on cap > 0. The callback wiring runs regardless (see
+// the test above) but the "Session budget …" line would be misleading
+// when no cap is set.
+func TestSetupBudget_QuietWhenNoCap(t *testing.T) {
+	a := agent.NewForTest("claude-sonnet-4-6")
+	tracker := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	cfg := &config.Config{}
+
+	out := captureStderr(t, func() {
+		setupBudget(cfg, 0, a, tracker)
+	})
+
+	if strings.Contains(out, "Session budget") {
+		t.Errorf("setupBudget with cap=0 should not print the budget banner; stderr: %q", out)
 	}
 }
