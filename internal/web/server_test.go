@@ -14,6 +14,7 @@ import (
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/persona"
+	"github.com/xunholy/promptzero/internal/snapshot"
 )
 
 // fakeAgent satisfies agentDriver without touching any real LLM client. The
@@ -31,6 +32,8 @@ type fakeAgent struct {
 	opMode       mode.Mode
 	readOnly     bool
 	attackIDs    []string
+	snapshotMgr  *snapshot.Manager
+	sessionID    string
 }
 
 func (f *fakeAgent) Run(ctx context.Context, input string) (string, error) {
@@ -130,6 +133,18 @@ func (f *fakeAgent) SetAttackConstraint(ids []string) {
 		f.attackIDs = append([]string(nil), ids...)
 	}
 	f.mu.Unlock()
+}
+
+func (f *fakeAgent) SnapshotManager() *snapshot.Manager {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.snapshotMgr
+}
+
+func (f *fakeAgent) SessionID() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.sessionID
 }
 
 func (f *fakeAgent) emitDelta(t agent.TextDelta) {
