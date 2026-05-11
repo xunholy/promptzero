@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.163.0] - 2026-05-12
+
+**`audit.Log.Export` always returns a JSON array.** `Export` of an
+empty session returned the literal `"null"` because
+`json.MarshalIndent` on a nil `[]Entry` produces `null` rather than
+`[]`. Every downstream consumer (cockpit transcript viewer, report
+renderer, CLI piping to `jq` / `grep`) had to special-case the
+empty-session shape — and missing that special case in any one
+consumer surfaced as a parse error operators hadn't seen during
+their first-session smoke test.
+
+### Fixed
+
+- Substitute an empty `[]Entry{}` for a nil result before
+  marshalling so the body is always a parseable JSON array. Same
+  fix idiom Go uses internally for `json.Marshal([]int{}) → "[]"`.
+- Existing `TestExport` extended: the empty-session branch now
+  asserts the output is `"[]"` (no more legacy `"null"` tolerance)
+  and round-trips the body through `json.Unmarshal` to a
+  `[]map[string]any` so the array shape is verified at runtime.
+
 ## [0.162.0] - 2026-05-12
 
 **`/api/rewind/restore` distinguishes 404-not-found from 500-I/O-error.**
