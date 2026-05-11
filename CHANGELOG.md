@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.135.0] - 2026-05-11
+
+**`breaker.EscalationMessage` neutralizes smuggled close tag in
+`LastKind`.** Follow-up to v0.134's `quarantineOutput` hardening
+extending the same defense to the circuit-breaker escalation
+path. The breaker wraps `state.LastKind` in
+`<circuit-breaker-open>...</circuit-breaker-open>` — but
+`LastKind` is the normalised error string from prior failed
+dispatches, and tool error messages routinely echo
+attacker-controlled content (wifi_join echoes the target SSID,
+nfc_apdu echoes the card UID, nfc_dump echoes the NDEF body).
+If the same error tripped the breaker (three consecutive
+failures) and that error contained literal
+`</circuit-breaker-open>`, the wrapper rendered TWO close tags
+with the attacker's text between them — structurally outside
+the quarantine.
+
+### Fixed
+
+- **New `neutralizeCloseTag` helper** rewrites literal
+  `</circuit-breaker-open>` inside `LastKind` to
+  `< /circuit-breaker-open>` (single space after `<`). Same
+  pattern + same defense rationale as v0.134's
+  `agent.quarantineOutput`.
+- `TestEscalationMessage_NeutralizesSmuggledCloseTag` covers a
+  State with a smuggled close tag in LastKind and asserts
+  exactly one close tag survives, the neutralized form is
+  present, and the readable text is preserved. Pre-fix
+  verification: stashing the breaker.go change fails with
+  `closing tag count = 2, want 1`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.134.0] - 2026-05-11
 
 **`agent.quarantineOutput` neutralizes smuggled close tags
