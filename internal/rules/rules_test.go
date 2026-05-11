@@ -336,6 +336,47 @@ func TestEngine_ToolActionSaturation(t *testing.T) {
 	}
 }
 
+// TestEngine_ToolActionSaturation_ConcurrentHandle pins the v0.142
+// fix: the in-flight cap must hold even when Handle is invoked from
+// multiple goroutines simultaneously. Pre-fix the check was
+// Load() + Add() in two steps, and concurrent firers could both pass
+// the boundary check at inFlight=maxToolActions-1 and then both Add(1)
+// — leaving inFlight at cap+1. Under `go test -race -count=50` this
+// reliably reproduced (inFlight=9 with cap=8). The fix is an atomic
+// Add(1) + rollback-if-over.
+func TestEngine_ToolActionSaturation_ConcurrentHandle(t *testing.T) {
+	const total = maxToolActions + 16 // overshoot heavily so any race window lands
+	gate := make(chan struct{})
+	eng := New(Deps{
+		RunTool: func(_ context.Context, _ string, _ map[string]interface{}) (string, error) {
+			<-gate
+			return "", nil
+		},
+	})
+	eng.Register(Rule{
+		Name:    "sat-concurrent",
+		Match:   Match{Tool: "trigger"},
+		Actions: []Action{{Kind: ActionTool, Tool: "slow_tool"}},
+		Enabled: true,
+	})
+
+	var wg sync.WaitGroup
+	for i := 0; i < total; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			eng.Handle(audit.Entry{Tool: "trigger"})
+		}()
+	}
+	wg.Wait()
+	time.Sleep(50 * time.Millisecond) // let any racing Add(1) land
+
+	if got := eng.inFlight.Load(); got > maxToolActions {
+		t.Fatalf("inFlight=%d exceeds cap %d (concurrent Handle overran the gate)", got, maxToolActions)
+	}
+	close(gate)
+}
+
 // TestEngine_ToolActionPanicRecovered verifies that a panic inside a
 // RunTool goroutine is caught by obs.SafeGo so the rules engine (daemon)
 // keeps running and can fire subsequent rules normally.
