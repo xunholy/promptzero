@@ -801,6 +801,15 @@ func (f *Flipper) IButtonWrite(hexData string) (string, error) {
 // string to match.
 // CLI: gpio set <pin> <value>
 func (f *Flipper) GPIOSet(pin string, value int) (string, error) {
+	// Pre-dispatch pin allowlist (v0.180). Pre-fix only the RPC path
+	// validated the pin name via gpioPinByName — the CLI path
+	// forwarded any string through sanitizeArg. A typo like "PA77"
+	// reached the firmware as an opaque "unknown pin" error or, on
+	// some forks, silently no-op'd. Same allowlist used by both
+	// transports now.
+	if _, ok := gpioPinByName(pin); !ok {
+		return "", fmt.Errorf("invalid GPIO pin %q (valid: PA4, PA6, PA7, PB2, PB3, PC0, PC1, PC3 — case-insensitive)", pin)
+	}
 	return f.dispatch(
 		"gpio_set",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
@@ -852,6 +861,9 @@ func (f *Flipper) gpioSetViaRPC(ctx context.Context, pin string, value int) (str
 // produced the output.
 // CLI: gpio read <pin>
 func (f *Flipper) GPIORead(pin string) (string, error) {
+	if _, ok := gpioPinByName(pin); !ok {
+		return "", fmt.Errorf("invalid GPIO pin %q (valid: PA4, PA6, PA7, PB2, PB3, PC0, PC1, PC3 — case-insensitive)", pin)
+	}
 	return f.dispatch(
 		"gpio_read",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
