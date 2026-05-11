@@ -1,6 +1,7 @@
 package diff
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -103,6 +104,53 @@ func TestUnified_Truncation(t *testing.T) {
 	// Output should be near the cap, not unbounded.
 	if len(got) > maxBytes+1024 {
 		t.Fatalf("output exceeded byte cap: %d bytes", len(got))
+	}
+}
+
+// TestUnified_TruncationCounterReflectsRemaining pins the fix for a
+// long-standing cosmetic bug: the truncation marker always read
+// "[... 1 lines truncated ...]" regardless of how much content was
+// actually dropped, because the counter incremented once on the
+// first rejected flush and then the loop broke. An operator seeing
+// "1 lines truncated" on a 700-line replacement diff has no way to
+// tell whether they're 1 line short or 600.
+//
+// Construct a replacement diff well above the line cap and assert
+// the marker reports a remaining count that's at least, say,
+// the gap between the cap and the input size — not the literal "1".
+func TestUnified_TruncationCounterReflectsRemaining(t *testing.T) {
+	const extra = 200
+	var oldB, newB strings.Builder
+	for i := 0; i < maxLines+extra; i++ {
+		oldB.WriteString("old-line\n")
+		newB.WriteString("new-line\n")
+	}
+	got := Unified("big.txt", oldB.String(), newB.String())
+
+	// Pull the truncation marker line out of the output.
+	var markerLine string
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "lines truncated") {
+			markerLine = line
+			break
+		}
+	}
+	if markerLine == "" {
+		t.Fatalf("no truncation marker in output: tail=%q", got[len(got)-200:])
+	}
+	if strings.Contains(markerLine, "1 lines truncated") {
+		t.Errorf("marker reports the off-by-far '1 lines truncated' regardless of remainder: %q", markerLine)
+	}
+	// The actual remainder should be in the hundreds (every change
+	// produced two ops — one delete + one insert — across maxLines+extra
+	// lines, minus what fit before the cap). The exact number depends on
+	// myers/hunk shape, so we just assert "comfortably more than 100".
+	var n int
+	if _, err := fmt.Sscanf(markerLine, "[... %d lines truncated ...]", &n); err != nil {
+		t.Fatalf("could not parse marker %q: %v", markerLine, err)
+	}
+	if n < 100 {
+		t.Errorf("marker reports %d lines truncated; want >=100 given %d-line over-cap input", n, extra*2)
 	}
 }
 
