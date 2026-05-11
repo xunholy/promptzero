@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -460,4 +461,77 @@ func TestDispatchStreaming_PanickingCallbackDoesNotCrashAgent(t *testing.T) {
 	if seen != 1 {
 		t.Errorf("callback invoked %d times after panic, want exactly 1 (panic should abort the stream)", seen)
 	}
+}
+
+// TestDispatchStreaming_PanickingHandlerWithoutDeferCloseDoesNotLeak pins
+// the dispatch-level safety net for a handler that panics WITHOUT
+// having deferred sink.Close. The streaming.Handler docstring says
+// handlers MUST defer Close, and every production handler does — but
+// trusting that for every future tool would leave one missed defer
+// away from a permanent goroutine stuck on `range sink.Frames()`.
+//
+// Pre-fix: dispatchStreaming called `sink.Close()` and `<-done`
+// INLINE after the StreamHandler returned. When the handler panicked
+// without deferring Close, those statements were bypassed; the
+// consumer goroutine ranged forever on a never-closed channel and
+// dispatch returned with that goroutine still alive.
+//
+// Post-fix: sink.Close + <-done moved into a `defer` so they fire
+// on both the normal-return and panic paths.
+//
+// The test detects the leak by comparing runtime.NumGoroutine before
+// and after dispatch. Pre-fix the consumer goroutine survives forever
+// so the count stays elevated; post-fix it drops back to baseline.
+// A short polling loop accommodates the scheduler — Go doesn't reap
+// exiting goroutines synchronously.
+func TestDispatchStreaming_PanickingHandlerWithoutDeferCloseDoesNotLeak(t *testing.T) {
+	const toolName = "test_streaming_handler_panic_no_close"
+	t.Cleanup(func() { toolsreg.UnregisterForTest(toolName) })
+
+	toolsreg.Register(toolsreg.Spec{
+		Name:        toolName,
+		Description: "streaming handler that panics without closing the sink",
+		Schema:      json.RawMessage(`{"type":"object"}`),
+		Risk:        risk.Low,
+		Streams:     true,
+		Handler: func(_ context.Context, _ *toolsreg.Deps, _ map[string]any) (string, error) {
+			return "", nil
+		},
+		StreamHandler: func(_ context.Context, _ *toolsreg.Deps, _ map[string]any, sink *streaming.Sink) (string, error) {
+			// Intentionally NO defer sink.Close — simulate a buggy
+			// or newly-added tool that violates the docstring's
+			// "MUST defer" rule. The dispatch layer's safety net
+			// is the load-bearing piece this test exercises.
+			sink.Send([]byte("one-frame"))
+			panic("simulated handler crash before defer close")
+		},
+	})
+
+	a := &Agent{}
+	a.SetToolStreamCallback(func(_ streaming.Frame) bool { return true })
+
+	// Settle: yield so any background goroutines spawned by earlier tests
+	// (HTTP clients, sqlite WAL writers, etc.) have a chance to exit
+	// before we snapshot the baseline.
+	runtime.Gosched()
+	time.Sleep(50 * time.Millisecond)
+	before := runtime.NumGoroutine()
+
+	_, err := a.dispatch(context.Background(), toolName, map[string]any{})
+	if err == nil {
+		t.Fatalf("expected panic-wrapped error from dispatch, got nil")
+	}
+
+	// Poll for goroutine cleanup. Pre-fix the consumer is stuck
+	// ranging on the never-closed sink forever, so count stays > before.
+	// Post-fix it exits as soon as dispatch's deferred sink.Close runs.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= before {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("consumer goroutine leaked after panic: %d goroutines before dispatch, %d still alive 2s after — the dispatchStreaming sink.Close + drain didn't run on the panic path",
+		before, runtime.NumGoroutine())
 }
