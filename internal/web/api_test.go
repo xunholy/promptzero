@@ -47,7 +47,11 @@ func apiServer(t *testing.T, fa *fakeAgent) (*Server, *httptest.Server) {
 	s.attachAgentCallbacks()
 	mux := http.NewServeMux()
 	s.registerAPIRoutes(mux)
-	ts := httptest.NewServer(mux)
+	// Wrap with the CORS middleware so cross-origin tests see the
+	// same handler chain Start() builds at runtime. The middleware is
+	// a no-op when corsOrigins / allowAnyOrigin aren't configured, so
+	// existing same-origin tests are unaffected.
+	ts := httptest.NewServer(s.withCORS(mux))
 	t.Cleanup(ts.Close)
 	return s, ts
 }

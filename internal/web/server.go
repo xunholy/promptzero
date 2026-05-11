@@ -656,6 +656,13 @@ func (s *Server) Start(ctx context.Context) error {
 	// runs before the 30s timer arms, so every non-WS path inherits a
 	// hard wall-clock bound on top of the existing ReadHeaderTimeout.
 	wrapped := withRESTTimeout(mux, 30*time.Second)
+	// CORS comes BEFORE the timeout wrapper so OPTIONS preflights
+	// short-circuit without arming the 30s timer. Without this middleware
+	// the WebConfig.CORSOrigins docstring's "call /api cross-origin"
+	// promise was unfulfilled — browsers blocked the preflight (mux
+	// returned 405 for OPTIONS on method-routed paths) and no ACAO
+	// header ever made it back even on the GET/POST path.
+	wrapped = s.withCORS(wrapped)
 	srv := &http.Server{
 		Addr:              s.addr,
 		Handler:           wrapped,
@@ -1284,6 +1291,73 @@ func (s *Server) effectiveOriginPatterns() []string {
 		out = append(out, o)
 	}
 	return out
+}
+
+// withCORS is the cross-origin middleware applied to /api/* requests.
+// Mirrors the WebSocket OriginPatterns check the coder/websocket library
+// applies on /ws: an Origin in s.corsOrigins (or any when
+// s.allowAnyOrigin) passes; everything else is treated as same-origin
+// only.
+//
+// Two behaviours:
+//   - OPTIONS preflight on /api/*: respond 204 with the documented CORS
+//     headers (Allow-Methods, Allow-Headers, Allow-Credentials, Max-Age)
+//     when the Origin matches the allow-list. Without this the mux
+//     returned 405 for OPTIONS on method-routed paths and the
+//     preflight failed silently in the browser.
+//   - Non-OPTIONS on /api/*: echo Access-Control-Allow-Origin: <origin>
+//     and Vary: Origin so the response is exposed to the JS caller.
+//     Same-origin and curl-style callers see no extra headers (Origin
+//     absent / not in the allow-list); the bearer-token check remains
+//     the actual authorisation gate regardless of origin.
+//
+// Never echoes "*" as Access-Control-Allow-Origin — when allowAnyOrigin
+// is set we still mirror the specific Origin header, because pairing
+// "*" with Access-Control-Allow-Credentials: true is a spec violation
+// that browsers reject.
+func (s *Server) withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		origin := r.Header.Get("Origin")
+		allowed := origin != "" && s.originAllowedForREST(origin)
+		if allowed {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+		if r.Method == http.MethodOptions {
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				w.Header().Set("Access-Control-Max-Age", "600")
+			}
+			// Always respond 204 to preflights — disallowed origins
+			// still get a quiet response without ACAO so the browser
+			// blocks the follow-up request cleanly.
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// originAllowedForREST reports whether origin is on the configured
+// allow-list (or whether allowAnyOrigin is set). Same semantics as
+// effectiveOriginPatterns but exposed as a boolean for the REST
+// middleware to consult per-request.
+func (s *Server) originAllowedForREST(origin string) bool {
+	if s.allowAnyOrigin {
+		return true
+	}
+	for _, o := range s.corsOrigins {
+		if strings.TrimSpace(o) == origin {
+			return true
+		}
+	}
+	return false
 }
 
 // validateOriginConfig refuses a CORS config that contains a literal "*"
