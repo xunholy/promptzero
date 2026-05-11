@@ -342,8 +342,19 @@ var (
 // classify federated MCP tools after their annotations are read at startup.
 // A second Register call for the same tool overrides the previous level —
 // the most recent assertion wins.
+//
+// Invalid levels (outside [Low, Critical]) are rejected. AutoApprove
+// is `toolRisk <= threshold`, so a stored Level(-1) would silently
+// auto-approve at any non-negative threshold and bypass the confirm
+// gate — exactly the property the registry exists to defend. The
+// reject-vs-clamp choice matches Classify's fail-safe: an
+// unregistered tool falls through to High, the safe default, rather
+// than to whatever a typo'd caller passed.
 func Register(tool string, level Level) {
 	if tool == "" {
+		return
+	}
+	if level < Low || level > Critical {
 		return
 	}
 	runtimeMu.Lock()

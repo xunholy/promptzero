@@ -154,3 +154,54 @@ func TestLevelString(t *testing.T) {
 		}
 	}
 }
+
+// TestRegister_RejectsInvalidLevel pins the v0.148 defensive guard.
+// AutoApprove is `toolRisk <= threshold` — a Level(-1) stored via a
+// typo'd Register call would silently auto-approve at every non-
+// negative threshold, bypassing the confirm gate. The registry must
+// drop such writes so the tool falls through to Classify's High
+// safe-default instead.
+func TestRegister_RejectsInvalidLevel(t *testing.T) {
+	cases := []struct {
+		name  string
+		level Level
+	}{
+		{"negative", Level(-1)},
+		{"way-below", Level(-99)},
+		{"above-critical", Level(int(Critical) + 1)},
+		{"way-above", Level(99)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tool := "test_register_invalid_" + tc.name
+			defer Unregister(tool)
+			Register(tool, tc.level)
+			// Classify must fall through to the High safe-default,
+			// proving the invalid Register did NOT store.
+			if l := Classify(tool); l != High {
+				t.Errorf("Classify after invalid Register(%d) = %s, want High (rejected register should fall through)",
+					int(tc.level), l)
+			}
+			// ClassifyExplicit confirms there's no explicit entry.
+			if _, ok := ClassifyExplicit(tool); ok {
+				t.Errorf("ClassifyExplicit after invalid Register(%d) returned ok=true; invalid level was stored",
+					int(tc.level))
+			}
+		})
+	}
+}
+
+// TestRegister_AcceptsBoundaryLevels confirms the reject is a strict
+// out-of-range check (Low and Critical themselves are valid).
+func TestRegister_AcceptsBoundaryLevels(t *testing.T) {
+	for _, lvl := range []Level{Low, Medium, High, Critical} {
+		t.Run(lvl.String(), func(t *testing.T) {
+			tool := "test_register_boundary_" + lvl.String()
+			defer Unregister(tool)
+			Register(tool, lvl)
+			if got := Classify(tool); got != lvl {
+				t.Errorf("Classify after Register(%s) = %s, want %s", lvl, got, lvl)
+			}
+		})
+	}
+}

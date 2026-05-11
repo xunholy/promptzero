@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.148.0] - 2026-05-12
+
+**`risk.Register` rejects out-of-range Level values.** `AutoApprove`
+is the predicate `toolRisk <= threshold`, and `Level` is an `int`
+with valid range `[Low=0, Critical=3]`. Pre-fix `Register` accepted
+any int — including negative values. A typo'd
+`risk.Register("federated_tool", risk.Level(-1))` would silently
+store -1, and every subsequent `AutoApprove(threshold, -1)` would
+return `true` for any non-negative threshold, bypassing the
+confirm gate entirely.
+
+Today's only `Register` caller is mcpfed, which sources its level
+from `parseDefaultRisk` (bounded constants), so the bug isn't
+reachable from current code paths. But the registry exists *to
+defend* the confirm gate — accepting input that bypasses it is the
+class of defect that registers reach for in the first place. This
+is the same defense-in-depth posture as the v0.115 confidence
+threshold clamp and the v0.116 MCP env-var consent gate.
+
+### Fixed
+
+- `Register` now returns without storing when `level < Low || level
+  > Critical`. The tool then falls through to `Classify`'s `High`
+  safe-default — the same fail-closed behaviour the rest of the
+  package promises for unregistered tools.
+- Regression tests pin both sides: `TestRegister_RejectsInvalidLevel`
+  covers four out-of-range cases (negative, way-below,
+  above-Critical, way-above) and asserts the post-state falls through
+  to High; `TestRegister_AcceptsBoundaryLevels` confirms the reject
+  is strict (Low and Critical themselves remain valid).
+
 ## [0.147.0] - 2026-05-12
 
 **Tool output dirs default to `0o700`.** Three operator-output sites
