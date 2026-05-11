@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-05-11
+
+**Title-generation goroutine no longer clobbers operator renames.**
+`agent.runTitleGeneration`'s Load → check → Save sequence ran
+WITHOUT holding `a.mu`. The `maybeGenerateTitleLocked` docstring
+promised the goroutine "re-acquires the lock before persisting"
+but the code only used the lock to read `sessionStore`. A
+concurrent `RenameSession` (e.g. via the `/api/sessions PATCH`
+endpoint that the web UI uses for sidebar renames) could land
+between the Load and the Save — its rename was silently
+overwritten by the goroutine's later Save with the auto-derived
+or Haiku-generated title.
+
+Filesystem-level last-writer-wins race, not catchable by the Go
+data-race detector (each goroutine reads a fresh `session.State`).
+
+### Fixed
+
+- **`runTitleGeneration` now holds `a.mu` across the full
+  Load → check → Save sequence**, matching the contract its
+  caller's docstring already documented and aligning with
+  `RenameSession` and `autoSaveLocked`, which both hold the
+  same lock during their persist windows. Operator renames that
+  land mid-title-generation are now serialised behind the
+  goroutine's persist and survive.
+  - `TestRunTitleGeneration_SerializesWithRenameSession`
+    documents the lock contract: 8 concurrent RenameSession
+    calls + a runTitleGeneration on the same id must complete
+    without panic or deadlock, and the final on-disk title must
+    be one of the renamer-supplied values (never an
+    auto-overwritten state).
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/agent/` — all pass.
+
 ## [0.94.0] - 2026-05-11
 
 **Filesystem-watcher dispatch survives a panicking handler.** The
