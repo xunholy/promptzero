@@ -125,6 +125,17 @@ func New(deps Deps) *Engine {
 
 // Register adds or replaces a rule. Re-registering a name resets its
 // cooldown and fire counter.
+//
+// The Rule docstring promises "Enabled defaults true when the rule
+// is registered; flip it via Pause." — Register enforces that here
+// by setting cp.Enabled = true unconditionally before storing.
+// Pre-this-fix Register passed the bool through verbatim, so a
+// caller writing `eng.Register(Rule{Name: ..., Match: ..., Actions:
+// ...})` (without explicitly setting Enabled: true) would silently
+// get a never-firing rule — Go's zero value for bool is false, and
+// Handle's `if !r.Enabled { continue }` skipped them. Operators
+// who genuinely want a registered-but-paused rule call
+// Pause(name) after Register; that path remains unchanged.
 func (e *Engine) Register(r Rule) {
 	if r.Name == "" {
 		return
@@ -132,6 +143,7 @@ func (e *Engine) Register(r Rule) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	cp := r
+	cp.Enabled = true
 	e.rules[r.Name] = &cp
 	delete(e.lastFire, r.Name)
 	e.fires[r.Name] = 0
