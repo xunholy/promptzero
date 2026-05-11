@@ -118,7 +118,7 @@ type fsEntry struct {
 //	[D] foldername
 //	[F] filename 1234b
 func parseStorageList(raw string) []fsEntry {
-	var out []fsEntry
+	out := []fsEntry{}
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {

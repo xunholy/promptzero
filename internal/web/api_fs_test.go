@@ -4,6 +4,7 @@ package web
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -103,6 +104,38 @@ func TestParseStorageListEmpty(t *testing.T) {
 	entries := parseStorageList("")
 	if len(entries) != 0 {
 		t.Errorf("got %d entries for empty input, want 0", len(entries))
+	}
+}
+
+// TestParseStorageList_EmptyMarshalsAsArray pins the v0.171 fix.
+// /api/fs/list builds a response with parseStorageList output under the
+// "entries" key. Pre-fix the function returned `var out []fsEntry`, which
+// stayed nil for empty / unparseable input and serialised as JSON `null` —
+// breaking web-UI consumers that iterate `.entries.forEach(...)`. Same
+// defect class as the v0.163-v0.167 nil-slice arc.
+func TestParseStorageList_EmptyMarshalsAsArray(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"empty_string", ""},
+		{"whitespace_only", "\n\n\t\n"},
+		{"no_recognised_lines", "lorem\nipsum\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			entries := parseStorageList(tc.raw)
+			if entries == nil {
+				t.Fatalf("parseStorageList returned nil slice; want non-nil empty slice")
+			}
+			b, err := json.Marshal(map[string]any{"entries": entries})
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if got := string(b); got != `{"entries":[]}` {
+				t.Errorf("marshalled = %s; want {\"entries\":[]}", got)
+			}
+		})
 	}
 }
 

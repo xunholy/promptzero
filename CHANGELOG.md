@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.171.0] - 2026-05-12
+
+**`/api/fs/list` returns `entries:[]` for empty directories, not
+`entries:null`.** Sixth release in the nil-slice JSON arc
+(v0.163-v0.167). `parseStorageList` initialised its accumulator
+with `var out []fsEntry`, which stayed nil when the input parsed
+to zero entries (genuinely empty Flipper directory, all lines
+filtered, garbled output). The nil slice marshalled to JSON
+`null`, breaking web-UI consumers that iterate
+`response.entries.forEach(...)`.
+
+### Fixed
+
+- Switch `parseStorageList` accumulator from `var out []fsEntry`
+  to `out := []fsEntry{}` so the empty case marshals as the JSON
+  array `[]`.
+- Regression test `TestParseStorageList_EmptyMarshalsAsArray` in
+  `internal/web/api_fs_test.go` covers empty-string,
+  whitespace-only, and no-recognised-lines inputs — all three
+  must marshal to `{"entries":[]}` exactly.
+
 ## [0.170.0] - 2026-05-12
 
 **Webhook SSRF guard covers all multicast scopes and deprecated
