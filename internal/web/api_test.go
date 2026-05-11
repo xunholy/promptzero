@@ -395,6 +395,27 @@ func TestCampaignValidate_RejectsMalformed(t *testing.T) {
 	}
 }
 
+// TestPersonasSwitch_RejectsOversizedBody pins the v0.106
+// shared body cap. Every /api/* JSON-decode call now flows
+// through decodeJSONBody, which wraps r.Body in MaxBytesReader
+// at maxJSONBodyBytes (64 KiB) and maps the overflow error to
+// 413. Pre-fix every JSON endpoint quietly buffered the whole
+// body into memory before json.Decode realised it was wrong.
+//
+// We pick /api/personas/switch as the canary — any JSON endpoint
+// would do; the helper is shared so one site exercising it covers
+// the surface. Cross-endpoint coverage would be redundant noise.
+func TestPersonasSwitch_RejectsOversizedBody(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	s.SetPersonaRegistry(persona.NewRegistry())
+	// Valid JSON >64 KiB so the decoder reads past the cap.
+	huge := `{"name":"` + strings.Repeat("x", 70000) + `"}`
+	code, _ := postJSON(t, ts, "/api/personas/switch", json.RawMessage(huge))
+	if code != http.StatusRequestEntityTooLarge {
+		t.Errorf("code = %d, want 413 (decodeJSONBody body cap)", code)
+	}
+}
+
 // TestCampaignValidate_RejectsOversizedBody pins the v0.105
 // resource-bound: a body larger than maxCampaignBodyBytes
 // (256 KiB) is rejected with 413, not silently buffered into

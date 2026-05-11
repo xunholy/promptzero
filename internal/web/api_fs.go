@@ -9,7 +9,6 @@ package web
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -497,8 +496,7 @@ func (s *Server) handleFSDelete(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Path string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	cleaned, reason := validateFSPath(body.Path)
@@ -533,8 +531,7 @@ func (s *Server) handleFSMkdir(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Path string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	cleaned, reason := validateFSPath(body.Path)
@@ -570,8 +567,7 @@ func (s *Server) handleFSRename(w http.ResponseWriter, r *http.Request) {
 		Src string `json:"src"`
 		Dst string `json:"dst"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	src, reason := validateFSPath(body.Src)

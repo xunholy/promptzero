@@ -11,7 +11,6 @@
 package web
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -156,8 +155,7 @@ func (s *Server) handleSessionPatch(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Title *string `json:"title,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	if body.Title == nil {
