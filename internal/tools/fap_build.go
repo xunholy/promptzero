@@ -180,7 +180,7 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 // LLM-controlled directory, otherwise deploy=true becomes an arbitrary
 // .fap discovery + write primitive.
 func findFAP(dirs ...string) []string {
-	var out []string
+	out := []string{}
 	for _, d := range dirs {
 		_ = filepath.WalkDir(d, func(p string, e os.DirEntry, err error) error {
 			if err != nil || e.IsDir() {
@@ -223,7 +223,7 @@ func confirmFAPDeploy(ctx context.Context, d *Deps, faps []string) bool {
 // Returns the on-device paths successfully written and a joined error for
 // any that failed.
 func pushFAPs(ctx context.Context, d *Deps, faps []string) ([]string, error) {
-	var pushed []string
+	pushed := []string{}
 	var errs []string
 	for _, p := range faps {
 		b, err := os.ReadFile(p) //nolint:gosec
