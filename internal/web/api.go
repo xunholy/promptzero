@@ -363,15 +363,23 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, body)
 }
 
+// maxCampaignBodyBytes caps the YAML body the campaign endpoints
+// accept. Realistic campaign files are a few hundred bytes to a
+// few KB; 256 KiB is generous headroom while bounding an obvious
+// DoS vector (unbounded io.ReadAll on a POST body).
+const maxCampaignBodyBytes = 256 * 1024
+
 // handleCampaignValidate parses the request body as a campaign YAML
 // and reports the result. Body is the raw YAML text; Content-Type
 // is not enforced (the CLI accepts paths, the web accepts inline
 // text). Mirrors CLI `/campaign validate <file>` minus the file-
 // read half — clients embed the YAML in the request body directly.
 func (s *Server) handleCampaignValidate(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxCampaignBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "read body: "+err.Error())
+		writeError(w, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("body exceeds %d bytes or read failed: %v", maxCampaignBodyBytes, err))
 		return
 	}
 	c, err := campaign.ParseYAML(body)
@@ -402,9 +410,11 @@ func (s *Server) handleCampaignRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "agent not configured")
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxCampaignBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "read body: "+err.Error())
+		writeError(w, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("body exceeds %d bytes or read failed: %v", maxCampaignBodyBytes, err))
 		return
 	}
 	c, err := campaign.ParseYAML(body)
