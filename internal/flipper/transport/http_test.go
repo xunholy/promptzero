@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -354,4 +355,37 @@ func TestHTTPRejectsUnknownStatus(t *testing.T) {
 	if err := tr.Dial(context.Background()); err == nil {
 		t.Errorf("expected error for 500 probe")
 	}
+}
+
+// TestHTTPDialer_RejectsOverCapBatch pins the ceiling enforcement
+// the maxHTTPRecvResponseBytes constant has always promised:
+// "configurable via ?batch=N up to this ceiling". Pre-this-fix the
+// dialer accepted any positive int, and the resulting transport
+// then failed every Read with "response exceeded cap" — the dial
+// succeeded but the transport was unusable.
+//
+// 16 MiB is the ceiling today. Configuring batch=20MiB now fails
+// at dial time with a clear ceiling-exceeded error instead.
+func TestHTTPDialer_RejectsOverCapBatch(t *testing.T) {
+	overCap := maxHTTPRecvResponseBytes + 1
+	url := fmt.Sprintf("http://127.0.0.1:1?batch=%d", overCap)
+	_, err := Open(url)
+	if err == nil {
+		t.Fatalf("Open with batch=%d (over %d-byte ceiling) should have failed", overCap, maxHTTPRecvResponseBytes)
+	}
+	if !strings.Contains(err.Error(), "ceiling") {
+		t.Errorf("error message missing ceiling diagnostic: %v", err)
+	}
+}
+
+// TestHTTPDialer_AcceptsAtCapBatch confirms the boundary is
+// inclusive — batch=ceiling exactly is allowed. The fix uses a
+// strict `>` check, not `>=`, so this exercises the off-by-one.
+func TestHTTPDialer_AcceptsAtCapBatch(t *testing.T) {
+	url := fmt.Sprintf("http://127.0.0.1:1?batch=%d", maxHTTPRecvResponseBytes)
+	tr, err := Open(url)
+	if err != nil {
+		t.Fatalf("Open with batch=%d (at ceiling) should succeed: %v", maxHTTPRecvResponseBytes, err)
+	}
+	defer tr.Close()
 }

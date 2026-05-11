@@ -119,6 +119,17 @@ func httpDialer(rawURL string) (Transport, error) {
 		if err != nil || n <= 0 {
 			return nil, fmt.Errorf("transport: invalid batch=%q in URL %q", v, rawURL)
 		}
+		// Enforce the ceiling the maxHTTPRecvResponseBytes constant
+		// promises in its docstring ("configurable via ?batch=N up to
+		// this ceiling"). Pre-this-fix the dialer accepted any positive
+		// int, but a batch above the response cap silently broke every
+		// Read with "response exceeded cap" — the transport dialled
+		// successfully and then errored on every subsequent recv. Fail
+		// loud at dial time so misconfigured URLs surface at startup,
+		// matching the negative-batch reject above.
+		if n > maxHTTPRecvResponseBytes {
+			return nil, fmt.Errorf("transport: batch=%d exceeds the %d-byte ceiling in URL %q", n, maxHTTPRecvResponseBytes, rawURL)
+		}
 		t.batch = n
 	}
 	return t, nil
