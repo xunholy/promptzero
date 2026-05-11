@@ -165,3 +165,52 @@ func TestSetPipelineBundleAcceptsCustom(t *testing.T) {
 		t.Errorf("SetPipelineBundle round-trip mismatch:\n  got:  %+v\n  want: %+v", got, custom)
 	}
 }
+
+// TestSetPipelineBundle_RejectsZeroValue pins the docstring's
+// "rejected with a warn log" promise. Pre-fix the body just stored
+// whatever was passed, so a caller who did `var p Pipeline;
+// f.SetPipelineBundle(p)` silently wedged the agent's CLI
+// dispatch: every timeout would be 0, every ExecCtx /
+// WriteFileCtx would fire context.DeadlineExceeded immediately on
+// the next command. The fix rejects the zero value and the
+// existing Balanced default stays installed via pipeline()'s
+// nil-pointer fallback. End-state assertion: f.pipeline() == Balanced
+// after the reject.
+func TestSetPipelineBundle_RejectsZeroValue(t *testing.T) {
+	t.Parallel()
+
+	f := &Flipper{}
+	// Install Balanced first so we have a known good baseline to
+	// confirm the reject didn't overwrite it.
+	f.SetPipeline(ProfileBalanced)
+	want := ProfileSettings(ProfileBalanced)
+
+	var zero Pipeline
+	f.SetPipelineBundle(zero) // should warn and be ignored
+
+	if got := f.pipeline(); got != want {
+		t.Errorf("SetPipelineBundle(zero) modified the active bundle:\n  got:  %+v\n  want: %+v (Balanced, unchanged)", got, want)
+	}
+}
+
+// TestSetPipelineBundle_RejectsZeroFromUnsetState covers the case
+// where the very first SetPipelineBundle call is the zero value.
+// f.pipelineCfg is still nil, so the reject leaves the lazy
+// Balanced fallback in place — the first ExecCtx after still gets
+// non-zero timeouts. Without the reject, the zero bundle would be
+// stored and every subsequent ExecCtx would expire immediately.
+func TestSetPipelineBundle_RejectsZeroFromUnsetState(t *testing.T) {
+	t.Parallel()
+
+	f := &Flipper{}
+	var zero Pipeline
+	f.SetPipelineBundle(zero) // first call, zero value
+
+	// pipeline() falls back to ProfileSettings(ProfileBalanced) when
+	// pipelineCfg is nil. Asserting that confirms the zero wasn't
+	// stored (otherwise we'd see all-zero timeouts here).
+	got := f.pipeline()
+	if got.Exec == 0 || got.WriteFile == 0 || got.Connect == 0 {
+		t.Errorf("Pipeline has zero timeouts after SetPipelineBundle(zero) — the reject didn't fire: %+v", got)
+	}
+}
