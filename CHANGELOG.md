@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-05-11
+
+**Mode parity audit, phase 2c: web gets `/api/audit`.** Six new
+GET endpoints surface the full CLI `/audit` query DSL to web
+clients. Pre-v0.99 web operators had no way to see audit history
+or filter by tool/risk/session/time — they had to drop to a
+parallel REPL just to triage what had happened.
+
+### Added
+
+- **`GET /api/audit/stats`** — session summary (total actions,
+  success rate, unique tools). Mirrors CLI `/audit stats`.
+- **`GET /api/audit/query?n=N`** — N most recent rows (default
+  20, capped at `audit.MaxQueryLimit`). Mirrors `/audit query [N]`.
+- **`GET /api/audit/find?tool=&risk=&session=&since=&until=&success=&contains=&limit=&offset=`**
+  — driveable filter wrapping `audit.QueryFiltered`. Same input
+  vocabulary as the CLI's `parseAuditFilter` (`since=24h` /
+  `since=7d` / RFC3339), same rejection of negative durations
+  and unknown risk levels, same since-after-until cross-check.
+  Mirrors `/audit find k=v …`.
+- **`GET /api/audit/session/{id}`** — every row for the named
+  session id. Mirrors `/audit session <id>`.
+- **`GET /api/audit/top?on=tools|risks&since=`** — top-tools or
+  top-risks aggregation. Mirrors `/audit top tools|risks
+  [since=…]`.
+- **`GET /api/audit/export`** — the current session's full audit
+  log as JSON (raw `audit.Log.Export()` body). Cockpit can save
+  the response body for triage / report attachment. Mirrors
+  `/audit export <path>` minus the file-write.
+
+All six endpoints return 503 when `s.auditLog` is nil so the
+cockpit can hide the panel cleanly. New `auditEntryDTO` shape
+keeps the wire format stable across endpoints (id, timestamp as
+RFC3339, tool, input, output, risk, level, session_id,
+duration_ms, success). New `parseWhenWebStr` helper mirrors the
+CLI's `parseWhen` so operators don't have to learn two grammars.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass
+  including six new TestAudit* cases (503 path,
+  query/find/top/export happy paths, find rejects bad risk).
+
 ## [0.98.0] - 2026-05-11
 
 **Mode parity audit, phase 2b: web gets `/api/mode`.** Runtime
