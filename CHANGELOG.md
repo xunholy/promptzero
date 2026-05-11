@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.82.0] - 2026-05-11
+
+**`/rules list` honors its own documentation.** The doc-vs-code
+audit caught one more self-contradicting error: the
+`/rules` handler's godoc and its unknown-subcommand hint both
+advertised `list` as a valid subcommand, but typing `/rules list`
+fell into the default branch and produced "unknown subcommand
+list (want list|pause|resume|test)" — the error suggested the
+exact verb that just failed.
+
+### Fixed
+
+- **`/rules list` renders the rule registry** (was: "unknown
+  subcommand"). The no-args path was the only entry point that
+  produced the listing; the explicit form had no `case "list":`
+  branch. Operators following the documented usage hit a
+  misleading error.
+  - Extracted the list-rendering into a new `printRulesList`
+    helper and routed both `/rules` (no args) and `/rules list`
+    through it, matching the godoc that already names "list"
+    as a subcommand.
+  - `TestRulesCmd_ListSubcommand` pins both shapes: no-args and
+    explicit `list` produce identical output, and the explicit
+    form must NOT contain "unknown" — that's the regression
+    sentinel.
+  - `TestRulesCmd_UnknownSubcommand` keeps the negative path
+    honest: a genuinely unknown subcommand still produces the
+    expected hint.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./...` — all packages pass.
+
 ## [0.81.0] - 2026-05-11
 
 **`/budget set` enforcement fix.** Continues the silent-failure
