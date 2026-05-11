@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.177.0] - 2026-05-12
+
+**Extend the validate-before-transport contract to the six Bruce
+handlers that take user input.** Fourth release in the arc that
+started with canbus v0.174/v0.175 and continued with buspirate
+v0.176 — same defect class, different tool family.
+
+Pre-fix, six Bruce handlers (`wifi_deauth`, `evil_twin`, `lora_scan`,
+`ir_send`, `badusb_run`, `raw_cli`) all called `RequireBruce` before
+validating their arguments. An LLM that omitted `bssid` from
+`bruce_wifi_deauth` saw `"bruce devboard not connected"` instead of
+`"bssid is required"`, chasing a wiring fix it couldn't perform.
+
+### Fixed
+
+- All six Bruce handlers now validate arguments above the
+  `d.RequireBruce()` short-circuit.
+- New `TestBruceHandlers_ValidateBeforeTransport` table-driven
+  regression with nine sub-cases covers every required-arg path
+  across the six handlers.
+
 ## [0.176.0] - 2026-05-12
 
 **Extend the validate-before-transport contract (v0.174/v0.175) to

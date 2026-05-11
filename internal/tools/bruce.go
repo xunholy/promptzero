@@ -116,9 +116,10 @@ func init() {
 		Group:     GroupBruce,
 		AgentOnly: false,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			if err := d.RequireBruce(); err != nil {
-				return "", err
-			}
+			// Validate args BEFORE the transport check (v0.177). Same
+			// pattern as canbus v0.174/v0.175 and buspirate v0.176:
+			// otherwise a missing/invalid arg masquerades as a
+			// transport error and the LLM chases the wrong fix.
 			bssid := str(p, "bssid")
 			channel := intOr(p, "channel", 0)
 			if bssid == "" {
@@ -126,6 +127,9 @@ func init() {
 			}
 			if channel == 0 {
 				return "", fmt.Errorf("bruce_wifi_deauth: channel is required")
+			}
+			if err := d.RequireBruce(); err != nil {
+				return "", err
 			}
 			if err := d.Bruce.Deauth(ctx, bssid, channel); err != nil {
 				return "", err
@@ -157,9 +161,7 @@ func init() {
 		Group:     GroupBruce,
 		AgentOnly: false,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			if err := d.RequireBruce(); err != nil {
-				return "", err
-			}
+			// Validate before transport (v0.177).
 			ssid := str(p, "ssid")
 			bssid := str(p, "bssid")
 			if ssid == "" {
@@ -167,6 +169,9 @@ func init() {
 			}
 			if bssid == "" {
 				return "", fmt.Errorf("bruce_evil_twin: bssid is required")
+			}
+			if err := d.RequireBruce(); err != nil {
+				return "", err
 			}
 			if err := d.Bruce.EvilTwin(ctx, ssid, bssid); err != nil {
 				return "", err
@@ -221,12 +226,13 @@ func init() {
 		Group:     GroupBruce,
 		AgentOnly: false,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			if err := d.RequireBruce(); err != nil {
-				return "", err
-			}
+			// Validate before transport (v0.177).
 			freq := floatOr(p, "frequency_mhz", 0)
 			if freq == 0 {
 				return "", fmt.Errorf("bruce_lora_scan: frequency_mhz is required")
+			}
+			if err := d.RequireBruce(); err != nil {
+				return "", err
 			}
 			if err := d.Bruce.LoRaScan(ctx, freq); err != nil {
 				return "", err
@@ -250,9 +256,7 @@ func init() {
 		Group:     GroupBruce,
 		AgentOnly: false,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			if err := d.RequireBruce(); err != nil {
-				return "", err
-			}
+			// Validate before transport (v0.177).
 			protocol := str(p, "protocol")
 			code := str(p, "code")
 			if protocol == "" {
@@ -260,6 +264,9 @@ func init() {
 			}
 			if code == "" {
 				return "", fmt.Errorf("bruce_ir_send: code is required")
+			}
+			if err := d.RequireBruce(); err != nil {
+				return "", err
 			}
 			if err := d.Bruce.IRSend(ctx, protocol, code); err != nil {
 				return "", err
@@ -310,12 +317,13 @@ func init() {
 		Group:     GroupBruce,
 		AgentOnly: false,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			if err := d.RequireBruce(); err != nil {
-				return "", err
-			}
+			// Validate before transport (v0.177).
 			filename := str(p, "filename")
 			if filename == "" {
 				return "", fmt.Errorf("bruce_badusb_run: filename is required")
+			}
+			if err := d.RequireBruce(); err != nil {
+				return "", err
 			}
 			if err := d.Bruce.BadUSBRun(ctx, filename); err != nil {
 				return "", err
@@ -367,12 +375,13 @@ func init() {
 		Group:     GroupBruce,
 		AgentOnly: false,
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
-			if err := d.RequireBruce(); err != nil {
-				return "", err
-			}
+			// Validate before transport (v0.177).
 			cmd := str(p, "command")
 			if cmd == "" {
 				return "", fmt.Errorf("bruce_raw_cli: command is required")
+			}
+			if err := d.RequireBruce(); err != nil {
+				return "", err
 			}
 			return d.Bruce.RawCommand(ctx, cmd)
 		},
