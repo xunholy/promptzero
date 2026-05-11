@@ -3,6 +3,7 @@ package rag
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestTokenize(t *testing.T) {
@@ -117,6 +118,42 @@ func TestSnippet_ShortBodyNoEllipsis(t *testing.T) {
 	snip := Snippet("hello needle world", "needle", 300)
 	if strings.HasPrefix(snip, "…") || strings.HasSuffix(snip, "…") {
 		t.Errorf("short snippet shouldn't have ellipses: %q", snip)
+	}
+}
+
+// TestSnippet_UTF8BoundaryStart pins the rune-aware start clip.
+// Pre-fix the byte-cut `body[start:end]` could land mid-rune when
+// the match landed >60 bytes in and a multi-byte rune sat at the
+// `bestIdx-60` boundary. Result: invalid-UTF-8 snippet that
+// downstream JSON marshalling renders as U+FFFD or rejects.
+//
+// Construct a body where the 4-byte emoji 🛂 (F0 9F 9B 82) sits at
+// bytes 60–63 and the search term lands at byte 121 — bestIdx=121
+// minus the 60-byte lead drops start to 61, which lands on byte 2
+// of the emoji.
+func TestSnippet_UTF8BoundaryStart(t *testing.T) {
+	prefix := strings.Repeat("x", 60)
+	// 60 'x' + 4-byte emoji = 64 bytes, then 57 more 'x' lands needle
+	// at byte 121. With bestIdx=121, start = 121-60 = 61, in the
+	// middle of the 4-byte emoji.
+	body := prefix + "🛂" + strings.Repeat("x", 57) + "needle"
+	snip := Snippet(body, "needle", 80)
+	if !utf8.ValidString(snip) {
+		t.Errorf("Snippet produced invalid UTF-8: %q", snip)
+	}
+}
+
+// TestSnippet_UTF8BoundaryEnd pins the rune-aware end clip. Same
+// failure mode at the trailing edge: end = start + maxLen could
+// land in the middle of a rune. Place the emoji near the end of
+// the maxLen window.
+func TestSnippet_UTF8BoundaryEnd(t *testing.T) {
+	// "needle " (7 bytes) + 50 'x' (=57 total) + emoji at 57-60.
+	// With start=0, maxLen=58, end=58 lands at byte 2 of the emoji.
+	body := "needle " + strings.Repeat("x", 50) + "🛂" + strings.Repeat("x", 30)
+	snip := Snippet(body, "needle", 58)
+	if !utf8.ValidString(snip) {
+		t.Errorf("Snippet produced invalid UTF-8: %q", snip)
 	}
 }
 
