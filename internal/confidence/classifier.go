@@ -100,6 +100,8 @@ func toFloat(v any) (float64, bool) {
 		return float64(n), true
 	case int:
 		return float64(n), true
+	case int32:
+		return float64(n), true
 	case int64:
 		return float64(n), true
 	case string:

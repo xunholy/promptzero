@@ -19,15 +19,14 @@ func init() {
 		Group:       GroupFlipperNFC,
 		AgentOnly:   false,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
-			timeoutSeconds := 30
-			if v, ok := p["timeout_seconds"]; ok {
-				switch n := v.(type) {
-				case float64:
-					timeoutSeconds = int(n)
-				case int:
-					timeoutSeconds = n
-				}
-			}
+			// Route through the canonical intOr helper instead of an
+			// inline {float64, int}-only switch. Pre-v0.160 this site
+			// missed int32 / int64 / float32 / string inputs (the
+			// other nfc_* handlers in the same file already used
+			// intOr). v0.157 extended intOr to the full numeric-type
+			// set; consolidating this site picks up the same coverage
+			// without re-imp lementing the type switch by hand.
+			timeoutSeconds := intOr(p, "timeout_seconds", 30)
 			raw, err := d.Flipper.NFCDetect(time.Duration(timeoutSeconds) * time.Second)
 			if err != nil {
 				return raw, err

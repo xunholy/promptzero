@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.160.0] - 2026-05-12
+
+**Two remaining inline-`switch` arg-parsers brought onto the v0.157
+numeric-type contract.** Sweep follow-up to v0.157-v0.159:
+
+- `internal/tools/nfc.go`'s `nfc_detect` handler reimplemented
+  `intOr` inline with only `{float64, int}` cases — inconsistent with
+  every other `nfc_*` handler in the same file, which already used
+  `intOr` directly. Routed through `intOr` so it picks up the v0.157
+  full numeric-type set automatically.
+- `internal/confidence/classifier.go`'s `toFloat` accepted
+  `float64`, `float32`, `int`, `int64`, and `string` but missed
+  `int32` (the only Go-native numeric type still falling through to
+  the no-signal fallback). Added the case.
+
+### Fixed
+
+- Replace the inline two-case `switch` in `nfc_detect` with
+  `intOr(p, "timeout_seconds", 30)`. Same per-handler behaviour for
+  JSON-default float64 input; non-JSON callers (tests,
+  programmatic dispatchers) now get the same coverage as v0.157.
+- Add `case int32:` to `toFloat`. The other five numeric branches
+  were already in place — this closes the last gap.
+- Regression test `TestToFloat_GoNativeNumericTypes` exercises all
+  six accepted types plus a not-coercible fallback branch.
+
+With v0.157-v0.160 shipped, every arg-parser helper in the codebase
+shares the same Go-native-numeric-type contract.
+
 ## [0.159.0] - 2026-05-12
 
 **`fileformat.toInt` / `toUint32` accept Go-native numeric types.**

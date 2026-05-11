@@ -124,3 +124,38 @@ func TestParseClassifierResponse_NonNumericConfidence(t *testing.T) {
 		}
 	}
 }
+
+// TestToFloat_GoNativeNumericTypes pins the v0.160 contract on
+// toFloat — the helper accepts every numeric Go-native type a
+// non-JSON caller might inject in addition to the JSON-default
+// float64 / float32 / int / int64 / numeric-string set. Pre-v0.160
+// an int32 input fell through to the no-signal fallback; this
+// matters when classifier helpers are exercised programmatically
+// (tests, future hybrid retrieval/router rerankers).
+func TestToFloat_GoNativeNumericTypes(t *testing.T) {
+	cases := []struct {
+		name string
+		in   any
+		want float64
+		ok   bool
+	}{
+		{"float64", float64(0.5), 0.5, true},
+		{"float32", float32(0.25), 0.25, true},
+		{"int", int(1), 1, true},
+		{"int32", int32(0), 0, true}, // the v0.160 addition
+		{"int64", int64(1), 1, true},
+		{"string_decimal", "0.82", 0.82, true},
+		{"unrecognised_type_returns_zero_and_ok_false", []any{}, 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := toFloat(tc.in)
+			if ok != tc.ok {
+				t.Fatalf("toFloat(%v): ok = %v, want %v", tc.in, ok, tc.ok)
+			}
+			if ok && got != tc.want {
+				t.Errorf("toFloat(%v) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
