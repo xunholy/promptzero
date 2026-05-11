@@ -491,9 +491,17 @@ func (a *Agent) runTitleGeneration(id, model, derivedSnapshot string, history []
 		return
 	}
 
+	// Hold a.mu across the Load → check → Save sequence so a
+	// concurrent RenameSession or autoSaveLocked can't slip in
+	// between our Load and Save and have its work clobbered. Pre-fix
+	// the docstring on maybeGenerateTitleLocked promised the
+	// goroutine "re-acquires the lock before persisting" but the
+	// code only used the lock to read sessionStore — Load + Save ran
+	// unlocked, so an operator PATCH rename that landed between them
+	// got silently overwritten by this goroutine's Save.
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	store := a.sessionStore
-	a.mu.Unlock()
 	if store == nil {
 		return
 	}
