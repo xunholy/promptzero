@@ -281,9 +281,30 @@ func toChatRow(e audit.Entry, systemPrompt string) ChatRow {
 	// minimal one from the tool + risk framing. Downstream users who
 	// want real user turns can join on session transcripts.
 	user := fmt.Sprintf("Execute %s (risk=%s).", e.Tool, e.Risk)
-	// Assistant role: the tool_use+tool_result paired as compact JSON.
-	assistant := fmt.Sprintf("```json\n{\"tool\": %q, \"input\": %s}\n```\nResult: %s",
-		e.Tool, e.Input, e.Output)
+	// Assistant role: the tool_use+tool_result paired as compact JSON
+	// inside a markdown fence. Build the inner JSON via json.Marshal so
+	// control bytes in e.Tool (which would otherwise hit Sprintf's
+	// `%q` → strconv.Quote and produce Go-string escapes like `\a` /
+	// `\v` / `\xNN` invalid in JSON) survive as `\u00NN`. e.Input is
+	// already-serialised JSON from the audit Record path; embed it as
+	// a json.RawMessage when it parses, else fall back to JSON null so
+	// the outer object is always parseable. Same v0.150-v0.152 contract.
+	innerInput := json.RawMessage("null")
+	if json.Valid([]byte(e.Input)) {
+		innerInput = json.RawMessage(e.Input)
+	}
+	innerJSON, mErr := json.Marshal(map[string]any{
+		"tool":  e.Tool,
+		"input": innerInput,
+	})
+	if mErr != nil {
+		// json.Marshal of a map[string]any with a string + RawMessage
+		// can't actually fail under encoding/json once we've gated on
+		// json.Valid, but degrade gracefully to a minimal envelope so
+		// the trainset writer always produces a row.
+		innerJSON = []byte(`{"tool":"","input":null}`)
+	}
+	assistant := fmt.Sprintf("```json\n%s\n```\nResult: %s", innerJSON, e.Output)
 	return ChatRow{
 		Messages: []ChatMessage{
 			{Role: "system", Content: systemPrompt},

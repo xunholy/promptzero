@@ -289,6 +289,76 @@ func TestExport_ChatUsesCustomSystemPrompt(t *testing.T) {
 	}
 }
 
+// TestExport_ChatAssistantInnerJSONValid pins the v0.153 contract:
+// the `{"tool":..., "input":...}` JSON embedded inside the assistant
+// message's markdown fence must be valid JSON regardless of what
+// bytes the e.Tool field contains. Pre-fix the assistant was built
+// via fmt.Sprintf("...%q...", e.Tool, ...) — strconv.Quote semantics
+// — and an audit row with a tool name containing a BEL byte (\x07)
+// produced inner JSON with `\a` that downstream parsers reject.
+// Tool names never normally carry control bytes, but defense in
+// depth: an attacker who can write directly to the audit DB (or a
+// future federated-tool name escape) shouldn't be able to corrupt
+// the exported training set.
+func TestExport_ChatAssistantInnerJSONValid(t *testing.T) {
+	// Stage an audit entry with a hostile tool name carrying every
+	// JSON-invalid control byte the v0.150-v0.152 arc cared about.
+	entries := []audit.Entry{{
+		Tool:   "wifi\x07scan\x0Bap\x00",
+		Input:  `{"duration":30}`,
+		Output: "ok",
+		Risk:   "Low",
+		Level:  audit.LevelInfo,
+	}}
+	var buf bytes.Buffer
+	if _, err := Export(entries, &buf, Options{Format: FormatChat}); err != nil {
+		t.Fatal(err)
+	}
+	var row ChatRow
+	if err := json.Unmarshal(bytes.TrimRight(buf.Bytes(), "\n"), &row); err != nil {
+		t.Fatalf("outer chat row not valid JSON: %v", err)
+	}
+	content := row.Messages[2].Content
+	// Extract the JSON between the ```json ... ``` fence.
+	const fenceOpen = "```json\n"
+	const fenceClose = "\n```"
+	openIdx := strings.Index(content, fenceOpen)
+	closeIdx := strings.Index(content, fenceClose)
+	if openIdx < 0 || closeIdx < 0 || closeIdx <= openIdx {
+		t.Fatalf("expected markdown fence in assistant content: %q", content)
+	}
+	inner := content[openIdx+len(fenceOpen) : closeIdx]
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(inner), &parsed); err != nil {
+		t.Fatalf("inner JSON inside markdown fence is not valid: %v\ninner=%q", err, inner)
+	}
+	if _, hasTool := parsed["tool"]; !hasTool {
+		t.Errorf("inner JSON missing tool field: %v", parsed)
+	}
+}
+
+// TestExport_ChatAssistantHandlesEmptyInput pins the fallback path:
+// when e.Input is empty (COALESCE NULL → "") or otherwise not valid
+// JSON, the inner envelope still parses with input=null.
+func TestExport_ChatAssistantHandlesEmptyInput(t *testing.T) {
+	entries := []audit.Entry{{
+		Tool:   "x",
+		Input:  "", // simulate the legacy/NULL path
+		Output: "ok",
+		Level:  audit.LevelInfo,
+	}}
+	var buf bytes.Buffer
+	if _, err := Export(entries, &buf, Options{Format: FormatChat}); err != nil {
+		t.Fatal(err)
+	}
+	var row ChatRow
+	_ = json.Unmarshal(bytes.TrimRight(buf.Bytes(), "\n"), &row)
+	content := row.Messages[2].Content
+	if !strings.Contains(content, `"input":null`) {
+		t.Errorf("expected input:null fallback in assistant content; got %q", content)
+	}
+}
+
 func TestExport_UnknownFormatErrors(t *testing.T) {
 	var buf bytes.Buffer
 	_, err := Export(sampleEntries()[:1], &buf, Options{Format: "invalid"})
