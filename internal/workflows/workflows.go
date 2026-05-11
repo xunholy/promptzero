@@ -174,16 +174,26 @@ func recordPhase(log *audit.Log, workflow string, p PhaseResult, input interface
 	)
 }
 
-// paramInt extracts an integer param with a default, coercing the JSON
-// number (float64) or a numeric string into int. Matches the agent helpers
-// but kept local so workflows don't depend on the agent package.
+// paramInt extracts an integer param with a default, coercing every
+// numeric and string representation the value might arrive as: float64
+// (json.Unmarshal default — the primary tool-call path), float32, int,
+// int32, int64 (Go-native callers and tests that build the param map
+// directly without a JSON round-trip), plus numeric strings.
+// Mirrors tools.intOr (v0.157) so the workflows package matches the
+// arg-helper contract from internal/tools.
 func paramInt(p map[string]interface{}, key string, fallback int) int {
 	if v, ok := p[key]; ok {
 		switch n := v.(type) {
 		case float64:
 			return int(n)
+		case float32:
+			return int(n)
 		case int:
 			return n
+		case int32:
+			return int(n)
+		case int64:
+			return int(n)
 		case string:
 			if n == "" {
 				return fallback
@@ -219,9 +229,10 @@ func paramBool(p map[string]interface{}, key string, fallback bool) bool {
 	return fallback
 }
 
-// paramIntList extracts a list of integers, accepting either a JSON array
-// of numbers or an array of numeric strings. Missing/invalid returns nil
-// so callers fall back to their own defaults.
+// paramIntList extracts a list of integers from an array param,
+// matching the per-element numeric-type set paramInt accepts.
+// Missing or wrong-shape returns nil so callers can fall back to
+// their own defaults. Mirrors tools.intOr (v0.157).
 func paramIntList(p map[string]interface{}, key string) []int {
 	v, ok := p[key]
 	if !ok {
@@ -236,8 +247,14 @@ func paramIntList(p map[string]interface{}, key string) []int {
 		switch n := item.(type) {
 		case float64:
 			out = append(out, int(n))
+		case float32:
+			out = append(out, int(n))
 		case int:
 			out = append(out, n)
+		case int32:
+			out = append(out, int(n))
+		case int64:
+			out = append(out, int(n))
 		case string:
 			var x int
 			if _, err := fmt.Sscanf(n, "%d", &x); err == nil {
