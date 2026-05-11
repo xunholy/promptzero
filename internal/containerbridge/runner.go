@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -206,17 +207,21 @@ func buildDockerArgs(cfg Config) []string {
 
 // availableDockerOnce caches the docker-binary lookup. Defined as a
 // closure so tests can shadow it via a build tag — see runner_test.go's
-// FakeDocker shim.
+// FakeDocker shim. sync.Once guards the cache against concurrent
+// callers: tool handlers run inside parallel_tool_use dispatches and a
+// fresh process can hit Available() from several goroutines before the
+// LookPath completes. Without the Once, those goroutines race on the
+// `checked` / `ok` vars — visible under `go test -race`.
 var availableDockerOnce = func() func() bool {
-	var checked bool
-	var ok bool
+	var (
+		once sync.Once
+		ok   bool
+	)
 	return func() bool {
-		if checked {
-			return ok
-		}
-		checked = true
-		_, err := exec.LookPath("docker")
-		ok = err == nil
+		once.Do(func() {
+			_, err := exec.LookPath("docker")
+			ok = err == nil
+		})
 		return ok
 	}
 }()

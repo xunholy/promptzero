@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -169,4 +170,23 @@ func TestRunErrorMessage(t *testing.T) {
 	if !strings.Contains(re.Error(), "exited 1") {
 		t.Errorf("blank-stderr RunError message = %q", re.Error())
 	}
+}
+
+// TestAvailable_ConcurrentSafe pins that Available()'s cache is safe
+// for concurrent callers. Tool handlers (firmware_extract, urh,
+// hardnested) call Available() inside their dispatch and the agent
+// runs parallel_tool_use, so a fresh process can race the lookup
+// from several goroutines. Pre-v0.141 the cache used unguarded
+// `checked` / `ok` variables and the race detector flagged a
+// memory race on first concurrent call. Run with `go test -race`.
+func TestAvailable_ConcurrentSafe(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = Available()
+		}()
+	}
+	wg.Wait()
 }
