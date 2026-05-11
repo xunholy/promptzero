@@ -433,6 +433,32 @@ func TestResetCallsAgent(t *testing.T) {
 	}
 }
 
+// TestUnknownMessageTypeSurfaces pins the v0.111 UX fix. Pre-v0.111
+// the WebSocket dispatcher silently dropped unknown message types
+// — a client typo (e.g. "marauder-acquire" instead of
+// "marauder_acquire") looked identical to a working request to
+// the client because the parser accepted the JSON shape and the
+// switch had no default. The cockpit had no feedback channel for
+// "you spelled the type wrong". Now an error frame fires with the
+// offending type quoted.
+func TestUnknownMessageTypeSurfaces(t *testing.T) {
+	fa := &fakeAgent{}
+	c, cleanup := startTestServer(t, fa)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := writeJSON(ctx, c, map[string]any{"type": "this-does-not-exist"}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	frame := readUntil(t, ctx, c, "error")
+	content, _ := frame["content"].(string)
+	if !strings.Contains(content, "this-does-not-exist") {
+		t.Errorf("error content = %q, want it to mention the bad type", content)
+	}
+}
+
 func writeJSON(ctx context.Context, c *websocket.Conn, m map[string]any) error {
 	data, err := json.Marshal(m)
 	if err != nil {

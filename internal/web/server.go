@@ -966,6 +966,17 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			obs.SafeGo("ws.marauder_release", func() { s.handleMarauderRelease(c) })
 		case "marauder_cmd":
 			obs.SafeGo("ws.marauder_cmd", func() { s.handleMarauderCmd(c, msg.Cmd, msg.Action, msg.Args) })
+		default:
+			// Pre-v0.111 unknown message types were silently dropped
+			// — a client typo (e.g. "marauder-acquire" instead of
+			// "marauder_acquire") looked identical to a working
+			// request, since the parser accepted the JSON shape and
+			// the switch had no default. Surface it as an error so
+			// the cockpit can log + retry.
+			s.sendTo(c, map[string]any{
+				"type":    "error",
+				"content": fmt.Sprintf("unknown message type %q", msg.Type),
+			})
 		}
 	}
 }
