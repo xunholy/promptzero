@@ -187,8 +187,17 @@ func Open(dbPath string) (*Log, error) {
 		return nil, fmt.Errorf("creating audit tables: %w", err)
 	}
 
-	// Audit log can contain secrets embedded in tool inputs/outputs. Tighten
-	// the mode now that the file is guaranteed to exist.
+	// Audit log can contain secrets embedded in tool inputs/outputs.
+	// Tighten the mode now that the file is guaranteed to exist.
+	// SQLite (the modernc.org/sqlite pure-Go port included) clones
+	// the main DB's mode onto the -wal and -shm sidecar files when
+	// it creates them, so the chmod here transitively tightens the
+	// WAL sidecars too — the WAL carries the same uncommitted
+	// INSERT data as the main DB, and the sidecars would otherwise
+	// land at the process umask (typically 0o644). The
+	// TestOpen_WALSidecarsInheritMainDBPerms regression test pins
+	// this end-to-end (chmod runs, first Record commits a WAL
+	// transaction, the resulting -wal/-shm files come up at 0o600).
 	if err := os.Chmod(actualPath, 0o600); err != nil {
 		obs.Default().Warn("audit_chmod_failed", "path", actualPath, "err", err)
 	}

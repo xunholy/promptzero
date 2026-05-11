@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -560,5 +561,67 @@ func TestExport(t *testing.T) {
 	trimmed := strings.TrimSpace(emptyOut)
 	if trimmed != "null" && trimmed != "[]" {
 		t.Errorf("Export on empty session = %q, want \"null\" or \"[]\"", trimmed)
+	}
+}
+
+// TestOpen_WALSidecarsInheritMainDBPerms pins the load-bearing
+// ordering in audit.Open: chmod the main DB to 0o600 BEFORE the
+// PRAGMA journal_mode=WAL pragma. SQLite (modernc.org/sqlite
+// included) creates the -wal and -shm sidecars at the same mode
+// as the main DB, so tightening the main DB first means the
+// sidecars inherit 0o600 when the first transaction lands.
+// Reversing the order would create the sidecars at the process
+// umask (typically 0o644, world-readable) and the later main-DB
+// chmod wouldn't propagate to them — the WAL carries the same
+// uncommitted INSERT data (operator secrets in tool inputs /
+// outputs) as the main DB, so leakage would be just as bad.
+//
+// This test is the safety net: a future refactor that swaps the
+// chmod and PRAGMA WAL lines silently broke the WAL sidecar
+// permissions; running this test catches it.
+func TestOpen_WALSidecarsInheritMainDBPerms(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.db")
+	log, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+
+	// Force a transaction so the WAL sidecars are guaranteed to
+	// exist. The first Record commits an INSERT under WAL mode,
+	// which creates both -wal and -shm files. Without this the
+	// sidecars may not yet exist on disk when we stat them.
+	log.Record("test_tool", nil, "ok", "low", LevelInfo, 0, true)
+
+	// Main DB: must be 0o600 — already enforced by the existing
+	// chmod, but assert it here so a future refactor that removes
+	// the chmod entirely also trips this test.
+	if fi, statErr := os.Stat(path); statErr != nil {
+		t.Fatalf("stat main: %v", statErr)
+	} else if mode := fi.Mode().Perm(); mode != 0o600 {
+		t.Errorf("audit main DB mode = %#o, want 0o600", mode)
+	}
+
+	// -wal sidecar: inherits the main DB's 0o600 from the
+	// chmod-before-PRAGMA-WAL ordering.
+	walPath := path + "-wal"
+	fi, statErr := os.Stat(walPath)
+	if statErr != nil {
+		t.Fatalf("stat -wal: %v (must exist after Record)", statErr)
+	}
+	if mode := fi.Mode().Perm(); mode != 0o600 {
+		t.Errorf("audit -wal mode = %#o, want 0o600 — the WAL carries the same secrets as the main DB. "+
+			"Check that PRAGMA journal_mode=WAL still runs AFTER the os.Chmod call in Open.", mode)
+	}
+
+	// -shm sidecar: same inheritance. Some SQLite builds create
+	// -shm lazily, so skip the assertion gracefully if it's absent.
+	// In modernc.org/sqlite as of this writing, -shm appears after
+	// the first transaction commit, same as -wal.
+	shmPath := path + "-shm"
+	if fi, statErr := os.Stat(shmPath); statErr == nil {
+		if mode := fi.Mode().Perm(); mode != 0o600 {
+			t.Errorf("audit -shm mode = %#o, want 0o600 — same inheritance as -wal", mode)
+		}
 	}
 }
