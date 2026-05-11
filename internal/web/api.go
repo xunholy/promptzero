@@ -11,6 +11,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/mode"
@@ -50,6 +52,11 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/attack", s.requireAuth(s.handleAttackGet))
 	mux.HandleFunc("POST /api/attack", s.requireAuth(s.handleAttackSet))
 	mux.HandleFunc("DELETE /api/attack", s.requireAuth(s.handleAttackClear))
+
+	mux.HandleFunc("GET /api/tools", s.requireAuth(s.handleToolsList))
+	mux.HandleFunc("GET /api/webhooks", s.requireAuth(s.handleWebhooksList))
+	mux.HandleFunc("POST /api/webhooks/test", s.requireAuth(s.handleWebhooksTest))
+	mux.HandleFunc("POST /api/reconnect", s.requireAuth(s.handleReconnect))
 
 	mux.HandleFunc("GET /api/watch", s.requireAuth(s.handleWatch))
 	mux.HandleFunc("POST /api/watch/pause", s.requireAuth(s.handleWatchPause))
@@ -342,6 +349,120 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respondJSON(w, http.StatusOK, body)
+}
+
+// handleToolsList returns every registered tool with name +
+// description. Optional ?filter=<substring> narrows by name (case-
+// insensitive), matching CLI `/tools [filter]`. Always returns the
+// full set in one response (no pagination); the cockpit can do
+// client-side narrowing or this endpoint can add pagination later
+// if the catalogue grows past ~300 entries.
+func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
+	hasMarauder := s.marauderOn.Load()
+	cat := agent.ToolCatalog(hasMarauder)
+	filter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("filter")))
+	out := make([]map[string]any, 0, len(cat))
+	for _, e := range cat {
+		if filter != "" && !strings.Contains(strings.ToLower(e.Name), filter) {
+			continue
+		}
+		out = append(out, map[string]any{
+			"name":        e.Name,
+			"description": e.Description,
+		})
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"count":        len(out),
+		"total":        len(cat),
+		"has_marauder": hasMarauder,
+		"tools":        out,
+	})
+}
+
+// handleWebhooksList returns every configured webhook subscription
+// plus its recent delivery results, same surface as CLI `/webhooks`.
+// Secrets are NEVER returned; the cockpit shows "(signed)" badge
+// based on the `signed` boolean we project from non-empty Secret.
+func (s *Server) handleWebhooksList(w http.ResponseWriter, _ *http.Request) {
+	if s.webhooks == nil {
+		writeError(w, http.StatusServiceUnavailable, "webhook dispatcher not configured")
+		return
+	}
+	subs := s.webhooks.Subscriptions()
+	out := make([]map[string]any, 0, len(subs))
+	for _, sub := range subs {
+		events := make([]string, 0, len(sub.Events))
+		for _, e := range sub.Events {
+			events = append(events, string(e))
+		}
+		recent := s.webhooks.RecentResults(sub.Name)
+		results := make([]map[string]any, 0, len(recent))
+		for _, r := range recent {
+			row := map[string]any{
+				"event":       string(r.Event),
+				"at":          r.At.UTC().Format(time.RFC3339),
+				"status_code": r.StatusCode,
+			}
+			if r.Err != nil {
+				row["error"] = r.Err.Error()
+			}
+			results = append(results, row)
+		}
+		out = append(out, map[string]any{
+			"name":           sub.Name,
+			"url":            sub.URL,
+			"events":         events,
+			"signed":         sub.Secret != "",
+			"recent_results": results,
+		})
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"subscriptions": out})
+}
+
+// handleWebhooksTest fires a synthetic session_started payload at
+// the named subscription so operators can verify reachability
+// without waiting for a real event. Body: {"name": "ops"}.
+// Mirrors CLI `/webhooks test <name>`.
+func (s *Server) handleWebhooksTest(w http.ResponseWriter, r *http.Request) {
+	if s.webhooks == nil {
+		writeError(w, http.StatusServiceUnavailable, "webhook dispatcher not configured")
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+		return
+	}
+	if body.Name == "" {
+		writeError(w, http.StatusBadRequest, "missing 'name'")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.webhooks.TestSubscription(ctx, body.Name); err != nil {
+		writeError(w, http.StatusBadGateway, "test delivery failed: "+err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"name": body.Name, "delivered": true})
+}
+
+// handleReconnect force-reconnects the Flipper, identical to the
+// CLI's `/reconnect`. 15-second timeout matches the REPL's handler.
+// 503 when no Flipper is attached.
+func (s *Server) handleReconnect(w http.ResponseWriter, r *http.Request) {
+	if s.flipper == nil {
+		writeError(w, http.StatusServiceUnavailable, "no Flipper attached")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	if err := s.flipper.Reconnect(ctx); err != nil {
+		writeError(w, http.StatusBadGateway, "reconnect failed: "+err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"reconnected": true})
 }
 
 // attackIDRE is the same regex the CLI's normaliseAttackIDs uses
