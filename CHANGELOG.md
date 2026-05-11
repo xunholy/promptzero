@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.169.0] - 2026-05-12
+
+**Webhook SSRF guard rejects RFC 6598 CGNAT range (100.64.0.0/10).**
+Go's `net.IP.IsPrivate()` covers RFC1918 only — not carrier-grade
+NAT. On-prem deployments that route 100.64.0.0/10 to internal
+services would otherwise let an operator wire a webhook that
+exfiltrates captured tool inputs/outputs through that CGNAT range,
+bypassing `isInternalIP`'s block-list.
+
+### Fixed
+
+- Add a `cgnatRange = 100.64.0.0/10` net.IPNet and check
+  `cgnatRange.Contains(ip)` alongside the existing IsLoopback /
+  IsPrivate / IsLinkLocalUnicast / IsUnspecified / 169.254.169.254
+  branches.
+- Two regression tests:
+  `TestValidateSubscription_RejectsCGNAT` covers three addresses
+  inside the CGNAT range (start, end, middle) and asserts each
+  rejects with the canonical refusal;
+  `TestValidateSubscription_AcceptsJustOutsideCGNAT` pins the
+  boundary so legitimate public IPs that happen to start with
+  `100.` (e.g. 100.0.0.1, 100.128.0.0) aren't false-positives.
+
 ## [0.168.0] - 2026-05-12
 
 **`tools.Register` panics on intra-Spec duplicate aliases.** The
