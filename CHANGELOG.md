@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.157.0] - 2026-05-12
+
+**`intOr` / `floatOr` accept Go-native numeric types in addition to
+`float64`.** The two helpers in `internal/tools/args.go` only matched
+`float64` (and `string` for `intOr`). The production LLM tool-call
+path round-trips through `json.Unmarshal` which produces `float64`,
+so the gap was invisible there. But internal callers that build the
+param map directly (tests, future programmatic dispatchers, MCP
+paths that don't round-trip through JSON) passing a Go-native
+`int(42)` silently got the fallback — the docstring promised
+"Returns fallback when the key is absent or unparseable" but a
+present-but-Go-native int is neither.
+
+### Fixed
+
+- Extend `intOr`'s type switch to also match `int`, `int32`, `int64`,
+  `float32`.
+- Extend `floatOr` to match `int`, `int32`, `int64`, `float32` and
+  coerce them to `float64`. String inputs remain unaccepted on
+  `floatOr` (use `intOr` if numeric-as-string is wanted).
+- Two regression tests pin the new accepted types:
+  `TestIntOr_GoNativeNumericTypes` and
+  `TestFloatOr_GoNativeNumericTypes`. Existing string-as-fallback
+  behaviour on `floatOr` is unchanged.
+
 ## [0.156.0] - 2026-05-12
 
 **`explain_last_result` classified as audit-content quarantine.** The

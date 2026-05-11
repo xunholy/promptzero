@@ -137,3 +137,65 @@ func TestBoolOr(t *testing.T) {
 		}
 	}
 }
+
+// TestIntOr_GoNativeNumericTypes pins the v0.157 extension: intOr now
+// accepts int / int32 / int64 / float32 in addition to float64 + string.
+// Pre-fix, an internal caller building the param map without a JSON
+// round-trip (tests, MCP federation in some paths, future programmatic
+// callers) would pass e.g. `int(6)` and silently get the fallback,
+// because the type switch only matched float64. The docstring promised
+// "Returns fallback when the key is absent or unparseable" — a
+// present-but-Go-native int is neither.
+func TestIntOr_GoNativeNumericTypes(t *testing.T) {
+	p := map[string]any{
+		"go_int":   int(42),
+		"go_i32":   int32(-7),
+		"go_i64":   int64(1234567890123),
+		"go_f32":   float32(3.9),
+		"json_f64": float64(99),
+	}
+	cases := []struct {
+		key  string
+		want int
+	}{
+		{"go_int", 42},
+		{"go_i32", -7},
+		{"go_i64", 1234567890123},
+		{"go_f32", 3}, // float→int truncation, matches float64 contract
+		{"json_f64", 99},
+	}
+	for _, tc := range cases {
+		if got := intOr(p, tc.key, -1); got != tc.want {
+			t.Errorf("intOr(%q) = %d, want %d", tc.key, got, tc.want)
+		}
+	}
+}
+
+// TestFloatOr_GoNativeNumericTypes pins the v0.157 extension on floatOr:
+// int / int32 / int64 / float32 inputs are now coerced to float64
+// rather than falling back. String inputs remain unaccepted (use intOr
+// if numeric-as-string is wanted).
+func TestFloatOr_GoNativeNumericTypes(t *testing.T) {
+	p := map[string]any{
+		"go_int":   int(42),
+		"go_i32":   int32(-7),
+		"go_i64":   int64(100),
+		"go_f32":   float32(3.5),
+		"json_f64": float64(2.71),
+	}
+	cases := []struct {
+		key  string
+		want float64
+	}{
+		{"go_int", 42},
+		{"go_i32", -7},
+		{"go_i64", 100},
+		{"go_f32", 3.5},
+		{"json_f64", 2.71},
+	}
+	for _, tc := range cases {
+		if got := floatOr(p, tc.key, -999); got != tc.want {
+			t.Errorf("floatOr(%q) = %v, want %v", tc.key, got, tc.want)
+		}
+	}
+}
