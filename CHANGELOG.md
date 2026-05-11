@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-05-11
+
+**`/help` and README now match the implemented subcommands.**
+Three doc-vs-code mismatches in operator-facing surfaces: README's
+`/audit` listing omitted `query`, README's `/rules` line didn't
+mention `list|pause|resume|test`, and `/help` described `/stats`
+with a vague `[section]` placeholder instead of the explicit
+`cache|tokens|all` values. The handler godocs, runtime usage
+hints, and the unknown-section errors all listed these correctly
+— only the first-touch documentation drifted.
+
+### Fixed
+
+- **README `/audit` listing now includes `query`** — the seventh
+  subcommand documented in handler godoc and `/help` but missing
+  from the README's surface inventory.
+- **README `/rules` line now lists `[list|pause|resume|test]`** so
+  operators reading the README discover the subcommands without
+  having to invoke a wrong-subcommand to see the in-REPL error.
+- **`/help`'s `/stats` line now reads `[cache|tokens|all]`** instead
+  of the vague `[section]`. Matches the handler's godoc and the
+  unknown-section error message — operators see the same vocabulary
+  in `/help`, in the godoc, and at the error site.
+  - `TestPrintHelp_ListsStatsSubcommands` pins the corrected help
+    text so a future regression that reverts the listing fails
+    loudly.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./cmd/promptzero/` — all pass.
+
 ## [0.90.0] - 2026-05-11
 
 **`/save <name>` no longer wipes the slot's title.** `SaveSessionAs`
