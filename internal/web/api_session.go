@@ -11,7 +11,9 @@
 package web
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"sort"
 	"strings"
@@ -164,7 +166,16 @@ func (s *Server) handleSessionPatch(w http.ResponseWriter, r *http.Request) {
 	}
 	title := strings.TrimSpace(*body.Title)
 	if err := s.sessions.RenameSession(id, title); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		// "not found" stays 404 (typical case: typo'd id); real
+		// I/O errors map to 500 so the cockpit can show a
+		// different message. Pre-v0.109 every RenameSession error
+		// became a 404 — operators couldn't tell disk-full from
+		// "the id you typed doesn't exist".
+		if errors.Is(err, fs.ErrNotExist) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	s.broadcast(map[string]any{"type": "session_list_changed"})
@@ -182,6 +193,14 @@ func (s *Server) handleSessionDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.sessions.DeleteSession(id); err != nil {
+		// Map "file does not exist" to 404 (typo'd id) instead of
+		// 500 (real I/O failure). Pre-v0.109 every DeleteSession
+		// error became a 500, so the cockpit couldn't distinguish
+		// "you spelled the id wrong" from "disk is failing".
+		if errors.Is(err, fs.ErrNotExist) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
