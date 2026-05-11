@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-05-11
+
+**`dispatchStreaming` defers sink close so a panicking tool can't
+leak the consumer.** The `streaming.Handler` docstring says handlers
+MUST defer `sink.Close()`, and every production tool does — but
+trusting that contract left dispatch one missed defer away from a
+permanent goroutine stuck on `range sink.Frames()`. A new or buggy
+streaming tool that panics before its deferred Close would have
+silently leaked the consumer goroutine on every call.
+
+### Fixed
+
+- **`dispatchStreaming` moves `sink.Close()` + `<-done` into a defer.**
+  Pre-fix those statements ran INLINE after `StreamHandler` returned —
+  bypassed when the handler panicked. Post-fix they fire on both the
+  normal-return and panic paths. Defer order pairs with the existing
+  `cancel()` defer: cancel runs first (LIFO) to unblock any racing
+  producer Send, then Close exits the consumer's range loop, then
+  `<-done` waits so dispatch only returns once the consumer has
+  drained.
+- `Close` is idempotent, so handlers that already defer it see this
+  as a redundant second call; ones that don't get the safety net.
+- `TestDispatchStreaming_PanickingHandlerWithoutDeferCloseDoesNotLeak`
+  registers a streaming tool that panics without deferring Close and
+  asserts `runtime.NumGoroutine()` returns to baseline within 2s.
+  Pre-fix verification: stashing the agent.go change makes the test
+  fail with `consumer goroutine leaked after panic: 2 goroutines
+  before dispatch, 3 still alive 2s after`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.113.0] - 2026-05-11
 
 **`port_scan_tcp` and `http_enum_common` clamp concurrency to >= 1.**
