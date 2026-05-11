@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.100.0] - 2026-05-11
+
+**Mode parity audit, phase 2d: web gets `/api/attack`.** ATT&CK
+technique constraint was the next operator-facing parity gap.
+Pre-v0.100 web operators couldn't pin the agent's per-turn tool
+catalogue to a MITRE technique set or clear it mid-session —
+they had to relaunch with `--attack` flags. CLI `/attack` has
+been around since v0.21.
+
+### Added
+
+- **`GET /api/attack`** — returns the active technique-ID list
+  (empty array when no constraint is set). Mirrors CLI
+  `/attack` (no-args).
+- **`POST /api/attack`** — body `{"techniques": ["T1557.004",
+  "t1499", "  T1496 "]}`. Uppercase + trim normalisation matches
+  the CLI's `normaliseAttackIDs`. Anything that doesn't match
+  the MITRE shape (`T#### ` or `T####.###`) returns 400 with the
+  same error message the CLI surfaces. Empty list is rejected
+  (use DELETE to clear — avoids the silent "set nothing =
+  clear" footgun).
+- **`DELETE /api/attack`** — removes the constraint. Mirrors CLI
+  `/attack clear`. DELETE is the REST-idiomatic verb for "remove
+  the resource" rather than POST with a magic empty-body shape.
+- Extended `agentDriver` with `AttackConstraint() / SetAttackConstraint`
+  and the test fake. New `deleteReq` test helper (first DELETE
+  in the API test surface that doesn't use the `/api/sessions/{id}`
+  pattern).
+  - Tests: `TestAttackGet_EmptyByDefault`,
+    `TestAttackSet_NormalisesAndApplies` (case-fold + whitespace
+    handling), `TestAttackSet_RejectsBadID` (validation + no
+    mutation on reject), `TestAttackSet_EmptyTechniquesRejected`
+    (set-nothing footgun guard), `TestAttackClear_RemovesConstraint`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.99.0] - 2026-05-11
 
 **Mode parity audit, phase 2c: web gets `/api/audit`.** Six new
