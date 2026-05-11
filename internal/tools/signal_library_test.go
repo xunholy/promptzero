@@ -332,6 +332,63 @@ func TestSignalImport_HappyPath_SavesAndReportsHash(t *testing.T) {
 	}
 }
 
+// TestSignalImport_FilePermissionsLockedDown pins the security fix:
+// ~/.promptzero/freqman/ was created at 0o755 and freqman files at
+// 0o644 — the directory listing leaks which catalogues the operator
+// has imported, and any custom file an operator drops in by hand
+// can carry engagement-specific notes. Every other operator-data
+// store under ~/.promptzero/ (audit, session, snapshot, semcache,
+// targetmem) already runs at 0o600/0o700; signal_library had
+// drifted out of step. The fix mirrors the v0.124 semcache + v0.125
+// targetmem fixes.
+func TestSignalImport_FilePermissionsLockedDown(t *testing.T) {
+	body := []byte("f=433920000,d=Garage\n")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+	swapImportClient(t, srv)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	spec, _ := Get("signal_import")
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"url":      "https://lab.flipper.net/cat.txt",
+		"filename": "cat.txt",
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	var env struct {
+		SavedTo string `json:"saved_to"`
+	}
+	if jerr := json.Unmarshal([]byte(out), &env); jerr != nil {
+		t.Fatalf("envelope: %v", jerr)
+	}
+
+	// File mode 0o600 — operator-only read+write. Pre-fix 0o644 was
+	// world-readable, leaking the catalogue's contents to local users.
+	fi, err := os.Stat(env.SavedTo)
+	if err != nil {
+		t.Fatalf("stat file: %v", err)
+	}
+	if mode := fi.Mode().Perm(); mode != 0o600 {
+		t.Errorf("freqman file mode = %#o, want 0o600", mode)
+	}
+
+	// Parent dir 0o700 — operator-only traversal. Pre-fix 0o755
+	// leaked the listing of imported catalogues.
+	dir := filepath.Dir(env.SavedTo)
+	di, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat dir: %v", err)
+	}
+	if mode := di.Mode().Perm(); mode != 0o700 {
+		t.Errorf("freqman dir mode = %#o, want 0o700", mode)
+	}
+}
+
 func TestSignalImport_HashMismatchIsRejected(t *testing.T) {
 	body := []byte("f=433920000,d=Real\n")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

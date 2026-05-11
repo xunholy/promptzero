@@ -169,11 +169,23 @@ func init() {
 				return "", fmt.Errorf("downloaded bytes are not a valid Freqman list: %w", err)
 			}
 
-			if err := os.MkdirAll(root, 0o755); err != nil {
+			// 0o700 / 0o600 to match the rest of the per-operator
+			// state tree under ~/.promptzero/ (audit, session,
+			// snapshot, semcache, targetmem all sit at the same
+			// modes). The freqman bytes themselves come from a
+			// vetted public host so the content is not strictly
+			// secret — but the directory listing reveals which
+			// catalogues the operator has imported, and any custom
+			// list the operator drops in by hand can carry
+			// engagement-specific frequency notes. Leakage to
+			// other accounts on the host is in scope; matching the
+			// codebase-wide convention closes a permission-mode
+			// drift that v0.124 / v0.125 already fixed elsewhere.
+			if err := os.MkdirAll(root, 0o700); err != nil {
 				return "", fmt.Errorf("mkdir %s: %w", root, err)
 			}
 			target := filepath.Join(root, filename)
-			if err := os.WriteFile(target, body, 0o644); err != nil {
+			if err := os.WriteFile(target, body, 0o600); err != nil {
 				return "", fmt.Errorf("write %s: %w", target, err)
 			}
 
