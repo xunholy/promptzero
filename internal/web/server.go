@@ -227,13 +227,18 @@ type Server struct {
 	flipperOn  atomic.Bool
 	marauderOn atomic.Bool
 
-	// bridgeOn is set when the Flipper has been suspended for
-	// USB-UART bridge mode (Marauder stacked on the GPIO header).
-	// Surfaces in the /api/device JSON's `bridge: {active, reason}`
-	// block; the cockpit reads it to render the "via Flipper bridge"
-	// Marauder subtitle and the suspended-Flipper pill.
-	bridgeOn     atomic.Bool
-	bridgeReason atomic.Pointer[string]
+	// bridge carries SetBridgeMode's (active, reason) pair as a
+	// single atomic.Pointer so /api/device readers always see a
+	// consistent snapshot. The pre-v0.145 form was two separate
+	// atomics (atomic.Bool + atomic.Pointer[string]) — a reader
+	// could land between the writer's two stores and read
+	// `active=true` with `reason=nil`, or `active=false` with the
+	// previous reason still pointing into memory. Folding the two
+	// fields into one Pointer makes the transition atomic. Nil
+	// means "never set" — the api.go reader treats that as
+	// {active:false} with no reason, matching the pre-fix
+	// zero-value behaviour.
+	bridge atomic.Pointer[bridgeState]
 
 	// marauderInfo* fields back the status-bar Marauder pill. Both are
 	// optional metadata captured at setup time via SetMarauderInfo; the
@@ -296,6 +301,14 @@ type sessionConn struct {
 type uiContext struct {
 	View string
 	Path string
+}
+
+// bridgeState is the (active, reason) snapshot SetBridgeMode publishes
+// via Server.bridge. Stored as a single atomic.Pointer so readers
+// always see a consistent pair — see Server.bridge docstring.
+type bridgeState struct {
+	active bool
+	reason string
 }
 
 type turnState struct {
@@ -492,14 +505,17 @@ func (s *Server) SetMarauder(m marauderClient) { s.marauder = m }
 // in the /api/device JSON's bridge block (where the cockpit picks it
 // up for the suspended-Flipper pill / "via Flipper bridge" Marauder
 // subtitle).
+//
+// active=false clears the stored reason so a "released" snapshot
+// never carries the previous bridge's text. The (active, reason) pair
+// is published as one atomic.Pointer.Store so readers always see a
+// consistent snapshot.
 func (s *Server) SetBridgeMode(active bool, reason string) {
-	s.bridgeOn.Store(active)
+	state := &bridgeState{active: active}
 	if active {
-		r := reason
-		s.bridgeReason.Store(&r)
-	} else {
-		s.bridgeReason.Store(nil)
+		state.reason = reason
 	}
+	s.bridge.Store(state)
 }
 
 // SetMarauderInfo records the Marauder serial port name (e.g.
