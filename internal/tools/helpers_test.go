@@ -164,6 +164,49 @@ func TestClassifyInteresting(t *testing.T) {
 	}
 }
 
+// TestSummariseTree_NonNilOnEmpty pins the v0.166 contract: an
+// empty directory yields a non-nil empty slice so the
+// firmware_extract envelope's `file_tree` field serialises as
+// `[]` rather than the JSON null literal. Same arc as v0.163
+// (audit.Export), v0.164 (audit_query), v0.165
+// (signal_library_search).
+func TestSummariseTree_NonNilOnEmpty(t *testing.T) {
+	emptyDir := t.TempDir()
+	got := summariseTree(emptyDir, 200)
+	if got == nil {
+		t.Errorf("summariseTree on empty dir returned nil; want non-nil empty slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %v", got)
+	}
+	// JSON round-trip to confirm it marshals as []. A nil slice
+	// would marshal as the literal "null" inside an envelope.
+	body, err := json.Marshal(map[string]any{"file_tree": got})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(body), `"file_tree":[]`) {
+		t.Errorf("envelope should carry file_tree:[]; got %s", body)
+	}
+}
+
+// TestClassifyInteresting_NonNilOnEmpty pins the same contract for
+// classifyInteresting — even when no patterns match, the result
+// is `[]`, not `null`.
+func TestClassifyInteresting_NonNilOnEmpty(t *testing.T) {
+	got := classifyInteresting([]string{"normal/file.txt", "other.go"})
+	if got == nil {
+		t.Errorf("classifyInteresting with no matches returned nil; want non-nil empty slice")
+	}
+	body, err := json.Marshal(map[string]any{"interesting": got})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(body), `"interesting":[]`) {
+		t.Errorf("envelope should carry interesting:[]; got %s", body)
+	}
+}
+
 // TestTail pins the byte-truncator used to cap stdout/stderr
 // captures the agent feeds into prompt cache. Under-budget input
 // passes through verbatim; over-budget input prefixes
