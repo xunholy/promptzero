@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-05-11
+
+**`/save <name>` no longer wipes the slot's title.** `SaveSessionAs`
+(the path behind the REPL's `/save <name>` and the web UI's
+save-as flow) constructed a fresh `session.State` with `Title=""`
+and called `Save` — silently clobbering any title that
+title-generation or `/api/sessions PATCH` had set on an existing
+slot. The companion `autoSaveLocked` already preserves operator-
+set titles; only this entry point had drifted.
+
+### Fixed
+
+- **`agent.SaveSessionAs` preserves an existing non-empty Title
+  when overwriting an existing slot.** When the target name
+  already has a saved session with a non-empty Title, that title
+  carries through to the new save. Brand-new slots still get
+  Title="" so subsequent autosave/title-generation can fill them
+  in. Matches the preservation autoSaveLocked already does on the
+  active session.
+  - `TestSaveSessionAs_PreservesExistingTitle` seeds a session
+    named "my-session" with an operator-set Title, then calls
+    SaveSessionAs with the same name and asserts the title
+    survives.
+  - `TestSaveSessionAs_NewSlotLeavesTitleEmpty` pins the negative
+    branch: a fresh slot gets Title="" so the next title-
+    generation run still has space to fill it in.
+  - Pre-fix verification: stashing the session.go change makes
+    `TestSaveSessionAs_PreservesExistingTitle` fail with
+    `SaveSessionAs clobbered operator-set title: got "" want
+    "important recon engagement"`, matching the bug exactly.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/agent/` — all pass.
+
 ## [0.89.0] - 2026-05-11
 
 **Session title generation now retries after a transient failure.**
