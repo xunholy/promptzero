@@ -20,9 +20,11 @@ import (
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/cost"
+	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/rules"
+	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/webhook"
 )
@@ -336,6 +338,112 @@ func TestCostSnapshot(t *testing.T) {
 	if _, ok := body["budget"]; ok {
 		t.Errorf("budget block should be omitted when no cap is set")
 	}
+}
+
+// TestRewindList_503WhenNoSnapshotMgr returns 503 so the cockpit
+// hides the rewind panel when the host didn't wire a snapshot
+// manager (typical for tests / non-Flipper setups).
+func TestRewindList_503WhenNoSnapshotMgr(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{sessionID: "x"})
+	code, _ := getJSON(t, ts, "/api/rewind")
+	if code != http.StatusServiceUnavailable {
+		t.Errorf("code = %d, want 503", code)
+	}
+}
+
+// TestRewindList_400WhenNoActiveSession pins the no-session branch.
+// Without a session the snapshot tree has no key to list under.
+func TestRewindList_400WhenNoActiveSession(t *testing.T) {
+	mgr := snapshot.NewManager(t.TempDir())
+	_, ts := apiServer(t, &fakeAgent{snapshotMgr: mgr})
+	code, _ := getJSON(t, ts, "/api/rewind")
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400", code)
+	}
+}
+
+// TestRewindList_ReturnsEntries pins the happy path. Two snapshots
+// stored → list returns both, newest-first.
+func TestRewindList_ReturnsEntries(t *testing.T) {
+	mgr := snapshot.NewManager(t.TempDir())
+	if _, err := mgr.Store("sess-1", "/ext/a.sub", []byte("a")); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	if _, err := mgr.Store("sess-1", "/ext/b.sub", []byte("bb")); err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	_, ts := apiServer(t, &fakeAgent{snapshotMgr: mgr, sessionID: "sess-1"})
+
+	code, body := getJSON(t, ts, "/api/rewind")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	entries, _ := body["entries"].([]any)
+	if len(entries) != 2 {
+		t.Fatalf("entries len = %d, want 2", len(entries))
+	}
+	// Spot-check fields on the first entry.
+	first, _ := entries[0].(map[string]any)
+	if _, ok := first["id"].(string); !ok {
+		t.Errorf("entry missing id: %v", first)
+	}
+	if _, ok := first["original_path"].(string); !ok {
+		t.Errorf("entry missing original_path: %v", first)
+	}
+}
+
+// TestRewindRestore_DryRun pins the dry-run path: snapshot is
+// loaded but no write happens (we don't need a real Flipper for
+// dry-run). Cockpit can preview a restore safely.
+func TestRewindRestore_DryRun(t *testing.T) {
+	mgr := snapshot.NewManager(t.TempDir())
+	entry, err := mgr.Store("sess-1", "/ext/a.sub", []byte("hello"))
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	// Dry-run skips the flipper write, so no flipper is needed.
+	s, ts := apiServer(t, &fakeAgent{snapshotMgr: mgr, sessionID: "sess-1"})
+	// Still need s.flipper to pass the early 503 check. The dry-run
+	// branch returns before invoking it.
+	s.flipper = sentinelFlipper(t)
+
+	code, body := postJSON(t, ts, "/api/rewind/restore", map[string]any{
+		"id":      entry.ID,
+		"dry_run": true,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("code = %d, body=%s", code, body)
+	}
+	var dto map[string]any
+	if err := json.Unmarshal(body, &dto); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !dto["dry_run"].(bool) {
+		t.Errorf("dry_run flag not set in response")
+	}
+	if got := int(dto["would_write"].(float64)); got != 5 {
+		t.Errorf("would_write = %d, want 5", got)
+	}
+}
+
+// TestRewindRestore_404OnUnknownID pins the missing-snapshot branch.
+func TestRewindRestore_404OnUnknownID(t *testing.T) {
+	mgr := snapshot.NewManager(t.TempDir())
+	s, ts := apiServer(t, &fakeAgent{snapshotMgr: mgr, sessionID: "sess-1"})
+	s.flipper = sentinelFlipper(t)
+
+	code, _ := postJSON(t, ts, "/api/rewind/restore", map[string]any{"id": "nonexistent-id"})
+	if code != http.StatusNotFound {
+		t.Errorf("code = %d, want 404", code)
+	}
+}
+
+// sentinelFlipper returns a non-nil *flipper.Flipper for tests that
+// just need the nil-check to pass — we never call any of its
+// methods in dry-run or 404 paths.
+func sentinelFlipper(t *testing.T) *flipper.Flipper {
+	t.Helper()
+	return &flipper.Flipper{}
 }
 
 // TestReport_503WhenAuditMissing returns 503 so the cockpit can

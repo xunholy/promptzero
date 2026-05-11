@@ -59,6 +59,7 @@ import (
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/session"
+	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/version"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
@@ -95,6 +96,13 @@ type agentDriver interface {
 	// the supplied ATT&CK technique IDs.
 	AttackConstraint() []string
 	SetAttackConstraint(ids []string)
+
+	// Snapshot manager + session id: web equivalent of the CLI's
+	// /rewind. Required to list per-session snapshot entries and
+	// restore them onto the Flipper. Both can be nil when the host
+	// didn't wire snapshotting — /api/rewind returns 503.
+	SnapshotManager() *snapshot.Manager
+	SessionID() string
 }
 
 // sessionDriver is the optional surface Server needs to expose persisted

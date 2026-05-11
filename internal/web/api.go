@@ -62,6 +62,9 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/report", s.requireAuth(s.handleReport))
 
+	mux.HandleFunc("GET /api/rewind", s.requireAuth(s.handleRewindList))
+	mux.HandleFunc("POST /api/rewind/restore", s.requireAuth(s.handleRewindRestore))
+
 	mux.HandleFunc("GET /api/watch", s.requireAuth(s.handleWatch))
 	mux.HandleFunc("POST /api/watch/pause", s.requireAuth(s.handleWatchPause))
 	mux.HandleFunc("POST /api/watch/resume", s.requireAuth(s.handleWatchResume))
@@ -353,6 +356,112 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respondJSON(w, http.StatusOK, body)
+}
+
+// handleRewindList returns the per-session snapshot entries newest-
+// first. Mirrors CLI `/rewind` (no-args) listing. The entry IDs are
+// timestamp-prefixed so string-sort matches chronological order;
+// the cockpit can render them as-is.
+func (s *Server) handleRewindList(w http.ResponseWriter, _ *http.Request) {
+	if s.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "agent not configured")
+		return
+	}
+	mgr := s.agent.SnapshotManager()
+	if mgr == nil {
+		writeError(w, http.StatusServiceUnavailable, "snapshot manager not configured")
+		return
+	}
+	sessionID := s.agent.SessionID()
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "no active session — start one before listing snapshots")
+		return
+	}
+	entries, err := mgr.List(sessionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "snapshot list: "+err.Error())
+		return
+	}
+	out := make([]map[string]any, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, map[string]any{
+			"id":            e.ID,
+			"taken_at":      e.TakenAt.UTC().Format(time.RFC3339),
+			"size_bytes":    e.SizeBytes,
+			"original_path": e.OriginalPath,
+		})
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"session_id": sessionID,
+		"entries":    out,
+	})
+}
+
+// handleRewindRestore restores a snapshot onto the Flipper. Body:
+//
+//	{"id": "<snapshot-id>", "dry_run": false}
+//
+// Mirrors CLI `/rewind <id> [dry-run]`. Pop-N mode (CLI's
+// `/rewind <n>`) is intentionally NOT exposed here — it's a
+// multi-write batch operation where partial failure is confusing
+// over an HTTP single-response. Cockpit can issue N restore calls
+// from the GET listing instead.
+func (s *Server) handleRewindRestore(w http.ResponseWriter, r *http.Request) {
+	if s.agent == nil {
+		writeError(w, http.StatusServiceUnavailable, "agent not configured")
+		return
+	}
+	mgr := s.agent.SnapshotManager()
+	if mgr == nil {
+		writeError(w, http.StatusServiceUnavailable, "snapshot manager not configured")
+		return
+	}
+	if s.flipper == nil {
+		writeError(w, http.StatusServiceUnavailable, "no Flipper attached")
+		return
+	}
+	sessionID := s.agent.SessionID()
+	if sessionID == "" {
+		writeError(w, http.StatusBadRequest, "no active session")
+		return
+	}
+	var body struct {
+		ID     string `json:"id"`
+		DryRun bool   `json:"dry_run"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.ID) == "" {
+		writeError(w, http.StatusBadRequest, "missing 'id'")
+		return
+	}
+	entry, content, err := mgr.Restore(sessionID, body.ID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "snapshot restore: "+err.Error())
+		return
+	}
+	if body.DryRun {
+		respondJSON(w, http.StatusOK, map[string]any{
+			"dry_run":       true,
+			"id":            entry.ID,
+			"original_path": entry.OriginalPath,
+			"would_write":   len(content),
+		})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := s.flipper.WriteFileCtx(ctx, entry.OriginalPath, content); err != nil {
+		writeError(w, http.StatusBadGateway, "snapshot write: "+err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"id":            entry.ID,
+		"original_path": entry.OriginalPath,
+		"bytes":         len(content),
+	})
 }
 
 // handleReport renders an engagement report for a session.
