@@ -1050,6 +1050,17 @@ var validInputEventTypes = map[string]struct{}{
 	"press": {}, "release": {}, "short": {}, "long": {},
 }
 
+// validInputButtons is the allowlist of buttons accepted by `input send`
+// on all supported firmware forks (Momentum / Xtreme / OFW share the same
+// six d-pad/action keys). Pre-v0.179 the button arg was forwarded to the
+// firmware with no host-side check, so a typo like "OK " or "back\t"
+// (after sanitizeArg strips control bytes) reached the firmware as an
+// unrecognised arg — the LLM then saw an opaque firmware error instead
+// of "invalid input button" up front.
+var validInputButtons = map[string]struct{}{
+	"up": {}, "down": {}, "left": {}, "right": {}, "ok": {}, "back": {},
+}
+
 // InputSend sends a synthetic button input event.
 //
 // CLI transport: `input send <button> <type>`. RPC transport (BLE): a
@@ -1061,6 +1072,9 @@ var validInputEventTypes = map[string]struct{}{
 // button: up, down, left, right, ok, back
 // eventType: press, release, short, long
 func (f *Flipper) InputSend(button string, eventType string) (string, error) {
+	if _, ok := validInputButtons[button]; !ok {
+		return "", fmt.Errorf("invalid input button %q: must be one of up, down, left, right, ok, back", button)
+	}
 	if _, ok := validInputEventTypes[eventType]; !ok {
 		return "", fmt.Errorf("invalid input eventType %q: must be one of press, release, short, long", eventType)
 	}

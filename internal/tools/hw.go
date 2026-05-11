@@ -64,7 +64,7 @@ func init() {
 	Register(Spec{
 		Name:        "input_send",
 		Description: "Send a synthetic button input event to the Flipper UI.",
-		Schema:      json.RawMessage(`{"type":"object","properties":{"button":{"type":"string","description":"Button: up, down, left, right, ok, back"},"event_type":{"type":"string","description":"Event type: press, release, short, long, repeat"}}}`),
+		Schema:      json.RawMessage(`{"type":"object","properties":{"button":{"type":"string","description":"Button: up, down, left, right, ok, back"},"event_type":{"type":"string","description":"Event type: press, release, short, long"}}}`),
 		Required:    []string{"button", "event_type"},
 		Risk:        risk.Medium,
 		Group:       GroupFlipperSystem,
