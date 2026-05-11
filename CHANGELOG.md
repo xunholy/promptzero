@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.120.0] - 2026-05-11
+
+**`validator.truncate` for BadUSB excerpts is UTF-8-aware.**
+`evilportal.go` already had inline UTF-8 walk-back for its
+truncated Excerpt strings, but `badusb.go`'s shared `truncate`
+helper still did a raw-byte cut. A DuckyScript STRING line that
+contained a non-ASCII character (international keyboard, emoji)
+near the 120-byte cap could produce an invalid-UTF-8 Excerpt,
+which then corrupted the JSON audit row and the report rendering
+downstream — the exact problem the inline walk-back patterns in
+`session.clipTitle` / `generate.capSize` / `agent.truncatePreview`
+exist to prevent.
+
+### Fixed
+
+- **`truncate(s, n)` walks back from continuation bytes**
+  (`b & 0xC0 == 0x80`) so the cut always lands at a rune boundary.
+  Matches the inline pattern used in `evilportal.go` and the other
+  truncators across the codebase.
+- `TestTruncate_UTF8Boundary` places the 4-byte emoji 🛂 at byte
+  positions 117–120 so the naive cut would land at byte 4 of the
+  rune. Pre-fix verification: stashing the badusb.go change makes
+  the test fail with `truncate produced invalid UTF-8:
+  "...x\xf0\x9f\x9b…"` — the exact partial-rune corruption.
+- `TestTruncate_ShortInputUnchanged` keeps the no-op path
+  covered after the walk-back was added.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.119.0] - 2026-05-11
 
 **`campaign.evalWhen` returns true for unparseable `length` clauses.**
