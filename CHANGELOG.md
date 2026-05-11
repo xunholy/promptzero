@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.123.0] - 2026-05-11
+
+**`rag.Snippet` clips body at rune boundaries.** Same UTF-8 hazard
+fixed last release in `validator.truncate` — `Snippet` did raw
+byte slicing for both the leading-context start (`bestIdx - 60`)
+and the trailing end (`start + maxLen`). The markdown corpus is
+mostly ASCII but legitimately carries multi-byte runes (smart
+quotes, em-dashes, emoji in example payloads), and either boundary
+could land mid-rune. Downstream JSON marshalling rendered the
+result as U+FFFD or rejected it outright, so docs_search hits
+could silently corrupt for queries that happened to land near a
+non-ASCII character.
+
+### Fixed
+
+- **`Snippet` walks both boundaries back to rune starts** via a
+  new `backToRuneStart` helper that scans backwards while the
+  byte is a continuation byte (`b & 0xC0 == 0x80`). Applied to
+  both `start` and `end` so the substring passed to `TrimSpace`
+  is guaranteed valid UTF-8. Mirrors `session.clipTitle` /
+  `generate.capSize` / `validator.truncate` /
+  `agent.truncatePreview`.
+- `TestSnippet_UTF8BoundaryStart` places a 4-byte 🛂 at bytes
+  60–63 with the needle at byte 121 so `bestIdx-60` lands mid-
+  rune; `TestSnippet_UTF8BoundaryEnd` places the same emoji at
+  the trailing maxLen edge. Pre-fix verification: stashing the
+  bm25.go change makes both fail with `invalid UTF-8` and the
+  specific corrupt byte sequence in the output.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.122.0] - 2026-05-11
 
 **`toolctx.ToolsWithSheets` actually sorts.** The docstring
