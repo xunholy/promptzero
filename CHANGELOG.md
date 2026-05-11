@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.133.0] - 2026-05-11
+
+**`generate.truncate` is UTF-8-aware so `Preview` never carries
+half a rune.** The generate package had two truncators side by
+side: `capSize` (UTF-8 walk-back, already correct) and
+`truncate` (raw byte cut). `truncate` is the one used for the
+`Preview` field of every generated payload `Result` —
+evil-portal HTML, BadUSB scripts, SubGHz/IR/NFC files — all of
+which can carry multi-byte runes (smart quotes, emoji in
+evil-portal copy, accented characters in international targets,
+ç/é/ü in BadUSB STRING lines). A boundary-landing cut produced
+an invalid-UTF-8 Preview that flowed into the JSON-encoded audit
+row, the cockpit's preview pane, and downstream tool-result
+payloads.
+
+### Fixed
+
+- **Apply the same walk-back `capSize` already used.** The two
+  truncators now have consistent UTF-8 behaviour. Same fix
+  pattern as `validator.truncate` (v0.120) and `rag.Snippet`
+  (v0.123).
+- `TestTruncate_UTF8Boundary` places the 2-byte "é" so the
+  natural cut lands on its continuation byte. Pre-fix
+  verification: stashing the generate.go change fails with
+  `truncate produced invalid UTF-8: 78 78 ... c3 2e 2e 2e` —
+  the `c3` is é's lead byte missing its `a9` partner.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.132.0] - 2026-05-11
 
 **`agent.buildUIContextBlock` strips XML-special chars from path.**
