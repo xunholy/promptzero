@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-05-11
+
+**Campaign endpoints get a body-size cap.** `/api/campaign/validate`
+and `/api/campaign/run` (added in v0.104) used `io.ReadAll(r.Body)`
+with no size limit. A malicious client could POST a multi-MB body
+and force the server to buffer the whole thing into memory before
+parsing — the same DoS vector the FS upload handler already
+guards against with `http.MaxBytesReader`.
+
+### Fixed
+
+- **Both `/api/campaign/*` endpoints now wrap `r.Body` with
+  `http.MaxBytesReader` at a 256 KiB cap.** Realistic campaign
+  files are a few hundred bytes to a few KB; the cap is generous
+  headroom while bounding the resource-burn. Oversized bodies
+  now return 413 with a clear message instead of being silently
+  buffered. Mirrors the body-cap pattern api_fs.go already uses.
+  - `TestCampaignValidate_RejectsOversizedBody` posts a
+    300 KiB body and asserts 413. Pre-fix verification:
+    stashing the api.go change makes the test fail with
+    "code = 400, want 413" — the body is read in full, parsed,
+    and only the YAML-shape failure surfaces.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.104.0] - 2026-05-11
 
 **Mode parity audit, phase 2h (final web phase): `/api/campaign`.**
