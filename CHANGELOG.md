@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.167.0] - 2026-05-12
+
+**Corpora-search tools' `hits` envelope is always a JSON array.**
+Fifth release in the nil-slice → "null" arc. All three
+corpora-search Specs in `internal/tools/corpora.go`
+(`ir_irdb_lookup`, `evil_portal_template_pick`,
+`badusb_payload_search`) declared their local hit slice via
+`var hits []hit` (nil) and embedded that in the JSON envelope via
+`map[string]any{"hits": hits}`. When no entries matched, the
+output carried `"hits": null` rather than `"hits": []`. Same
+defect class v0.163-v0.166 closed for audit, signal_library, and
+firmware_extract; this finishes the sweep across `internal/tools/`.
+
+### Fixed
+
+- Switch each `var hits []hit` declaration to `hits := []hit{}`
+  so the envelope always carries a parseable JSON array. Three
+  identical changes, one per handler.
+- Regression test `TestCorporaTools_EmptyHitsIsJSONArray` runs all
+  three tools against an empty directory and asserts the parsed
+  `hits` field deserialises to a non-nil `[]any`.
+
 ## [0.166.0] - 2026-05-12
 
 **`firmware_extract` envelope's `file_tree` / `interesting` fields

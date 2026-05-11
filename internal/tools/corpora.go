@@ -106,7 +106,10 @@ func irIRDBLookupHandler(_ context.Context, _ *Deps, args map[string]any) (strin
 		Device       string `json:"device"`
 		Header       string `json:"header,omitempty"`
 	}
-	var hits []hit
+	// Non-nil empty slice so the envelope's `"hits"` field serialises
+	// as `[]` rather than the JSON null literal when no .ir files
+	// match. Same v0.163-v0.166 contract.
+	hits := []hit{}
 
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -206,7 +209,10 @@ func evilPortalTemplatePickHandler(_ context.Context, _ *Deps, args map[string]a
 		Language string `json:"language,omitempty"`
 		Sample   string `json:"sample,omitempty"`
 	}
-	var hits []hit
+	// Non-nil empty slice so the envelope's `"hits"` field serialises
+	// as `[]` rather than null when no portal templates match. Same
+	// v0.163-v0.166 contract.
+	hits := []hit{}
 
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -342,7 +348,10 @@ func badusbPayloadSearchHandler(_ context.Context, _ *Deps, args map[string]any)
 		Score   int      `json:"score"`
 		Preview []string `json:"preview"`
 	}
-	var hits []hit
+	// Non-nil empty slice so the envelope's `"hits"` field serialises
+	// as `[]` rather than null when no badusb payloads match. Same
+	// v0.163-v0.166 contract.
+	hits := []hit{}
 
 	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
