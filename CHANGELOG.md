@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.146.0] - 2026-05-12
+
+**`flipper/transport.httpDialer` rejects over-cap `?timeout_ms=`.**
+v0.139 capped the sibling `?batch=` parameter; the same dial-time
+validation was missing for `?timeout_ms=`. The Read path waits
+`readTimeout + 5s` per recv, so a misconfigured
+`?timeout_ms=999999999` dialled successfully and then blocked every
+recv for ~278 hours, silently wedging the dispatch layer.
+
+### Fixed
+
+- Introduce `maxHTTPRecvLongPollMs = 60_000` ceiling and reject any
+  `timeout_ms` above it at dial time with a clear ceiling-exceeded
+  error. 60 s is well above any reasonable long-poll need (most
+  reverse proxies time out connections below this) and short enough
+  that a misconfigured URL surfaces at startup.
+- Two regression tests cover both sides of the boundary:
+  `TestHTTPDialer_RejectsOverCapTimeout` (ceiling+1 fails) and
+  `TestHTTPDialer_AcceptsAtCapTimeout` (ceiling exactly succeeds,
+  pinning the strict `>` check, not `>=`).
+
 ## [0.145.0] - 2026-05-12
 
 **`SetBridgeMode` publishes (active, reason) as a single atomic
