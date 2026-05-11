@@ -60,6 +60,16 @@ type prospectiveFunc func(ctx context.Context, toolName string, input json.RawMe
 // the result into the tool_result stream. Does NOT block the tool
 // from running — a critique is advisory, not a gate. Operators who
 // want a gate layer it on top of the confirm callback.
+//
+// The critique JSON's string fields (concerns array,
+// recommendation) are populated by the classifier LLM and can
+// contain free-form prose that echoes attacker-influenceable
+// hardware error text. A literal `</prospective-critique>` inside
+// any of those strings would render two close tags with text
+// between them — same structural-escape risk as the close-tag
+// defense arc (v0.134-v0.137). Apply the same defang: rewrite
+// `</prospective-critique>` to `< /prospective-critique>` so the
+// wrapper boundary survives.
 func maybeProspectiveReflect(
 	ctx context.Context,
 	toolName string,
@@ -78,6 +88,7 @@ func maybeProspectiveReflect(
 	if critique == "" {
 		return output
 	}
+	critique = strings.ReplaceAll(critique, "</prospective-critique>", "< /prospective-critique>")
 	*counter++
 	return "<prospective-critique>" + critique + "</prospective-critique>\n" + output
 }
