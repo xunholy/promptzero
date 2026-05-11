@@ -427,3 +427,77 @@ func TestDemoCampaign_LoadsAndRuns(t *testing.T) {
 		t.Errorf("expected 3 step results, got %d", len(result.StepResults))
 	}
 }
+
+// TestRunner_CancelsTimedStepContextBeforeNextStep pins the v0.92
+// resource-hygiene fix. Pre-fix, the runner used `defer cancel()`
+// inside its step loop, so every iteration's timer-context cancel
+// accumulated on the defer stack and only fired when Run returned —
+// long campaigns with many timed steps built up unbounded pending
+// timer goroutines. The fix calls cancel() right after exec.Run
+// returns so each step's timer is released immediately.
+//
+// We assert the behavioural contract: step N's ctx must already be
+// cancelled by the time step N+1's exec.Run is invoked. Pre-fix this
+// fails because step N's cancel is still deferred.
+func TestRunner_CancelsTimedStepContextBeforeNextStep(t *testing.T) {
+	const yaml = `campaign: cancel-check
+steps:
+  - id: a
+    tool: tool_a
+    timeout: 30s
+  - id: b
+    tool: tool_b
+    timeout: 30s
+    depends_on: a
+`
+	c, err := ParseYAML([]byte(yaml))
+	if err != nil {
+		t.Fatalf("ParseYAML: %v", err)
+	}
+
+	var seenCtxs []context.Context
+	exec := &recordingExecutor{
+		onRun: func(ctx context.Context, _ string) {
+			// If a previous step exists, its ctx must already be
+			// cancelled — pre-fix this would be non-nil but still
+			// active (defer hasn't fired yet).
+			if len(seenCtxs) > 0 {
+				prev := seenCtxs[len(seenCtxs)-1]
+				if prev.Err() == nil {
+					t.Errorf("previous step's ctx still active when next step runs — defer-in-loop leak")
+				}
+			}
+			seenCtxs = append(seenCtxs, ctx)
+		},
+	}
+	r := NewRunner(exec)
+	result := r.Run(context.Background(), c)
+	if !result.Succeeded() {
+		t.Fatalf("campaign should succeed: %+v", result.StepResults)
+	}
+	if len(seenCtxs) != 2 {
+		t.Fatalf("expected 2 captured contexts, got %d", len(seenCtxs))
+	}
+	// Both contexts must be cancelled after Run completes — defensive
+	// check that the second step's cancel also fires (covers the
+	// "last iteration" case where defer-vs-immediate makes no
+	// observable difference but the contract still holds).
+	for i, c := range seenCtxs {
+		if c.Err() == nil {
+			t.Errorf("step %d ctx not cancelled after Run returned", i)
+		}
+	}
+}
+
+// recordingExecutor lets a test inspect the ctx passed to each Run
+// call. onRun is invoked synchronously before the executor responds.
+type recordingExecutor struct {
+	onRun func(ctx context.Context, tool string)
+}
+
+func (r *recordingExecutor) Run(ctx context.Context, tool string, _ map[string]interface{}) (string, error) {
+	if r.onRun != nil {
+		r.onRun(ctx, tool)
+	}
+	return "ok", nil
+}
