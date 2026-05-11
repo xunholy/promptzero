@@ -116,6 +116,25 @@ func modeNames() []string {
 	return out
 }
 
+// IsReadRestrictive reports whether the mode implies the
+// ReadOnly safety rail (defence-in-depth overlay). Recon, Intel,
+// and Stealth all forbid writes/transmits as part of their
+// definition, so the cmd/promptzero setupMode + /mode runtime
+// switch both engage the ReadOnly overlay when entering one of
+// these modes.
+//
+// Centralised here (rather than open-coded in setup.go) so a
+// new constrained mode added to allModes stays in lockstep with
+// the read-only coupling — a single edit covers both the
+// startup banner and the runtime /mode handler.
+func (m Mode) IsReadRestrictive() bool {
+	switch m {
+	case ModeRecon, ModeIntel, ModeStealth:
+		return true
+	}
+	return false
+}
+
 // DisplayName returns a Title-Cased operator-facing label.
 func (m Mode) DisplayName() string {
 	switch m {

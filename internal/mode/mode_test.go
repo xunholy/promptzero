@@ -310,3 +310,28 @@ func TestAll_ReturnsCopy(t *testing.T) {
 		t.Fatalf("All() leaked underlying slice: second[0]=%q, want %q", second[0], original)
 	}
 }
+
+// TestIsReadRestrictive pins which modes imply the ReadOnly
+// defence-in-depth overlay. cmd/promptzero (setupMode at
+// startup + handleMode at runtime) both call this to decide
+// whether to engage ReadOnly on top of the per-mode group
+// allow-list. Before v0.80 the coupling was open-coded only at
+// startup, so /mode recon at runtime silently skipped the
+// overlay — a regression here re-introduces that gap.
+func TestIsReadRestrictive(t *testing.T) {
+	cases := map[Mode]bool{
+		ModeStandard: false,
+		ModeAssault:  false,
+		ModeRecon:    true,
+		ModeIntel:    true,
+		ModeStealth:  true,
+		// Unknown / blank modes are not read-restrictive.
+		Mode(""):       false,
+		Mode("future"): false,
+	}
+	for m, want := range cases {
+		if got := m.IsReadRestrictive(); got != want {
+			t.Errorf("Mode(%q).IsReadRestrictive() = %v, want %v", m, got, want)
+		}
+	}
+}

@@ -1904,6 +1904,16 @@ func handleMode(ai *agent.Agent, args []string) {
 		return
 	}
 	ai.SetMode(target)
+	// Mirror setupMode's read-restrictive overlay logic at
+	// runtime: switching into recon/intel/stealth via /mode now
+	// also engages the ReadOnly safety rail, the same way
+	// launching with --mode recon does at startup. Without this
+	// coupling /mode recon set the group allowlist but silently
+	// left ReadOnly off — defeating the documented "defence-in-
+	// depth" guarantee.
+	if target.IsReadRestrictive() {
+		ai.SetReadOnly(true)
+	}
 	fmt.Fprintf(os.Stderr, "  %s●%s mode switched to %s%s%s %s· %s%s\n",
 		green, reset, bold, target.DisplayName(), reset,
 		dim, target.Description(), reset)
