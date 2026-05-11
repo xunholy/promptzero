@@ -234,3 +234,73 @@ func TestCanbusInit_BitrateBounds(t *testing.T) {
 		}
 	})
 }
+
+// TestCanbusHandlers_ValidateBeforeTransport extends the v0.174 contract
+// from canbus_init to the other three canbus handlers that take user
+// input (sniff_start, inject, replay). For each: a malformed argument
+// must surface as the validation error, NOT as "Flipper not connected".
+//
+// Pre-fix the transport check ran first, so an LLM that typo'd an
+// arbitration_id chased a cable-wiggle fix instead of fixing the hex.
+func TestCanbusHandlers_ValidateBeforeTransport(t *testing.T) {
+	type tc struct {
+		spec   string
+		args   map[string]any
+		expect string // substring the error must contain (and "not connected" must NOT match)
+	}
+	cases := []tc{
+		{
+			spec:   "canbus_sniff_start",
+			args:   map[string]any{"id_filter": "ZZZZ"},
+			expect: "hex CAN ID",
+		},
+		{
+			spec:   "canbus_sniff_start",
+			args:   map[string]any{"output_path": "../etc/passwd"},
+			expect: "/ext/",
+		},
+		{
+			spec:   "canbus_inject",
+			args:   map[string]any{"arbitration_id_hex": "ZZZZ", "data_hex": "DEADBEEF"},
+			expect: "hex CAN ID",
+		},
+		{
+			spec:   "canbus_inject",
+			args:   map[string]any{"arbitration_id_hex": "7E0", "data_hex": "ZZZ"},
+			expect: "hex data",
+		},
+		{
+			spec:   "canbus_inject",
+			args:   map[string]any{"data_hex": "DEADBEEF"}, // missing required id
+			expect: "arbitration_id_hex is required",
+		},
+		{
+			spec:   "canbus_replay",
+			args:   map[string]any{"path": "/etc/passwd"},
+			expect: "/ext/",
+		},
+		{
+			spec:   "canbus_replay",
+			args:   map[string]any{}, // missing required path
+			expect: "path is required",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.spec+"_"+c.expect, func(t *testing.T) {
+			spec, ok := Get(c.spec)
+			if !ok {
+				t.Fatalf("%s not registered", c.spec)
+			}
+			_, err := spec.Handler(t.Context(), &Deps{Flipper: nil}, c.args)
+			if err == nil {
+				t.Fatalf("expected error; got nil")
+			}
+			if strings.Contains(err.Error(), "not connected") {
+				t.Errorf("err = %v; want validation error before transport check", err)
+			}
+			if !strings.Contains(err.Error(), c.expect) {
+				t.Errorf("err = %v; want substring %q", err, c.expect)
+			}
+		})
+	}
+}
