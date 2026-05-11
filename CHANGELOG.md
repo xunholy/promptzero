@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-05-11
+
+**Mode + ReadOnly runtime coupling fix.** Another silent-failure
+bug from the keystroke/slash-command audit: the `ReadOnly`
+defence-in-depth overlay engaged at startup for
+`--mode recon/intel/stealth` was *not* re-engaged when the
+operator switched modes at runtime via `/mode`. Risk-Critical
+writes/transmits that the overlay was supposed to refuse could
+slip through the per-group check.
+
+### Fixed
+
+- **`/mode recon` now engages the ReadOnly safety rail.**
+  `setupMode` at startup had an open-coded string switch that
+  set `ReadOnly=true` for `recon` / `intel` / `stealth`. The
+  runtime path (`handleMode` → `/mode <name>`) only called
+  `ai.SetMode(target)` and never touched `ReadOnly`. So an
+  operator who launched with `--mode standard` and then typed
+  `/mode recon` got the recon group allow-list but no ReadOnly
+  overlay — defeating the documented "defence-in-depth"
+  guarantee in `setupMode`'s godoc.
+  - New `Mode.IsReadRestrictive()` helper in `internal/mode`
+    centralises the recon/intel/stealth → ReadOnly coupling.
+    Future constrained modes opt in by adding themselves to the
+    helper's switch — startup and runtime call sites stay in
+    lockstep through a single edit.
+  - `setupMode` swapped to `m.IsReadRestrictive()` after
+    `ParseMode` succeeds. Identical behaviour for valid input;
+    invalid input no longer trips the overlay before
+    `ParseMode` rejects it (cleaner code, same outcome).
+  - `handleMode` mirrors `setupMode` post-`SetMode`: target
+    mode read-restrictive → `SetReadOnly(true)`. This is the
+    actual operator-facing bug fix.
+  - `TestIsReadRestrictive` pins the mapping for every named
+    mode plus blank / unknown sentinels so a regression
+    re-introduces the runtime-vs-startup gap loudly.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure overlay-routing fix; no
+  transport touched.
+
 ## [0.79.0] - 2026-05-11
 
 **REPL bug-fix sweep.** Three operator-visible bugs caught by
