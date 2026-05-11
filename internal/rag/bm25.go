@@ -237,6 +237,15 @@ func Snippet(body, query string, maxLen int) string {
 	if end > len(body) {
 		end = len(body)
 	}
+	// UTF-8 boundary safety: a markdown corpus can contain multi-byte
+	// runes (smart quotes, em-dashes, emoji in examples), and naive
+	// byte-cuts could land mid-rune — producing an invalid-UTF-8
+	// snippet that downstream JSON marshalling renders as U+FFFD or
+	// rejects outright. Walk both boundaries back to the previous
+	// rune start. Mirrors session.clipTitle / generate.capSize /
+	// validator.truncate / agent.truncatePreview.
+	start = backToRuneStart(body, start)
+	end = backToRuneStart(body, end)
 	snippet := strings.TrimSpace(body[start:end])
 	if start > 0 {
 		snippet = "…" + snippet
@@ -245,4 +254,22 @@ func Snippet(body, query string, maxLen int) string {
 		snippet = snippet + "…"
 	}
 	return snippet
+}
+
+// backToRuneStart returns the largest index <= i that is at a UTF-8
+// leading byte (or 0 / len(s)). Continuation bytes match
+// 10xxxxxx (b & 0xC0 == 0x80); walking backwards from those lands on
+// the rune's lead byte. Used by Snippet to clip its body window
+// without splitting a multi-byte rune.
+func backToRuneStart(s string, i int) int {
+	if i <= 0 {
+		return 0
+	}
+	if i >= len(s) {
+		return len(s)
+	}
+	for i > 0 && s[i]&0xC0 == 0x80 {
+		i--
+	}
+	return i
 }
