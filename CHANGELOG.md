@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.126.0] - 2026-05-11
+
+**`~/.promptzero/freqman/` tightened to `0o700` / `0o600`.** Third
+release in the security-mode consolidation. `signal_import` created
+the freqman directory at `0o755` and wrote imported freqman files
+at `0o644` — the directory listing leaked which catalogues the
+operator had imported, and any custom file an operator dropped in
+by hand could carry engagement-specific frequency notes other
+accounts on the host shouldn't read. The fetched content itself is
+public (lab.flipper.net, flipc.org, github raw), but the listing
+and any operator additions are not.
+
+### Fixed
+
+- **`MkdirAll(root, 0o700)`** and **`WriteFile(target, body,
+  0o600)`** in `signal_import`. Matches the audit DB / session JSON
+  / snapshot tree / semcache (v0.124) / targetmem (v0.125)
+  baseline. Every operator-data store under `~/.promptzero/` is now
+  consistent at `0o600` / `0o700`.
+- `TestSignalImport_FilePermissionsLockedDown` happy-paths an
+  import through the existing rewrite-transport test plumbing and
+  stats both the saved file's mode and its parent dir's mode.
+  Pre-fix verification: stashing the signal_library.go change
+  fails with `freqman file mode = 0644, want 0o600` and
+  `freqman dir mode = 0755, want 0o700`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.125.0] - 2026-05-11
 
 **`targetmem.db` no longer world-readable.** Follow-up to v0.124's
