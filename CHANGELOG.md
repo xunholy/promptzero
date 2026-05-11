@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.151.0] - 2026-05-12
+
+**Agent confirm-gate marshal-error fallbacks use `json.Marshal`,
+not Go-string quoting.** Two `RunTool` / `workflowConfirmHook`
+sites in `internal/agent/agent.go` carried the same defect class
+v0.150 fixed in the audit log: when `json.Marshal(params)` failed,
+the placeholder row was built with `fmt.Sprintf("%q", err.Error())`
+— `strconv.Quote` semantics, not JSON. A control byte in the
+error string (BEL `\x07`, VT `\x0B`, arbitrary `\xNN`) produced
+escapes that JSON parsers reject, and the operator-facing confirm
+prompt would render an unparseable row. v0.150 fixed the audit
+mirror; v0.151 brings the agent sites onto the same contract.
+
+### Fixed
+
+- Extract `marshalErrorPlaceholder(err error) []byte` and route
+  both `RunTool` (line 1421) and `workflowConfirmHook` (line 1712)
+  through it. Helper builds the row via `json.Marshal` so control
+  bytes survive as `\u00NN` escapes; hardcoded sentinel covers the
+  effectively-impossible double-error path.
+- Two regression tests:
+  `TestMarshalErrorPlaceholder_ValidJSONForControlBytes` stages an
+  error message containing BEL / VT / NUL / SO and round-trips the
+  placeholder through `json.Unmarshal`;
+  `TestMarshalErrorPlaceholder_NilError` covers the no-error
+  defensive branch.
+
 ## [0.150.0] - 2026-05-12
 
 **Audit marshal-error fallback uses `json.Marshal`, not Go-string

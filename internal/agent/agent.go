@@ -1421,10 +1421,14 @@ func (a *Agent) RunTool(ctx context.Context, tool string, params map[string]inte
 		rawInput, mErr := json.Marshal(params)
 		if mErr != nil {
 			// Operator-facing confirm gate must show what's being
-			// approved. If params didn't marshal, log it and substitute
-			// a placeholder rather than presenting an empty input.
+			// approved. If params didn't marshal, log it and
+			// substitute a placeholder rather than presenting an
+			// empty input. Build the placeholder via json.Marshal
+			// (not fmt.Sprintf with %q) so a control byte in the
+			// error string survives as JSON-valid \u00NN instead
+			// of Go-string \a / \v / \xNN — see v0.150.
 			obs.Default().Warn("agent_runtool_marshal_failed", "tool", tool, "err", mErr)
-			rawInput = []byte(fmt.Sprintf(`{"_marshal_error":%q}`, mErr.Error()))
+			rawInput = marshalErrorPlaceholder(mErr)
 		}
 		a.mu.Unlock()
 		resp := a.confirmWithIdleTimeout(ctx, a.buildConfirmRequest(tool, rawInput, toolRisk))
@@ -1712,7 +1716,7 @@ func (a *Agent) workflowConfirmHook(ctx context.Context, tool string, input inte
 	rawInput, mErr := json.Marshal(input)
 	if mErr != nil {
 		obs.Default().Warn("agent_workflow_confirm_marshal_failed", "tool", tool, "err", mErr)
-		rawInput = []byte(fmt.Sprintf(`{"_marshal_error":%q}`, mErr.Error()))
+		rawInput = marshalErrorPlaceholder(mErr)
 	}
 	a.mu.Unlock()
 	resp := a.confirmWithIdleTimeout(ctx, a.buildConfirmRequest(tool, rawInput, level))
@@ -1936,6 +1940,25 @@ func (a *Agent) storeSnapshot(ctx context.Context, path string, content []byte) 
 // which honours a.verifierFn exactly as the test expects.
 func (a *Agent) subghzBuild(ctx context.Context, p map[string]interface{}) (string, error) {
 	return a.dispatch(ctx, "subghz_build", p)
+}
+
+// marshalErrorPlaceholder builds a JSON-valid {"_marshal_error": ...}
+// row when json.Marshal of a tool input fails. Mirrors the v0.150
+// audit fix: fmt.Sprintf("%q", err.Error()) is Go-string quoting
+// (\a / \v / \xNN for control bytes), not JSON, so a control byte
+// in the error message produced an unparseable placeholder. Building
+// via json.Marshal guarantees valid escapes (\u00NN) and a fallback
+// hardcoded sentinel covers the (effectively impossible) case where
+// encoding/json itself rejects the UTF-8 string.
+func marshalErrorPlaceholder(err error) []byte {
+	if err == nil {
+		return []byte(`{"_marshal_error":""}`)
+	}
+	b, mErr := json.Marshal(map[string]string{"_marshal_error": err.Error()})
+	if mErr != nil {
+		return []byte(`{"_marshal_error":"unrenderable"}`)
+	}
+	return b
 }
 
 // hasWiFiTool reports whether the filtered tool set still exposes any
