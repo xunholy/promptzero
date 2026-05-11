@@ -103,6 +103,13 @@ type agentDriver interface {
 	// didn't wire snapshotting — /api/rewind returns 503.
 	SnapshotManager() *snapshot.Manager
 	SessionID() string
+
+	// RunTool dispatches a single named tool with params and
+	// returns its result. Used by /api/campaign/run (via
+	// campaign.AgentExecutor) — same surface the rules engine and
+	// the MCP server use to invoke tools without driving a full
+	// agent turn.
+	RunTool(ctx context.Context, tool string, params map[string]interface{}) (string, error)
 }
 
 // sessionDriver is the optional surface Server needs to expose persisted

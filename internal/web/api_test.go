@@ -122,6 +122,21 @@ func putJSON(t *testing.T, ts *httptest.Server, path string, payload any) (int, 
 	return resp.StatusCode, out
 }
 
+// postRaw posts a raw body (not JSON-encoded). Used by /api/campaign
+// where the body is YAML text and Content-Type is not JSON.
+func postRaw(t *testing.T, ts *httptest.Server, path, body string) (int, []byte) {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+path,
+		bytes.NewReader([]byte(body)))
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, raw
+}
+
 // deleteReq performs a DELETE without a body and decodes the JSON
 // response. Used by /api/attack DELETE — first DELETE in the API
 // surface aside from /api/sessions/{id} which has its own pattern.
@@ -337,6 +352,84 @@ func TestCostSnapshot(t *testing.T) {
 	// distinguishes "disabled" from "0/0" by absence).
 	if _, ok := body["budget"]; ok {
 		t.Errorf("budget block should be omitted when no cap is set")
+	}
+}
+
+// TestCampaignValidate_AcceptsYAML pins the happy validate path:
+// a well-formed campaign YAML returns name + step count.
+func TestCampaignValidate_AcceptsYAML(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	yaml := `campaign: web-test
+steps:
+  - id: a
+    tool: tool_a
+  - id: b
+    tool: tool_b
+`
+	code, body := postRaw(t, ts, "/api/campaign/validate", yaml)
+	if code != http.StatusOK {
+		t.Fatalf("code = %d, body=%s", code, body)
+	}
+	var dto map[string]any
+	if err := json.Unmarshal(body, &dto); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if dto["name"] != "web-test" {
+		t.Errorf("name = %v, want web-test", dto["name"])
+	}
+	if int(dto["step_count"].(float64)) != 2 {
+		t.Errorf("step_count = %v, want 2", dto["step_count"])
+	}
+}
+
+// TestCampaignValidate_RejectsMalformed returns 400 with the parser
+// error embedded — same shape the CLI surfaces.
+func TestCampaignValidate_RejectsMalformed(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	// Missing required `steps` field.
+	yaml := `campaign: no-steps
+`
+	code, _ := postRaw(t, ts, "/api/campaign/validate", yaml)
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400", code)
+	}
+}
+
+// TestCampaignRun_ExecutesEachStep pins the happy run path. The
+// fake agent's RunTool counts invocations and the response should
+// list every step result.
+func TestCampaignRun_ExecutesEachStep(t *testing.T) {
+	calls := 0
+	fa := &fakeAgent{runToolFn: func(_ string, _ map[string]interface{}) (string, error) {
+		calls++
+		return "ok", nil
+	}}
+	_, ts := apiServer(t, fa)
+
+	yaml := `campaign: run-test
+steps:
+  - id: step1
+    tool: tool_a
+  - id: step2
+    tool: tool_b
+`
+	code, body := postRaw(t, ts, "/api/campaign/run", yaml)
+	if code != http.StatusOK {
+		t.Fatalf("code = %d, body=%s", code, body)
+	}
+	var dto map[string]any
+	if err := json.Unmarshal(body, &dto); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !dto["succeeded"].(bool) {
+		t.Errorf("succeeded = false, body=%s", body)
+	}
+	if calls != 2 {
+		t.Errorf("RunTool calls = %d, want 2", calls)
+	}
+	steps, _ := dto["step_results"].([]any)
+	if len(steps) != 2 {
+		t.Errorf("step_results len = %d, want 2", len(steps))
 	}
 }
 
