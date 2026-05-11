@@ -342,7 +342,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/audit stats%s           Session audit summary\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit query [N]%s       Recent N entries (default 20)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit find k=v ...%s    Filter by tool, risk, success, session (and more)\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "    %s/audit tail%s            Live tail of new audit rows (Ctrl+C or Enter to stop)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/audit tail%s            Live tail of new audit rows (Ctrl+C to stop)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit top tools|risks%s Top-N aggregations (since=24h etc.)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit session <id>%s    Dump a specific session\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit export <path>%s   Write session audit JSON to <path>\n", cyan, reset)
@@ -396,12 +396,26 @@ func printHelp() {
 func printStatus(cfg *config.Config, ai *agent.Agent, genLLM provider.Provider, wifi bool, hasVoice bool, auditLog *audit.Log, flip *flipper.Flipper, busy func() bool) {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  %s%sStatus%s\n", bold, white, reset)
-	if flip != nil && flip.IsSuspended() {
+	// Branch order mirrors the Device section below: nil-flip is its
+	// own case so the suspended / transport branches don't accidentally
+	// deref. Currently only --web mode enters with flip==nil and the
+	// REPL itself never runs in that mode, but the first branch
+	// already nil-checks the field which left a latent crash in the
+	// `else if` evaluator: ` else if tx := flip.Transport(); tx != nil`
+	// would deref a nil flip if the first branch's `flip != nil`
+	// short-circuited to false. Restructure for symmetry with line
+	// 443's `if flip == nil` so a future caller can't trip this.
+	switch {
+	case flip == nil:
+		statusWarn("Flipper unavailable")
+	case flip.IsSuspended():
 		statusWarn(fmt.Sprintf("Flipper Zero suspended — %s", flip.SuspensionReason()))
-	} else if tx := flip.Transport(); tx != nil {
-		statusOK(fmt.Sprintf("Flipper Zero on %s (%s)", tx.Identity(), tx.Kind()))
-	} else {
-		statusOK(fmt.Sprintf("Flipper Zero on %s", cfg.Serial.Port))
+	default:
+		if tx := flip.Transport(); tx != nil {
+			statusOK(fmt.Sprintf("Flipper Zero on %s (%s)", tx.Identity(), tx.Kind()))
+		} else {
+			statusOK(fmt.Sprintf("Flipper Zero on %s", cfg.Serial.Port))
+		}
 	}
 	statusOK(fmt.Sprintf("Agent model: %s", cfg.Model))
 	statusOK(fmt.Sprintf("Generation: %s", genLLM.Name()))

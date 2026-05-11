@@ -628,3 +628,25 @@ func TestStatsTokens_IncludesCacheTotals(t *testing.T) {
 		t.Errorf("expected 'cache_creation:  200' in /stats tokens; got: %q", out)
 	}
 }
+
+// TestPrintHelp_AuditTailLineMatchesRuntime pins the v0.84 fix: the
+// /help line for /audit tail used to advertise "Ctrl+C or Enter to
+// stop" but tailAudit only handles SIGINT — there's no Enter
+// detection in the tail loop. The runtime banner inside tailAudit
+// already correctly said "Ctrl+C to stop", so /help was the outlier.
+// Pin the corrected help text so a future regression that re-adds the
+// Enter promise without implementing it gets caught here.
+func TestPrintHelp_AuditTailLineMatchesRuntime(t *testing.T) {
+	out := captureStderr(t, func() {
+		printHelp()
+	})
+	if !strings.Contains(out, "/audit tail") {
+		t.Fatalf("/help missing /audit tail line; got: %q", out)
+	}
+	if strings.Contains(out, "Ctrl+C or Enter to stop") {
+		t.Errorf("/help advertises Ctrl+C or Enter for /audit tail but tailAudit only handles SIGINT; got: %q", out)
+	}
+	if !strings.Contains(out, "Ctrl+C to stop") {
+		t.Errorf("/help should describe /audit tail as 'Ctrl+C to stop' (matching tailAudit's banner); got: %q", out)
+	}
+}
