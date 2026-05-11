@@ -456,7 +456,24 @@ func (a *Agent) maybeGenerateTitleLocked(state *session.State) {
 // was spawned. Before persisting we verify the on-disk title still
 // matches it (or is still empty) so an operator rename that lands during
 // the network call wins over the LLM result.
+//
+// Clears the in-flight marker on exit so a transient network failure
+// (callTitleAPI returns "" on error) doesn't permanently lock the
+// session out of future title generations. Pre-fix the flag was set
+// before spawning but never cleared, so a single 5-second timeout or
+// rate-limit response left the session stuck with the auto-derived
+// title forever — every subsequent autosave saw inflight=true and
+// skipped maybeGenerateTitleLocked. On the success path the flag
+// clear is a no-op against retry: line 428's
+// `state.Title != "" && state.Title != derived` already short-circuits
+// once a real title has been persisted.
 func (a *Agent) runTitleGeneration(id, model, derivedSnapshot string, history []anthropic.MessageParam) {
+	defer func() {
+		a.mu.Lock()
+		delete(a.titleGenInflight, id)
+		a.mu.Unlock()
+	}()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

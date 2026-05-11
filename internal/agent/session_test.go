@@ -354,6 +354,36 @@ func TestMaybeGenerateTitle_GatedOnFirstAssistantTurn(t *testing.T) {
 	a.maybeGenerateTitleLocked(state) // must be a no-op without a client
 }
 
+// TestRunTitleGeneration_ClearsInflightOnFailure pins the v0.89 fix.
+// Pre-fix, titleGenInflight[id] was set to true before spawning the
+// title-generation goroutine but never cleared, so a transient
+// callTitleAPI failure (network timeout, rate limit, 5-second context
+// deadline) left the session permanently locked out of future title
+// generations: every subsequent autosave saw inflight=true and
+// skipped maybeGenerateTitleLocked.
+//
+// The test invokes runTitleGeneration directly with `a.client = nil`
+// so callTitleAPI's first line panics on a nil pointer dereference.
+// The deferred cleanup must run during panic unwind, clearing the
+// flag — and `recover()` in the test scope catches the panic so the
+// test can assert post-conditions.
+func TestRunTitleGeneration_ClearsInflightOnFailure(t *testing.T) {
+	a := &Agent{
+		titleGenInflight: map[string]bool{"locked-session": true},
+	}
+
+	// Defer recover so the nil-client panic from callTitleAPI doesn't
+	// fail the test; SafeGo would do this in production.
+	func() {
+		defer func() { _ = recover() }()
+		a.runTitleGeneration("locked-session", "claude-mock", "", nil)
+	}()
+
+	if a.titleGenInflight["locked-session"] {
+		t.Errorf("titleGenInflight['locked-session'] still true after runTitleGeneration — failure path leaves the session permanently locked")
+	}
+}
+
 func TestHasFirstAssistantTurn(t *testing.T) {
 	cases := []struct {
 		name string
