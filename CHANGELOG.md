@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.130.0] - 2026-05-11
+
+**`workflows.Result.MarshalJSON` shadows empty stable fields too.**
+The docstring promised "Collisions with the stable fields are
+dropped in favour of the stable field." But the collision check
+used `_, exists := base[k]`, which only matched keys ALREADY in
+the base map. When `NextSteps` was empty, `base` didn't include
+`"next_steps"` — so an `Extra` map carrying a `"next_steps"` key
+(typo, copy-paste from another workflow, sub-workflow proxy
+bubble-up) slipped through and surfaced as the top-level
+`next_steps` value despite the stable field being explicitly
+empty.
+
+Concretely: a workflow returning
+`Result{Summary: ..., NextSteps: nil, Extra: {"next_steps": [...]}}`
+emitted the Extra slice as if it were the operator-facing
+next_steps recommendation.
+
+### Fixed
+
+- **Explicit stable-field name set** used purely for collision
+  detection (`{"summary", "phases", "next_steps"}`), so even
+  empty stable fields shadow Extra. Legitimate Extra keys
+  (`pmkid_hex`, `hashcat_mode`, etc.) still flatten through
+  unchanged.
+- `TestResultMarshalJSON_StableFieldsWinOverExtra` covers the bug
+  case; `TestResultMarshalJSON_NextStepsPopulatedWinsToo` locks
+  the already-working populated path against future refactors.
+  Pre-fix verification: stashing the workflows.go change makes
+  the first test fail with `next_steps slipped in from Extra
+  despite the stable field being empty`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.129.0] - 2026-05-11
 
 **`flipper.SetPipelineBundle` actually rejects a zero-valued bundle.**
