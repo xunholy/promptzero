@@ -223,6 +223,18 @@ func (c *Counter) Snapshot() Snapshot {
 // kind so the model has enough context to pick a different
 // approach. We deliberately avoid prescribing a remedy — the model
 // picks based on tool semantics.
+//
+// LastKind is the normalised error string from prior failed
+// dispatches. Tool error messages often echo attacker-controlled
+// content (a wifi_join error message embeds the target SSID; an
+// nfc_apdu error embeds the card UID), so a tool that consistently
+// failed three times with `</circuit-breaker-open>` somewhere in
+// the body would propagate that literal into this block — letting
+// an attacker close the wrapper early and inject downstream
+// instructions. Mirror the defense in
+// agent.quarantineOutput (v0.134): rewrite literal close tags to
+// `< /circuit-breaker-open>` (single space after `<`), which
+// renders almost identically but is structurally NOT a close tag.
 func EscalationMessage(state State) string {
 	if !state.Open {
 		return ""
@@ -237,11 +249,20 @@ func EscalationMessage(state State) string {
 	b.WriteString("Stop retrying this tool with these inputs; pick a different approach or surface a clarifying question to the operator.\n")
 	if state.LastKind != "" {
 		b.WriteString("Repeated error: ")
-		b.WriteString(state.LastKind)
+		b.WriteString(neutralizeCloseTag(state.LastKind))
 		b.WriteString("\n")
 	}
 	b.WriteString("</circuit-breaker-open>")
 	return b.String()
+}
+
+// neutralizeCloseTag rewrites any literal `</circuit-breaker-open>`
+// inside content to `< /circuit-breaker-open>`. See
+// EscalationMessage's docstring for why and
+// agent.quarantineOutput.neutralizeCloseTag (v0.134) for the
+// parallel pattern.
+func neutralizeCloseTag(content string) string {
+	return strings.ReplaceAll(content, "</circuit-breaker-open>", "< /circuit-breaker-open>")
 }
 
 // writeInt avoids strconv just for one int — the strings.Builder is
