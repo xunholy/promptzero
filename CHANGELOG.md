@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.115.0] - 2026-05-11
+
+**`confidence.ShouldAbstainAt` clamps thresholds > 1.** The
+`Persona.Confidence` field's docstring promises "out-of-range values
+are clamped at use-site so a misconfigured persona can't push the
+agent into always-abstain or never-abstain territory." The check
+only enforced the `<=0` half (falling back to the 0.5 default). A
+threshold > 1 — operator typo, `confidence: { router: 2.0 }` — flew
+through verbatim: since classifier scores are already capped at 1.0
+by `clampScore`, the strict `score < threshold` comparison became
+always-true and silently forced abstention on every router / vision
+classifier call. That disabled the dynamic-catalog narrowing and
+vision-abstention features the operator was presumably trying to
+tune more aggressively, not turn off.
+
+### Fixed
+
+- **`ShouldAbstainAt` adds the symmetric upper clamp** (`> 1 → 1`).
+  Score=1.0 still passes (strict `<`); scores below 1.0 continue to
+  abstain, so the operator's "strict" intent is preserved up to the
+  clamp boundary.
+- `TestShouldAbstainAt` gains two cases: `(score=1.0, threshold=1.5)`
+  which pre-fix abstained and post-fix doesn't, plus a sanity check
+  that `(score=0.99, threshold=1.5)` still abstains. Pre-fix
+  verification: stashing the classifier.go change makes the
+  perfect-score case fail with `ShouldAbstainAt(1, 1.5) = true,
+  want false`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.114.0] - 2026-05-11
 
 **`dispatchStreaming` defers sink close so a panicking tool can't
