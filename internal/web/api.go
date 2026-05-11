@@ -1684,11 +1684,12 @@ func (s *Server) handleDevice(w http.ResponseWriter, r *http.Request) {
 	// suspended Flipper pill. Closes the SPEC.md §6.3 / api.go TODO
 	// from earlier; server-side state was already tracked, only the
 	// JSON wiring was missing.
-	bridge := map[string]any{
-		"active": s.bridgeOn.Load(),
-	}
-	if r := s.bridgeReason.Load(); r != nil {
-		bridge["reason"] = *r
+	bridge := map[string]any{"active": false}
+	if b := s.bridge.Load(); b != nil {
+		bridge["active"] = b.active
+		if b.reason != "" {
+			bridge["reason"] = b.reason
+		}
 	}
 	resp["bridge"] = bridge
 

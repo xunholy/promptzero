@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -415,4 +416,61 @@ func TestDevice_BridgeStateInResponse(t *testing.T) {
 	if got := bridge["reason"]; got != reason {
 		t.Errorf("bridge.reason = %v, want %q", got, reason)
 	}
+}
+
+// TestDevice_BridgeStateAtomicSnapshot pins the v0.145 fix: the
+// (active, reason) pair is stored as a single atomic.Pointer so a
+// reader can never see a half-applied transition. The pre-fix form
+// stored bridgeOn and bridgeReason as two separate atomics; a reader
+// landing between the writer's two stores could observe
+// `active=true` with `reason==nil` (or, on the false→true transition,
+// `active=false` with the previous reason still pointing into
+// memory).
+//
+// This test alternates SetBridgeMode(true, reason) and
+// SetBridgeMode(false, "") from one goroutine while another reads
+// s.bridge.Load() in a hot loop, and asserts the invariants:
+// active=true ⇒ reason != ""; active=false ⇒ reason == "".
+func TestDevice_BridgeStateAtomicSnapshot(t *testing.T) {
+	s, _ := apiServer(t, &fakeAgent{})
+
+	const reason = "Marauder stacked on GPIO header"
+	stop := make(chan struct{})
+	var writerWG, readerWG sync.WaitGroup
+
+	writerWG.Add(1)
+	go func() {
+		defer writerWG.Done()
+		for i := 0; i < 5000; i++ {
+			s.SetBridgeMode(true, reason)
+			s.SetBridgeMode(false, "")
+		}
+		close(stop)
+	}()
+
+	readerWG.Add(4)
+	for i := 0; i < 4; i++ {
+		go func() {
+			defer readerWG.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if b := s.bridge.Load(); b != nil {
+					if b.active && b.reason == "" {
+						t.Errorf("inconsistent snapshot: active=true with empty reason — atomic-pair guarantee broken")
+						return
+					}
+					if !b.active && b.reason != "" {
+						t.Errorf("inconsistent snapshot: active=false but reason=%q — stale reason leaked across release", b.reason)
+						return
+					}
+				}
+			}
+		}()
+	}
+	writerWG.Wait()
+	readerWG.Wait()
 }

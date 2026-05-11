@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.145.0] - 2026-05-12
+
+**`SetBridgeMode` publishes (active, reason) as a single atomic
+snapshot.** The web server's bridge-state surface used two separate
+atomics — `bridgeOn atomic.Bool` and `bridgeReason atomic.Pointer
+[string]` — so `SetBridgeMode` did two stores and `/api/device` did
+two loads. A reader landing between the writer's two stores could
+observe `active=true` with `reason==nil` (or, on the deactivate path,
+`active=false` with the previous reason pointer still set). The
+cockpit's bridge pill would render briefly inconsistent state on
+every toggle.
+
+### Fixed
+
+- Replace `bridgeOn` + `bridgeReason` with a single
+  `bridge atomic.Pointer[bridgeState]`. `SetBridgeMode` builds one
+  state struct and `.Store`s it; `/api/device` does one `.Load`.
+  Transition is now either-both-or-neither.
+- Regression test (`TestDevice_BridgeStateAtomicSnapshot`) alternates
+  `SetBridgeMode(true, …) / SetBridgeMode(false, "")` 5 000 times
+  against four parallel readers and asserts the invariants
+  `active=true ⇒ reason != ""` and `active=false ⇒ reason == ""`.
+  Intended for the `go test -race` lane.
+
 ## [0.144.0] - 2026-05-12
 
 **Marauder-mirror state transitions are atomic under `marauderMu`.**
