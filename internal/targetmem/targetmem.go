@@ -97,6 +97,17 @@ func Open(path string) (*Store, error) {
 	`); err != nil {
 		return nil, fmt.Errorf("targetmem: schema: %w", err)
 	}
+	// Tighten the DB file mode now that the file is guaranteed to exist.
+	// SQLite creates the file via the process umask (typically 0o644),
+	// but the targets DB carries operator-sensitive data — BSSIDs +
+	// SSIDs from past pentests, NFC UIDs, free-form Facts JSON the
+	// agent recorded — that should not leak to other accounts on the
+	// host. Mirrors audit.Open's chmod-after-sql.Open pattern; the
+	// parent directory already drops to 0o700 a few lines up. Same
+	// security rationale that drove the semcache fix one release back.
+	if err := os.Chmod(path, 0o600); err != nil {
+		obs.Default().Warn("targetmem_chmod_failed", "path", path, "err", err)
+	}
 	return &Store{db: db}, nil
 }
 
