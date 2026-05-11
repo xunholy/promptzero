@@ -58,11 +58,11 @@ func Unified(name, oldContent, newContent string) string {
 
 	emittedLines := 2 // the two header lines above
 	emittedBytes := b.Len()
-	truncated := 0
+	capped := false
 
 	flush := func(s string) bool {
 		if emittedLines >= maxLines || emittedBytes+len(s) > maxBytes {
-			truncated++
+			capped = true
 			return false
 		}
 		b.WriteString(s)
@@ -71,13 +71,24 @@ func Unified(name, oldContent, newContent string) string {
 		return true
 	}
 
-	for _, h := range hunks {
+	// Snapshot the hunk loop indices when we bail so we can count
+	// the lines we never got to emit and surface that in the
+	// truncation marker. Previously the counter incremented exactly
+	// once on the first rejected line and we then broke out of both
+	// loops — the marker always read "1 lines truncated" no matter
+	// how much content actually fell off, which made the message
+	// useless for sizing-up "is this a small or massive diff" at a
+	// glance.
+	stopHunk, stopOp := -1, -1
+
+	for hi, h := range hunks {
 		header := fmt.Sprintf("@@ -%d,%d +%d,%d @@\n", h.oldStart, h.oldLen, h.newStart, h.newLen)
 		if !flush(header) {
+			stopHunk, stopOp = hi, 0
 			break
 		}
 		stopped := false
-		for _, op := range h.ops {
+		for oi, op := range h.ops {
 			var prefix byte
 			switch op.kind {
 			case opEqual:
@@ -89,6 +100,7 @@ func Unified(name, oldContent, newContent string) string {
 			}
 			line := string(prefix) + op.text + "\n"
 			if !flush(line) {
+				stopHunk, stopOp = hi, oi
 				stopped = true
 				break
 			}
@@ -98,8 +110,24 @@ func Unified(name, oldContent, newContent string) string {
 		}
 	}
 
-	if truncated > 0 {
-		fmt.Fprintf(&b, "[... %d lines truncated ...]\n", truncated)
+	if capped {
+		// Count every op + hunk header that we never reached. Each
+		// remaining op contributes one line; each remaining hunk
+		// (beyond the one we stopped inside) contributes a header
+		// line too. Off-by-one safety: stopOp is the index of the
+		// rejected line, so ops at >= stopOp are unflushed.
+		remaining := 0
+		if stopHunk >= 0 {
+			// Lines left in the hunk we bailed from.
+			if stopHunk < len(hunks) {
+				remaining += len(hunks[stopHunk].ops) - stopOp
+			}
+			// Lines (header + every op) for every hunk after that.
+			for i := stopHunk + 1; i < len(hunks); i++ {
+				remaining += 1 + len(hunks[i].ops)
+			}
+		}
+		fmt.Fprintf(&b, "[... %d lines truncated ...]\n", remaining)
 	}
 
 	return b.String()
