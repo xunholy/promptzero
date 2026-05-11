@@ -204,15 +204,21 @@ func chunkInt32(s []int32, n int) [][]int32 {
 	return out
 }
 
-// toInt coerces a JSON-decoded value into an int. Handles both the
-// float64 values encoding/json produces by default and string forms (when
-// the LLM stringifies numerics).
+// toInt coerces a JSON-decoded value into an int. Matches the
+// v0.157 tools.intOr / v0.158 workflows.paramInt contract: accepts
+// every numeric type the value might arrive as — float64 (json
+// default), float32, int, int32, int64 — plus numeric strings.
+// Returns an error when the value is absent or unparseable.
 func toInt(v interface{}) (int, error) {
 	switch n := v.(type) {
 	case float64:
 		return int(n), nil
+	case float32:
+		return int(n), nil
 	case int:
 		return n, nil
+	case int32:
+		return int(n), nil
 	case int64:
 		return int(n), nil
 	case string:
@@ -225,7 +231,9 @@ func toInt(v interface{}) (int, error) {
 	return 0, fmt.Errorf("expected integer, got %T", v)
 }
 
-// toUint32 coerces a JSON-decoded value into uint32. Rejects negatives.
+// toUint32 coerces a JSON-decoded value into uint32 and rejects
+// negatives. Accepts the same numeric-type set as toInt
+// (v0.157/v0.158 contract).
 func toUint32(v interface{}) (uint32, error) {
 	switch n := v.(type) {
 	case float64:
@@ -233,7 +241,17 @@ func toUint32(v interface{}) (uint32, error) {
 			return 0, fmt.Errorf("negative value %v", n)
 		}
 		return uint32(n), nil
+	case float32:
+		if n < 0 {
+			return 0, fmt.Errorf("negative value %v", n)
+		}
+		return uint32(n), nil
 	case int:
+		if n < 0 {
+			return 0, fmt.Errorf("negative value %v", n)
+		}
+		return uint32(n), nil
+	case int32:
 		if n < 0 {
 			return 0, fmt.Errorf("negative value %v", n)
 		}

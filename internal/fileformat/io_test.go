@@ -110,3 +110,88 @@ func TestDiff_IR(t *testing.T) {
 		t.Fatalf("expected a command diff entry")
 	}
 }
+
+// TestToInt_GoNativeNumericTypes pins the v0.159 contract: toInt
+// accepts the full {float64, float32, int, int32, int64, string}
+// set. Mirrors v0.157 tools.intOr and v0.158 workflows.paramInt —
+// any Go-native numeric type a non-JSON caller might pass should
+// coerce cleanly rather than erroring with "expected integer, got
+// int32".
+func TestToInt_GoNativeNumericTypes(t *testing.T) {
+	cases := []struct {
+		name string
+		in   any
+		want int
+	}{
+		{"float64", float64(42), 42},
+		{"float32", float32(3.7), 3}, // truncates toward zero
+		{"int", int(-5), -5},
+		{"int32", int32(7), 7},
+		{"int64", int64(123456), 123456},
+		{"numeric_string", "100", 100},
+		{"trimmed_string", "  42  ", 42},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := toInt(tc.in)
+			if err != nil {
+				t.Fatalf("toInt(%v) error: %v", tc.in, err)
+			}
+			if got != tc.want {
+				t.Errorf("toInt(%v) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestToInt_NonNumericRejected verifies the unrecognised-type
+// error path: bool / nil / slice / non-numeric string surface as
+// errors rather than silently returning zero.
+func TestToInt_NonNumericRejected(t *testing.T) {
+	for _, in := range []any{true, nil, []int{1}, "not-a-number"} {
+		if _, err := toInt(in); err == nil {
+			t.Errorf("toInt(%v) returned nil error; want failure for non-numeric input", in)
+		}
+	}
+}
+
+// TestToUint32_GoNativeNumericTypes pins the same v0.159 set for
+// the unsigned variant.
+func TestToUint32_GoNativeNumericTypes(t *testing.T) {
+	cases := []struct {
+		name string
+		in   any
+		want uint32
+	}{
+		{"float64", float64(42), 42},
+		{"float32", float32(3.7), 3},
+		{"int", int(7), 7},
+		{"int32", int32(123), 123},
+		{"int64", int64(987654), 987654},
+		{"numeric_string", "100", 100},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := toUint32(tc.in)
+			if err != nil {
+				t.Fatalf("toUint32(%v) error: %v", tc.in, err)
+			}
+			if got != tc.want {
+				t.Errorf("toUint32(%v) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestToUint32_NegativesRejected pins the negative-value rejection
+// across every Go-native input type added in v0.159. A negative
+// int32 / float32 / int64 must still surface as an error so a
+// future caller passing -1 as a "sentinel" can't silently land at
+// 0xFFFFFFFF.
+func TestToUint32_NegativesRejected(t *testing.T) {
+	for _, in := range []any{int32(-1), float32(-1.5), int(-100), int64(-1), float64(-0.5)} {
+		if _, err := toUint32(in); err == nil {
+			t.Errorf("toUint32(%v) returned nil error; want negative-value rejection", in)
+		}
+	}
+}

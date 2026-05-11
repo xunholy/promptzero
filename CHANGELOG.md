@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.159.0] - 2026-05-12
+
+**`fileformat.toInt` / `toUint32` accept Go-native numeric types.**
+Third site in the v0.157/v0.158 arc. `internal/fileformat/io.go`'s
+`toInt` and `toUint32` accepted `float64`, `int`, `int64`, and
+`string` but not `int32` or `float32`. The .sub-builder paths
+(`BuildSub` / `BuildSubBruteforce` etc.) consume these via the
+helpers when an internal Go caller passes a hand-built param map —
+the silent error mode was `"expected integer, got int32"`.
+
+### Fixed
+
+- Extend both `toInt` and `toUint32` to accept the full
+  `{float64, float32, int, int32, int64, string}` numeric-type set.
+  `toUint32`'s negative-value rejection now applies across every
+  added type, so a `float32(-1)` or `int32(-1)` still surfaces as
+  an error rather than landing at `0xFFFFFFFF`.
+- Four regression tests pin both directions:
+  `TestToInt_GoNativeNumericTypes`,
+  `TestToInt_NonNumericRejected`,
+  `TestToUint32_GoNativeNumericTypes`, and
+  `TestToUint32_NegativesRejected`.
+
+With v0.157, v0.158, and v0.159 shipped, all three arg-helper
+sites in the codebase (`tools/args.go`, `workflows/workflows.go`,
+`fileformat/io.go`) share the same Go-native-numeric-type contract.
+
 ## [0.158.0] - 2026-05-12
 
 **Workflows arg helpers match the v0.157 numeric-type set.** The
