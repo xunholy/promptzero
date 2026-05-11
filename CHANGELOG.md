@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.165.0] - 2026-05-12
+
+**`signal_library_search` envelope's `matches` field is always a
+JSON array.** Third site in the v0.163 / v0.164 nil-slice → "null"
+arc. `fileformat.SearchFreqmanDir` returns nil when the library
+root is empty / missing / has no `.txt` files. The handler put
+that nil directly into `envelope["matches"]`, so the LLM saw
+`"matches": null` instead of `"matches": []` — same defect class
+the audit-export and audit_query fixes addressed.
+
+### Fixed
+
+- Substitute an empty `[]fileformat.FreqmanMatch{}` when
+  `SearchFreqmanDir` returns nil, so the envelope's `matches`
+  field always carries a parseable JSON array. Mirrors v0.163
+  / v0.164 idiom.
+- Regression test
+  `TestSignalLibrarySearch_EmptyMatchesIsJSONArray` runs against
+  an empty home directory and asserts the parsed `matches` field
+  is a non-nil `[]any`, not the JSON null literal.
+
 ## [0.164.0] - 2026-05-12
 
 **`audit_query` tool returns "[]" for an empty result, not "null".**

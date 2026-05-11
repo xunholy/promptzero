@@ -558,3 +558,48 @@ func TestSignalLibrarySearch_NonExistentLibraryDirReturnsZeroMatches(t *testing.
 		t.Errorf("non-existent library should not surface ErrNotExist: %v", err)
 	}
 }
+
+// TestSignalLibrarySearch_EmptyMatchesIsJSONArray pins the v0.165
+// contract: when SearchFreqmanDir returns nil (missing library dir,
+// no .txt files, etc.), the envelope's `matches` field must be the
+// JSON array `[]`, not the literal `null` that json.Marshal of a
+// nil slice produces inside a map. The LLM iterates this field to
+// list candidate captures; having to special-case `null` vs `[]`
+// is a defect, same as v0.163 / v0.164 fixed for audit_export and
+// audit_query.
+func TestSignalLibrarySearch_EmptyMatchesIsJSONArray(t *testing.T) {
+	home := t.TempDir() // no .promptzero/freqman/ — SearchFreqmanDir returns nil
+	t.Setenv("HOME", home)
+
+	spec, ok := Get("signal_library_search")
+	if !ok {
+		t.Fatal("signal_library_search not registered")
+	}
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{"query": "garage"})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+
+	// Parse generically and verify matches is a JSON array (non-nil),
+	// not the JSON null literal.
+	var parsed map[string]any
+	if jerr := json.Unmarshal([]byte(out), &parsed); jerr != nil {
+		t.Fatalf("output not parseable JSON: %v\nbody: %s", jerr, out)
+	}
+	m, hasMatches := parsed["matches"]
+	if !hasMatches {
+		t.Fatalf("matches field absent; body: %s", out)
+	}
+	if m == nil {
+		t.Errorf("matches = nil (JSON null); want empty array []. body: %s", out)
+	}
+	// Cross-check by deserialising into a concrete slice — null
+	// would land as a nil-slice; []any stays non-nil here.
+	arr, isSlice := m.([]any)
+	if !isSlice {
+		t.Errorf("matches is not a slice (got %T); body: %s", m, out)
+	}
+	if arr == nil {
+		t.Errorf("matches is a nil-slice (JSON null shape); body: %s", out)
+	}
+}
