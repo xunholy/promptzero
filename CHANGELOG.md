@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.125.0] - 2026-05-11
+
+**`targetmem.db` no longer world-readable.** Follow-up to v0.124's
+semcache fix — same security gap, different operator-data store.
+The targetmem SQLite file stores BSSIDs + SSIDs the operator has
+scanned, NFC UIDs, and free-form Facts JSON the agent recorded
+across past engagements. The parent directory was already 0o700,
+but SQLite creates the file via the process umask (typically
+0o644) and `targetmem.Open` had no follow-up `chmod` — leaving the
+entire persistent target memory readable by every account on the
+host.
+
+### Fixed
+
+- **`Open` chmods `targetmem.db` to `0o600`** after `sql.Open`
+  creates it. Mirrors the existing `audit.Open` discipline (warn
+  log on chmod failure). Brings every operator-data store under
+  `~/.promptzero` — audit, session, snapshot, semcache, targetmem
+  — to a consistent `0o600` / `0o700` baseline.
+- `TestOpen_DBFilePermissionsLockedDown` stats the on-disk file
+  after Open and asserts mode == `0o600`. Pre-fix verification:
+  stashing the targetmem.go change makes the test fail with
+  `targetmem db mode = 0644, want 0o600 (operator-only)`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.124.0] - 2026-05-11
 
 **`semcache` files no longer world-readable.** The cache stores
