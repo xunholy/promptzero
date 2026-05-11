@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-05-11
+
+**Mode parity audit, phase 1: MCP gets audit logging + sidecars.**
+Survey of the four operator modes (CLI, web, MCP, voice) flagged
+MCP as the most-degraded surface relative to the CLI. `runMCPMode`
+returned early before the setup helpers that wire the audit log,
+the Bruce/Faultier/BusPirate sidecars, and other safety
+infrastructure. Result: every MCP tool call was invisible to
+`/audit query`, and three sidecar devices appeared "not connected"
+even when the operator had them configured.
+
+(Voice mode is already at full CLI parity — `--voice` is a thin
+REPL extension. Web is at partial parity; later phases will close
+the remaining `/api/*` endpoint gaps for `/mode`, `/budget`,
+`/audit`, etc.)
+
+### Fixed
+
+- **MCP mode now opens the same `~/.promptzero/audit.db` the REPL
+  uses.** A parallel REPL session running `/audit query` can see
+  tool calls driven by an MCP client, matching the documented
+  "all calls are audited" banner that `srv.ServeStdio` prints on
+  startup. Pre-v0.96 the banner was true only when the operator
+  pre-configured an audit log elsewhere — `runMCPMode` itself
+  never called `srv.SetAuditLog`.
+- **MCP mode now connects optional sidecar clients** (Bruce
+  ESP32 backend, Faultier voltage-glitcher, Bus Pirate 5)
+  using the same config knobs the REPL honours (`cfg.Bruce.Port`,
+  etc.). Pre-v0.96 these connections only happened in the
+  REPL/web setup path; MCP clients hit the corresponding tools
+  with "not connected" errors even when the device was attached.
+- Extracted the wiring into a `wireMCPSidecars` helper so the
+  decisions (which configs trigger which Connect calls, which
+  failures degrade silently vs warn) are unit-testable without
+  needing real hardware. `TestWireMCPSidecars_OpensAuditLog`
+  pins the audit-log path; `TestWireMCPSidecars_NoSidecarsConfigured`
+  pins the negative path (silent when ports are unset).
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./cmd/promptzero/ ./internal/mcp/`
+  — all pass including the new `TestWireMCPSidecars_*` cases.
+
 ## [0.95.0] - 2026-05-11
 
 **Title-generation goroutine no longer clobbers operator renames.**
