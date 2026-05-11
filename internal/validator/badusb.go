@@ -74,9 +74,15 @@ func (r Report) Has(sev Severity) bool {
 }
 
 // rule is a compiled detection. When pattern matches, a Finding at
-// severity is emitted. Rules are ordered by specificity so the first
-// matching rule on a line wins — this keeps the report noise-free for
-// common cases like "STRING rm -rf /" where multiple rules could fire.
+// severity is emitted. When a single line matches multiple rules the
+// highest-severity rule wins — keeping the report at one finding per
+// line (so dozens of overlapping regexes don't flood the output)
+// while ensuring a Critical pattern never silently demotes to a Warn
+// because the Warn rule happens to appear earlier in the slice. The
+// pre-v0.149 form was "first match wins", which demoted lines that
+// combined a Warn-tier pattern (e.g. registry Run key persistence)
+// with a Critical-tier pattern (e.g. powershell -EncodedCommand) to
+// Warn — the line was effectively under-reported.
 type rule struct {
 	id       string
 	pattern  *regexp.Regexp
@@ -256,17 +262,31 @@ func Validate(name, src string) Report {
 			scanLine = rest
 		}
 
-		for _, r := range rules {
-			if r.pattern.MatchString(scanLine) {
-				rep.Findings = append(rep.Findings, Finding{
-					Severity: r.severity,
-					Rule:     r.id,
-					Message:  r.message,
-					Line:     lineNo,
-					Excerpt:  truncate(trimmed, 120),
-				})
-				break // one finding per line, highest-priority rule wins
+		// Walk every rule and pick the highest-severity match. A
+		// single line emits at most one Finding (Critical > Warn >
+		// Info), so the report stays one-finding-per-line — but a
+		// Critical pattern can never be silently suppressed by a
+		// Warn rule that happened to be checked first. Early-exit
+		// once a Critical lands since nothing higher exists.
+		var bestRule *rule
+		for i := range rules {
+			if rules[i].pattern.MatchString(scanLine) {
+				if bestRule == nil || rules[i].severity > bestRule.severity {
+					bestRule = &rules[i]
+				}
+				if bestRule.severity == SeverityCritical {
+					break
+				}
 			}
+		}
+		if bestRule != nil {
+			rep.Findings = append(rep.Findings, Finding{
+				Severity: bestRule.severity,
+				Rule:     bestRule.id,
+				Message:  bestRule.message,
+				Line:     lineNo,
+				Excerpt:  truncate(trimmed, 120),
+			})
 		}
 	}
 

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.149.0] - 2026-05-12
+
+**BadUSB validator emits the highest-severity match per line.** The
+per-line rule loop in `Validate` was "first match wins" — when a
+single DuckyScript line tripped two rules, the rule that appeared
+earlier in the slice was reported regardless of severity. The
+in-function comment said "highest-priority rule wins" but the code
+didn't honour that. A real attacker payload combining persistence
+(`reg add HKLM\…\Run`, classified Warn) with base64-encoded
+PowerShell (`powershell -enc …`, classified Critical) on the same
+line reported only the Warn finding — the line slipped below
+`AllowCritical`'s intended gate.
+
+### Fixed
+
+- Walk every rule per line and pick the highest-severity match;
+  early-exit once a Critical match lands (nothing higher exists).
+  Report stays one-finding-per-line.
+- Regression test
+  (`TestValidate_HighestSeverityWinsPerLine`) stages exactly the
+  Warn+Critical overlap scenario and asserts `powershell_enc` wins
+  over `persist_runkey`. Pre-fix it returned Warn and the test
+  failed loudly.
+
 ## [0.148.0] - 2026-05-12
 
 **`risk.Register` rejects out-of-range Level values.** `AutoApprove`
