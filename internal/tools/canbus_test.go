@@ -95,6 +95,15 @@ func TestValidateCanHexData(t *testing.T) {
 		"0x1234",             // 0x prefix not allowed for data
 		"dead beef",          // space
 		"$(echo evil)",       // command substitution
+		// v0.173 regression coverage: odd-length hex is a half-byte
+		// payload. CAN frames are byte-oriented (DLC 0..8 bytes), so
+		// the firmware can't honour a 7-char value like "abcdef0" —
+		// either it gets silently truncated or rejected with an
+		// unhelpful firmware error. Reject up front.
+		"a",       // 1 char
+		"abc",     // 3 chars
+		"12345",   // 5 chars
+		"abcdef0", // 7 chars
 	}
 	for _, s := range invalid {
 		if err := validateCanHexData("test_field", s); err == nil {

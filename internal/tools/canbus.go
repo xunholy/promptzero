@@ -71,13 +71,16 @@ func validateFlipperPath(field, s string) error {
 	return nil
 }
 
-// validateCanHexData returns an error when s is not a valid hex data string
-// (up to 16 hex chars, no prefix). Prevents injection via data_hex.
-var reCanHexData = regexp.MustCompile(`(?i)^[0-9a-f]{0,16}$`)
+// validateCanHexData returns an error when s is not a valid hex data string.
+// CAN payloads are byte-oriented (DLC 0..8 bytes), so the hex encoding must
+// be even-length (0 to 16 hex chars in pairs). Prior `[0-9a-f]{0,16}` accepted
+// odd-length strings like "abc" — half-byte payloads the firmware can't honour
+// and that the LLM has no way to spot from the error message.
+var reCanHexData = regexp.MustCompile(`(?i)^([0-9a-f]{2}){0,8}$`)
 
 func validateCanHexData(field, s string) error {
 	if !reCanHexData.MatchString(s) {
-		return fmt.Errorf("canbus: %s %q is not valid hex data (expected up to 16 hex chars)", field, s)
+		return fmt.Errorf("canbus: %s %q is not valid hex data (expected an even number of hex chars, 0..16, encoding 0..8 bytes)", field, s)
 	}
 	return nil
 }
