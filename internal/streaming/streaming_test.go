@@ -3,6 +3,7 @@ package streaming
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestNewSink_DefaultsBuffer(t *testing.T) {
@@ -239,4 +240,62 @@ func TestNilSink_AbortIsNoOp(t *testing.T) {
 	if s.Aborted() != nil {
 		t.Errorf("nil Aborted() != nil chan")
 	}
+}
+
+// TestSink_SendConcurrentWithClose pins the v0.87 race fix. The
+// Sink docstring claims "safe for use from multiple goroutines on
+// the same sink" but the pre-fix Send was TOCTOU racy against
+// Close: a Send that passed s.closed.Load() == false could then
+// try to send on a channel Close had just closed, panicking with
+// "send on closed channel".
+//
+// The race is reproducible under `-race` by hammering Send from
+// multiple producer goroutines while Close runs. The contract this
+// test pins is "no panic, no deadlock, Close completes" — not a
+// specific delivery count, which is racy by nature.
+func TestSink_SendConcurrentWithClose(t *testing.T) {
+	s := NewSink("test_tool", 0)
+
+	// Consumer goroutine drains so Send exercises the real
+	// channel-send branch (not just the dropped-on-full path); the
+	// race lived in the channel-send so we need to exercise it.
+	var consumer sync.WaitGroup
+	consumer.Add(1)
+	go func() {
+		defer consumer.Done()
+		for range s.Frames() {
+		}
+	}()
+
+	// Hammer Send from many goroutines until told to stop.
+	stop := make(chan struct{})
+	var producers sync.WaitGroup
+	const workers = 8
+	for i := 0; i < workers; i++ {
+		producers.Add(1)
+		go func() {
+			defer producers.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				s.Send([]byte("frame"))
+			}
+		}()
+	}
+
+	// Let producers warm up so the channel is hot when Close fires.
+	time.Sleep(10 * time.Millisecond)
+
+	s.Close()
+
+	// Producers should observe closed=true and exit cleanly; any
+	// `send on closed channel` panic would have already failed the
+	// test under `-race`. Stop producers AFTER Close to keep the
+	// race window open as long as possible.
+	close(stop)
+	producers.Wait()
+	consumer.Wait()
 }
