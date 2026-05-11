@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
@@ -31,6 +32,17 @@ type reflectFunc func(ctx context.Context, toolName string, input json.RawMessag
 // intact and appends the reflection inside a <reflection>...</reflection>
 // block so the downstream model sees it clearly delimited from the raw
 // error.
+//
+// The reflector LLM is free-form text — Haiku's diagnosis can in
+// principle echo input (which contains attacker-influenceable
+// hardware errors with SSIDs, NFC URIs, filenames). A literal
+// `</reflection>` in the model output would render two close tags
+// with model text between them, structurally escaping the wrapper.
+// Mirror the defense arc in agent.quarantineOutput (v0.134),
+// breaker.EscalationMessage (v0.135), and
+// consensus.DisagreementMessage (v0.136): rewrite literal
+// `</reflection>` inside r to `< /reflection>` (single space after
+// `<`) — visually near-identical, structurally NOT a close tag.
 func maybeAppendReflection(
 	ctx context.Context,
 	toolName string,
@@ -49,6 +61,7 @@ func maybeAppendReflection(
 	if r == "" {
 		return output
 	}
+	r = strings.ReplaceAll(r, "</reflection>", "< /reflection>")
 	*reflectionsThisTurn++
 	return output + "\n\n<reflection>" + r + "</reflection>"
 }
