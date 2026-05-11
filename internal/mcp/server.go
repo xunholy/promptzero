@@ -212,7 +212,15 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 
 		// Risk consent gate: refuse risk≥High unless the operator has
 		// opted in via environment variable. Always audit the attempt.
-		if capturedLevel == risk.Critical && os.Getenv("PROMPTZERO_MCP_ALLOW_CRITICAL") != "1" {
+		//
+		// ALLOW_CRITICAL=1 implies ALLOW_HIGH (see package docstring) —
+		// an operator who's already chosen to permit destructive
+		// critical-tier calls would be surprised if a less-destructive
+		// High call was still denied. The High check below honours both
+		// env vars so the implication is real, not just documented.
+		allowCritical := os.Getenv("PROMPTZERO_MCP_ALLOW_CRITICAL") == "1"
+		allowHigh := allowCritical || os.Getenv("PROMPTZERO_MCP_ALLOW_HIGH") == "1"
+		if capturedLevel == risk.Critical && !allowCritical {
 			if s.audit != nil {
 				s.audit.RecordCtx(ctx, capturedName, args, "", levelStr, audit.LevelAction, 0, false)
 			}
@@ -220,7 +228,7 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 				"tool requires consent — set PROMPTZERO_MCP_ALLOW_CRITICAL=1 to allow critical-risk MCP calls (audit will still record)",
 			), nil
 		}
-		if capturedLevel == risk.High && os.Getenv("PROMPTZERO_MCP_ALLOW_HIGH") != "1" {
+		if capturedLevel == risk.High && !allowHigh {
 			if s.audit != nil {
 				s.audit.RecordCtx(ctx, capturedName, args, "", levelStr, audit.LevelAction, 0, false)
 			}
