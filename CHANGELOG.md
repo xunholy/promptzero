@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-05-11
+
+**Marauder BLE URL parser coverage.** The two parsers that
+classify operator-supplied `ble://` URLs into MAC / UUID / name
+forms and strip the scheme were 0 % covered. Both are pure
+hand-rolled parsers (can't use `net/url.Parse` because MAC
+addresses "AA:BB:..." trip "invalid port"), and a regression
+silently misroutes a BLE connection — a UUID classified as a
+name causes `scanForMarauderAddress` to match the wrong device.
+
+### Changed
+
+- **`internal/marauder/transport_ble.go` URL parser coverage.**
+  Extended `transport_ble_helpers_test.go` with 22 sub-tests
+  spanning both parsers:
+  - `TestParseMarauderBLEAddress` (8 sub-tests) — MAC
+    upper-canonical normalisation across mixed-case and
+    whitespace inputs, UUID lower-canonical normalisation,
+    name passthrough preserving operator-supplied casing,
+    empty / whitespace-only inputs return error.
+  - `TestStripBLEScheme` (14 sub-tests) — bare addresses
+    tolerated (no scheme), `ble://` scheme accepted, trailing
+    `?query` stripped for forward-compat, foreign schemes
+    (`http`, `tcp`, etc.) rejected, empty path with or without
+    query rejected.
+
+  Coverage on `internal/marauder` rose **67.7 % → 67.9 %**
+  (+0.2 pp). Modest delta because the parser bodies are short,
+  but the tests exercise 22 distinct code paths through
+  validation logic that previously had no protection.
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure URL parser tests; no
+  transport touched.
+
 ## [0.74.0] - 2026-05-11
 
 **Marauder BLE helper coverage.** Closes a symmetry gap: the
