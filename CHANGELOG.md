@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.153.0] - 2026-05-12
+
+**Trainset chat-row inner JSON uses `json.Marshal`, not Go-string
+quoting.** The `toChatRow` helper in `internal/trainset/trainset.go`
+built the `{"tool": ..., "input": ...}` object embedded inside its
+assistant message's markdown fence via
+`fmt.Sprintf("...%q...", e.Tool, e.Input, ...)`. `%q` is
+`strconv.Quote` — Go-string escaping — applied to a tool name
+loaded from the audit log. An audit row with a tool name carrying
+control bytes (a malicious DB write, or a future federated-tool
+name escape) produced an inner block with `\a`, `\v`, or `\xNN`
+escapes that JSON parsers consuming the exported training set
+silently reject. Closes the v0.150-v0.152 JSON-quoting arc — this
+was the last remaining `fmt.Sprintf` JSON builder with `%q` on a
+user-controlled string in the production tree.
+
+### Fixed
+
+- Build the inner envelope via `json.Marshal(map[string]any{...})`
+  with the already-serialised `e.Input` wrapped as a
+  `json.RawMessage` (gated on `json.Valid` so a legacy/NULL Input
+  falls back to JSON `null` rather than corrupting the parent).
+- Two regression tests in `internal/trainset/trainset_test.go`:
+  `TestExport_ChatAssistantInnerJSONValid` stages a tool name
+  containing `\x07` / `\x0B` / `\x00` and extracts the fenced
+  inner JSON to verify it round-trips through `json.Unmarshal`;
+  `TestExport_ChatAssistantHandlesEmptyInput` pins the empty-input
+  fallback emits `"input":null`.
+
 ## [0.152.0] - 2026-05-12
 
 **Bruce tool-result JSON uses `json.Marshal`, not Go-string
