@@ -12,6 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/persona"
 )
 
@@ -27,6 +28,8 @@ type fakeAgent struct {
 	resetCalls   int
 	lastRunInput string
 	persona      *persona.Persona
+	opMode       mode.Mode
+	readOnly     bool
 }
 
 func (f *fakeAgent) Run(ctx context.Context, input string) (string, error) {
@@ -78,6 +81,33 @@ func (f *fakeAgent) PersonaSnapshot() *persona.Persona {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.persona
+}
+
+func (f *fakeAgent) Mode() mode.Mode {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.opMode == "" {
+		return mode.ModeStandard
+	}
+	return f.opMode
+}
+
+func (f *fakeAgent) SetMode(m mode.Mode) {
+	f.mu.Lock()
+	f.opMode = m
+	f.mu.Unlock()
+}
+
+func (f *fakeAgent) ReadOnly() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.readOnly
+}
+
+func (f *fakeAgent) SetReadOnly(v bool) {
+	f.mu.Lock()
+	f.readOnly = v
+	f.mu.Unlock()
 }
 
 func (f *fakeAgent) emitDelta(t agent.TextDelta) {

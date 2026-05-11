@@ -54,6 +54,7 @@ import (
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/rules"
@@ -78,6 +79,15 @@ type agentDriver interface {
 	SetPersona(p *persona.Persona)
 	Persona() *persona.Persona
 	PersonaSnapshot() *persona.Persona
+
+	// Mode + ReadOnly: web equivalent of the CLI's /mode command. The
+	// agent's group allow-list is rebuilt on SetMode; SetReadOnly is
+	// engaged automatically by /api/mode when entering a read-
+	// restrictive mode (matches setupMode's startup behaviour).
+	Mode() mode.Mode
+	SetMode(m mode.Mode)
+	ReadOnly() bool
+	SetReadOnly(v bool)
 }
 
 // sessionDriver is the optional surface Server needs to expose persisted
