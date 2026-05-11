@@ -132,12 +132,20 @@ func DisagreementMessage(r Result) string {
 			continue
 		}
 		b.WriteString("- ")
-		b.WriteString(v.Model)
+		// Model is operator-supplied from the persona YAML's
+		// `consensus:` list and the critique is LLM-generated. Neither
+		// is direct attacker-controlled text, but defense in depth
+		// mirrors agent.quarantineOutput (v0.134) and
+		// breaker.EscalationMessage (v0.135): rewrite any literal
+		// `</consensus-disagreement>` inside the embedded strings to
+		// `< /consensus-disagreement>` so a smuggled close tag can't
+		// terminate the wrapper early.
+		b.WriteString(neutralizeCloseTag(v.Model))
 		b.WriteString(": ")
 		b.WriteString(risk)
 		if excerpt := summariseCritique(v.Critique); excerpt != "" {
 			b.WriteString(" — ")
-			b.WriteString(excerpt)
+			b.WriteString(neutralizeCloseTag(excerpt))
 		}
 		b.WriteByte('\n')
 	}
@@ -146,6 +154,15 @@ func DisagreementMessage(r Result) string {
 	}
 	b.WriteString("</consensus-disagreement>")
 	return b.String()
+}
+
+// neutralizeCloseTag rewrites any literal `</consensus-disagreement>`
+// inside the content to `< /consensus-disagreement>`. See
+// DisagreementMessage's docstring for the rationale and
+// agent.quarantineOutput (v0.134) / breaker.EscalationMessage
+// (v0.135) for the parallel patterns.
+func neutralizeCloseTag(content string) string {
+	return strings.ReplaceAll(content, "</consensus-disagreement>", "< /consensus-disagreement>")
 }
 
 // normaliseRisk lowercases + trims a Risk string. Returns "" for
