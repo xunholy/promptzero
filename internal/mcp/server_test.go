@@ -289,6 +289,45 @@ func TestServer_CallTool_HighRiskAllowedWithEnv(t *testing.T) {
 	}
 }
 
+// TestServer_CallTool_CriticalAllowImpliesHigh pins the package docstring's
+// promise that PROMPTZERO_MCP_ALLOW_CRITICAL=1 "implies High is also
+// permitted." Pre-fix the High gate consulted only PROMPTZERO_MCP_ALLOW_HIGH,
+// so an operator who set ALLOW_CRITICAL=1 (thinking it covered everything
+// destructive) still saw their High-risk calls denied. The promise was
+// documented but unenforced.
+//
+// Post-fix the High check accepts either env var, so the documented
+// implication now holds: opting in to the strictest tier opens the
+// weaker one too.
+func TestServer_CallTool_CriticalAllowImpliesHigh(t *testing.T) {
+	t.Setenv("PROMPTZERO_MCP_ALLOW_HIGH", "")
+	t.Setenv("PROMPTZERO_MCP_ALLOW_CRITICAL", "1")
+
+	c, _ := newTestHarness(t, false, testmocks.WithFlipperHandler("subghz", func(args []string) string {
+		return "tx complete"
+	}))
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var req mcplib.CallToolRequest
+	req.Params.Name = "subghz_transmit"
+	req.Params.Arguments = map[string]any{"file": "/ext/subghz/test.sub"}
+
+	res, err := c.CallTool(ctx, req)
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("high-risk tool should be permitted when ALLOW_CRITICAL=1 implies high (got IsError=true: %+v)", res.Content)
+	}
+	text := firstText(t, res)
+	if !strings.Contains(text, "tx complete") {
+		t.Errorf("expected tx handler output, got %q", text)
+	}
+}
+
 // TestServer_CallTool_CriticalRiskDefaultDenied verifies that a risk.Critical
 // tool is refused even when PROMPTZERO_MCP_ALLOW_HIGH=1 but CRITICAL is unset.
 func TestServer_CallTool_CriticalRiskDefaultDenied(t *testing.T) {
