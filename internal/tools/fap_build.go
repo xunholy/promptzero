@@ -94,7 +94,13 @@ func fapBuildHandler(ctx context.Context, d *Deps, args map[string]any) (string,
 			return "", fmt.Errorf("fap_build: create temp output dir: %w", err)
 		}
 	} else {
-		if err := os.MkdirAll(outDir, 0o755); err != nil {
+		// 0o700 matches the v0.124-v0.127 operator-data baseline.
+		// FAP build artefacts may include operator-authored source
+		// snippets (badusb payloads, exploit research) that should
+		// not leak to other accounts on a shared host. MkdirAll is a
+		// no-op for existing dirs, so an operator wanting a shared
+		// output dir can pre-create it with the wider mode.
+		if err := os.MkdirAll(outDir, 0o700); err != nil {
 			return "", fmt.Errorf("fap_build: create %s: %w", outDir, err)
 		}
 	}
