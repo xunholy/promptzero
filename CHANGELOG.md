@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-05-11
+
+**Streaming sink race fix — same class as v0.86 webhook.** The
+`streaming.Sink` docstring explicitly promises "safe for use from
+multiple goroutines on the same sink" but the pre-fix `Send` was
+TOCTOU racy against `Close`: a Send that passed
+`s.closed.Load() == false` could then try to send on a channel
+`Close` had just closed, panicking with "send on closed channel".
+
+In current usage every streaming tool runs `Send` synchronously
+then defers `Close`, so the race is unreachable today — but the
+contract the doc promises (concurrent producers) IS the race.
+Once a future tool spawns a goroutine that calls `Send` past its
+parent's return, the panic triggers immediately. Fixed
+proactively so the contract holds.
+
+### Fixed
+
+- **`streaming.Sink.Send` / `Close` now hold a mutex (`sendMu`)
+  across the closed-check and the channel operation,** matching
+  the v0.86 webhook fix pattern. Send is still non-blocking (the
+  inner select retains its `default` branch); the lock only
+  serialises against Close. Close acquires the same lock during
+  the once-only flag-set + channel-close so a concurrent Send is
+  guaranteed to either complete before the close or observe
+  closed=true under the lock.
+  - `TestSink_SendConcurrentWithClose` hammers Send from 8
+    producer goroutines while a consumer drains and Close runs.
+    Without the fix the test panics with "send on closed channel"
+    under `-race`; with the fix it passes cleanly.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/streaming/ ./internal/webhook/ ./internal/agent/`
+  — all pass, including the new race-stress test.
+
 ## [0.86.0] - 2026-05-11
 
 **Webhook dispatcher race fix.** `Fire` and `FireByName` could
