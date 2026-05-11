@@ -183,9 +183,10 @@ func glitchFireHandler(_ context.Context, d *Deps, _ map[string]any) (string, er
 }
 
 func glitchSetPulseHandler(_ context.Context, d *Deps, args map[string]any) (string, error) {
-	if err := d.RequireFaultier(); err != nil {
-		return "", err
-	}
+	// Validate args BEFORE the transport check (v0.178). Same pattern as
+	// canbus v0.174/v0.175, buspirate v0.176, and Bruce v0.177: otherwise
+	// a missing/negative timing value masquerades as "faultier not
+	// connected" and the LLM chases a probe-wiring fix.
 	delayUS := intOr(args, "delay_us", -1)
 	pulseUS := intOr(args, "pulse_us", -1)
 	if delayUS < 0 {
@@ -193,6 +194,9 @@ func glitchSetPulseHandler(_ context.Context, d *Deps, args map[string]any) (str
 	}
 	if pulseUS < 0 {
 		return "", fmt.Errorf("glitch_set_pulse: pulse_us must be >= 0")
+	}
+	if err := d.RequireFaultier(); err != nil {
+		return "", err
 	}
 	if err := d.Faultier.SetPulse(uint32(delayUS), uint32(pulseUS)); err != nil {
 		return "", fmt.Errorf("glitch_set_pulse: %w", err)
@@ -206,9 +210,9 @@ func glitchSetPulseHandler(_ context.Context, d *Deps, args map[string]any) (str
 }
 
 func glitchSweepHandler(ctx context.Context, d *Deps, args map[string]any) (string, error) {
-	if err := d.RequireFaultier(); err != nil {
-		return "", err
-	}
+	// Validate before transport (v0.178). Three timing args plus an
+	// ordering invariant (end >= start) are all worth surfacing before
+	// a "not connected" error swallows them.
 	startUS := intOr(args, "start_us", -1)
 	endUS := intOr(args, "end_us", -1)
 	stepUS := intOr(args, "step_us", -1)
@@ -220,6 +224,15 @@ func glitchSweepHandler(ctx context.Context, d *Deps, args map[string]any) (stri
 	}
 	if stepUS <= 0 {
 		return "", fmt.Errorf("glitch_sweep: step_us must be > 0")
+	}
+	// Ordering invariant — without this, a reversed range silently
+	// produced a negative `steps` value in the response envelope (see
+	// the (endUS-startUS)/stepUS+1 expression below).
+	if endUS < startUS {
+		return "", fmt.Errorf("glitch_sweep: end_us %d must be >= start_us %d", endUS, startUS)
+	}
+	if err := d.RequireFaultier(); err != nil {
+		return "", err
 	}
 	// ctx is forwarded so cancellation propagates into the sweep loop.
 	if err := d.Faultier.Sweep(ctx, uint32(startUS), uint32(endUS), uint32(stepUS)); err != nil {
