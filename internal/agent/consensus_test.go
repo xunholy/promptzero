@@ -2,8 +2,16 @@ package agent
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
+
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // TestExtractRiskFromCritique pins the small parsing shim that
@@ -73,4 +81,70 @@ func TestRunEnsembleProspective_BlanksFiltered(t *testing.T) {
 			t.Errorf("non-empty escalation despite blank models: %q", got)
 		}
 	}
+}
+
+// TestProspectiveWithModel_WarnLogOnAPIError pins the Persona.Consensus
+// docstring's promise that "Names the agent doesn't recognise are
+// skipped with a warn log so a typo doesn't silently disable the gate."
+// Pre-fix the API error was dropped silently; an operator's typo
+// (`consensus: [calude-sonnet-4-6]`) became a permanent invisible
+// abstention on every critical-risk call. Post-fix the function still
+// returns "" (abstention semantics preserved) but emits a warn log
+// with the model name + error so operators can see and fix the typo.
+//
+// Uses an httptest server that returns 400 for /v1/messages — the
+// shape Anthropic returns for an unknown model — and routes obs
+// output through a tempfile (the only public obs capture path)
+// so the test can assert on the emitted record.
+func TestProspectiveWithModel_WarnLogOnAPIError(t *testing.T) {
+	// Anthropic-style 400 response shape; the SDK surfaces this as
+	// an *anthropic.Error with status code 400.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"not_found_error","message":"model: calude-typo not found"}}`))
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient(
+		option.WithAPIKey("test-key"),
+		option.WithBaseURL(srv.URL),
+	)
+	a := &Agent{client: &client}
+
+	// Route obs.Default() through a tempfile so we can read back what
+	// it emitted. obs.Setup is the only public swap-the-global helper,
+	// so we work with what it gives us — it still mirrors to stderr
+	// but the tempfile carries the same content.
+	logFile := t.TempDir() + "/test.log"
+	obs.Setup(obs.LogConfig{Level: "warn", Format: "text", File: logFile})
+	t.Cleanup(func() {
+		// Reset to defaults so later tests don't inherit our tempfile.
+		obs.Setup(obs.LogConfig{Level: "info", Format: "text"})
+	})
+
+	// Drive runEnsembleProspective so the full surface participates:
+	// blank-filtering, per-model loop, and the new warn log on
+	// API error. The model name "calude-typo" mirrors the docstring's
+	// scenario verbatim.
+	_ = a.runEnsembleProspective(context.Background(), "subghz_transmit", []byte(`{"freq":433920000}`), []string{"calude-typo"})
+
+	data, readErr := readFileAll(logFile)
+	if readErr != nil {
+		t.Fatalf("read log: %v", readErr)
+	}
+	log := string(data)
+	if !strings.Contains(log, "ensemble_voter_api_error") {
+		t.Errorf("expected warn log with ensemble_voter_api_error, got: %q", log)
+	}
+	if !strings.Contains(log, "calude-typo") {
+		t.Errorf("warn log should name the unrecognised model so operators see the typo, got: %q", log)
+	}
+}
+
+// readFileAll is a tiny helper local to this test file. Avoids
+// pulling os into the file's import list at top scope just for one
+// callsite.
+func readFileAll(path string) ([]byte, error) {
+	return os.ReadFile(path)
 }
