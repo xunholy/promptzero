@@ -285,7 +285,14 @@ func (e *Engine) fire(r *Rule, entry audit.Entry) {
 				logger.Warn("rule_action_skipped", "kind", string(a.Kind), "reason", "no tool runner")
 				continue
 			}
-			if e.inFlight.Load() >= maxToolActions {
+			// Atomic Add-then-check reserves the slot in a single
+			// operation so concurrent Handle invocations cannot both
+			// pass a Load()-then-Add gate at the cap boundary and
+			// overshoot. The pre-v0.142 form did Load() + check +
+			// Add(1) separately: under `go test -race -count=50` two
+			// concurrent firers landed inFlight=9 with the cap at 8.
+			if e.inFlight.Add(1) > maxToolActions {
+				e.inFlight.Add(-1)
 				logger.Warn("rule_tool_saturated",
 					"rule", r.Name, "tool", a.Tool,
 					"in_flight", e.inFlight.Load(),
@@ -293,7 +300,6 @@ func (e *Engine) fire(r *Rule, entry audit.Entry) {
 					"reason", "too many concurrent tool actions; trigger dropped")
 				continue
 			}
-			e.inFlight.Add(1)
 			tool := a.Tool
 			params := a.Params
 			obs.SafeGo("rules.tool", func() {

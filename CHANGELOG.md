@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.142.0] - 2026-05-12
+
+**Rules engine in-flight cap holds under concurrent `Handle`.** The
+ActionTool dispatch path checked `inFlight.Load() >= maxToolActions`
+and then `Add(1)` in two separate atomic operations. Two `Handle`
+invocations racing from different goroutines could both pass the
+boundary check at `inFlight = maxToolActions-1` and both increment,
+leaving the live count at `cap+1`. Under `go test -race -count=50`
+this reliably reproduced — observed `inFlight=9` with the cap at 8.
+
+### Fixed
+
+- Reserve the slot atomically with `inFlight.Add(1)` and roll back
+  with `Add(-1)` when the post-increment value exceeds the cap.
+  Same pattern as a semaphore reservation.
+- Regression test (`TestEngine_ToolActionSaturation_ConcurrentHandle`)
+  fires `maxToolActions + 16` parallel goroutines and asserts the
+  live count never exceeds the cap. Intended for the `go test -race`
+  lane.
+
 ## [0.141.0] - 2026-05-12
 
 **`containerbridge.Available()` cache is concurrent-safe.** The
