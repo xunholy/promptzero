@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/persona"
@@ -315,6 +316,145 @@ func TestCostSnapshot(t *testing.T) {
 	// distinguishes "disabled" from "0/0" by absence).
 	if _, ok := body["budget"]; ok {
 		t.Errorf("budget block should be omitted when no cap is set")
+	}
+}
+
+// TestAuditEndpoints_503WhenLogMissing verifies all six /api/audit
+// endpoints return 503 (so the cockpit can hide the audit panel)
+// when the host hasn't wired an audit log via SetAuditLog.
+func TestAuditEndpoints_503WhenLogMissing(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	endpoints := []string{
+		"/api/audit/stats",
+		"/api/audit/query",
+		"/api/audit/find",
+		"/api/audit/session/abc",
+		"/api/audit/top",
+		"/api/audit/export",
+	}
+	for _, p := range endpoints {
+		t.Run(p, func(t *testing.T) {
+			code, _ := getJSON(t, ts, p)
+			if code != http.StatusServiceUnavailable {
+				t.Errorf("code = %d, want 503", code)
+			}
+		})
+	}
+}
+
+// TestAuditQuery_ReturnsRecentRows pins the GET /api/audit/query
+// happy path: insert two rows, GET, expect both back. Mirrors the
+// CLI's `/audit query [N]` (default N=20). Limit cap parsing is
+// shared with handleAuditFind so we test the parse only there.
+func TestAuditQuery_ReturnsRecentRows(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	l, err := audit.Open(logPath)
+	if err != nil {
+		t.Fatalf("audit.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	l.Record("subghz_rx", nil, "out", "low", audit.LevelAction, 0, true)
+	l.Record("flipper_device_info", nil, "out2", "low", audit.LevelAction, 0, true)
+	s.SetAuditLog(l)
+
+	code, body := getJSON(t, ts, "/api/audit/query?n=10")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	entries, _ := body["entries"].([]any)
+	if len(entries) != 2 {
+		t.Errorf("entries len = %d, want 2", len(entries))
+	}
+}
+
+// TestAuditFind_FiltersByTool pins the GET /api/audit/find filtering
+// behaviour. Same DSL the CLI's parseAuditFilter uses, just expressed
+// as URL query params instead of `k=v` tokens.
+func TestAuditFind_FiltersByTool(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	l, _ := audit.Open(logPath)
+	t.Cleanup(func() { _ = l.Close() })
+	l.Record("subghz_rx", nil, "a", "low", audit.LevelAction, 0, true)
+	l.Record("flipper_device_info", nil, "b", "low", audit.LevelAction, 0, true)
+	s.SetAuditLog(l)
+
+	code, body := getJSON(t, ts, "/api/audit/find?tool=subghz")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	entries, _ := body["entries"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("entries len = %d, want 1 (only subghz_rx matches)", len(entries))
+	}
+}
+
+// TestAuditFind_RejectsBadRisk pins the input validation: the CLI's
+// parseAuditFilter rejects unknown risk levels and the web mirror
+// must match so the cockpit shows the same error.
+func TestAuditFind_RejectsBadRisk(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	l, _ := audit.Open(logPath)
+	t.Cleanup(func() { _ = l.Close() })
+	s.SetAuditLog(l)
+
+	code, _ := getJSON(t, ts, "/api/audit/find?risk=neon")
+	if code != http.StatusBadRequest {
+		t.Errorf("code = %d, want 400", code)
+	}
+}
+
+// TestAuditTop_ToolsAggregation pins the top-tools surface. Three
+// invocations of subghz_rx + one of device_info → subghz_rx should
+// be top.
+func TestAuditTop_ToolsAggregation(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	l, _ := audit.Open(logPath)
+	t.Cleanup(func() { _ = l.Close() })
+	for i := 0; i < 3; i++ {
+		l.Record("subghz_rx", nil, "o", "low", audit.LevelAction, 0, true)
+	}
+	l.Record("flipper_device_info", nil, "o", "low", audit.LevelAction, 0, true)
+	s.SetAuditLog(l)
+
+	code, body := getJSON(t, ts, "/api/audit/top?on=tools")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	rows, _ := body["rows"].([]any)
+	if len(rows) == 0 {
+		t.Fatalf("rows empty: %v", body)
+	}
+	first, _ := rows[0].(map[string]any)
+	if tool, _ := first["tool"].(string); tool != "subghz_rx" {
+		t.Errorf("top tool = %v, want subghz_rx", first["tool"])
+	}
+}
+
+// TestAuditExport_ReturnsJSONBody pins the export endpoint — it
+// returns the raw JSON Export() produces. Cockpit can save the
+// response body to disk for triage / report attachment.
+func TestAuditExport_ReturnsJSONBody(t *testing.T) {
+	s, ts := apiServer(t, &fakeAgent{})
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	l, _ := audit.Open(logPath)
+	t.Cleanup(func() { _ = l.Close() })
+	l.Record("subghz_rx", nil, "o", "low", audit.LevelAction, 0, true)
+	s.SetAuditLog(l)
+
+	resp, err := ts.Client().Get(ts.URL + "/api/audit/export")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("code = %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("content-type = %q, want application/json", ct)
 	}
 }
 

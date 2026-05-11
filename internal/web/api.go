@@ -54,6 +54,13 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/budget", s.requireAuth(s.handleBudgetGet))
 	mux.HandleFunc("PUT /api/budget", s.requireAuth(s.handleBudgetPut))
 
+	mux.HandleFunc("GET /api/audit/stats", s.requireAuth(s.handleAuditStats))
+	mux.HandleFunc("GET /api/audit/query", s.requireAuth(s.handleAuditQuery))
+	mux.HandleFunc("GET /api/audit/find", s.requireAuth(s.handleAuditFind))
+	mux.HandleFunc("GET /api/audit/session/{id}", s.requireAuth(s.handleAuditSession))
+	mux.HandleFunc("GET /api/audit/top", s.requireAuth(s.handleAuditTop))
+	mux.HandleFunc("GET /api/audit/export", s.requireAuth(s.handleAuditExport))
+
 	mux.HandleFunc("GET /api/rules", s.requireAuth(s.handleRulesList))
 	mux.HandleFunc("POST /api/rules/{name}/pause", s.requireAuth(s.handleRulePause))
 	mux.HandleFunc("POST /api/rules/{name}/resume", s.requireAuth(s.handleRuleResume))
@@ -330,6 +337,292 @@ func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	respondJSON(w, http.StatusOK, body)
+}
+
+// auditEntryDTO mirrors audit.Entry but trims to the operator-relevant
+// fields and renders the timestamp as RFC3339 for JSON consumers.
+type auditEntryDTO struct {
+	ID         int64  `json:"id"`
+	Timestamp  string `json:"timestamp"`
+	Tool       string `json:"tool"`
+	Input      string `json:"input"`
+	Output     string `json:"output,omitempty"`
+	Risk       string `json:"risk,omitempty"`
+	Level      string `json:"level,omitempty"`
+	SessionID  string `json:"session_id"`
+	DurationMs int64  `json:"duration_ms"`
+	Success    bool   `json:"success"`
+}
+
+func auditEntriesToDTO(entries []audit.Entry) []auditEntryDTO {
+	out := make([]auditEntryDTO, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, auditEntryDTO{
+			ID:         e.ID,
+			Timestamp:  e.Timestamp.UTC().Format(time.RFC3339),
+			Tool:       e.Tool,
+			Input:      e.Input,
+			Output:     e.Output,
+			Risk:       e.Risk,
+			Level:      string(e.Level),
+			SessionID:  e.SessionID,
+			DurationMs: e.Duration,
+			Success:    e.Success,
+		})
+	}
+	return out
+}
+
+// parseWhenWebStr accepts either a relative duration ("30m", "2h",
+// "7d") or an RFC3339 timestamp and returns the corresponding
+// time.Time. Mirrors the CLI's parseWhen — both surfaces use the
+// same vocabulary so operators don't have to learn two grammars.
+func parseWhenWebStr(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty timestamp")
+	}
+	if n := len(s); n > 1 && (s[n-1] == 'd' || s[n-1] == 'D') {
+		days, err := strconv.Atoi(s[:n-1])
+		if err == nil {
+			if days < 0 {
+				return time.Time{}, fmt.Errorf("negative duration %q (use e.g. %q not %q)", s, s[1:], s)
+			}
+			return time.Now().Add(-time.Duration(days) * 24 * time.Hour), nil
+		}
+	}
+	if d, err := time.ParseDuration(s); err == nil {
+		if d < 0 {
+			return time.Time{}, fmt.Errorf("negative duration %q (use e.g. %q not %q)", s, s[1:], s)
+		}
+		return time.Now().Add(-d), nil
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q as duration or RFC3339 timestamp", s)
+}
+
+// handleAuditStats returns the session-level audit summary — same
+// surface as the CLI's `/audit stats`.
+func (s *Server) handleAuditStats(w http.ResponseWriter, _ *http.Request) {
+	if s.auditLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "audit log not configured")
+		return
+	}
+	stats, err := s.auditLog.Stats()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "audit stats: "+err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"session_id": s.auditLog.SessionID(),
+		"stats":      stats,
+	})
+}
+
+// handleAuditQuery returns the N most recent audit rows.
+// ?n=20 (default 20, capped at audit.MaxQueryLimit). Mirrors
+// `/audit query [N]`.
+func (s *Server) handleAuditQuery(w http.ResponseWriter, r *http.Request) {
+	if s.auditLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "audit log not configured")
+		return
+	}
+	n := 20
+	if raw := r.URL.Query().Get("n"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			n = v
+		}
+	}
+	if n > audit.MaxQueryLimit {
+		n = audit.MaxQueryLimit
+	}
+	entries, err := s.auditLog.Query(n)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "audit query: "+err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"entries": auditEntriesToDTO(entries),
+	})
+}
+
+// handleAuditFind drives audit.QueryFiltered via URL query params:
+// ?tool=…&risk=…&session=…&since=…&until=…&success=true|false
+// &contains=…&limit=…&offset=…. Mirrors `/audit find k=v …` exactly,
+// including the negative-duration rejection on since/until.
+func (s *Server) handleAuditFind(w http.ResponseWriter, r *http.Request) {
+	if s.auditLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "audit log not configured")
+		return
+	}
+	q := r.URL.Query()
+	var f audit.Filter
+	f.Tool = q.Get("tool")
+	if risk := strings.ToLower(q.Get("risk")); risk != "" {
+		switch risk {
+		case "low", "medium", "high", "critical":
+			f.Risk = risk
+		default:
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("risk=%s: want low|medium|high|critical", risk))
+			return
+		}
+	}
+	f.Session = q.Get("session")
+	f.Contains = q.Get("contains")
+	if since := q.Get("since"); since != "" {
+		t, err := parseWhenWebStr(since)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "since: "+err.Error())
+			return
+		}
+		f.Since = t
+	}
+	if until := q.Get("until"); until != "" {
+		t, err := parseWhenWebStr(until)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "until: "+err.Error())
+			return
+		}
+		f.Until = t
+	}
+	if succ := q.Get("success"); succ != "" {
+		switch strings.ToLower(succ) {
+		case "true", "1", "yes":
+			b := true
+			f.Success = &b
+		case "false", "0", "no":
+			b := false
+			f.Success = &b
+		default:
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("success=%s: want true|false", succ))
+			return
+		}
+	}
+	if raw := q.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("limit=%s: want non-negative int", raw))
+			return
+		}
+		if n > audit.MaxQueryLimit {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("limit=%d exceeds max %d", n, audit.MaxQueryLimit))
+			return
+		}
+		f.Limit = n
+	}
+	if raw := q.Get("offset"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("offset=%s: want non-negative int", raw))
+			return
+		}
+		f.Offset = n
+	}
+	if !f.Since.IsZero() && !f.Until.IsZero() && f.Since.After(f.Until) {
+		writeError(w, http.StatusBadRequest, "since is after until — swap the values")
+		return
+	}
+	entries, err := s.auditLog.QueryFiltered(f)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "audit find: "+err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"entries": auditEntriesToDTO(entries),
+	})
+}
+
+// handleAuditSession returns every entry for the given session id.
+// Mirrors `/audit session <id>`.
+func (s *Server) handleAuditSession(w http.ResponseWriter, r *http.Request) {
+	if s.auditLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "audit log not configured")
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing session id")
+		return
+	}
+	entries, err := s.auditLog.QueryBySession(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "audit session: "+err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"session_id": id,
+		"entries":    auditEntriesToDTO(entries),
+	})
+}
+
+// handleAuditTop runs the top-tools or top-risks aggregation.
+// ?on=tools|risks (default tools) ?since=24h (optional). Mirrors
+// `/audit top tools|risks [since=24h]`.
+func (s *Server) handleAuditTop(w http.ResponseWriter, r *http.Request) {
+	if s.auditLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "audit log not configured")
+		return
+	}
+	q := r.URL.Query()
+	on := strings.ToLower(q.Get("on"))
+	if on == "" {
+		on = "tools"
+	}
+	var since time.Time
+	if raw := q.Get("since"); raw != "" {
+		t, err := parseWhenWebStr(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "since: "+err.Error())
+			return
+		}
+		since = t
+	}
+	switch on {
+	case "tools":
+		rows, err := s.auditLog.TopTools(since, 10)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "top tools: "+err.Error())
+			return
+		}
+		out := make([]map[string]any, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, map[string]any{"tool": r.Tool, "count": r.Count})
+		}
+		respondJSON(w, http.StatusOK, map[string]any{"on": "tools", "rows": out})
+	case "risks":
+		rows, err := s.auditLog.TopRisks(since)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "top risks: "+err.Error())
+			return
+		}
+		out := make([]map[string]any, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, map[string]any{"risk": r.Risk, "count": r.Count})
+		}
+		respondJSON(w, http.StatusOK, map[string]any{"on": "risks", "rows": out})
+	default:
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("on=%s: want tools|risks", on))
+	}
+}
+
+// handleAuditExport returns the current session's full audit log as
+// JSON. Mirrors `/audit export <path>` minus the file-write — web
+// clients can save the response body themselves.
+func (s *Server) handleAuditExport(w http.ResponseWriter, _ *http.Request) {
+	if s.auditLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "audit log not configured")
+		return
+	}
+	data, err := s.auditLog.Export()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "audit export: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(data))
 }
 
 // handleModeGet returns the active operation mode plus the catalogue
