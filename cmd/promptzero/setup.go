@@ -483,7 +483,19 @@ func setupMetrics(cfg *config.Config) *obs.Recorder {
 // runMCPMode serves stdio MCP over the connected Flipper (and optional
 // Marauder sidecar) until the server exits. Called early, before the
 // agent is constructed — MCP has its own conversation model.
-func runMCPMode(cfg *config.Config, flip *flipper.Flipper, wifiEnabled bool) error {
+//
+// Parity with the REPL/web modes' safety + sidecar surfaces: this
+// function now also wires the audit log (so every MCP tool call lands
+// in the same SQLite DB the REPL's /audit query inspects) and the
+// optional bruce/faultier/buspirate clients (so MCP clients don't get
+// "not connected" errors when the operator has them in cfg). Pre-v0.96
+// these connections only happened on the REPL/web setup path; MCP
+// mode returned early before they ran. Result: tool calls were
+// invisible to /audit and three sidecar devices appeared unusable.
+//
+// Failures to construct the sidecars are non-fatal — they emit a
+// warning and the MCP server still serves the remaining surface.
+func runMCPMode(ctx context.Context, cfg *config.Config, flip *flipper.Flipper, wifiEnabled bool) error {
 	var m *marauder.Marauder
 	if wifiEnabled || cfg.Marauder.Enabled {
 		m, _ = marauder.Connect(cfg.Marauder.Port, cfg.Marauder.BaudRate)
@@ -492,8 +504,85 @@ func runMCPMode(cfg *config.Config, flip *flipper.Flipper, wifiEnabled bool) err
 		}
 	}
 	srv := mcp.NewServer(flip, m)
+	cleanup := wireMCPSidecars(ctx, cfg, srv)
+	defer cleanup()
+
 	statusOK("MCP server running on stdio")
 	return srv.ServeStdio()
+}
+
+// wireMCPSidecars wires the audit log and optional sidecar clients
+// (Bruce, Faultier, BusPirate) onto an MCP server. Returns a cleanup
+// closure that closes every resource that was successfully opened.
+//
+// Extracted from runMCPMode so the wiring decisions (which configs
+// trigger which Connect calls, which failures degrade silently vs
+// warn) are unit-testable without needing real hardware or a stdio
+// transport. Every wiring step is best-effort — Connect failures
+// emit a warning and the corresponding tool group returns its normal
+// "not connected" error to the MCP client.
+func wireMCPSidecars(ctx context.Context, cfg *config.Config, srv *mcp.Server) func() {
+	var closes []func()
+
+	// Audit log: same on-disk path the REPL uses, so /audit query
+	// from a parallel REPL session can see MCP-driven tool calls.
+	dataDir := filepath.Join(os.Getenv("HOME"), ".promptzero")
+	if auditLog, err := audit.Open(filepath.Join(dataDir, "audit.db")); err == nil {
+		srv.SetAuditLog(auditLog)
+		closes = append(closes, func() { _ = auditLog.Close() })
+		statusOK(fmt.Sprintf("MCP audit logging %s(session: %s)%s", dim, auditLog.SessionID(), reset))
+	} else {
+		statusWarn(fmt.Sprintf("MCP audit log unavailable: %v", err))
+	}
+
+	if cfg.Bruce.Port != "" {
+		baud := cfg.Bruce.Baud
+		if baud == 0 {
+			baud = 115200
+		}
+		statusInfo(fmt.Sprintf("MCP: connecting to Bruce on %s%s%s...", bold, cfg.Bruce.Port, reset))
+		if c, err := bruce.Connect(ctx, cfg.Bruce.Port, baud); err == nil {
+			srv.SetBruce(c)
+			closes = append(closes, func() { _ = c.Close() })
+			statusOK(fmt.Sprintf("MCP Bruce ESP32 backend %s(board: %s)%s", dim, cfg.Bruce.BoardType, reset))
+		} else {
+			statusWarn(fmt.Sprintf("MCP Bruce unavailable: %v", err))
+		}
+	}
+	if cfg.Faultier.Port != "" {
+		baud := cfg.Faultier.Baud
+		if baud == 0 {
+			baud = 115200
+		}
+		statusInfo(fmt.Sprintf("MCP: connecting to Faultier on %s%s%s...", bold, cfg.Faultier.Port, reset))
+		if c, err := faultier.Connect(cfg.Faultier.Port, baud); err == nil {
+			srv.SetFaultier(c)
+			closes = append(closes, func() { _ = c.Close() })
+			statusOK("MCP Faultier voltage-glitcher connected")
+		} else {
+			statusWarn(fmt.Sprintf("MCP Faultier unavailable: %v", err))
+		}
+	}
+	if cfg.BusPirate.Port != "" {
+		baud := cfg.BusPirate.Baud
+		if baud == 0 {
+			baud = 115200
+		}
+		statusInfo(fmt.Sprintf("MCP: connecting to Bus Pirate 5 on %s%s%s...", bold, cfg.BusPirate.Port, reset))
+		if c, err := buspirate.Connect(ctx, cfg.BusPirate.Port, baud); err == nil {
+			srv.SetBusPirate(c)
+			closes = append(closes, func() { _ = c.Close() })
+			statusOK("MCP Bus Pirate 5 universal-bus probe connected")
+		} else {
+			statusWarn(fmt.Sprintf("MCP Bus Pirate unavailable: %v", err))
+		}
+	}
+
+	return func() {
+		for _, c := range closes {
+			c()
+		}
+	}
 }
 
 // --- Subsystem wiring ---------------------------------------------------

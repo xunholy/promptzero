@@ -150,7 +150,7 @@ func run() error {
 	}
 
 	if f.mcpMode {
-		return runMCPMode(cfg, flip, f.wifiEnabled)
+		return runMCPMode(ctx, cfg, flip, f.wifiEnabled)
 	}
 
 	if err := cfg.RequireAPIKey(); err != nil {
