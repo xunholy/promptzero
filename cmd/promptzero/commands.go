@@ -347,7 +347,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/audit session <id>%s    Dump a specific session\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit export <path>%s   Write session audit JSON to <path>\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/export training-set <path>%s  Export audit as JSONL fine-tuning dataset (--format=chat --success-only)\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "    %s/stats [section]%s       Session cost summary (tokens, spend, cache hit-rate)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/stats [cache|tokens|all]%s  Session cost summary (tokens, spend, cache hit-rate)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/cost%s                  Current cost snapshot\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/budget [set <USD>|off]%s  Show or update session budget cap\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/debug%s                 Diagnostic snapshot (config, transport, agent state)\n", cyan, reset)
