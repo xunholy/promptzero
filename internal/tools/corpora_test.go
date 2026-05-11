@@ -172,6 +172,55 @@ func TestBadUSBPayloadSearch(t *testing.T) {
 	}
 }
 
+// TestCorporaTools_EmptyHitsIsJSONArray pins the v0.167 contract:
+// when none of the three corpora-search Specs (ir_irdb_lookup,
+// evil_portal_template_pick, badusb_payload_search) finds matches,
+// the envelope's `hits` field must be the JSON array `[]`, not
+// the literal `null` that `json.Marshal` of a nil slice produces.
+// Same defect class as v0.163-v0.166 applied here.
+func TestCorporaTools_EmptyHitsIsJSONArray(t *testing.T) {
+	emptyDir := t.TempDir() // empty — no .ir / .html / .txt files
+
+	cases := []struct {
+		name string
+		args map[string]any
+	}{
+		{"ir_irdb_lookup", map[string]any{"dir": emptyDir, "manufacturer": "Sony"}},
+		{"evil_portal_template_pick", map[string]any{"dir": emptyDir, "brand": "google"}},
+		{"badusb_payload_search", map[string]any{"dir": emptyDir, "goal": "uac-bypass"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec, ok := Get(tc.name)
+			if !ok {
+				t.Fatalf("%s not registered", tc.name)
+			}
+			out, err := spec.Handler(context.Background(), &Deps{}, tc.args)
+			if err != nil {
+				t.Fatalf("Handler: %v", err)
+			}
+			var parsed map[string]any
+			if jerr := json.Unmarshal([]byte(out), &parsed); jerr != nil {
+				t.Fatalf("output not parseable JSON: %v\nbody: %s", jerr, out)
+			}
+			m, hasHits := parsed["hits"]
+			if !hasHits {
+				t.Fatalf("hits field absent; body: %s", out)
+			}
+			if m == nil {
+				t.Errorf("hits = nil (JSON null); want []. body: %s", out)
+			}
+			arr, isSlice := m.([]any)
+			if !isSlice {
+				t.Errorf("hits is not a slice (got %T); body: %s", m, out)
+			}
+			if arr == nil {
+				t.Errorf("hits is a nil-slice (JSON null shape); body: %s", out)
+			}
+		})
+	}
+}
+
 // TestClampCorpusLimit pins the cap helper used by all three
 // corpora-search Specs. Without the cap an LLM tool call asking
 // for limit=1000000 would walk the entire corpus and serialise a
