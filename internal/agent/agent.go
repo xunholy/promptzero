@@ -1635,7 +1635,6 @@ func (a *Agent) dispatchStreaming(ctx context.Context, spec toolsreg.Spec, p map
 	cb := a.toolStreamCb
 
 	streamCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	done := make(chan struct{})
 	go func() {
@@ -1659,10 +1658,26 @@ func (a *Agent) dispatchStreaming(ctx context.Context, spec toolsreg.Spec, p map
 		}
 	}()
 
-	output, err := spec.StreamHandler(streamCtx, a.deps(), p, sink)
-	sink.Close()
-	<-done
-	return output, err
+	// Defer Close + drain so a panicking StreamHandler can't leak the
+	// consumer goroutine. The streaming.Handler contract says handlers
+	// MUST defer sink.Close, but trusting every handler author leaves
+	// a buggy or new tool one missed defer away from a permanent
+	// goroutine stuck on a never-closed Frames() channel. Close is
+	// idempotent — well-behaved handlers see this as a redundant
+	// second call; misbehaving ones see it as the safety net.
+	//
+	// Defer order matters: cancel runs first (LIFO), unblocking any
+	// producer Send racing the shutdown; then sink.Close fires, which
+	// exits the consumer's range loop; then <-done waits so dispatch
+	// only returns once the consumer has drained — guarantees no
+	// callback runs after dispatch returns.
+	defer func() {
+		sink.Close()
+		<-done
+	}()
+	defer cancel()
+
+	return spec.StreamHandler(streamCtx, a.deps(), p, sink)
 }
 
 // workflowConfirmHook routes a workflow's internal sub-tool
