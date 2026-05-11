@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-05-11
+
+**`/api/webhooks/test` distinguishes 404 from 502.** v0.101's
+endpoint mapped every error from `webhook.TestSubscription` to
+502 ("test delivery failed"), including the "no subscription
+named X" case. The cockpit couldn't distinguish a typo'd
+subscription name from a real upstream outage — both surfaced
+identically as bad-gateway errors.
+
+### Fixed
+
+- **Pre-flight existence check in `handleWebhooksTest`** maps
+  unknown subscription names to 404 (with the `"no subscription
+  named X"` message in the body). Reachability failures still
+  return 502 as before. The cockpit can now reliably render
+  "typo" vs "server down" UX.
+  - Tests: `TestWebhooksTest_503WhenNoDispatcher`,
+    `TestWebhooksTest_404OnUnknownName` (pins the v0.108 fix —
+    pre-fix returns 502 here), `TestWebhooksTest_400OnMissingName`,
+    `TestWebhooksTest_DeliversToReachableEndpoint` (full happy-
+    path — synthetic webhook reaches an httptest receiver).
+  - Coverage on `handleWebhooksTest` jumps from 0% to ~100% in
+    one stroke — pre-v0.108 the entire handler was untested.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.107.0] - 2026-05-11
 
 **`/api/campaign/run` no longer truncates at 30 seconds.** The
