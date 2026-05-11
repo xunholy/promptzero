@@ -145,8 +145,13 @@ func firmwareExtractHandler(ctx context.Context, _ *Deps, args map[string]any) (
 // breadth-first order. Symlinks are resolved as their literal name (not
 // followed) to prevent loops. Errors are silenced — partial output is
 // always more useful than nothing.
+//
+// Always returns a non-nil slice (possibly empty) so the envelope's
+// `"file_tree"` field is `[]` rather than `null` when no files were
+// emitted — same JSON-array contract v0.163-v0.165 applied to audit
+// export, audit_query, and signal_library_search.
 func summariseTree(root string, maxFiles int) []string {
-	var files []string
+	files := []string{}
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -170,7 +175,9 @@ func summariseTree(root string, maxFiles int) []string {
 
 // classifyInteresting picks file paths that match common
 // "look-here-first" patterns. This is a heuristic — operators should
-// still inspect the full tree.
+// still inspect the full tree. Returns a non-nil slice (possibly
+// empty) so the envelope's `"interesting"` field is `[]` rather
+// than `null` when nothing matches.
 func classifyInteresting(tree []string) []string {
 	patterns := []string{
 		"id_rsa", "id_ed25519", "authorized_keys",
@@ -179,7 +186,7 @@ func classifyInteresting(tree []string) []string {
 		"rcS", "rc.local", "init",
 		"hardcode", "secret", "token", "config.bin",
 	}
-	var hits []string
+	hits := []string{}
 	for _, f := range tree {
 		lower := strings.ToLower(f)
 		for _, p := range patterns {

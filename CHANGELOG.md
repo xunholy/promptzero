@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.166.0] - 2026-05-12
+
+**`firmware_extract` envelope's `file_tree` / `interesting` fields
+always serialise as JSON arrays.** Fourth site in the nil-slice →
+"null" arc. Both `summariseTree` and `classifyInteresting` in
+`internal/tools/firmware_extract.go` started with `var x []string`
+and returned `nil` when nothing was found / matched. When the
+envelope embedded a nil slice via
+`json.Marshal(map[string]any{"file_tree": nil, ...})`, the result
+was `"file_tree": null` rather than `"file_tree": []` — same
+defect class v0.163-v0.165 fixed for audit and signal_library.
+
+### Fixed
+
+- Initialise both helpers with `files := []string{}` / `hits :=
+  []string{}` so the returned slice is always non-nil. Every
+  caller benefits automatically — no per-call substitution needed.
+- Two regression tests pin the contract:
+  `TestSummariseTree_NonNilOnEmpty` round-trips an empty-directory
+  walk through `json.Marshal` and verifies the envelope carries
+  `"file_tree":[]`; `TestClassifyInteresting_NonNilOnEmpty` does
+  the same for an all-uninteresting input.
+
 ## [0.165.0] - 2026-05-12
 
 **`signal_library_search` envelope's `matches` field is always a
