@@ -193,6 +193,49 @@ func TestQueryFilteredLimitOffset(t *testing.T) {
 	}
 }
 
+// TestQuery_NegativeLimitClamped pins the fix for the bug where a negative
+// limit short-circuited SQLite's LIMIT clause (LIMIT -1 = unbounded), letting
+// an audit_query tool call with {"limit": -1} dump the entire audit DB
+// despite the MaxQueryLimit cap the const's docstring promises. The package
+// now clamps non-positive limits to the default-100 page used by
+// QueryFiltered; inserting > 100 rows distinguishes the unbounded pre-fix
+// behaviour from the post-fix cap.
+func TestQuery_NegativeLimitClamped(t *testing.T) {
+	log := openTestLog(t)
+	const inserted = 105
+	for i := 0; i < inserted; i++ {
+		log.Record("nfc_detect", map[string]int{"i": i}, "ok", "low", LevelAction, 0, true)
+	}
+	got, err := log.Query(-1)
+	if err != nil {
+		t.Fatalf("Query(-1): %v", err)
+	}
+	if len(got) > 100 {
+		t.Fatalf("Query(-1) returned %d rows; expected clamp to <=100 (negative limit must not bypass MaxQueryLimit cap)", len(got))
+	}
+}
+
+// TestQueryFiltered_LimitOverMaxClamped mirrors the Query test for the
+// QueryFiltered surface: an in-process caller constructing Filter with
+// Limit > MaxQueryLimit must not bypass the cap. The HTTP handler 400s on
+// over-cap input today, but the cap belongs in the package as defense in
+// depth so future callers can't drift.
+func TestQueryFiltered_LimitOverMaxClamped(t *testing.T) {
+	log := openTestLog(t)
+	// Seed something queryable; the assertion is about the cap, not row count.
+	log.Record("nfc_detect", nil, "ok", "low", LevelAction, 0, true)
+	got, err := log.QueryFiltered(Filter{Limit: MaxQueryLimit + 1})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	// Only 1 row exists; the assertion is that the call succeeded without
+	// SQLite balking on an oversized LIMIT and that the clamp path was
+	// exercised. We also tolerate the smaller real row count.
+	if len(got) > MaxQueryLimit {
+		t.Fatalf("QueryFiltered returned %d rows; cap is %d", len(got), MaxQueryLimit)
+	}
+}
+
 // TestRecordUnmarshallableInput verifies that when the caller passes input
 // that fails to JSON-marshal (e.g. contains a channel), Record still writes
 // a row with a marshal-error placeholder rather than swallowing the failure

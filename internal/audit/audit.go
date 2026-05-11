@@ -372,6 +372,20 @@ func (l *Log) notify(e Entry) {
 }
 
 func (l *Log) Query(limit int) ([]Entry, error) {
+	// Clamp at the package boundary instead of trusting callers.
+	// SQLite treats `LIMIT -1` (or any negative) as "no upper bound",
+	// so a caller passing limit=-1 — e.g. an LLM tool call with
+	// `{"limit": -1}` reaching the audit_query handler in
+	// internal/tools/audit.go, which only guards `> MaxQueryLimit` —
+	// would otherwise dump the entire audit DB and bypass the cap
+	// the const's docstring promises. Defaulting <=0 to 100 mirrors
+	// QueryFiltered; the upper cap is the documented limit.
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > MaxQueryLimit {
+		limit = MaxQueryLimit
+	}
 	rows, err := l.db.Query(`
 		SELECT id, timestamp, tool, COALESCE(input,''), COALESCE(output,''), COALESCE(risk,''), level, COALESCE(session_id,''), COALESCE(duration_ms,0), success
 		FROM audit_log ORDER BY id DESC LIMIT ?`, limit)
@@ -494,6 +508,12 @@ func (l *Log) QueryFiltered(f Filter) ([]Entry, error) {
 	limit := f.Limit
 	if limit <= 0 {
 		limit = 100
+	}
+	// Same upper-bound enforcement as Query — the HTTP handler 400s on
+	// limit > MaxQueryLimit today, but a future in-process caller that
+	// constructs Filter directly shouldn't be able to bypass the cap.
+	if limit > MaxQueryLimit {
+		limit = MaxQueryLimit
 	}
 	where := ""
 	if len(clauses) > 0 {
