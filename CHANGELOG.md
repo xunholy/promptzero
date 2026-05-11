@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.136.0] - 2026-05-11
+
+**`consensus.DisagreementMessage` neutralizes smuggled close
+tag.** Third stop in the close-tag-injection defense arc after
+v0.134 (`quarantineOutput`) and v0.135 (`breaker.EscalationMessage`).
+The disagreement wrapper embeds two attacker-influenceable
+strings inside `<consensus-disagreement>...
+</consensus-disagreement>`:
+
+- `v.Model` — operator-supplied from the persona YAML's
+  `consensus:` list.
+- `summariseCritique(v.Critique)` — LLM-generated prose excerpt
+  (capped at 200 chars). The classifier-tier prompt asks for
+  JSON, but Haiku/Sonnet output is free-form; a model that
+  echoes input back can propagate attacker-controlled text from
+  prior context into its critique.
+
+Either string carrying a literal `</consensus-disagreement>`
+caused the wrapper to render two (or three!) close tags with
+attacker text between them — structurally outside the
+quarantine.
+
+### Fixed
+
+- **`neutralizeCloseTag` helper** rewrites literal
+  `</consensus-disagreement>` inside both `v.Model` and the
+  critique excerpt to `< /consensus-disagreement>` (single
+  space after `<`). Same pattern as v0.134 / v0.135.
+- `TestDisagreementMessage_NeutralizesSmuggledCloseTag` feeds
+  smuggled close tags into BOTH Model and Critique fields and
+  asserts exactly one close tag survives, the neutralized form
+  is present, and attacker text is preserved as readable
+  content. Pre-fix verification: stashing the consensus.go
+  change fails with `closing tag count = 3, want 1` — the
+  wrapper boundary plus the two smuggled tags from the two
+  verdicts.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.135.0] - 2026-05-11
 
 **`breaker.EscalationMessage` neutralizes smuggled close tag in
