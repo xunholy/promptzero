@@ -3,7 +3,6 @@
 package web
 
 import (
-	"encoding/json"
 	"net/http"
 )
 
@@ -29,8 +28,7 @@ func (s *Server) handleInputSend(w http.ResponseWriter, r *http.Request) {
 		Button    string `json:"button"`
 		EventType string `json:"event_type"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	if _, ok := validInputButtons[body.Button]; !ok {

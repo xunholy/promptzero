@@ -13,6 +13,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -144,6 +145,37 @@ func writeError(w http.ResponseWriter, status int, reason string) {
 	respondJSON(w, status, map[string]string{"error": reason})
 }
 
+// maxJSONBodyBytes caps the body size for /api/* JSON endpoints.
+// Operator-driven JSON payloads in this surface are small (persona
+// name, mode name, attack ID list, etc.) — 64 KiB is plenty of
+// headroom. The cap guards against a malicious or buggy client
+// streaming an unbounded body and exhausting server memory before
+// the JSON parser runs.
+const maxJSONBodyBytes = 64 * 1024
+
+// decodeJSONBody is the shared JSON-body reader. Wraps r.Body in
+// http.MaxBytesReader before decoding so an oversized POST returns
+// 413 (clean classify) instead of being silently buffered. On
+// any error it writes the appropriate status (413 for oversize
+// via http.MaxBytesError detection, 400 for malformed JSON) and
+// returns false. Callers use the bool to decide whether to
+// continue.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
+	err := json.NewDecoder(r.Body).Decode(dst)
+	if err == nil {
+		return true
+	}
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		writeError(w, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("body exceeds %d bytes", maxJSONBodyBytes))
+		return false
+	}
+	writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	return false
+}
+
 // ---------------------------------------------------------------------------
 // Personas
 // ---------------------------------------------------------------------------
@@ -196,8 +228,7 @@ func (s *Server) handlePersonasSwitch(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	if body.Name == "" {
@@ -529,8 +560,7 @@ func (s *Server) handleRewindRestore(w http.ResponseWriter, r *http.Request) {
 		ID     string `json:"id"`
 		DryRun bool   `json:"dry_run"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	if strings.TrimSpace(body.ID) == "" {
@@ -702,8 +732,7 @@ func (s *Server) handleWebhooksTest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	if body.Name == "" {
@@ -790,8 +819,7 @@ func (s *Server) handleAttackSet(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Techniques []string `json:"techniques"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	ids, err := normaliseAttackIDsWeb(body.Techniques)
@@ -1144,8 +1172,7 @@ func (s *Server) handleModeSet(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	target, err := mode.ParseMode(body.Name)
@@ -1208,8 +1235,7 @@ func (s *Server) handleBudgetPut(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		USD float64 `json:"usd"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	if body.USD < 0 {
@@ -1355,8 +1381,7 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 		Path    string `json:"path"`
 		Content string `json:"content"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body: "+err.Error())
+	if !decodeJSONBody(w, r, &body) {
 		return
 	}
 	name := body.Path
