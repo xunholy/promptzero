@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.150.0] - 2026-05-12
+
+**Audit marshal-error fallback uses `json.Marshal`, not Go-string
+quoting.** `RecordCtx` builds an `{"_marshal_error": "..."}` row
+whenever `json.Marshal(input)` returns an error (channels, funcs,
+cycles, etc.). Pre-fix the row was constructed with
+`fmt.Sprintf(\`{"_marshal_error":%q}\`, err.Error())` — `%q` is
+`strconv.Quote` semantics, *not* JSON. Control bytes outside the
+JSON `{\b \f \n \r \t}` whitelist (BEL `\x07`, VT `\x0B`,
+arbitrary `\xNN`) landed as Go escapes (`\a`, `\v`, `\xNN`) that
+JSON parsers reject — and an error string containing such a byte
+produced an unparseable audit row. The downstream
+`auditEntriesToDTO` / `/api/audit/find` / `/report` consumers
+all silently dropped these rows.
+
+### Fixed
+
+- Build the fallback row via `json.Marshal(map[string]string{...})`
+  so control bytes survive as JSON-valid `\u00NN` escapes. Falls
+  back to a hardcoded sentinel if the (UTF-8 string) marshal itself
+  ever errors — `encoding/json` won't, but the defensive branch
+  keeps the row populated rather than empty.
+- Regression test (`TestRecordUnmarshallableInput`) extended to
+  decode the stored row through `json.Unmarshal`. Pre-fix a
+  BEL-containing error message produced output that failed to
+  parse with `invalid character 'a' in string escape code`.
+
 ## [0.149.0] - 2026-05-12
 
 **BadUSB validator emits the highest-severity match per line.** The

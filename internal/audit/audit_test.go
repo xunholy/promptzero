@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -257,6 +258,16 @@ func TestRecordUnmarshallableInput(t *testing.T) {
 	}
 	if !strings.Contains(got[0].Input, "_marshal_error") {
 		t.Errorf("Input = %q; want substring _marshal_error", got[0].Input)
+	}
+	// Pin the v0.150 contract: the placeholder must be valid JSON.
+	// Pre-fix the fallback used fmt.Sprintf("%q", err.Error()) which
+	// is Go-string quoting, not JSON. Control bytes outside JSON's
+	// {\b \f \n \r \t} whitelist landed as Go escapes (\a, \v, \xNN)
+	// that downstream parsers reject. If an error message happened
+	// to contain a BEL (\x07) the audit row became unparseable.
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(got[0].Input), &parsed); err != nil {
+		t.Errorf("audit row input is not valid JSON: %v\ninput = %q", err, got[0].Input)
 	}
 }
 

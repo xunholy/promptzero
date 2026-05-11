@@ -249,7 +249,24 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 	inputJSON, err := json.Marshal(input)
 	if err != nil {
 		obs.Default().Warn("audit_input_marshal_failed", "tool", tool, "err", err)
-		inputJSON = []byte(fmt.Sprintf(`{"_marshal_error":%q}`, err.Error()))
+		// Build the fallback row via json.Marshal so control bytes
+		// in the error string survive as JSON-valid escapes
+		// (\u00NN) rather than Go-string escapes (\a, \v, \xNN)
+		// that downstream parsers reject. Pre-v0.150 the fallback
+		// used `fmt.Sprintf("%q", err.Error())`, which is
+		// strconv.Quote semantics — perfectly valid Go but invalid
+		// JSON for any control byte outside the {\b \f \n \r \t}
+		// whitelist. A BEL (\x07) in an err message landed as `\a`
+		// and corrupted the audit row.
+		fbBytes, mErr := json.Marshal(map[string]string{"_marshal_error": err.Error()})
+		if mErr != nil {
+			// Marshal of a map[string]string with a UTF-8 error
+			// string can't actually fail under encoding/json, but
+			// fall back to a hardcoded constant so the audit row
+			// always carries some sentinel rather than empty.
+			fbBytes = []byte(`{"_marshal_error":"unrenderable"}`)
+		}
+		inputJSON = fbBytes
 	}
 
 	// Truncate long outputs for storage. UTF-8-aware: when the cap
