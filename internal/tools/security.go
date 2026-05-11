@@ -723,6 +723,15 @@ func portScanTCPHandler(ctx context.Context, _ *Deps, p map[string]any) (string,
 	}
 	timeoutMS := intOr(p, "timeout_ms", 1000)
 	concurrency := intOr(p, "concurrency", 64)
+	// Clamp before the upper cap. `make(chan int, -1)` panics with
+	// "makechan: size out of range" — an LLM tool call with
+	// {"concurrency": -1} would hit the agent's panic-recovery and
+	// produce a generic "tool panicked" error instead of a clear
+	// rejection. concurrency=0 also degenerates: no workers spawn but
+	// the producer blocks on portCh until wall_timeout fires.
+	if concurrency < 1 {
+		concurrency = 1
+	}
 	if concurrency > 256 {
 		concurrency = 256
 	}
@@ -989,6 +998,12 @@ func httpEnumCommonHandler(ctx context.Context, _ *Deps, p map[string]any) (stri
 	}
 
 	concurrency := intOr(p, "concurrency", 20)
+	// Same lower-bound clamp as port_scan_tcp — `make(chan string, -1)`
+	// would otherwise panic at line ~1047 below, and concurrency=0
+	// hangs the producer until wall_timeout fires.
+	if concurrency < 1 {
+		concurrency = 1
+	}
 	if concurrency > 100 {
 		concurrency = 100
 	}
