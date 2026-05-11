@@ -302,8 +302,11 @@ func TestSessionResume_PropagatesAgentError(t *testing.T) {
 	srv.SetSessionDriver(driver)
 
 	status, _ := postJSON(t, ts, "/api/sessions/alpha/resume", nil)
-	if status != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", status)
+	// v0.110: non-NotExist errors → 500 (the corruption / I/O case).
+	// Pre-v0.110 this test asserted 404 — it was pinning the
+	// blanket-error behaviour the v0.110 fix corrected.
+	if status != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (non-NotExist agent error)", status)
 	}
 }
 
@@ -364,6 +367,38 @@ func TestSessionDelete_RotatesActive(t *testing.T) {
 	}
 	if driver.SessionID() != "new-session" {
 		t.Errorf("active after delete = %q, want new-session", driver.SessionID())
+	}
+}
+
+// TestSessionResume_404OnMissing pins the v0.110 fix.
+// Pre-v0.110 ResumeSession's "not found" and "parse failure" both
+// mapped to 404 — operators couldn't tell a typo from a corrupted
+// session file. Now NotExist stays 404 and anything else maps to 500.
+func TestSessionResume_404OnMissing(t *testing.T) {
+	fa := &fakeAgent{}
+	srv, ts := apiServer(t, fa)
+	driver := newFakeSessionDriver(t)
+	srv.SetSessionDriver(driver)
+
+	code, _ := postJSON(t, ts, "/api/sessions/does-not-exist/resume", nil)
+	if code != http.StatusNotFound {
+		t.Errorf("code = %d, want 404 (typo'd id should be NotFound)", code)
+	}
+}
+
+// TestSessionResume_500OnNonNotExistError pins the v0.110 fix's
+// other branch: a non-NotExist error from ResumeSession returns 500,
+// not 404.
+func TestSessionResume_500OnNonNotExistError(t *testing.T) {
+	fa := &fakeAgent{}
+	srv, ts := apiServer(t, fa)
+	driver := newFakeSessionDriver(t)
+	driver.resumeErr = errors.New("session state corrupt")
+	srv.SetSessionDriver(driver)
+
+	code, _ := postJSON(t, ts, "/api/sessions/anything/resume", nil)
+	if code != http.StatusInternalServerError {
+		t.Errorf("code = %d, want 500 (non-NotExist error → 500)", code)
 	}
 }
 

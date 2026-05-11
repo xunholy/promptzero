@@ -129,7 +129,17 @@ func (s *Server) handleSessionResume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.sessions.ResumeSession(id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		// Same classification rule as PATCH/DELETE (v0.108–v0.109):
+		// NotExist → 404 (the operator typed an id that isn't on
+		// disk); anything else → 500 (parse error in the saved
+		// state, I/O failure mid-load, etc.). Pre-v0.110 every
+		// ResumeSession error became a 404, so a corrupt session
+		// file looked indistinguishable from a typo.
+		if errors.Is(err, fs.ErrNotExist) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	s.broadcast(map[string]any{
