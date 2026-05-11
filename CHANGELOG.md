@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-05-11
+
+**Filesystem-watcher dispatch survives a panicking handler.** The
+v0.93 streaming-cb fix pattern repeated here: `watch.Watcher`'s
+debounced dispatch runs in a `time.AfterFunc` goroutine that has
+no recover wrapper. A panicking host handler crashes the agent
+process — the outer fsnotify loop's `obs.SafeGo` doesn't reach
+this nested timer goroutine.
+
+In production the installed handler is a small "send to channel"
+closure that won't panic, but the contract is the same as
+`toolStreamCb` / `toolStatusCb`: host code can be arbitrary, and
+a defensive recover is the established pattern.
+
+### Fixed
+
+- **`watch.Watcher.scheduleDispatch` recovers handler panics**
+  inside the time.AfterFunc callback. The recovered panic is
+  logged with the path, recovered message, and full stack so
+  operators can diagnose without re-running with GOTRACEBACK=all.
+  The watcher keeps serving other paths normally.
+  - `TestScheduleDispatch_RecoversPanickingHandler` calls
+    scheduleDispatch with a panicking handler, waits for the
+    debounce window, and asserts the pending-map entry was
+    cleaned up. Pre-fix verification: stashing the watch.go
+    change makes the test crash with "panic: simulated host
+    handler crash" propagating out of the time.goFunc goroutine
+    — the exact production-crash path the recover prevents.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/watch/` — all pass.
+
 ## [0.93.0] - 2026-05-11
 
 **Streaming dispatch survives a panicking host callback.** The
