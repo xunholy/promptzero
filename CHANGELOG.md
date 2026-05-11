@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.122.0] - 2026-05-11
+
+**`toolctx.ToolsWithSheets` actually sorts.** The docstring
+promised "returns every tool name that has a bundled cheat sheet,
+sorted" — but the body collected names from the package-level
+`sheets` map and returned them as-is, in Go's randomised map
+iteration order. An inline comment even admitted "sort not imported
+here". Any caller that trusted the docstring's stable layout — a
+`/tools` UI baseline, a regression test comparing `returned[0]`,
+a future coverage-report renderer — would silently flake across
+runs.
+
+### Fixed
+
+- **Import `sort` and apply `sort.Strings`** before returning, so
+  the implementation matches the "sorted alphabetically" docstring
+  contract.
+- `TestToolsWithSheets_Sorted` scans adjacent pairs for any
+  inversion and reports both offenders. Pre-fix verification:
+  stashing the toolctx.go change with `-count=50` makes the test
+  fail with messages like `ToolsWithSheets not sorted:
+  "wifi_sniff_pmkid" comes before "rfid_write" at indices 16/17`
+  — confirming the unordered map iteration.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.121.0] - 2026-05-11
 
 **Consensus voter API errors now surface as a warn log.**
