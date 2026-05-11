@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-05-11
+
+**`PROMPTZERO_MCP_ALLOW_CRITICAL=1` now actually implies
+`ALLOW_HIGH`.** The MCP package's risk-consent docstring claimed
+"PROMPTZERO_MCP_ALLOW_CRITICAL=1 ... (implies High is also
+permitted)" — but the High gate consulted only `ALLOW_HIGH`. An
+operator who set `ALLOW_CRITICAL=1` thinking it covered everything
+destructive still saw High-risk MCP tool calls denied with a
+message asking for `ALLOW_HIGH`. Documented behaviour, unenforced
+in code.
+
+### Fixed
+
+- **MCP risk gate honours both env vars on the High path.** The
+  consent check now reads both once at the top: `allowCritical` is
+  set when `ALLOW_CRITICAL=1`, and `allowHigh` is true whenever
+  `allowCritical || ALLOW_HIGH=1`. Critical still requires its own
+  opt-in — the implication only flows downward, matching the
+  docstring's directionality.
+- `TestServer_CallTool_CriticalAllowImpliesHigh` covers the
+  previously-untested combination (`ALLOW_HIGH` unset,
+  `ALLOW_CRITICAL=1`, High-risk tool). Pre-fix verification:
+  stashing the server.go change makes the test fail with
+  `tool requires consent — set PROMPTZERO_MCP_ALLOW_HIGH=1` —
+  the exact UX surprise the docstring was meant to prevent.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.115.0] - 2026-05-11
 
 **`confidence.ShouldAbstainAt` clamps thresholds > 1.** The
