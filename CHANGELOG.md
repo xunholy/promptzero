@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.154.0] - 2026-05-12
+
+**`subghz.Parse` handles `RAW_Data:` lines longer than 64 KiB.**
+The .sub-file parser used `bufio.NewScanner` with the default 64
+KiB token cap. Real captures of multi-second sub-GHz signals
+routinely exceed that: each pulse is ~5–6 ASCII bytes (digits +
+sign + space) so a ~13 k-pulse capture already crosses the
+boundary. Pre-fix, every .sub file with a long RAW_Data line
+surfaced as `subghz: scan: bufio.Scanner: token too long` and the
+parser never reached the RAW_Data branch — the file was
+unloadable. Sibling parsers had already raised this limit
+explicitly (`validator/badusb.go` 1 MiB, `tools/security.go`
+hash_crack_dictionary 1 MiB); this site was the missed mirror.
+
+### Fixed
+
+- Call `scanner.Buffer(make([]byte, 0, 64*1024), 8<<20)` so the
+  scanner can grow its internal buffer up to 8 MiB. Well above
+  any realistic per-line size, bounded enough to refuse a
+  pathological multi-GB line that would otherwise OOM the agent.
+- Regression test
+  (`TestParse_LongRawDataExceedsScannerDefault`) builds a synthetic
+  .sub file with 20 000 pulses (~220 KB RAW_Data line, ~3.5× the
+  old cap) and asserts `len(Pulses) == 40000`. Pre-fix the test
+  failed loudly with the token-too-long error.
+
 ## [0.153.0] - 2026-05-12
 
 **Trainset chat-row inner JSON uses `json.Marshal`, not Go-string

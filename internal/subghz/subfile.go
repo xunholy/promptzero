@@ -51,6 +51,18 @@ type SubFile struct {
 func Parse(r io.Reader) (*SubFile, error) {
 	sf := &SubFile{}
 	scanner := bufio.NewScanner(r)
+	// bufio.Scanner's default token cap is 64 KiB, but a real
+	// `RAW_Data:` line is regularly much longer — each pulse is
+	// ~5 ASCII bytes (4 digits + space) so a multi-second sub-GHz
+	// capture (~13 k pulses) already exceeds 64 KiB. Pre-v0.154
+	// those .sub files surfaced as `subghz: scan: bufio.Scanner:
+	// token too long` and the parser never reached the RAW_Data
+	// branch. 8 MiB is well above any realistic per-line size
+	// while bounded enough to refuse a pathological multi-GB line
+	// that would otherwise OOM the agent. Same defense pattern as
+	// validator/badusb.go (1 MiB Buffer call) and
+	// tools/security.go's hash_crack_dictionary scanner (1 MiB).
+	scanner.Buffer(make([]byte, 0, 64*1024), 8<<20)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
