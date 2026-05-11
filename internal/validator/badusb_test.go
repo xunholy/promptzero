@@ -3,6 +3,7 @@ package validator
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestValidate_BenignPayload(t *testing.T) {
@@ -298,5 +299,39 @@ func TestReport_EmptyRenderText(t *testing.T) {
 	out := rep.RenderText()
 	if !strings.Contains(out, "no findings") {
 		t.Errorf("empty-report render should say 'no findings': %s", out)
+	}
+}
+
+// TestTruncate_UTF8Boundary pins the fix for raw-byte truncation
+// splitting a multi-byte rune in the middle. Pre-fix, truncate did
+// `s[:n] + "…"` directly — a DuckyScript STRING line that contained
+// a non-ASCII character (international keyboard, emoji) near the
+// 120-byte cap could produce an invalid-UTF-8 Excerpt, which then
+// corrupted the JSON audit row / report rendering downstream.
+// evilportal.go already had the UTF-8-aware walk-back inlined;
+// badusb.go's truncate helper had drifted out of step.
+//
+// Construct a string whose byte 120 lands inside the 4-byte emoji
+// 🛂 (U+1F6C2 = F0 9F 9B 82). Pre-fix the result is not valid UTF-8.
+func TestTruncate_UTF8Boundary(t *testing.T) {
+	// 117 ASCII bytes + 4-byte emoji = 121 bytes total. cut=120 lands
+	// at the 4th byte of the emoji.
+	prefix := strings.Repeat("x", 117)
+	got := truncate(prefix+"🛂", 120)
+	if !utf8.ValidString(got) {
+		t.Errorf("truncate produced invalid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("truncate output should end with the ellipsis marker, got %q", got)
+	}
+}
+
+// TestTruncate_ShortInputUnchanged keeps the no-op path covered after
+// the UTF-8 walk-back was added — short inputs must still pass
+// through verbatim without the ellipsis appended.
+func TestTruncate_ShortInputUnchanged(t *testing.T) {
+	got := truncate("hello", 120)
+	if got != "hello" {
+		t.Errorf("short input mangled: %q", got)
 	}
 }

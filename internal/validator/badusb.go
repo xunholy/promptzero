@@ -310,7 +310,18 @@ func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	// UTF-8-aware: walk back from continuation bytes so a multi-byte
+	// rune at the boundary doesn't get split. Without this, a
+	// DuckyScript STRING line that contains an emoji or non-ASCII
+	// character near the 120-byte cap could produce an invalid-UTF-8
+	// excerpt, which then corrupts the JSON audit row / report
+	// rendering downstream. Mirrors the inline pattern in
+	// evilportal.go and session.clipTitle / generate.capSize.
+	cut := n
+	for cut > 0 && s[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return s[:cut] + "…"
 }
 
 // RenderText formats a Report as the human-readable block shown in REPL
