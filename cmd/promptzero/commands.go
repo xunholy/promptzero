@@ -115,9 +115,6 @@ func dispatchSlashCommand(input string, deps *REPLDeps) (handled bool, shouldExi
 			fmt.Fprintf(os.Stderr, "  %s\n", s.Format())
 		})
 		return true, false
-	case "/stats":
-		ed.writeOutput(func() { handleStats(deps, nil) })
-		return true, false
 	case "/reconnect":
 		// Force-reconnect to the Flipper. The SetReconnectCallback
 		// registered in the REPL surfaces phase messages in the
