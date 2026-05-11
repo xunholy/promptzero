@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-05-11
+
+**Mode parity audit, phase 2: web gets `/api/budget`.** The cost-
+safety control was the highest-priority missing web endpoint from
+the parity survey. Web operators had no way to raise or lower the
+session budget cap mid-session — they had to quit and restart with
+a new `--budget` flag. The CLI's `/budget set <USD>` / `/budget off`
+has been around since v0.21; the web cockpit lacked the
+equivalent endpoint.
+
+### Added
+
+- **`GET /api/budget`** returns the current cap, spent, remaining,
+  and percent — same shape as the budget block under `/api/cost`.
+  Returns `{"disabled": true, "spent_usd": <n>}` when no cap is
+  configured, mirroring the CLI's "budget: disabled (spent $X)"
+  output.
+- **`PUT /api/budget`** sets the cap. Body: `{"usd": 10.5}`.
+  `usd=0` disables the cap (mirrors CLI `/budget off`). Negative
+  values are rejected with 400 to match the CLI's input
+  validation. The handler echoes the post-mutation state via
+  the same shape `GET /api/budget` returns, so the cockpit's
+  header pill reflects the change without a second round-trip.
+  - Callbacks (80% warn, 100% hit, agent pre-flight refuse) are
+    wired by `setupBudget` at startup regardless of the initial
+    cap (v0.81 fix), so this endpoint reuses them — no need to
+    re-install on every PUT.
+  - Tests: `TestBudgetGet_NoTracker` (503 path),
+    `TestBudgetGet_DisabledWhenNoCap`, `TestBudgetGet_ShowsCapWhenSet`,
+    `TestBudgetPut_SetsCap`, `TestBudgetPut_DisablesOnZero`,
+    `TestBudgetPut_RejectsNegative`.
+  - New `putJSON` test helper — the first PUT endpoint in the
+    web API surface needed a PUT analogue of the existing
+    `postJSON`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.96.0] - 2026-05-11
 
 **Mode parity audit, phase 1: MCP gets audit logging + sidecars.**
