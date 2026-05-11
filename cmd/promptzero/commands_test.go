@@ -589,3 +589,42 @@ func TestRulesCmd_UnknownSubcommand(t *testing.T) {
 		t.Errorf("expected subcommand hint, got: %q", out)
 	}
 }
+
+// TestStatsTokens_IncludesCacheTotals pins the v0.83 fix: handleStats'
+// godoc advertises `/stats tokens — input/output/cache token totals`
+// but renderTokenStats originally only emitted input + output + cost.
+// Operators running /stats tokens to triage Anthropic spend had to
+// also run /stats cache to see the cache reads/creates that drive
+// prompt-cache savings. This test pins both the documented surface
+// and the regression sentinel.
+func TestStatsTokens_IncludesCacheTotals(t *testing.T) {
+	tracker := cost.NewTracker(cost.NewPricer(nil), "claude-sonnet-4-6", nil)
+	// AddUsageFull lets us push every counter the snapshot tracks;
+	// no real LLM round-trip needed for an output-renderer test.
+	tracker.AddUsageFull(100, 50, 800, 200)
+	deps := &REPLDeps{
+		ed:          newLineEditor(&termUI{enabled: false}),
+		costTracker: tracker,
+	}
+
+	out := captureStderr(t, func() {
+		handleStats(deps, []string{"tokens"})
+	})
+
+	wants := []string{"input:", "output:", "cache_read:", "cache_creation:", "cost:"}
+	for _, w := range wants {
+		if !strings.Contains(out, w) {
+			t.Errorf("/stats tokens output missing %q field; got: %q", w, out)
+		}
+	}
+	// Spot-check the numbers landed in the right rows; pre-fix the
+	// cache_* rows didn't exist at all so just checking for the
+	// 800/200 values would also work, but anchoring on the field
+	// label catches a future regression that renames cache_read.
+	if !strings.Contains(out, "cache_read:      800") {
+		t.Errorf("expected 'cache_read:      800' in /stats tokens; got: %q", out)
+	}
+	if !strings.Contains(out, "cache_creation:  200") {
+		t.Errorf("expected 'cache_creation:  200' in /stats tokens; got: %q", out)
+	}
+}
