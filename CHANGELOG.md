@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.175.0] - 2026-05-12
+
+**Extend the v0.174 contract — validate canbus args BEFORE the
+Flipper-transport check — to the three remaining canbus handlers
+(`sniff_start`, `inject`, `replay`).** v0.174 fixed `canbus_init`;
+this fixes the same defect in the rest of the family.
+
+Pre-fix, an LLM that typo'd a hex `arbitration_id_hex` or passed an
+`/etc/passwd`-style `path` saw `"Flipper not connected"` instead of
+the actual validation error. The LLM then chased a transport fix
+(cable, reconnect) when the real problem was its own argument.
+
+### Fixed
+
+- `canbusSniffStartHandler`, `canbusInjectHandler`, and
+  `canbusReplayHandler` all moved their argument validation above
+  the `d.Flipper == nil` short-circuit.
+- New table-driven regression `TestCanbusHandlers_ValidateBeforeTransport`
+  with seven sub-cases covers: bad `id_filter`, bad `output_path`,
+  bad `arbitration_id_hex`, bad `data_hex`, missing required `id`,
+  bad replay `path`, and missing required `path`. Each must surface
+  the validation error, not `"not connected"`.
+
 ## [0.174.0] - 2026-05-12
 
 **`canbus_init` validates bitrate before checking the Flipper

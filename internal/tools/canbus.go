@@ -149,9 +149,9 @@ var canbusSniffStartSpec = Spec{
 }
 
 func canbusSniffStartHandler(_ context.Context, d *Deps, args map[string]any) (string, error) {
-	if d == nil || d.Flipper == nil {
-		return "", fmt.Errorf("canbus_sniff_start: Flipper not connected")
-	}
+	// Validate args BEFORE the transport check (v0.175). Otherwise a
+	// malformed id_filter or output_path masquerades as "Flipper not
+	// connected", sending the LLM on a wild goose chase.
 	cmd := "canbus sniff start"
 	if f := str(args, "id_filter"); f != "" {
 		if err := validateCanHexID("id_filter", f); err != nil {
@@ -164,6 +164,9 @@ func canbusSniffStartHandler(_ context.Context, d *Deps, args map[string]any) (s
 			return "", err
 		}
 		cmd += " --out " + p
+	}
+	if d == nil || d.Flipper == nil {
+		return "", fmt.Errorf("canbus_sniff_start: Flipper not connected")
 	}
 	out, err := d.Flipper.RawCLI(cmd)
 	return wrapCANResult(out, err)
@@ -208,9 +211,9 @@ var canbusInjectSpec = Spec{
 }
 
 func canbusInjectHandler(_ context.Context, d *Deps, args map[string]any) (string, error) {
-	if d == nil || d.Flipper == nil {
-		return "", fmt.Errorf("canbus_inject: Flipper not connected")
-	}
+	// Validate args BEFORE the transport check (v0.175). Bad hex masking
+	// as "Flipper not connected" sends the LLM after a transport fix it
+	// can't perform.
 	id := strings.TrimSpace(str(args, "arbitration_id_hex"))
 	if id == "" {
 		return "", fmt.Errorf("canbus_inject: arbitration_id_hex is required")
@@ -224,6 +227,9 @@ func canbusInjectHandler(_ context.Context, d *Deps, args map[string]any) (strin
 	}
 	if err := validateCanHexData("data_hex", data); err != nil {
 		return "", err
+	}
+	if d == nil || d.Flipper == nil {
+		return "", fmt.Errorf("canbus_inject: Flipper not connected")
 	}
 	cmd := fmt.Sprintf("canbus inject %s %s", id, data)
 	if boolOr(args, "extended", false) {
@@ -254,15 +260,18 @@ var canbusReplaySpec = Spec{
 }
 
 func canbusReplayHandler(_ context.Context, d *Deps, args map[string]any) (string, error) {
-	if d == nil || d.Flipper == nil {
-		return "", fmt.Errorf("canbus_replay: Flipper not connected")
-	}
+	// Validate args BEFORE the transport check (v0.175). Same reasoning
+	// as canbusInjectHandler: a bad path returning "Flipper not connected"
+	// hides the validation problem.
 	p := str(args, "path")
 	if p == "" {
 		return "", fmt.Errorf("canbus_replay: path is required")
 	}
 	if err := validateFlipperPath("path", p); err != nil {
 		return "", err
+	}
+	if d == nil || d.Flipper == nil {
+		return "", fmt.Errorf("canbus_replay: Flipper not connected")
 	}
 	cmd := "canbus replay " + p
 	if boolOr(args, "loop", false) {
