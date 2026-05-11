@@ -63,6 +63,18 @@ const (
 	// any plausible per-chunk size while preventing an unbounded body
 	// from buffering into t.pending on a single recv call.
 	maxHTTPRecvResponseBytes = 16 << 20 // 16 MiB
+
+	// maxHTTPRecvLongPollMs caps the per-recv long-poll window the
+	// operator can request via ?timeout_ms=N. The Read() path waits
+	// up to readTimeout + 5s for the server to respond, so an
+	// uncapped value (timeout_ms=999_999_999) would block every recv
+	// for hundreds of hours and starve the dispatch layer. 60 s is
+	// well above any reasonable long-poll need (most reverse proxies
+	// time out connections well below this) and short enough that a
+	// misconfigured URL surfaces quickly at dial time rather than
+	// silently wedging the transport. Mirrors the dial-time validation
+	// pattern v0.139 added for ?batch=.
+	maxHTTPRecvLongPollMs = 60_000
 )
 
 func init() { //nolint:gochecknoinits
@@ -111,6 +123,13 @@ func httpDialer(rawURL string) (Transport, error) {
 		ms, err := strconv.Atoi(v)
 		if err != nil || ms < 0 {
 			return nil, fmt.Errorf("transport: invalid timeout_ms=%q in URL %q", v, rawURL)
+		}
+		// Enforce the maxHTTPRecvLongPollMs ceiling at dial time.
+		// Without it, an operator typo like `timeout_ms=999999999`
+		// dialled successfully and silently wedged every recv for
+		// hundreds of hours. Mirrors the v0.139 batch ceiling fix.
+		if ms > maxHTTPRecvLongPollMs {
+			return nil, fmt.Errorf("transport: timeout_ms=%d exceeds the %d-ms ceiling in URL %q", ms, maxHTTPRecvLongPollMs, rawURL)
 		}
 		t.readTimeout = time.Duration(ms) * time.Millisecond
 	}

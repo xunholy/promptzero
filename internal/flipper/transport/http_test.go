@@ -389,3 +389,33 @@ func TestHTTPDialer_AcceptsAtCapBatch(t *testing.T) {
 	}
 	defer tr.Close()
 }
+
+// TestHTTPDialer_RejectsOverCapTimeout pins the v0.146 sibling of
+// the v0.139 batch-ceiling fix. The Read path waits readTimeout + 5 s
+// for each recv, so an uncapped ?timeout_ms=999999999 silently
+// wedged the transport for ~278 hours per call. The dialer now
+// rejects any timeout_ms above maxHTTPRecvLongPollMs (60 s) at dial
+// time with a clear ceiling-exceeded error instead.
+func TestHTTPDialer_RejectsOverCapTimeout(t *testing.T) {
+	overCap := maxHTTPRecvLongPollMs + 1
+	url := fmt.Sprintf("http://127.0.0.1:1?timeout_ms=%d", overCap)
+	_, err := Open(url)
+	if err == nil {
+		t.Fatalf("Open with timeout_ms=%d (over %d-ms ceiling) should have failed", overCap, maxHTTPRecvLongPollMs)
+	}
+	if !strings.Contains(err.Error(), "ceiling") {
+		t.Errorf("error message missing ceiling diagnostic: %v", err)
+	}
+}
+
+// TestHTTPDialer_AcceptsAtCapTimeout pins the inclusive boundary —
+// timeout_ms=ceiling exactly is allowed. The fix uses a strict `>`
+// check, so this exercises the off-by-one.
+func TestHTTPDialer_AcceptsAtCapTimeout(t *testing.T) {
+	url := fmt.Sprintf("http://127.0.0.1:1?timeout_ms=%d", maxHTTPRecvLongPollMs)
+	tr, err := Open(url)
+	if err != nil {
+		t.Fatalf("Open with timeout_ms=%d (at ceiling) should succeed: %v", maxHTTPRecvLongPollMs, err)
+	}
+	defer tr.Close()
+}
