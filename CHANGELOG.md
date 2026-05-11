@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.131.0] - 2026-05-11
+
+**`rules.Engine.Register` defaults `Enabled` to true per docstring.**
+The `Rule` docstring promised "Enabled defaults true when the rule
+is registered; flip it via Pause" — but `Register` stored the
+field's value verbatim. Go's zero value for `bool` is `false`, so a
+caller writing the natural shape `eng.Register(Rule{Name: ...,
+Match: ..., Actions: ...})` silently got a never-firing rule:
+`Handle`'s `if !r.Enabled { continue }` skipped it on every audit
+row, with no log line, no surface in `/rules`, and no failure path
+for the operator to find.
+
+### Fixed
+
+- **`Register` forces `cp.Enabled = true`** before storing. Operators
+  wanting an initially-paused rule still use the documented path:
+  `Register` then `Pause(name)`. The existing tests all explicitly
+  set `Enabled: true` and stay green.
+- `TestRegister_DefaultsEnabledTrue` pins three things: omitted-
+  Enabled rules fire on the next matching entry; explicit
+  `Enabled: false` at Register time is normalised to true (so the
+  bug doesn't reappear as "operator must remember explicit true");
+  the post-Register Pause path still works end-to-end. Pre-fix
+  verification: stashing the rules.go change fails with "rule with
+  implicit-true Enabled did not fire: got 0 webhook calls, want 1".
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.130.0] - 2026-05-11
 
 **`workflows.Result.MarshalJSON` shadows empty stable fields too.**
