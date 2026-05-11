@@ -104,13 +104,26 @@ var canbusInitSpec = Spec{
 	Handler:   canbusInitHandler,
 }
 
+// maxCanBitrateKbps is the MCP2515 controller's physical ceiling: 1 Mbps.
+// The Flipper-MCP2515-CANBUS firmware can't honour anything above this; we
+// reject up front so the LLM sees a clear bound rather than the firmware's
+// opaque response to an absurd value (which on some forks is a crash that
+// leaves the device wedged until reboot).
+const maxCanBitrateKbps = 1000
+
 func canbusInitHandler(_ context.Context, d *Deps, args map[string]any) (string, error) {
-	if d == nil || d.Flipper == nil {
-		return "", fmt.Errorf("canbus_init: Flipper not connected")
-	}
+	// Validate args BEFORE the Flipper-connected check so the LLM gets
+	// actionable feedback even when the device is disconnected — without
+	// this, a typo in bitrate_kbps masquerades as a transport problem.
 	bitrate := intOr(args, "bitrate_kbps", 0)
 	if bitrate <= 0 {
 		return "", fmt.Errorf("canbus_init: bitrate_kbps must be > 0")
+	}
+	if bitrate > maxCanBitrateKbps {
+		return "", fmt.Errorf("canbus_init: bitrate_kbps %d exceeds the MCP2515 ceiling of %d kbps (1 Mbps)", bitrate, maxCanBitrateKbps)
+	}
+	if d == nil || d.Flipper == nil {
+		return "", fmt.Errorf("canbus_init: Flipper not connected")
 	}
 	out, err := d.Flipper.RawCLI(fmt.Sprintf("canbus init %d", bitrate))
 	return wrapCANResult(out, err)

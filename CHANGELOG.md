@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.174.0] - 2026-05-12
+
+**`canbus_init` validates bitrate before checking the Flipper
+transport, and clamps `bitrate_kbps` to the MCP2515 ceiling
+(1 Mbps).** Two contract gaps closed at once:
+
+- A typo in `bitrate_kbps` (e.g. operator types `bitrate_kbsp`)
+  surfaced as `"Flipper not connected"` because the args validator
+  ran *after* the transport check. The LLM then chased the wrong
+  fix (wiggle the cable) instead of the actual issue (wrong key).
+- No upper bound on `bitrate_kbps`. An LLM passing `9_999_999`
+  forwarded the absurd value straight to `RawCLI`. The MCP2515
+  controller can't honour anything above 1 Mbps; on some firmware
+  forks an out-of-range value crashes the FAP and leaves the bus
+  wedged until a Flipper reboot.
+
+### Fixed
+
+- Move bitrate validation above the `d.Flipper == nil` short-
+  circuit so argument errors surface even when the device is
+  disconnected.
+- Add `maxCanBitrateKbps = 1000` ceiling. Bitrates exceeding the
+  ceiling return a clear error naming the limit.
+- `TestCanbusInit_BitrateBounds` regression suite with four sub-
+  cases: above ceiling, exactly at ceiling, zero, negative.
+
 ## [0.173.0] - 2026-05-12
 
 **`canbus_inject` rejects odd-length hex `data_hex`.** CAN payloads
