@@ -278,6 +278,15 @@ func (a *Agent) SaveSessionAs(name string) error {
 	}
 	if existing, err := a.sessionStore.Load(name); err == nil {
 		state.CreatedAt = existing.CreatedAt
+		// Preserve an operator-set title when /save overwrites an
+		// existing slot — matches the preservation autoSaveLocked
+		// already does on the active session. Pre-fix, /save my-name
+		// silently clobbered any title set by /api/sessions PATCH
+		// or by Haiku title generation. /save's intent is "update
+		// the content of slot <name>", not "wipe its sidebar label".
+		if strings.TrimSpace(existing.Title) != "" {
+			state.Title = existing.Title
+		}
 	}
 	return a.sessionStore.Save(state)
 }

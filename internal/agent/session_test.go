@@ -108,6 +108,82 @@ func TestAgentResumeRestoresHistory(t *testing.T) {
 	}
 }
 
+// TestSaveSessionAs_PreservesExistingTitle pins the v0.90 fix. Pre-
+// fix, SaveSessionAs (the path behind the REPL's /save <name> command)
+// constructed a fresh session.State with Title="" and called Save —
+// silently clobbering any title that title-generation or
+// /api/sessions PATCH had set on an existing slot. autoSaveLocked
+// already had the right preservation pattern; SaveSessionAs drifted.
+//
+// Operators who renamed a session via the web UI and later ran
+// /save my-session in the REPL (e.g. to overwrite the snapshot
+// content) lost their pretty name and reverted to the
+// auto-derived first-message preview. Fixed by mirroring
+// autoSaveLocked's "preserve non-empty existing title" rule.
+func TestSaveSessionAs_PreservesExistingTitle(t *testing.T) {
+	dir := t.TempDir()
+	store, err := session.NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	// Seed an existing session with an operator-set title.
+	if err := store.Save(&session.State{
+		ID:    "my-session",
+		Title: "important recon engagement",
+		Model: "x",
+	}); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
+	a := &Agent{}
+	a.SetSessionStore(store)
+	a.history = []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock("first message — the autoderive seed")),
+		anthropic.NewAssistantMessage(anthropic.NewTextBlock("ready")),
+	}
+
+	if err := a.SaveSessionAs("my-session"); err != nil {
+		t.Fatalf("SaveSessionAs: %v", err)
+	}
+
+	loaded, err := store.Load("my-session")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Title != "important recon engagement" {
+		t.Errorf("SaveSessionAs clobbered operator-set title: got %q want %q", loaded.Title, "important recon engagement")
+	}
+}
+
+// TestSaveSessionAs_NewSlotLeavesTitleEmpty pins the negative path:
+// when /save creates a brand-new slot (no existing file with that
+// name), Title stays empty so the next autoSaveLocked or
+// title-generation can fill it in.
+func TestSaveSessionAs_NewSlotLeavesTitleEmpty(t *testing.T) {
+	dir := t.TempDir()
+	store, err := session.NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	a := &Agent{}
+	a.SetSessionStore(store)
+	a.history = []anthropic.MessageParam{
+		anthropic.NewUserMessage(anthropic.NewTextBlock("hi")),
+		anthropic.NewAssistantMessage(anthropic.NewTextBlock("hello")),
+	}
+	if err := a.SaveSessionAs("fresh-name"); err != nil {
+		t.Fatalf("SaveSessionAs: %v", err)
+	}
+	loaded, err := store.Load("fresh-name")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Title != "" {
+		t.Errorf("new slot's Title should be empty, got %q", loaded.Title)
+	}
+}
+
 func TestSessionTranscript_FlattensBlocks(t *testing.T) {
 	history := []anthropic.MessageParam{
 		anthropic.NewUserMessage(anthropic.NewTextBlock("hi there")),
