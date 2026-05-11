@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-05-11
+
+**Mode parity audit, phase 2e: web gets `/api/tools`, `/api/webhooks`,
+`/api/reconnect`.** Three small but operator-facing endpoints that
+brought web closer to CLI parity. The cockpit can now browse the
+tool catalogue, see configured webhook subscriptions plus their
+recent delivery results, and force-reconnect the Flipper without
+dropping back to the REPL.
+
+### Added
+
+- **`GET /api/tools[?filter=…]`** — returns every registered tool
+  (name + description), the total count, and the `has_marauder`
+  boolean. Filter is case-insensitive substring on name, matching
+  CLI `/tools <filter>`. Always returns the full filtered set in
+  one response (no pagination — cockpit can do client-side narrowing).
+- **`GET /api/webhooks`** — every configured subscription with its
+  events filter, signed-boolean, and recent delivery results
+  (status_code / error). Secrets are NEVER returned in the body —
+  the cockpit shows the "(signed)" badge based on the boolean.
+  Mirrors CLI `/webhooks`.
+- **`POST /api/webhooks/test`** — body `{"name": "ops"}`. Fires a
+  synthetic `session_started` payload at the named subscription
+  with a 10-second timeout. Mirrors CLI `/webhooks test <name>`.
+- **`POST /api/reconnect`** — force-reconnect the Flipper with the
+  same 15-second timeout the CLI handler uses. 503 when no
+  Flipper is attached. Mirrors CLI `/reconnect`.
+- New `SetWebhooks` setter on the Server wires the dispatcher
+  through from `runWebMode`. `WebDeps` gained a `Webhooks` field
+  populated from `setupWebhooks`'s result in `main.go`.
+  - Tests: `TestToolsList_ReturnsCatalog`,
+    `TestToolsList_FilterNarrows`, `TestWebhooksList_503WhenUnset`,
+    `TestWebhooksList_ReturnsSubscriptions` (pins that secrets
+    are NOT in the response body — only the `signed` boolean is
+    exposed), `TestReconnect_503WhenFlipperMissing`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/ ./cmd/promptzero/`
+  — all pass.
+
 ## [0.100.0] - 2026-05-11
 
 **Mode parity audit, phase 2d: web gets `/api/attack`.** ATT&CK
