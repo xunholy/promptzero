@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.107.0] - 2026-05-11
+
+**`/api/campaign/run` no longer truncates at 30 seconds.** The
+v0.104 endpoint set its own 10-minute timeout for the campaign
+runner, but the server-level `withRESTTimeout` wrapper (default
+30s) was clamping the response. Operators saw a 503
+"request timed out" at the 30s mark even though the campaign
+kept running inside the handler — invisible progress, with the
+final result thrown away.
+
+### Fixed
+
+- **New `isLongRunningRequest` carve-out in `withRESTTimeout`**
+  for POST `/api/campaign/run`. The wrapper now lets the
+  handler's own per-call timeout win on this endpoint instead
+  of imposing the default 30s cap. Other endpoints stay capped
+  — the carve-out list is explicitly maintained.
+  - The bypass is "let the handler's own deadline win", not
+    "no timeout" — the handler still enforces its 10-minute
+    budget via `context.WithTimeout`.
+  - `TestWithRESTTimeout_CarvesOutCampaignRun` confirms both
+    halves of the contract: a 200ms-slow `/other` request gets
+    503 under a 50ms wrapper (clamp still works), but the same
+    delay through `/api/campaign/run` returns 200 (carve-out
+    fires). Pre-fix verification: stashing the server.go change
+    makes the test fail with "POST /api/campaign/run status = 503,
+    want 200" — the exact production behaviour the fix corrects.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.106.0] - 2026-05-11
 
 **Shared body-cap for every `/api/*` JSON endpoint.** v0.105
