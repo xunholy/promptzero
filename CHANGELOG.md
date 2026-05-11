@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.180.0] - 2026-05-12
+
+**`Flipper.GPIOSet` and `Flipper.GPIORead` validate `pin` against the
+same allowlist on both transports.** Pre-fix only the RPC path
+checked the pin name via `gpioPinByName`; the CLI path forwarded
+any string through `sanitizeArg`. A typo like `"PA77"` or `"PD0"`
+reached the firmware as an opaque "unknown pin" error or, on some
+forks, silently no-op'd — leaving the LLM unable to tell whether
+the call worked.
+
+The Flipper exposes exactly eight pins (PC0, PC1, PC3, PB2, PB3,
+PA4, PA6, PA7) — same set the protobuf enum already enumerates.
+This release plumbs that allowlist into the CLI dispatch path too.
+
+### Fixed
+
+- `GPIOSet` and `GPIORead` now run `gpioPinByName` validation
+  before `dispatch`, regardless of transport.
+- Error message names the eight valid pins so the LLM can
+  self-correct without consulting docs.
+- `TestGPIOSet_RejectsUnknownPin` (six bad-pin cases) and
+  `TestGPIORead_RejectsUnknownPin` (four bad-pin cases) pin
+  the contract.
+
 ## [0.179.0] - 2026-05-12
 
 **`Flipper.InputSend` validates `button` against an allowlist (same
