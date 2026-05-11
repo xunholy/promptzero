@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-05-11
+
+**Snapshot + quarantine + session export coverage.** More 0 %-
+covered agent helpers pinned: the `/rewind` snapshot-manager
+setter, the docs_search index swap, the retry-notify callback,
+the default session-store factory, and the eval-harness
+exports for `ToolError` and the prompt-injection quarantine
+wrapper. These are not feature paths but they're load-bearing
+glue — a regression silently disables `/rewind`, breaks
+docs_search routing, or (worst) drops the
+`<untrusted-hardware-output>` wrapper that's the prompt-
+injection countermeasure.
+
+### Changed
+
+- **`internal/agent` snapshot + quarantine export coverage.**
+  Extended `setters_test.go` with 9 more tests:
+  - `TestAgentSetSnapshotManager` — Set + Get round-trip,
+    nil-disable accepted.
+  - `TestAgentSetRAGIndex` — nil swap-back to embedded corpus
+    fallback.
+  - `TestAgentSetRetryNotifyCallback` — retry-observer wiring.
+  - `TestAgentSessionIDFresh` — empty string when no session
+    store attached.
+  - `TestDefaultSessionStore` — `$HOME/.promptzero/sessions`
+    creation (test swaps `HOME` to `t.TempDir()` so the
+    operator's real home isn't polluted).
+  - `TestNewToolErrorForTest` — eval-harness `ToolError`
+    factory: Tool, Message, and Code fields all populated.
+  - `TestQuarantineForTest_HardwareWrap` — hardware-origin
+    tools get `<untrusted-hardware-output>…</>` wrapping
+    regardless of error state.
+  - `TestQuarantineForTest_NoWrapForInternal` — allowlisted
+    internal tools (`audit_query`) stay unwrapped.
+  - `TestQuarantineOutput_ExportedSurface` — direct alias
+    export; `isErr=true` on hardware tool still wraps (the
+    prompt-injection countermeasure runs regardless of success
+    vs failure because error messages can also contain
+    attacker-controlled content like SSIDs).
+
+  Coverage on `internal/agent` rose **72.9 % → 74.2 %**
+  (+1.3 pp).
+
+### Verified
+
+- `task test:full` (race-enabled, full module) — all packages pass.
+- `task eval` — 12 / 12 default scenarios pass in 4 ms.
+- `golangci-lint run ./...` — 0 issues.
+- Live-hardware validator — N/A. Pure unit tests on setters,
+  factory functions, and a string-wrapping helper.
+
 ## [0.76.0] - 2026-05-11
 
 **Agent setter + ConfirmDelayGate coverage.** Several pure
