@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.140.0] - 2026-05-12
+
+**`config.Load` parse-error names the file actually read.** When the
+requested config path was absent and the `~/.promptzero/config.yaml`
+fallback existed but had malformed YAML, the resulting error
+attributed the parse failure to the *requested* path — a file that
+was never read. Operators chased a phantom filename instead of
+fixing the real one.
+
+### Fixed
+
+- Track the path actually read (`loadedPath`) through the fallback
+  branch and use it in the parse-error message. Read-error
+  attribution is unchanged — those errors only fire on the
+  requested path, where the original attribution was already
+  correct.
+- Regression test (`TestLoad_ParseErrorReferencesFallbackPath`)
+  stages a malformed fallback config and asserts the error
+  mentions the fallback path, not the requested one.
+
 ## [0.139.0] - 2026-05-11
 
 **`flipper/transport.httpDialer` rejects over-cap `?batch=`.** The
