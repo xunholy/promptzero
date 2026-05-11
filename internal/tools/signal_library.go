@@ -68,6 +68,16 @@ func init() {
 			}
 
 			matches, errs := fileformat.SearchFreqmanDir(root, query, limit)
+			// SearchFreqmanDir returns nil when the root is empty /
+			// missing / has no .txt files. json.MarshalIndent of a
+			// nil slice serialises as the literal "null", which
+			// forces the LLM to know "matches:null means no hits"
+			// rather than just iterating an empty list. Substitute
+			// a non-nil empty slice so the envelope always carries
+			// a parseable JSON array. Same idiom as v0.163 / v0.164.
+			if matches == nil {
+				matches = []fileformat.FreqmanMatch{}
+			}
 
 			// errs are diagnostics only — don't fail the whole call when one
 			// stray non-Freqman .txt happens to live in the library dir.
