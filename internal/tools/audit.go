@@ -41,6 +41,16 @@ func init() {
 			if err != nil {
 				return "", err
 			}
+			// Substitute an empty slice for a nil result before
+			// marshalling so the LLM always sees a JSON array.
+			// json.MarshalIndent on a nil []Entry returns the
+			// literal "null", which forces the model to know
+			// "null means no entries" rather than just iterating
+			// an empty list. Same idiom as the v0.163 audit.Export
+			// fix.
+			if entries == nil {
+				entries = []audit.Entry{}
+			}
 			data, _ := json.MarshalIndent(entries, "", "  ")
 			return string(data), nil
 		},
