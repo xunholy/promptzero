@@ -376,6 +376,18 @@ func TestEvalWhen(t *testing.T) {
 		{"length == 0", "x", false},
 		{"PMKID", "PMKID captured", true}, // bare substring
 		{"PMKID", "no capture", false},
+
+		// Unparseable length clauses must conservatively return true
+		// per the docstring's "a typo never silently blocks a step"
+		// promise. Pre-fix, "length > 5" fell through to the bare-
+		// substring match, which would almost never hit on real tool
+		// output and would silently skip the step — the exact failure
+		// mode the docstring exists to prevent. The fix detects any
+		// "length"-prefixed clause that isn't one of the two
+		// supported forms and returns true.
+		{"length > 5", "real tool output", true},  // unsupported comparator, falls back to "true"
+		{"length != 0", "real tool output", true}, // unsupported operator, falls back to "true"
+		{"LENGTH > 0", "x", true},                 // case-insensitive match preserved
 	}
 	for _, c := range cases {
 		if got := evalWhen(c.clause, c.output); got != c.want {
