@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-05-11
+
+**Campaign runner releases per-step timer contexts immediately.**
+`campaign.Runner.Run` used `defer cancel()` inside its step loop,
+so every iteration's timer-context cancel accumulated on the
+defer stack and only fired when Run returned. A long campaign
+with many timed steps built up unbounded pending timer goroutines
+held alive by the defer closure — each step's
+`context.WithTimeout` stayed referenced until function exit even
+though `exec.Run` had long since completed.
+
+Operator impact is bounded (timer contexts don't consume wall-
+clock resources once they fire), but it's the classic
+defer-in-loop anti-pattern and the codebase's other loop-of-
+contexts pattern (rewindSteps) already cancels per-iteration.
+
+### Fixed
+
+- **`campaign.Runner.Run` calls `cancel()` right after each step's
+  `exec.Run` returns** instead of deferring to function exit.
+  Matches the pattern in `rewindSteps`. Step contexts are
+  released as soon as the step completes; the deferred-cancel
+  pile is gone.
+  - `TestRunner_CancelsTimedStepContextBeforeNextStep` pins the
+    behavioural contract: step N's ctx must be cancelled by the
+    time step N+1's `exec.Run` is invoked. Pre-fix verification:
+    stashing the campaign.go change makes the test fail with
+    "previous step's ctx still active when next step runs —
+    defer-in-loop leak".
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/campaign/` — all pass.
+
 ## [0.91.0] - 2026-05-11
 
 **`/help` and README now match the implemented subcommands.**
