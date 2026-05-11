@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-05-11
+
+**`/forget <current-session>` no longer silently undoes itself.**
+Operator-visible bug. Pre-fix, deleting the currently-active
+session worked on disk — the JSON file and per-session snapshot
+directory were removed — but the agent kept writing to that same
+ID. The next turn's autoSaveLocked recreated the JSON file from
+`a.history`; the next file-edit snapshot recreated the directory.
+Operators thought "/forget" had cleaned up; the session
+reappeared on the next REPL message.
+
+### Fixed
+
+- **`agent.DeleteSession` now rotates in-memory state when the
+  operator deletes the active session.** When the deleted id
+  matches `a.sessionID`, the call clears `a.history` and assigns
+  a fresh `session-<unixnano>` id so subsequent autosaves and
+  snapshots route to brand-new paths. Deleting a non-active
+  session leaves in-memory state untouched (the pre-fix
+  behaviour was already correct here).
+  - The rotation re-checks `a.sessionID == id` under the lock so
+    a concurrent `ResumeSession` / `NewSession` between the disk
+    delete and the in-memory rotation can't clobber a fresh
+    id that another caller just assigned.
+  - `TestDeleteSession_OfActiveSessionRotatesInMemoryState` pins
+    the positive path: seeded history is cleared, sessionID
+    rotates to a different value, and the deleted file stays
+    deleted after the rotation completes.
+  - `TestDeleteSession_OfOtherSessionLeavesActiveAlone` pins the
+    negative path so a future refactor that drops the
+    `id == a.sessionID` guard fails loudly.
+  - Pre-fix verification: stashing the session.go change makes
+    `TestDeleteSession_OfActiveSessionRotatesInMemoryState`
+    report "sessionID still 'active-target' after deleting it
+    — autosave would recreate the file" plus "history not
+    cleared", matching the documented bug exactly.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/agent/` — all pass
+  including the new `TestDeleteSession_*` cases.
+
 ## [0.87.0] - 2026-05-11
 
 **Streaming sink race fix — same class as v0.86 webhook.** The
