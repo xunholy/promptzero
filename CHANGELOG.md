@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.139.0] - 2026-05-11
+
+**`flipper/transport.httpDialer` rejects over-cap `?batch=`.** The
+`maxHTTPRecvResponseBytes` constant's docstring says the per-recv
+batch size is "configurable via `?batch=N` up to this ceiling" (16
+MiB), but `httpDialer` accepted any positive int and only the
+downstream `Read` enforced the ceiling — via a "response exceeded
+cap" error that fired on *every* recv attempt. So a transport
+URL like `http://bridge:8080/?batch=20000000` dialled successfully
+and then was completely unusable, with no signal at config-load
+time pointing the operator at the misconfigured query param.
+
+### Fixed
+
+- **Validate `?batch` against `maxHTTPRecvResponseBytes` at dial
+  time** and return a clear "exceeds the N-byte ceiling" error.
+  Same fail-loud-at-config pattern already used by negative
+  `timeout_ms`, `batch <= 0`, and the v0.129 `SetPipelineBundle`
+  zero-bundle reject.
+- Two regression tests cover both sides of the boundary:
+  `TestHTTPDialer_RejectsOverCapBatch` (batch=ceiling+1 fails with
+  the ceiling diagnostic) and `TestHTTPDialer_AcceptsAtCapBatch`
+  (batch=ceiling exactly succeeds — off-by-one assertion since
+  the fix uses strict `>` not `>=`). Pre-fix verification:
+  stashing the http.go change makes the over-cap test fail with
+  `Open with batch=16777217 (over 16777216-byte ceiling) should
+  have failed`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.138.0] - 2026-05-11
 
 **`agent.maybeProspectiveReflect` neutralizes smuggled close
