@@ -395,6 +395,22 @@ func TestCampaignValidate_RejectsMalformed(t *testing.T) {
 	}
 }
 
+// TestCampaignValidate_RejectsOversizedBody pins the v0.105
+// resource-bound: a body larger than maxCampaignBodyBytes
+// (256 KiB) is rejected with 413, not silently buffered into
+// memory. Same protection applies to /api/campaign/run via the
+// shared body cap; we cover the validate path only since the run
+// path's MaxBytesReader is the same line of code.
+func TestCampaignValidate_RejectsOversizedBody(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+	// 300 KiB of YAML-ish padding.
+	huge := strings.Repeat("# comment line\n", 22000)
+	code, _ := postRaw(t, ts, "/api/campaign/validate", huge)
+	if code != http.StatusRequestEntityTooLarge {
+		t.Errorf("code = %d, want 413 (max body cap)", code)
+	}
+}
+
 // TestCampaignRun_ExecutesEachStep pins the happy run path. The
 // fake agent's RunTool counts invocations and the response should
 // list every step result.
