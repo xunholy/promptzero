@@ -403,3 +403,61 @@ func TestDispatchStreaming_StubbornProducerIsNotForceKilled(t *testing.T) {
 		t.Errorf("callback invoked %d times after abort, want exactly 1", seen)
 	}
 }
+
+// TestDispatchStreaming_PanickingCallbackDoesNotCrashAgent pins the
+// v0.93 fix. The consumer goroutine in dispatchStreaming used to
+// call the host callback directly without recover, so a panicking
+// host (REPL UI writing to a closed terminal, web cockpit losing
+// its WebSocket mid-stream) crashed the agent process. The
+// sibling toolStatusCb already had safeCallToolStatus for exactly
+// this reason; the streaming path drifted.
+//
+// The recovered panic is now treated the same as a `false` return
+// from the callback — abort the stream, drain remaining frames
+// silently, dispatchStreaming completes cleanly. We assert:
+//  1. dispatch returns (no panic propagates).
+//  2. The handler runs to completion (drain proceeded after the
+//     panic).
+//  3. The callback was invoked at most once (we abort on the
+//     panicking frame).
+func TestDispatchStreaming_PanickingCallbackDoesNotCrashAgent(t *testing.T) {
+	const toolName = "test_streaming_panic_cb"
+	t.Cleanup(func() { toolsreg.UnregisterForTest(toolName) })
+
+	const totalFrames = 5
+	toolsreg.Register(toolsreg.Spec{
+		Name:        toolName,
+		Description: "tool whose stream consumer panics",
+		Schema:      json.RawMessage(`{"type":"object"}`),
+		Risk:        risk.Low,
+		Streams:     true,
+		Handler: func(_ context.Context, _ *toolsreg.Deps, _ map[string]any) (string, error) {
+			return "", nil
+		},
+		StreamHandler: func(_ context.Context, _ *toolsreg.Deps, _ map[string]any, sink *streaming.Sink) (string, error) {
+			defer sink.Close()
+			for i := 0; i < totalFrames; i++ {
+				sink.Send([]byte("frame"))
+			}
+			return "completed-after-panic", nil
+		},
+	})
+
+	a := &Agent{}
+	var seen int
+	a.SetToolStreamCallback(func(_ streaming.Frame) bool {
+		seen++
+		panic("simulated host crash mid-stream")
+	})
+
+	out, err := a.dispatch(context.Background(), toolName, map[string]any{})
+	if err != nil {
+		t.Fatalf("dispatch: %v — panic in callback shouldn't propagate as error", err)
+	}
+	if out != "completed-after-panic" {
+		t.Errorf("output = %q, want completed-after-panic — drain didn't proceed", out)
+	}
+	if seen != 1 {
+		t.Errorf("callback invoked %d times after panic, want exactly 1 (panic should abort the stream)", seen)
+	}
+}
