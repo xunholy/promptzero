@@ -61,19 +61,32 @@ func buildDeviceStateBlock(parent context.Context, f *flipper.Flipper) string {
 
 // buildUIContextBlock returns a one-line XML annotation for the current web
 // UI navigation state, or the empty string when both view and path are empty.
-// Control characters are stripped from path; XML-special characters are not
-// escaped — filesystem paths never contain them and path validation upstream
-// rejects anything that would require escaping.
+// Control characters and XML-attribute-special characters
+// (`<`, `>`, `"`, `&`, `'`) are stripped from path; %q's Go-escaping of `"`
+// is not a valid XML attribute escape, so a Flipper file named
+// `foo"bar.sub` would have produced malformed XML in the prefix block
+// the LLM sees. The previous docstring claimed upstream validation
+// rejected anything XML-unsafe, but setUIContextFromWS only checks NUL
+// and length — so this function defends in depth.
 func buildUIContextBlock(view, path string) string {
 	if view == "" && path == "" {
 		return ""
 	}
-	// Strip control characters; keep printable UTF-8 only.
+	// Strip control characters AND XML-special characters; keep
+	// printable, attribute-safe UTF-8 only. View is allowlisted by
+	// setUIContextFromWS so it never carries unsafe chars; path is
+	// the load-bearing input here (operator-clicked filenames from
+	// the Flipper SD card).
 	var b strings.Builder
 	for _, r := range path {
-		if r >= 32 {
-			b.WriteRune(r)
+		if r < 32 {
+			continue
 		}
+		switch r {
+		case '<', '>', '"', '&', '\'':
+			continue
+		}
+		b.WriteRune(r)
 	}
 	cleanPath := b.String()
 	return fmt.Sprintf("<ui-context view=%q path=%q/>\n", view, cleanPath)
