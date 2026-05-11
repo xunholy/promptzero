@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.124.0] - 2026-05-11
+
+**`semcache` files no longer world-readable.** The cache stores
+whatever the LLM generated to fulfil a prior turn: BadUSB payload
+bytes, evil-portal HTML with target SSIDs, NFC dumps with badge
+UIDs, generated SubGHz keys. Operator-data leakage to other
+accounts on the host is in scope. But the cache directory went
+down at `0o755` and per-entry files at `0o644` — the only
+writable-by-world tree under `~/.promptzero`. The audit DB,
+session JSON, and snapshot tree all already sit at `0o600` /
+`0o700` for exactly this reason; semcache had drifted out of step.
+
+### Fixed
+
+- **`MkdirAll(c.root, 0o700)`** and **`WriteFile(..., 0o600)`** at
+  both Put and the LastAccessed rewrite path inside Get. Operator-
+  only access, matching the convention used by audit / session /
+  snapshot.
+- Long-form rationale added to the Put comment so a future
+  maintainer doesn't widen them again.
+- `TestPut_FilePermissionsLockedDown` stats the directory and the
+  entry file after a Put and asserts both modes explicitly;
+  `TestGet_RewritePreservesRestrictivePerms` covers the Get rewrite
+  path so a second access doesn't widen the file's permissions.
+  Pre-fix verification: stashing the semcache.go change makes them
+  fail with `cache dir mode = 0755, want 0o700` and `cache file
+  mode = 0644, want 0o600`.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.123.0] - 2026-05-11
 
 **`rag.Snippet` clips body at rune boundaries.** Same UTF-8 hazard
