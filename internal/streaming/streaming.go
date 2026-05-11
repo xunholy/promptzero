@@ -72,6 +72,14 @@ type Sink struct {
 	aborted   chan struct{}
 	abortOnce sync.Once
 	closeOnce sync.Once
+
+	// sendMu serialises Send against Close so a concurrent Send that
+	// races past the s.closed.Load() check can't try to send on the
+	// just-closed frames channel — the panic the docstring's
+	// "safe for use from multiple goroutines" promise would otherwise
+	// expose. Send is non-blocking inside the lock (select has a
+	// default branch) so the lock is held for microseconds.
+	sendMu sync.Mutex
 }
 
 // NewSink constructs a Sink for the given tool name. buffer ≤0 falls
@@ -96,8 +104,15 @@ func NewSink(tool string, buffer int) *Sink {
 //
 // Concurrency: safe for use from multiple goroutines on the same
 // sink, but the typical pattern is one producer goroutine per Sink.
+// sendMu serialises against Close so a Send racing past the
+// s.closed.Load() check cannot panic on a just-closed channel.
 func (s *Sink) Send(payload []byte) bool {
-	if s == nil || s.closed.Load() {
+	if s == nil {
+		return false
+	}
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	if s.closed.Load() {
 		return false
 	}
 	frame := Frame{
@@ -118,11 +133,19 @@ func (s *Sink) Send(payload []byte) bool {
 // Close stops accepting new frames and closes the underlying
 // channel so consumers `range`-looping over Frames() exit. Idempotent
 // — safe to defer.
+//
+// sendMu is held during the closed-flag store and the channel close
+// so a concurrent Send is guaranteed to either complete before the
+// close (frame delivered) or observe closed=true after the lock
+// hands off (frame rejected). Without this pairing a Send that
+// passed s.closed.Load()==false could race the close and panic.
 func (s *Sink) Close() {
 	if s == nil {
 		return
 	}
 	s.closeOnce.Do(func() {
+		s.sendMu.Lock()
+		defer s.sendMu.Unlock()
 		s.closed.Store(true)
 		close(s.frames)
 	})
