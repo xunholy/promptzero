@@ -368,6 +368,16 @@ func Register(s Spec) {
 	if existing, dup := byAlias[s.Name]; dup {
 		panic(fmt.Sprintf("tools.Register: name %q collides with alias already bound to %q", s.Name, existing))
 	}
+	// seenAliases catches intra-Spec duplicates (e.g.
+	// `Aliases: []string{"foo", "foo"}`). Pre-v0.168 only the
+	// byName / byAlias checks fired, but those maps don't yet
+	// contain THIS Spec's aliases at validation time — so a
+	// repeated entry in the same slice silently passed both
+	// checks. Per the package docstring's "we fail loudly at
+	// init" promise, mute acceptance of a programming error is
+	// a contract gap; surface it as a panic alongside the other
+	// collision panics.
+	seenAliases := make(map[string]struct{}, len(s.Aliases))
 	for _, a := range s.Aliases {
 		if a == "" {
 			panic(fmt.Sprintf("tools.Register: %q has an empty alias", s.Name))
@@ -375,6 +385,10 @@ func Register(s Spec) {
 		if a == s.Name {
 			panic(fmt.Sprintf("tools.Register: %q lists itself as an alias", s.Name))
 		}
+		if _, dup := seenAliases[a]; dup {
+			panic(fmt.Sprintf("tools.Register: %q lists alias %q twice", s.Name, a))
+		}
+		seenAliases[a] = struct{}{}
 		if _, dup := byName[a]; dup {
 			panic(fmt.Sprintf("tools.Register: alias %q on %q collides with registered tool", a, s.Name))
 		}

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.168.0] - 2026-05-12
+
+**`tools.Register` panics on intra-Spec duplicate aliases.** The
+package docstring promises "we fail loudly at init" for every
+collision — duplicate name, alias colliding with another tool,
+empty alias, self-aliasing. But a `Spec` with `Aliases: []string{"foo",
+"foo"}` (typo in a single Aliases list) silently passed validation:
+each loop iteration checked the alias against the global `byName` /
+`byAlias` maps, which didn't yet contain THIS Spec's aliases at
+validation time. The second `byAlias[a] = s.Name` write at the end
+was idempotent, so the entry landed in the registry with no signal
+that the operator had made a programming error.
+
+### Fixed
+
+- Track aliases seen so far inside a single `Register` call via a
+  local `seenAliases` set. The second occurrence of any alias
+  panics with `tools.Register: %q lists alias %q twice` —
+  matching the loud-failure style of the existing collision panics.
+- Regression test `TestRegister_PanicsOnIntraSpecDuplicateAlias`
+  stages a `Register` call with `Aliases: ["shared", "shared"]`
+  and asserts the panic fires before the buggy state lands in
+  `byAlias`.
+
 ## [0.167.0] - 2026-05-12
 
 **Corpora-search tools' `hits` envelope is always a JSON array.**

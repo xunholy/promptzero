@@ -113,6 +113,34 @@ func TestRegister_PanicsOnDuplicateAlias(t *testing.T) {
 	Register(newSpec("beta", "a1"))
 }
 
+// TestRegister_PanicsOnIntraSpecDuplicateAlias pins the v0.168
+// contract gap closure: an Aliases list with a repeated entry
+// (e.g. `[]string{"foo", "foo"}`) must surface as a panic at
+// registration time, matching the package docstring's "fail loudly
+// at init" promise. Pre-fix only the byName / byAlias global-state
+// checks fired, but those maps didn't yet contain THIS Spec's
+// aliases when validation ran, so the second occurrence passed
+// silently — programming error landed in the registry without a
+// signal.
+func TestRegister_PanicsOnIntraSpecDuplicateAlias(t *testing.T) {
+	resetForTest(t)
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("expected panic on intra-Spec duplicate alias")
+		}
+	}()
+	Register(Spec{
+		Name:        "intra_dup",
+		Description: "test",
+		Schema:      json.RawMessage(`{"type":"object"}`),
+		Aliases:     []string{"shared", "shared"},
+		Handler: func(_ context.Context, _ *Deps, _ map[string]any) (string, error) {
+			return "", nil
+		},
+	})
+}
+
 func TestRegister_PanicsWhenAliasCollidesWithName(t *testing.T) {
 	resetForTest(t)
 	Register(newSpec("alpha"))
