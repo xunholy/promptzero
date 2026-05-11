@@ -334,12 +334,24 @@ func TestNormaliseAttackIDs(t *testing.T) {
 // filter set to a future time matches no past audit rows — silent
 // zero-row response with no signal to the operator that their
 // "negative duration" had no sensible meaning.
+//
+// The "-7d" / "-1D" cases close a v0.85 follow-up: the days suffix
+// is handled by parseWhen's special-case branch (Go's ParseDuration
+// doesn't recognise "d"), and the pre-fix branch returned the
+// generic "cannot parse" error instead of the friendlier
+// "negative duration" message. The error message asymmetry was
+// confusing — same negative-duration concept, two different errors
+// depending on the suffix.
 func TestParseWhen_RejectsNegativeDuration(t *testing.T) {
-	for _, in := range []string{"-30m", "-1h", "-2h30m"} {
+	for _, in := range []string{"-30m", "-1h", "-2h30m", "-7d", "-1D"} {
 		t.Run(in, func(t *testing.T) {
 			_, err := parseWhen(in)
 			if err == nil {
 				t.Errorf("%q should error (negative duration)", in)
+				return
+			}
+			if !strings.Contains(err.Error(), "negative duration") {
+				t.Errorf("%q error %q does not mention 'negative duration' — operators get the generic 'cannot parse' message and have to guess what's wrong", in, err.Error())
 			}
 		})
 	}

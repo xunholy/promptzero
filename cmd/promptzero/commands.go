@@ -1393,7 +1393,17 @@ func parseWhen(s string) (time.Time, error) {
 	}
 	if n := len(s); n > 1 && (s[n-1] == 'd' || s[n-1] == 'D') {
 		days, err := strconv.Atoi(s[:n-1])
-		if err == nil && days >= 0 {
+		if err == nil {
+			// Mirror the ParseDuration branch below — negative
+			// since/until has no sensible reading ("how long ago")
+			// and silently returning a future timestamp matches no
+			// rows. Pre-this-fix "-7d" fell through to the generic
+			// "cannot parse as duration or RFC3339" error while
+			// "-30m" got the friendly negative-duration message; the
+			// asymmetry was confusing.
+			if days < 0 {
+				return time.Time{}, fmt.Errorf("negative duration %q (use e.g. \"7d\" not \"-7d\")", s)
+			}
 			return time.Now().Add(-time.Duration(days) * 24 * time.Hour), nil
 		}
 	}
