@@ -862,9 +862,17 @@ func renderCacheStats(snap cost.Snapshot) {
 
 func renderTokenStats(snap cost.Snapshot) {
 	fmt.Fprintf(os.Stderr, "  tokens:\n")
-	fmt.Fprintf(os.Stderr, "    input:  %d\n", snap.InputTokens)
-	fmt.Fprintf(os.Stderr, "    output: %d\n", snap.OutputTokens)
-	fmt.Fprintf(os.Stderr, "    cost:   $%.4f\n", snap.TotalUSD)
+	fmt.Fprintf(os.Stderr, "    input:           %d\n", snap.InputTokens)
+	fmt.Fprintf(os.Stderr, "    output:          %d\n", snap.OutputTokens)
+	// Cache reads/creates round out the "input/output/cache token
+	// totals" surface that handleStats' godoc advertises for /stats
+	// tokens. Pre-this-fix the renderer omitted them — operators
+	// running /stats tokens to triage Anthropic billing saw input
+	// and output but had to also run /stats cache to see the cache
+	// reads/creates that drive prompt-cache savings.
+	fmt.Fprintf(os.Stderr, "    cache_read:      %d\n", snap.CacheReadTokens)
+	fmt.Fprintf(os.Stderr, "    cache_creation:  %d\n", snap.CacheCreationTokens)
+	fmt.Fprintf(os.Stderr, "    cost:            $%.4f\n", snap.TotalUSD)
 }
 
 // handleAttack services the /attack REPL command. Manages the agent's
