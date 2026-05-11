@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-05-11
+
+**Shared body-cap for every `/api/*` JSON endpoint.** v0.105
+capped the `/api/campaign/*` body at 256 KiB; that fix exposed
+the same DoS pattern across every other JSON POST/PATCH/PUT
+endpoint — 12 sites total, each using `json.NewDecoder(r.Body)`
+with no size limit. A malicious client could POST an unbounded
+JSON body to `/api/personas/switch`, `/api/mode`, `/api/attack`,
+`/api/budget`, `/api/sessions PATCH`, `/api/fs/*`, etc., and
+force the server to buffer the whole thing into memory before
+the parser realised it was wrong.
+
+### Fixed
+
+- **New `decodeJSONBody` helper** wraps `r.Body` in
+  `http.MaxBytesReader(64 KiB)` and decodes; on overflow returns
+  413 with a clean error message via `http.MaxBytesError`
+  detection; on any other parse failure returns 400 with the
+  parser error. All 12 call sites in `api.go`, `api_fs.go`,
+  `api_input.go`, `api_session.go` now flow through this helper.
+  Operator-driven JSON payloads in this surface are small
+  (persona name, mode name, attack ID list, etc.) — 64 KiB is
+  plenty of headroom while bounding the resource-burn.
+  - `TestPersonasSwitch_RejectsOversizedBody` posts a 70 KiB
+    JSON body (valid syntax, oversized) to `/api/personas/switch`
+    and asserts 413. Cross-endpoint coverage would be redundant
+    since every site shares the same helper; one canary pins
+    the contract.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `go vet ./...` — clean.
+- `go test -race -count=1 -short ./internal/web/` — all pass.
+
 ## [0.105.0] - 2026-05-11
 
 **Campaign endpoints get a body-size cap.** `/api/campaign/validate`
