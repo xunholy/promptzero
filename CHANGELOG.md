@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.121.0] - 2026-05-11
+
+**Consensus voter API errors now surface as a warn log.**
+`Persona.Consensus`'s docstring promises "Names the agent doesn't
+recognise are skipped with a warn log so a typo doesn't silently
+disable the gate" — but `prospectiveWithModel` silently swallowed
+the per-model API error. An operator's typo
+(`consensus: [calude-sonnet-4-6]`) became a permanent invisible
+abstention on every critical-risk tool call; the gate still worked
+(bogus model = abstention), but operators had no way to see the
+typo and fix it.
+
+### Fixed
+
+- **`prospectiveWithModel` warns on API error** with the tool name,
+  model identifier, and underlying error message. Abstention
+  semantics are preserved — the function still returns `""` — only
+  the operator-visible signal is added. Single-model `prospective()`
+  makes no such promise and stays silent.
+- `TestProspectiveWithModel_WarnLogOnAPIError` stands up an
+  httptest server returning Anthropic's 400 `not_found_error` shape
+  and captures `obs.Default()` output through a tempfile (the only
+  public swap-the-global path `obs.Setup` provides). Pre-fix
+  verification: stashing the consensus.go change makes the test
+  fail with the empty-log diagnostic.
+
+### Verified
+
+- `task lint` — 0 issues.
+- `task test` — full short suite passes.
+
 ## [0.120.0] - 2026-05-11
 
 **`validator.truncate` for BadUSB excerpts is UTF-8-aware.**
