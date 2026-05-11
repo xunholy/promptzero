@@ -962,7 +962,15 @@ func enterREPL(deps *REPLDeps) error {
 					ed.acceptSearch()
 					ed.render()
 					continue
-				case keyCtrlC, keyCtrlD:
+				case keyCtrlC, keyCtrlD, keyCtrlG:
+					// Ctrl+G during history search cancels the
+					// search (matching the documented contract in
+					// lineedit.cancelSearch). Without this case
+					// Ctrl+G fell through to the main switch and
+					// armed the stream-abort flag — which would
+					// then fire against whatever streaming tool
+					// ran next, even though the operator was just
+					// trying to back out of an i-search.
 					ed.cancelSearch()
 					ed.render()
 					continue
@@ -1023,11 +1031,20 @@ func enterREPL(deps *REPLDeps) error {
 				// running). The next frame's stream callback
 				// observes the flag, returns false, and the
 				// agent's dispatcher fires sink.Abort() + ctx
-				// cancel. If no streaming tool is in flight the
-				// flag is harmlessly latched and consumed by the
-				// next streaming tool in this turn — but the
-				// dispatchTurn-start reset clears it on every
-				// fresh turn so a stale latch can't carry over.
+				// cancel.
+				//
+				// At idle (no turn running) Ctrl+G is a no-op
+				// with a "nothing to stop" hint instead of
+				// silently latching the flag — the latch is
+				// reset on dispatchTurn start anyway, but
+				// showing "stop requested" when there's nothing
+				// to stop misleads the operator.
+				if !ed.running.Load() {
+					ed.writeOutput(func() {
+						fmt.Fprintf(os.Stderr, "\n  %s(nothing to stop — Ctrl+G aborts a streaming tool mid-turn)%s\n", dim, reset)
+					})
+					break
+				}
 				streamAbortRequested.Store(true)
 				ed.writeOutput(func() {
 					fmt.Fprintf(os.Stderr, "\n  %s(stop requested — Ctrl+C cancels the whole turn instead)%s\n", dim, reset)
