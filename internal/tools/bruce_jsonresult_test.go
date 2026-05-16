@@ -3,6 +3,7 @@ package tools_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/xunholy/promptzero/internal/bruce"
@@ -71,29 +72,31 @@ func TestBruce_EvilTwin_HostileSSIDProducesValidJSON(t *testing.T) {
 	}
 }
 
-// TestBruce_Deauth_HostileBSSIDProducesValidJSON: same shape for the
-// bruce_wifi_deauth handler. BSSIDs from firmware scan output can
-// also carry stray bytes from malformed frames, so the json.Marshal
-// path must handle them.
-func TestBruce_Deauth_HostileBSSIDProducesValidJSON(t *testing.T) {
+// TestBruce_Deauth_HostileBSSIDRejectedByValidator pins the post-
+// wrapper-validation contract: a hostile BSSID with embedded control
+// bytes can never reach `wifi deauth` on the wire. The wrapper's
+// net.ParseMAC check rejects the malformed form before the handler
+// gets near the JSON-marshal path that v0.152 originally hardened.
+//
+// (BSSIDs from real firmware scan output are always rendered as
+// AA:BB:CC:DD:EE:FF — a control byte in the BSSID field cannot occur
+// in valid scan results. This test now confirms the safety bound
+// rather than the legacy marshal-path-handles-bytes contract.)
+func TestBruce_Deauth_HostileBSSIDRejectedByValidator(t *testing.T) {
 	if !bruceDeauthFound {
 		t.Skip("bruce_wifi_deauth not found in registry")
 	}
 	d := &tools.Deps{Bruce: newOKBruceClient(t)}
-	// intOr only matches float64 / string for JSON-numeric inputs
-	// (LLM tool calls always come in as float64). Mirror that here
-	// so the handler sees a populated channel instead of the zero-
-	// value rejection.
-	out, err := bruceDeauthSpec.Handler(context.Background(), d, map[string]any{
-		"bssid":   "aa\x0Bxx:cc:dd:ee:ff", // \x0B = VT — JSON-invalid via Go's \v
+	_, err := bruceDeauthSpec.Handler(context.Background(), d, map[string]any{
+		"bssid":   "aa\x0Bxx:cc:dd:ee:ff", // \x0B = VT — not a valid MAC
 		"channel": float64(6),
 	})
-	if err != nil {
-		t.Fatalf("bruce_wifi_deauth handler error: %v", err)
+	if err == nil {
+		t.Fatal("expected validation error for hostile BSSID; got nil")
 	}
-	var parsed map[string]any
-	if jerr := json.Unmarshal([]byte(out), &parsed); jerr != nil {
-		t.Fatalf("tool result is not valid JSON: %v\nresult = %q", jerr, out)
+	// The error must name the BSSID field so the LLM can self-correct.
+	if !strings.Contains(err.Error(), "BSSID") {
+		t.Errorf("err = %v; want BSSID-shaped validation error", err)
 	}
 }
 
