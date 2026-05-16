@@ -246,7 +246,19 @@ func (m *Marauder) SniffPMKID(channel int, deauth, listOnly bool, timeout time.D
 }
 
 // SniffPMKIDCtx is the context-aware variant of SniffPMKID.
+//
+// Channel 0 means "let the firmware sweep" (no -c flag). Any other
+// value must fall in the 2.4-GHz range; passing a 5-GHz channel like
+// 36 silently no-ops because the ESP32 radio cannot tune there.
 func (m *Marauder) SniffPMKIDCtx(ctx context.Context, channel int, deauth, listOnly bool, timeout time.Duration) (string, error) {
+	if channel < 0 {
+		return "", fmt.Errorf("invalid PMKID channel %d (must be 0 to sweep, or 1-14)", channel)
+	}
+	if channel > 0 {
+		if err := validateWiFiChannel24Int(channel); err != nil {
+			return "", err
+		}
+	}
 	cmd := "sniffpmkid"
 	if channel > 0 {
 		cmd += fmt.Sprintf(" -c %d", channel)
@@ -482,6 +494,9 @@ func (m *Marauder) PortScan(ipIndex int, timeout time.Duration) (string, error) 
 
 // PortScanCtx is the context-aware variant of PortScan.
 func (m *Marauder) PortScanCtx(ctx context.Context, ipIndex int, timeout time.Duration) (string, error) {
+	if err := validateListIndex("IP index", ipIndex); err != nil {
+		return "", err
+	}
 	return m.ExecCtx(ctx, fmt.Sprintf("portscan -a -t %d", ipIndex), timeout)
 }
 
@@ -515,6 +530,9 @@ func (m *Marauder) PortScanService(ipIndex int, service string, timeout time.Dur
 
 // PortScanServiceCtx is the context-aware variant of PortScanService.
 func (m *Marauder) PortScanServiceCtx(ctx context.Context, ipIndex int, service string, timeout time.Duration) (string, error) {
+	if err := validateListIndex("IP index", ipIndex); err != nil {
+		return "", err
+	}
 	if _, ok := portScanServices[service]; !ok {
 		return "", fmt.Errorf("invalid portscan service %q (valid: ssh, http, https, ftp, smb, rdp, dns, smtp, pop3, imap, mysql, psql, mssql, redis, vnc)", service)
 	}
