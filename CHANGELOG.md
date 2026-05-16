@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.181.0] - 2026-05-16
+
+**Two more validate-before-transport fixes — this time the radio
+TX wrappers. `Flipper.IRTxRaw` now bounds-checks carrier frequency,
+duty cycle, and the raw timing data; `Flipper.SubGHzTxKey` and
+`Flipper.SubGHzTxKeyDevice` now reject out-of-band frequencies,
+`te=0`, and `repeat<=0`.**
+
+Pre-fix, all three wrappers forwarded numeric args straight into
+`ir tx RAW F:...` / `subghz tx ...`. The fallout depended on the
+input: an out-of-range IR frequency or zero duty cycle either
+silently no-op'd or surfaced as an opaque firmware banner several
+seconds later; a Sub-GHz frequency outside the firmware-permitted
+bands came back as `"Frequency not allowed!"` after the same slow
+round-trip; `te=0` produced a broken signal; `repeat<=0` produced
+no transmission at all. None of those failure modes gave the LLM
+enough to self-correct.
+
+### Fixed
+
+- `IRTxRaw` rejects carrier frequencies outside 10000-56000 Hz
+  (firmware `INFRARED_MIN_FREQUENCY`/`INFRARED_MAX_FREQUENCY`),
+  duty cycles outside `(0, 1]`, `NaN`/`Inf`, and empty timing
+  data, all with diagnostics that name the valid range.
+- `SubGHzTxKey` and `SubGHzTxKeyDevice` share a `validateSubGHzTxKey`
+  helper that rejects frequencies outside the allowed bands
+  (300-348 MHz, 387-464 MHz, 779-928 MHz), `te=0`, and `repeat<=0`
+  with a band-list diagnostic.
+- Regression tests in `internal/flipper/ir_tx_raw_validate_test.go`
+  (3 cases × multiple inputs) and
+  `internal/flipper/subghz_txkey_validate_test.go` (6 functions
+  covering the allowlist, both wrappers, and every rejection
+  reason).
+
 ## [0.180.0] - 2026-05-12
 
 **`Flipper.GPIOSet` and `Flipper.GPIORead` validate `pin` against the
