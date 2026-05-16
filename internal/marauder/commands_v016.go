@@ -40,8 +40,24 @@ func validateWiFiChannel24(channelStr string) error {
 	if err != nil {
 		return fmt.Errorf("invalid WiFi channel %q (want a number 1-14): %w", channelStr, err)
 	}
+	return validateWiFiChannel24Int(ch)
+}
+
+// validateWiFiChannel24Int is the int variant for callers (SetChannel)
+// that already have a parsed value.
+func validateWiFiChannel24Int(ch int) error {
 	if ch < 1 || ch > 14 {
 		return fmt.Errorf("invalid WiFi channel %d (must be 1-14; the ESP32 Marauder is 2.4-GHz only)", ch)
+	}
+	return nil
+}
+
+// validateListIndex rejects negative list indices. The Marauder CLI
+// silently no-ops `-a -1` / `-c -2` etc., so the LLM sees a clean
+// empty response with no signal that the request did nothing.
+func validateListIndex(name string, idx int) error {
+	if idx < 0 {
+		return fmt.Errorf("invalid %s %d (must be >= 0)", name, idx)
 	}
 	return nil
 }
@@ -51,6 +67,9 @@ func validateWiFiChannel24(channelStr string) error {
 // CloneStaMAC clones the MAC address of the station at the given index.
 // Wire: clonestamac -s <index>
 func (m *Marauder) CloneStaMAC(index int) (string, error) {
+	if err := validateListIndex("station index", index); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf("clonestamac -s %d", index), 5*time.Second)
 }
 
@@ -59,6 +78,9 @@ func (m *Marauder) CloneStaMAC(index int) (string, error) {
 // InfoAP returns firmware/device info for the AP at the given index.
 // Wire: info -a <index>
 func (m *Marauder) InfoAP(apIndex int) (string, error) {
+	if err := validateListIndex("AP index", apIndex); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf("info -a %d", apIndex), 5*time.Second)
 }
 
@@ -231,6 +253,9 @@ func (m *Marauder) AddStation(bssid string, apIndex int) (string, error) {
 // given index in the current scan list.
 // Wire: spoofat -t <index>
 func (m *Marauder) BTSpoofAirtag(index int) (string, error) {
+	if err := validateListIndex("scan-list index", index); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf("spoofat -t %d", index), 5*time.Second)
 }
 
@@ -241,6 +266,9 @@ func (m *Marauder) BTSpoofAirtag(index int) (string, error) {
 // Runs for the given timeout duration.
 // Wire: karma -p <probeIndex>
 func (m *Marauder) Karma(probeIndex int) (string, error) {
+	if err := validateListIndex("probe-list index", probeIndex); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf("karma -p %d", probeIndex), 60*time.Second)
 }
 
@@ -298,6 +326,9 @@ func (m *Marauder) AttackSleepCtx(ctx context.Context, targeted bool, timeout ti
 // as the rogue access point.
 // Wire: evilportal -c setap -i <index>
 func (m *Marauder) EvilPortalSetAP(index int) (string, error) {
+	if err := validateListIndex("AP index", index); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf("evilportal -c setap -i %d", index), 5*time.Second)
 }
 
