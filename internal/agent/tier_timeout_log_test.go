@@ -95,6 +95,59 @@ func TestRouteGroups_TimeoutEmitsWarnLog(t *testing.T) {
 	}
 }
 
+// TestVerifyPayload_TimeoutEmitsWarnLog pins the same loud-on-
+// timeout contract for verify. A stalled verifier silently returns
+// "uncertified" on every generate_* call — operators should see it.
+func TestVerifyPayload_TimeoutEmitsWarnLog(t *testing.T) {
+	client, closeSrv := stubAnthropicWithDelay(t, verifyTimeout+500*time.Millisecond)
+	defer closeSrv()
+
+	a := &Agent{client: client, model: "test-model"}
+	logFile := t.TempDir() + "/test.log"
+	obs.Setup(obs.LogConfig{Level: "warn", Format: "text", File: logFile})
+	t.Cleanup(func() { obs.Setup(obs.LogConfig{Level: "info", Format: "text"}) })
+
+	a.mu.Lock()
+	verdict, err := a.verifyPayload(context.Background(), "badusb", "STRING hello\nENTER\n")
+	a.mu.Unlock()
+
+	// On timeout, verify returns benign verdict + nil error (fail-open).
+	if err != nil {
+		t.Fatalf("verifyPayload on timeout should not error; got %v", err)
+	}
+	if verdict.Verified {
+		t.Error("verdict.Verified must be false on timeout (fail-open)")
+	}
+	log := readLogFile(t, logFile)
+	if !strings.Contains(log, "verify_timeout") {
+		t.Errorf("expected verify_timeout warn log; got: %q", log)
+	}
+	if !strings.Contains(log, "badusb") {
+		t.Errorf("warn should include payload_type=badusb; got: %q", log)
+	}
+}
+
+// TestVerifyPayload_NonTimeoutErrorStaysQuiet — same posture as the
+// router non-timeout test: a 5xx response should NOT fire verify_timeout.
+func TestVerifyPayload_NonTimeoutErrorStaysQuiet(t *testing.T) {
+	client, closeSrv := stubAnthropicWithHTTPError(t)
+	defer closeSrv()
+
+	a := &Agent{client: client, model: "test-model"}
+	logFile := t.TempDir() + "/test.log"
+	obs.Setup(obs.LogConfig{Level: "warn", Format: "text", File: logFile})
+	t.Cleanup(func() { obs.Setup(obs.LogConfig{Level: "info", Format: "text"}) })
+
+	a.mu.Lock()
+	_, _ = a.verifyPayload(context.Background(), "badusb", "STRING test\n")
+	a.mu.Unlock()
+
+	log := readLogFile(t, logFile)
+	if strings.Contains(log, "verify_timeout") {
+		t.Errorf("verify_timeout should NOT fire on non-timeout error; got: %q", log)
+	}
+}
+
 // TestRouteGroups_NonTimeoutErrorStaysQuiet pins the other half of
 // the contract: a 5xx from the SDK does NOT fire router_timeout. The
 // distinction is meaningful because timeouts indicate a stalled gate

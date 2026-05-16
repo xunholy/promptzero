@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -545,6 +546,15 @@ func (a *Agent) callTitleAPI(ctx context.Context, model string, history []anthro
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(userText))},
 	})
 	if err != nil {
+		// Loud on timeout — a stalled title API means every session
+		// stays on its auto-derived title with no operator-visible
+		// signal that the polish step ran out of time. Per the
+		// pattern in reflect / prospective / router / verify.
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			obs.Default().Warn("title_gen_timeout",
+				"model", model,
+				"timeout", titleGenTimeout.String())
+		}
 		return ""
 	}
 	// fireTierUsage matches the same lock-free contract as

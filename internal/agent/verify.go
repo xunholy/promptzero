@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // verifyTimeout caps how long the chain-of-verification pass can
@@ -171,6 +173,17 @@ func (a *Agent) verifyPayload(ctx context.Context, payloadType, content string) 
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(trimmed))},
 	})
 	if err != nil {
+		// Loud on timeout — a stalled verifier means EVERY generate_*
+		// call silently returns "uncertified" with no operator-visible
+		// signal that the verification step ran out of time. Quiet on
+		// transient errors per the pattern in reflect / prospective /
+		// router.
+		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			obs.FromCtx(ctx).Warn("verify_timeout",
+				"payload_type", payloadType,
+				"model", model,
+				"timeout", verifyTimeout.String())
+		}
 		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}, nil
 	}
 	a.fireTierUsage(model, resp.Usage)
