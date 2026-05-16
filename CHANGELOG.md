@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.184.0] - 2026-05-16
+
+**Two more Marauder validators, plus 100% coverage on the device-info
+parsers.** Continues the sweep that landed in v0.183.0.
+
+### Fixed
+
+- `Marauder.SniffPMKID` rejects channels outside 0 (sweep) or
+  1-14 (the 2.4-GHz allowlist). Pre-fix, picking 5-GHz channel 36
+  for PMKID capture returned a clean empty response — the ESP32
+  radio can't tune there, so the firmware silently no-op'd.
+- `Marauder.PortScan` and `Marauder.PortScanService` both
+  validate `ipIndex >= 0` before the existing service-allowlist
+  check. Negative indices used to silently no-op too.
+
+### Tests
+
+- New regression suite for `parseKVBlock` (9 funcs) and
+  `isSDProductLine` (2 funcs) — both pure helpers feeding
+  `DeviceInfoMap`, `PowerInfoMap`, `StorageFSInfoMap`. Pre-fix
+  both were at 0% coverage; now 100% each. Catches drift in the
+  `/status`, mobile-info, and SD-metadata paths.
+
 ## [0.183.0] - 2026-05-16
 
 **Validate-before-transport sweep across the Marauder wrappers.** The
