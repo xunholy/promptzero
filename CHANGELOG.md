@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.182.0] - 2026-05-16
+
+**Three more validate-before-transport fixes covering crypto, LED, and
+IR-parsed transmission.** Continues the per-wrapper sweep — `Flipper.CryptoStoreKey`,
+`Flipper.SetLED` / `Flipper.LED`, and `Flipper.IRTxParsed` now reject
+malformed args up front with diagnostics that name the firmware-permitted
+set.
+
+Pre-fix, all three forwarded their args straight to the wire. The fallout
+ranged across the severity spectrum: a wrong crypto `keyType` ("aes256")
+or hex/size mismatch could silently corrupt a slot on some forks; an
+unknown LED channel ("RED") silently no-op'd; a hallucinated IR protocol
+("Sony", "Panasonic") cost an extra round-trip on a usage dump.
+
+### Fixed
+
+- `CryptoStoreKey` rejects slot < 1, keyType outside
+  `{master, simple, encrypted}`, keySize ∉ `{128, 256}`, hex length
+  not matching `keySize/4`, and non-hex characters — mirrors the
+  firmware `crypto_cli_key_types` table.
+- `SetLED` and `LED` share a `validateLEDArgs` helper enforcing the
+  four-entry firmware channel allowlist (`r`, `g`, `b`, `bl`) and
+  the 0-255 brightness range.
+- `IRTxParsed` allowlists the 14 protocols in the Flipper firmware
+  libinfrared table (NEC, NECext, NEC42, NEC42ext, Samsung32, RC5,
+  RC5X, RC6, SIRC, SIRC15, SIRC20, Kaseikyo, RCA, Pioneer). Empty
+  address / command also rejected. New exported
+  `IRProtocolNames()` for spec/schema generators.
+- Regression tests in `crypto_store_key_validate_test.go` (6 funcs),
+  `led_validate_test.go` (5 funcs), and `ir_tx_parsed_validate_test.go`
+  (4 funcs). `CryptoStoreKey` wire test updated to use valid args
+  (`simple`, 128, matched-length hex) so the wire dispatch still
+  runs after validation lands.
+
 ## [0.181.0] - 2026-05-16
 
 **Two more validate-before-transport fixes — this time the radio
