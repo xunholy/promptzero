@@ -193,8 +193,19 @@ func (f *Flipper) DateSet(unix int64) (string, error) {
 // ─── Storage extras ───────────────────────────────────────────────────────────
 
 // StorageExtract unpacks a tar archive on the Flipper SD card.
+//
+// Rejects empty/whitespace archive or outdir before transport. Empty
+// either side produces `storage extract  /ext/foo` (double-space) or
+// `storage extract /ext/x.tar ` (trailing space) which the firmware
+// either parses as the wrong shape or rejects with an opaque banner.
 // CLI: storage extract <archive.tar> <outdir>
 func (f *Flipper) StorageExtract(archive, outdir string) (string, error) {
+	if strings.TrimSpace(archive) == "" {
+		return "", fmt.Errorf("invalid storage extract archive: empty (expected e.g. /ext/backup.tar)")
+	}
+	if strings.TrimSpace(outdir) == "" {
+		return "", fmt.Errorf("invalid storage extract outdir: empty (expected an SD-card directory path)")
+	}
 	return f.Exec(fmt.Sprintf("storage extract %s %s",
 		sanitizeArg(archive), sanitizeArg(outdir)))
 }
@@ -220,15 +231,31 @@ func (f *Flipper) FactoryReset() (string, error) {
 // BackupCreate writes a tar archive of the Flipper's internal flash (/int)
 // to the given SD-card path. Uses a 5-minute deadline — same budget as
 // UpdateInstall.
+//
+// Rejects empty/whitespace path before transport. An empty path
+// produces `update backup ` which writes to firmware-default location
+// on some forks and errors on others; reject up front so the operator
+// always knows where the backup landed.
 // CLI: update backup <path>
 func (f *Flipper) BackupCreate(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("invalid backup path: empty (expected e.g. /ext/backups/flipper-int.tar)")
+	}
 	return f.ExecLong(fmt.Sprintf("update backup %s", sanitizeArg(path)), 5*time.Minute)
 }
 
 // BackupRestore restores a previously created backup archive. Destructive —
 // overwrites current /int contents. The Spec risk band enforces confirmation.
+//
+// Rejects empty/whitespace path before transport. Empty path on the
+// destructive restore path is particularly dangerous: some forks treat
+// it as "restore from default location" which could surface a stale
+// backup. The operator should always name the file explicitly.
 // CLI: update restore <path>
 func (f *Flipper) BackupRestore(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("invalid backup path: empty (expected the path of a previously-created backup tar)")
+	}
 	return f.ExecLong(fmt.Sprintf("update restore %s", sanitizeArg(path)), 5*time.Minute)
 }
 

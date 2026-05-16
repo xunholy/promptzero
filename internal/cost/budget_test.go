@@ -4,6 +4,82 @@ import (
 	"testing"
 )
 
+// TestBudget_MixedTierPricing_FiresAtCorrectThreshold pins the
+// v0.196.0 contract: budget thresholds fire based on the actual mixed-
+// tier spend (per-call AddUsageFullForModel pricing), not on the
+// tracker's --model rate. A tracker configured with Opus pricing must
+// NOT prematurely fire warn when most of the spend went through Haiku.
+//
+// Concretely:
+//   - $1 budget, Opus-configured tracker.
+//   - 1M Haiku input tokens ($0.80 at Haiku) should land at 80% of budget
+//     ($0.80 / $1.00). If the tracker had priced these at Opus rates
+//     ($15), the 80% warn would have fired at the very first AddUsage.
+//   - One warn fires.
+func TestBudget_MixedTierPricing_FiresAtCorrectThreshold(t *testing.T) {
+	pricer := NewPricer(nil)
+	tr := NewTracker(pricer, "claude-opus-4-7", nil)
+
+	var warns, hits int
+	tr.SetBudget(1.00,
+		func(_, _ float64) { warns++ },
+		func(_, _ float64) { hits++ },
+	)
+
+	// 1M Haiku input tokens — Haiku is $0.80/MTok → $0.80 spent.
+	// At $0.80 / $1.00 cap = 80% → warn fires exactly once.
+	tr.AddUsageFullForModel("claude-haiku-4-5", 1_000_000, 0, 0, 0)
+	if warns != 1 {
+		t.Errorf("after 1M Haiku tokens (≈$0.80, 80%% of $1 cap): warns=%d, want 1", warns)
+	}
+	if hits != 0 {
+		t.Errorf("after 1M Haiku tokens: hits=%d, want 0 (under cap)", hits)
+	}
+
+	// Another 1M Haiku tokens → $1.60 total, exceeds $1 cap → hit fires.
+	tr.AddUsageFullForModel("claude-haiku-4-5", 1_000_000, 0, 0, 0)
+	if hits != 1 {
+		t.Errorf("after 2M Haiku tokens ($1.60 > $1 cap): hits=%d, want 1", hits)
+	}
+	if warns != 1 {
+		t.Errorf("warn must not re-fire: warns=%d, want 1", warns)
+	}
+}
+
+// TestBudget_OpusVsHaikuPricedDifferently pins that the same token
+// count produces different USD spend under different models, so the
+// budget threshold reflects actual cost — not theoretical
+// configured-model cost.
+func TestBudget_OpusVsHaikuPricedDifferently(t *testing.T) {
+	pricer := NewPricer(nil)
+
+	// 1M input tokens at Opus = $15. With a $5 cap, this trips both
+	// warn (at $4 / 80%) and hit (at $5).
+	opusTr := NewTracker(pricer, "claude-opus-4-7", nil)
+	var opusWarns, opusHits int
+	opusTr.SetBudget(5.00,
+		func(_, _ float64) { opusWarns++ },
+		func(_, _ float64) { opusHits++ },
+	)
+	opusTr.AddUsageFullForModel("claude-opus-4-7", 1_000_000, 0, 0, 0)
+	if opusWarns != 1 || opusHits != 1 {
+		t.Errorf("Opus 1M @ $15 vs $5 cap: warns=%d hits=%d, want 1/1", opusWarns, opusHits)
+	}
+
+	// Same 1M tokens but Haiku-tier = $0.80, well under $5 cap. No
+	// callbacks fire — even with the SAME tracker primary model.
+	haikuTr := NewTracker(pricer, "claude-opus-4-7", nil) // same primary
+	var haikuWarns, haikuHits int
+	haikuTr.SetBudget(5.00,
+		func(_, _ float64) { haikuWarns++ },
+		func(_, _ float64) { haikuHits++ },
+	)
+	haikuTr.AddUsageFullForModel("claude-haiku-4-5", 1_000_000, 0, 0, 0)
+	if haikuWarns != 0 || haikuHits != 0 {
+		t.Errorf("Haiku 1M @ $0.80 vs $5 cap: warns=%d hits=%d, want 0/0 (under cap)", haikuWarns, haikuHits)
+	}
+}
+
 // TestSetBudget_FiresWarnAndHitOnce locks the v0.21.0 budget contract:
 // the 80% callback fires exactly once when the threshold is first
 // crossed, and the 100% callback fires exactly once when the cap is
