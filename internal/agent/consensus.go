@@ -90,7 +90,13 @@ func (a *Agent) prospectiveWithModel(ctx context.Context, toolName string, input
 		"'ok' means the call looks reasonable. 'unclear' flags ambiguity (missing context, unknown protocol). " +
 		"'risky' flags concrete problems (malformed input, out-of-band frequency, path traversal)."
 
-	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	// Per-voter timeout bounds the ensemble loop. Without it, a single
+	// stalled voter wedges runEnsembleProspective's serial loop and
+	// blocks the whole turn under a.mu. Reuses prospective()'s budget
+	// since the prompt + max_tokens are identical.
+	callCtx, cancel := context.WithTimeout(ctx, prospectiveTimeout)
+	defer cancel()
+	resp, err := a.client.Messages.New(callCtx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
 		MaxTokens: 256,
 		System:    []anthropic.TextBlockParam{{Text: system}},

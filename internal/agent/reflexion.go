@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
@@ -15,6 +16,14 @@ import (
 // turn 32 of a wedged loop. Three matches the anecdotal "third failure
 // is the bad sign" heuristic from the InterCode-CTF reflection study.
 const maxReflectionsPerTurn = 3
+
+// reflectTimeout caps a single reflection Haiku call. Run() holds
+// a.mu for the whole turn, so a hung classifier API would wedge every
+// other in-progress reader. Five seconds is generous for a
+// short-bounded classifier response; on timeout we degrade to no
+// reflection (the bare tool error is returned to the model) — same
+// fail-open posture verifyPayload uses on its 10 s budget.
+const reflectTimeout = 5 * time.Second
 
 // reflectFunc is the function signature Run uses to produce a reflection
 // after a tool failure. Returning the empty string skips the append —
@@ -91,7 +100,9 @@ func (a *Agent) reflect(ctx context.Context, toolName string, input json.RawMess
 	model := a.modelForLocked(TierClassify)
 	userText := fmt.Sprintf("tool: %s\ninput: %s\noutput: %s", toolName, string(input), output)
 
-	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	callCtx, cancel := context.WithTimeout(ctx, reflectTimeout)
+	defer cancel()
+	resp, err := a.client.Messages.New(callCtx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
 		MaxTokens: 256,
 		System:    []anthropic.TextBlockParam{{Text: system}},
