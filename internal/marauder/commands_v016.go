@@ -3,6 +3,9 @@ package marauder
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/clisafe"
@@ -10,6 +13,38 @@ import (
 
 // commands_v016.go contains Marauder CLI wrappers added for the v0.16 feature
 // set (audit gap list §2). The existing commands.go is intentionally untouched.
+
+// validateBSSID accepts a 6-octet MAC in any case using common separators
+// (colon, hyphen, period). The Marauder firmware parses these formats but
+// silently no-ops on malformed input — reject up front so the LLM doesn't
+// spend a turn waiting for nothing.
+func validateBSSID(bssid string) error {
+	if strings.TrimSpace(bssid) == "" {
+		return fmt.Errorf("invalid BSSID: empty")
+	}
+	mac, err := net.ParseMAC(bssid)
+	if err != nil {
+		return fmt.Errorf("invalid BSSID %q (want MAC, e.g. AA:BB:CC:DD:EE:FF): %w", bssid, err)
+	}
+	if len(mac) != 6 {
+		return fmt.Errorf("invalid BSSID %q (want 6 octets; got %d)", bssid, len(mac))
+	}
+	return nil
+}
+
+// validateWiFiChannel24 accepts 2.4 GHz channels 1-14. The ESP32 Marauder
+// is a 2.4-GHz-only platform; passing 36/40/etc silently no-ops because
+// the radio cannot tune there.
+func validateWiFiChannel24(channelStr string) error {
+	ch, err := strconv.Atoi(strings.TrimSpace(channelStr))
+	if err != nil {
+		return fmt.Errorf("invalid WiFi channel %q (want a number 1-14): %w", channelStr, err)
+	}
+	if ch < 1 || ch > 14 {
+		return fmt.Errorf("invalid WiFi channel %d (must be 1-14; the ESP32 Marauder is 2.4-GHz only)", ch)
+	}
+	return nil
+}
 
 // --- MAC Manipulation ---
 
@@ -152,8 +187,21 @@ func (m *Marauder) GpsPoi(action, label string) (string, error) {
 // bssid is the hardware MAC (e.g. "aa:bb:cc:dd:ee:ff"), channel is the WiFi
 // channel number as a string (e.g. "6"), and essid is the network name.
 // All string arguments are sanitised; essid is double-quoted to preserve spaces.
+//
+// Validates bssid as a MAC and channel as a 2.4-GHz channel number before
+// transport. Pre-fix, the Marauder silently no-op'd malformed entries —
+// the LLM had no way to tell whether the AP made it into the list.
 // Wire: add -a -b <bssid> -c <channel> -s "<essid>"
 func (m *Marauder) AddAP(bssid, channel, essid string) (string, error) {
+	if err := validateBSSID(bssid); err != nil {
+		return "", err
+	}
+	if err := validateWiFiChannel24(channel); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(essid) == "" {
+		return "", fmt.Errorf("invalid ESSID: empty")
+	}
 	return m.Exec(fmt.Sprintf(`add -a -b %s -c %s -s "%s"`,
 		clisafe.SanitizeArg(bssid),
 		clisafe.SanitizeArg(channel),
@@ -164,8 +212,16 @@ func (m *Marauder) AddAP(bssid, channel, essid string) (string, error) {
 // AddStation adds a station entry to the station list.
 // bssid is the station MAC address; apIndex is the index of the associated AP
 // in the current AP list.
+//
+// Validates bssid as a MAC and apIndex as a non-negative list index.
 // Wire: add -c -m <bssid> -a <apIndex>
 func (m *Marauder) AddStation(bssid string, apIndex int) (string, error) {
+	if err := validateBSSID(bssid); err != nil {
+		return "", err
+	}
+	if apIndex < 0 {
+		return "", fmt.Errorf("invalid AP index %d (must be >= 0)", apIndex)
+	}
 	return m.Exec(fmt.Sprintf("add -c -m %s -a %d", clisafe.SanitizeArg(bssid), apIndex), 5*time.Second)
 }
 
