@@ -21,8 +21,14 @@ import (
 // explicitly via the -d flag rather than relying on the auto-append logic
 // in SubGHzTxKey (which only supports device=0). Use this when device != 0
 // (i.e. an external CC1101 module is wired to the GPIO header).
+//
+// Pre-transport validation matches SubGHzTxKey: freq must fall in an
+// allowed band, te > 0, repeat >= 1.
 // CLI: subghz tx <key_hex> <frequency> <te> <repeat> -d <device>
 func (f *Flipper) SubGHzTxKeyDevice(keyHex string, freq uint32, te uint32, repeat int, device int) (string, error) {
+	if err := validateSubGHzTxKey(freq, te, repeat); err != nil {
+		return "", err
+	}
 	cmd := fmt.Sprintf("subghz tx %s %d %d %d -d %d",
 		sanitizeArg(keyHex), freq, te, repeat, device)
 	return f.Exec(cmd)
