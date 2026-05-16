@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.200.0] - 2026-05-17
+
+**Warn-log on tier-call timeouts so silent gate-disabling is no longer
+invisible — completes the v0.199.0 timeout work.**
+
+### Fixed
+
+- v0.199.0 added per-call timeouts to `reflect` / `prospective` /
+  `routeGroups` but the fail-open path was silent. An operator whose
+  classifier API was stalling would see prospective gates and tool
+  narrowing quietly disable themselves with no signal — every
+  subsequent turn paying the full timeout budget before fall-back
+  kicked in.
+
+  Add a `Warn` observability hook on the deadline-exceeded branch
+  specifically:
+  - `prospective_timeout` with tool, model, timeout
+  - `reflect_timeout`     with tool, model, timeout
+  - `router_timeout`      with model, timeout
+
+  Non-timeout errors (transient 5xx, network blips) stay quiet —
+  they recover on the next call and would otherwise spam the log.
+  The discriminator is `errors.Is(callCtx.Err(), context.DeadlineExceeded)`
+  which fires only when the per-call budget specifically expired,
+  not when the SDK returned a wire error.
+
+- Refactor: extract `session.go`'s inline `5 * time.Second` into a
+  named `titleGenTimeout` constant to match the other tier-call
+  timeout names introduced in v0.199.0.
+
+### Tests
+
+- `TestRouteGroups_TimeoutEmitsWarnLog`: httptest server sleeps
+  3.5 s (just past the 3 s router budget); verifies the
+  `router_timeout` warn record gets emitted.
+- `TestRouteGroups_NonTimeoutErrorStaysQuiet`: server returns 500
+  immediately; verifies `router_timeout` does NOT fire on
+  non-timeout errors. Pins the loud-on-timeout / quiet-on-transient
+  contract.
+
 ## [0.199.0] - 2026-05-17
 
 **Per-call timeouts on every tier-call site — no more hung Haiku call
