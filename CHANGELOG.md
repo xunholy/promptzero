@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.199.0] - 2026-05-17
+
+**Per-call timeouts on every tier-call site — no more hung Haiku call
+wedging an entire turn under `a.mu`.**
+
+### Fixed
+
+`verifyPayload` has had its own 10 s timeout with a clear docstring
+("Run holds a.mu for the duration; a hung classifier API wedging the
+whole turn is a worse failure mode than an uncertified verdict"). The
+other four tier-call sites — `reflect`, `prospective`,
+`prospectiveWithModel` (consensus voter), `routeGroups` — all called
+`a.client.Messages.New` with the caller's ctx and no per-call cap.
+
+A single stalled Haiku response could wedge an entire turn under
+`a.mu`, freezing the REPL, the web UI, every observer on
+`a.persona`, and forcing the operator to Ctrl+C. The consensus
+ensemble case was particularly bad: serial loop across N voters with
+no per-voter cap meant the whole panel could stall on one slow model.
+
+New per-call timeouts matching `verifyPayload`:
+- `reflectTimeout = 5s` — short classifier diagnosis.
+- `prospectiveTimeout = 8s` — critique. Covers both `prospective()`
+  and `prospectiveWithModel()` so consensus voter loops are bounded
+  per-voter, not in aggregate.
+- `routerTimeout = 3s` — tool-group narrower must be fast; runs
+  before any tool fires.
+
+All four degrade to fail-open on timeout (no reflection / no
+critique / no narrowing) so a stalled classifier never blocks the
+operator's turn — they get the bare tool error, the full tool
+catalog, or whatever the upstream context allows.
+
 ## [0.198.0] - 2026-05-17
 
 **Capability-aware Deauth: 5 GHz channels now require `HasFiveGHz`.**
