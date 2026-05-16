@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.195.0] - 2026-05-17
+
+**Per-call model pricing — fixes silent cost overstatement on
+tier-routed turns.**
+
+### Fixed
+
+- `cost.Tracker.AddUsageFull` priced every call using the tracker's
+  configured `t.model` (set at session start), ignoring that the
+  agent resolves a tier-specific model per turn via
+  `modelForLocked(TierPlan)`. Personas that route the plan tier to
+  a cheaper model (Haiku for read-only-defender personas, Sonnet for
+  plan-tier downshifts) were silently billed at the operator's
+  `--model` rate. On Opus → Haiku that's a 5x overstatement on
+  input tokens; larger on cache-heavy turns.
+
+  Plumbed through:
+  - `agent.Usage` gains a `Model` field, populated in `streamOnce`
+    from the resolved tier-model.
+  - New `cost.Tracker.AddUsageFullForModel` takes an explicit
+    per-call model for pricing; `""` preserves the legacy behaviour.
+    `AddUsageFull` now delegates — fully backward-compatible with
+    every existing caller (tests + external code).
+  - `cmd/promptzero/setup.go` threads `Usage.Model` into the cost
+    callback so the dashboard's `TotalUSD` reflects real routing.
+  - `Snapshot.Model` stays tied to the tracker's configured primary
+    (operator's `--model`) so the dashboard shows the user-configured
+    baseline; the bill reflects actual usage.
+
+  Three new regression tests pin the per-call pricing path, the
+  empty-model fallback, and the legacy `AddUsageFull` contract.
+
+### Known follow-up
+
+- The six tier-call sites in the agent (`reflexion`, `consensus`,
+  `prospective`, `router`, `verify`, `session`) call
+  `Messages.New` directly and don't fire `usageCb` at all, so their
+  tokens go uncounted entirely. Wiring them is a separate change
+  that needs careful test coverage for each path. Documented as a
+  known gap in the v0.195.0 commit notes.
+
 ## [0.194.0] - 2026-05-17
 
 **Workflow-layer hardening + new coverage on the badge/garage-door
