@@ -158,8 +158,15 @@ func (m *Marauder) WardriveStop() (string, error) {
 
 // WardrivePOI marks a named point of interest during an active wardrive session.
 // The label is sanitised and double-quoted so embedded spaces are preserved.
+//
+// An empty/whitespace label silently writes an unnamed POI which is
+// unrecoverable in the wardrive log — reject up front so the operator
+// (or LLM) gets a clear nudge instead of a no-op record.
 // Wire: wardrivepoi "<label>"
 func (m *Marauder) WardrivePOI(label string) (string, error) {
+	if strings.TrimSpace(label) == "" {
+		return "", fmt.Errorf("invalid WardrivePOI label: empty (POI marker must have a name to be useful in the wardrive log)")
+	}
 	return m.Exec(fmt.Sprintf(`wardrivepoi "%s"`, clisafe.SanitizeArg(label)), 5*time.Second)
 }
 
@@ -189,12 +196,18 @@ func (m *Marauder) GpsTrackerStop() (string, error) {
 //   - "end"   → gpspoi -e        (end the POI segment)
 //
 // For action "mark", label is sanitised and double-quoted to preserve spaces.
+// An empty/whitespace label for "mark" is rejected — the docstring has
+// always said "label required", but pre-fix the code silently wrote an
+// unnamed POI marker into the GPS log.
 // Wire: gpspoi -<s|m <label>|e>
 func (m *Marauder) GpsPoi(action, label string) (string, error) {
 	switch action {
 	case "start":
 		return m.Exec("gpspoi -s", 5*time.Second)
 	case "mark":
+		if strings.TrimSpace(label) == "" {
+			return "", fmt.Errorf("invalid gpspoi mark label: empty (label required for the \"mark\" action)")
+		}
 		return m.Exec(fmt.Sprintf(`gpspoi -m "%s"`, clisafe.SanitizeArg(label)), 5*time.Second)
 	case "end":
 		return m.Exec("gpspoi -e", 5*time.Second)
