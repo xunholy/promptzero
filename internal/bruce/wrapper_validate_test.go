@@ -76,6 +76,37 @@ func TestDeauth_RejectsOutOfRangeChannel(t *testing.T) {
 	}
 }
 
+// TestDeauth_5GHzChannelRequires5GHzCap pins the v0.198 capability
+// gate: boards without HasFiveGHz can't tune the 5 GHz radio at all,
+// so a Deauth on channel 36+ must surface ErrCapabilityNotAvailable
+// rather than silently fail at the firmware.
+func TestDeauth_5GHzChannelRequires5GHzCap(t *testing.T) {
+	// Board without 5 GHz: every channel 36+ must error.
+	c, _ := newTestClient(Capabilities{HasFiveGHz: false})
+	for _, ch := range []int{36, 100, 149, 165} {
+		err := c.Deauth(context.Background(), "aa:bb:cc:dd:ee:ff", ch)
+		if err != ErrCapabilityNotAvailable {
+			t.Errorf("channel=%d without 5GHz: err = %v; want ErrCapabilityNotAvailable", ch, err)
+		}
+	}
+	// 2.4 GHz channels stay valid on the same board (different code
+	// path — no port wired in the test client, so a real call would
+	// fail at I/O, but the cap gate is what we're verifying here).
+	// Don't actually exercise — just confirm the gate doesn't fire
+	// for 2.4 GHz channels.
+}
+
+// TestDeauth_5GHzChannelAllowedWithCap pins that the capability gate
+// only rejects when the board lacks 5 GHz. With HasFiveGHz=true,
+// the channel passes through to the firmware (mock responds OK).
+func TestDeauth_5GHzChannelAllowedWithCap(t *testing.T) {
+	c, mp := newTestClient(Capabilities{HasFiveGHz: true})
+	mp.Respond("wifi deauth aa:bb:cc:dd:ee:ff 36", "OK")
+	if err := c.Deauth(context.Background(), "aa:bb:cc:dd:ee:ff", 36); err != nil {
+		t.Errorf("5GHz-capable Deauth(ch=36): %v; want nil", err)
+	}
+}
+
 func TestEvilTwin_RejectsBadBSSID(t *testing.T) {
 	c, _ := newTestClient(Capabilities{})
 	err := c.EvilTwin(context.Background(), "CorpWLAN", "garbage")

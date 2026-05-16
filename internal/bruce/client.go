@@ -234,12 +234,26 @@ func (c *Client) Scan5GHz(ctx context.Context) ([]AP, error) {
 // layer (internal/tools/bruce.go) already catches empty bssid / zero
 // channel; this is defense-in-depth for direct callers and catches
 // malformed MACs / out-of-range channels that the tool layer doesn't.
+//
+// Capability gate (v0.198): 5 GHz channels (36-165) require
+// HasFiveGHz. Boards without it can't tune the 5 GHz radio at all,
+// so the firmware silently fails or emits an opaque error. Return
+// ErrCapabilityNotAvailable up front instead so the operator gets the
+// same diagnostic shape Scan5GHz emits.
 func (c *Client) Deauth(ctx context.Context, bssid string, channel int) error {
 	if err := validateBSSID(bssid); err != nil {
 		return err
 	}
 	if err := validateWiFiChannel(channel); err != nil {
 		return err
+	}
+	if channel >= 36 {
+		c.mu.Lock()
+		has5g := c.caps.HasFiveGHz
+		c.mu.Unlock()
+		if !has5g {
+			return ErrCapabilityNotAvailable
+		}
 	}
 	cmd := fmt.Sprintf("wifi deauth %s %d", bssid, channel)
 	_, err := c.RawCommand(ctx, cmd)
