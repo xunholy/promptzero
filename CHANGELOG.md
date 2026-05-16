@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.196.0] - 2026-05-17
+
+**Closes the v0.195.0 known-gap: six tier-call sites now report usage
+to the cost tracker.**
+
+### Fixed
+
+- `internal/agent/reflexion.go`, `router.go`, `prospective.go`,
+  `consensus.go`, `verify.go`, and `session.go callTitleAPI` all
+  called `a.client.Messages.New` directly without firing
+  `a.usageCb`. Tokens spent on tool-failure reflection, tool-group
+  narrowing, pre-flight critique (single + ensemble),
+  generate-output verification, and the sidebar-label summariser
+  were entirely absent from cost dashboards. Personas that lean on
+  these (especially consensus voters on critical-risk turns) could
+  spend significant budget invisibly.
+
+  Wired all six through a new `Agent.fireTierUsage(model, resp.Usage)`
+  helper. The model arg threads each site's
+  `modelForLocked(TierClassify)` resolution through to
+  `cost.Tracker.AddUsageFullForModel`, so the per-call pricing path
+  from v0.195.0 now has every input.
+
+  Combined with v0.195.0, cost totals correctly reflect:
+  - Plan-tier streaming turn (wired in v0.195.0).
+  - Classify-tier turns (reflexion, router, prospective, verify,
+    session-autoname) — typically Haiku.
+  - Critical-risk consensus voters — whatever the persona declares.
+
+  Three regression tests on the helper: `PassesModelAndTokenCounts`
+  forwards all five Usage fields verbatim; `NoCallbackIsSilent`
+  guarantees nil callback is a no-op; `DifferentModelsRouteCorrectly`
+  verifies successive calls each report their own model.
+
 ## [0.195.0] - 2026-05-17
 
 **Per-call model pricing — fixes silent cost overstatement on
