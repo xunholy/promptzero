@@ -449,3 +449,23 @@ func mockTool(name string) anthropic.ToolUnionParam {
 		OfTool: &anthropic.ToolParam{Name: name},
 	}
 }
+
+// TestUserDir pins the documented "~/.promptzero/personas" default
+// path. Trivial wrapper but every callsite that loads operator-
+// supplied persona YAML resolves through here, so a regression
+// (e.g. accidentally swapping to .config/promptzero/) would silently
+// stop picking up the operator's personas.
+func TestUserDir(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("os.UserHomeDir unavailable: %v", err)
+	}
+	got, err := UserDir()
+	if err != nil {
+		t.Fatalf("UserDir: %v", err)
+	}
+	want := filepath.Join(home, ".promptzero", "personas")
+	if got != want {
+		t.Errorf("UserDir() = %q; want %q", got, want)
+	}
+}

@@ -245,3 +245,31 @@ func TestRecord_ConcurrentSafety(t *testing.T) {
 		t.Errorf("TotalErrors = %d, want %d", snap.TotalErrors, want)
 	}
 }
+
+// TestWriteInt_Branches pins the three documented paths of the
+// dependency-free int formatter used by the circuit-breaker banner:
+// zero gets a literal '0', negative numbers prefix '-' then write
+// the abs value, positive numbers write digits high-to-low.
+// Pre-test the negative + zero branches were unreachable from the
+// production banner (counts are always > 0), so coverage hovered
+// at 69%.
+func TestWriteInt_Branches(t *testing.T) {
+	cases := map[int]string{
+		0:           "0",
+		1:           "1",
+		9:           "9",
+		10:          "10",
+		42:          "42",
+		1000:        "1000",
+		-1:          "-1",
+		-42:         "-42",
+		-2147483648: "-2147483648",
+	}
+	for in, want := range cases {
+		var b strings.Builder
+		writeInt(&b, in)
+		if got := b.String(); got != want {
+			t.Errorf("writeInt(%d) = %q; want %q", in, got, want)
+		}
+	}
+}

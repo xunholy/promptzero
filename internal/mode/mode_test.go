@@ -295,6 +295,59 @@ func TestReason_MentionsModeName(t *testing.T) {
 	}
 }
 
+// TestDisplayName_UnknownModeFirstLetterUppercased pins the default
+// branch of DisplayName: a Mode value not in the known set
+// (e.g. "custom") gets first-letter-upper-cased rather than
+// panicking. Empty string is already covered in TestDisplayName.
+func TestDisplayName_UnknownModeFirstLetterUppercased(t *testing.T) {
+	cases := map[Mode]string{
+		Mode("custom"):  "Custom",
+		Mode("xtreme"):  "Xtreme",
+		Mode("redteam"): "Redteam",
+		Mode("a"):       "A",
+	}
+	for m, want := range cases {
+		if got := m.DisplayName(); got != want {
+			t.Errorf("Mode(%q).DisplayName() = %q; want %q", m, got, want)
+		}
+	}
+}
+
+// TestDescription_UnknownModeReturnsSentinel pins the default branch
+// of Description: an unknown mode returns "unknown mode" rather than
+// empty (every call site renders the description verbatim).
+func TestDescription_UnknownModeReturnsSentinel(t *testing.T) {
+	if got := Mode("nonsense").Description(); got != "unknown mode" {
+		t.Errorf("Mode(nonsense).Description() = %q; want 'unknown mode'", got)
+	}
+}
+
+// TestReason_UnknownModeNamesModeAndGroup pins the Sprintf-based
+// default branch — the rejection sentence still names both the mode
+// and the group so an operator can correlate it back.
+func TestReason_UnknownModeNamesModeAndGroup(t *testing.T) {
+	got := Mode("custom").Reason(tools.GroupFlipperSubGHz)
+	if !strings.Contains(got, "Custom") {
+		t.Errorf("Reason missing mode name: %q", got)
+	}
+	if !strings.Contains(got, string(tools.GroupFlipperSubGHz)) {
+		t.Errorf("Reason missing group name: %q", got)
+	}
+}
+
+// TestAllows_UnknownModeDegradeOpen pins the documented
+// fail-open contract: a Mode not in modeAllowList permits every
+// group rather than refusing everything.
+func TestAllows_UnknownModeDegradeOpen(t *testing.T) {
+	if !Mode("future_mode").Allows(tools.GroupFlipperSubGHz) {
+		t.Error("unknown mode should degrade open and allow every group")
+	}
+	// Empty mode is treated as Standard via the switch — also allowed.
+	if !Mode("").Allows(tools.GroupFlipperSubGHz) {
+		t.Error("empty mode should allow every group (Standard semantics)")
+	}
+}
+
 // TestAll_ReturnsCopy confirms the public catalog accessor returns a
 // fresh slice — callers mutating the result must not corrupt
 // package state.

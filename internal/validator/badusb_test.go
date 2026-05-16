@@ -364,3 +364,37 @@ func TestTruncate_ShortInputUnchanged(t *testing.T) {
 		t.Errorf("short input mangled: %q", got)
 	}
 }
+
+// TestSeverity_StringCoversEveryConstant pins the cosmetic
+// human-label mapping. Pre-fix the default branch wasn't exercised
+// — a Severity value outside the known set (e.g. a future
+// SeverityFatal added before the switch updated) would surface in
+// RenderText as the catch-all "unknown" rather than a stray
+// numeric / zero value.
+func TestSeverity_StringCoversEveryConstant(t *testing.T) {
+	cases := map[Severity]string{
+		SeverityInfo:     "info",
+		SeverityWarn:     "warn",
+		SeverityCritical: "critical",
+		Severity(99):     "unknown",
+		Severity(-1):     "unknown",
+	}
+	for s, want := range cases {
+		if got := s.String(); got != want {
+			t.Errorf("Severity(%d).String() = %q; want %q", s, got, want)
+		}
+	}
+}
+
+// TestPlural_SingularVsPlural pins the trivial helper used by
+// RenderText's count rendering. One = "", anything else = "s".
+func TestPlural_SingularVsPlural(t *testing.T) {
+	if plural(1) != "" {
+		t.Errorf("plural(1) = %q; want empty (singular)", plural(1))
+	}
+	for _, n := range []int{0, 2, 3, 99} {
+		if plural(n) != "s" {
+			t.Errorf("plural(%d) = %q; want 's'", n, plural(n))
+		}
+	}
+}
