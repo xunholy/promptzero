@@ -2,6 +2,7 @@ package flipper
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -2468,12 +2469,50 @@ func (f *Flipper) UpdateInstall(manifestPath string) (string, error) {
 	return f.ExecLong(fmt.Sprintf("update install %s", sanitizeArg(manifestPath)), 5*time.Minute)
 }
 
+// validCryptoKeyTypes mirrors the firmware's crypto_cli_key_types
+// table (master/simple/encrypted). Anything else is rejected by the
+// firmware with an opaque "wrong key type" banner.
+var validCryptoKeyTypes = map[string]struct{}{
+	"master":    {},
+	"simple":    {},
+	"encrypted": {},
+}
+
+// validateCryptoStoreKey rejects malformed args before the wire dispatch
+// runs. Wrong key types or hex/size mismatches either silently corrupt
+// the slot or come back as opaque firmware errors several seconds later.
+func validateCryptoStoreKey(slot int, keyType string, keySize int, keyHex string) error {
+	if slot < 1 {
+		return fmt.Errorf("invalid crypto slot %d (must be >= 1; slot 0 is reserved)", slot)
+	}
+	if _, ok := validCryptoKeyTypes[keyType]; !ok {
+		return fmt.Errorf("invalid crypto key type %q (valid: master, simple, encrypted)", keyType)
+	}
+	if keySize != 128 && keySize != 256 {
+		return fmt.Errorf("invalid crypto key size %d (must be 128 or 256 bits)", keySize)
+	}
+	expectedHexLen := keySize / 4
+	if len(keyHex) != expectedHexLen {
+		return fmt.Errorf("invalid crypto key hex length %d (want %d chars for %d-bit key)", len(keyHex), expectedHexLen, keySize)
+	}
+	if _, err := hex.DecodeString(keyHex); err != nil {
+		return fmt.Errorf("invalid crypto key hex: %w", err)
+	}
+	return nil
+}
+
 // CryptoStoreKey stores a key in one of the Flipper's secure-storage slots.
 // Overwrites whatever was in that slot.
 // keyType: "master", "simple", or "encrypted"
 // keySize: 128 or 256 (bits); keyHex must be exactly keySize/8 bytes as hex.
+//
+// Validates slot/keyType/keySize/keyHex before transport. Wrong key types
+// or hex/size mismatches surface as opaque firmware errors otherwise.
 // CLI: crypto store_key <slot> <keyType> <keySize> <keyHex>
 func (f *Flipper) CryptoStoreKey(slot int, keyType string, keySize int, keyHex string) (string, error) {
+	if err := validateCryptoStoreKey(slot, keyType, keySize, keyHex); err != nil {
+		return "", err
+	}
 	return f.Exec(fmt.Sprintf("crypto store_key %d %s %d %s", slot, sanitizeArg(keyType), keySize, sanitizeArg(keyHex)))
 }
 
