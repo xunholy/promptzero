@@ -165,7 +165,28 @@ func (t *Tracker) AddUsage(inTokens, outTokens int64) {
 // number); cache-creation tokens are billed at ~125 % to amortise the
 // cache write. Model rates default to uncached input pricing if no
 // cache rate is configured, so the dollar line is always conservative.
+//
+// Pricing uses the Tracker's configured model. Callers that know the
+// per-call model (e.g. agent.Usage.Model from a tier-routed turn)
+// should use AddUsageFullForModel so persona-defined tier overrides
+// (claude-haiku for the classify tier, etc.) are priced correctly.
 func (t *Tracker) AddUsageFull(inTokens, outTokens, cacheReadTokens, cacheCreationTokens int64) {
+	t.AddUsageFullForModel("", inTokens, outTokens, cacheReadTokens, cacheCreationTokens)
+}
+
+// AddUsageFullForModel is AddUsageFull with an explicit per-call model
+// for pricing. When model is "" the Tracker's configured model is used
+// (matches AddUsageFull behaviour). When model is set, the per-call
+// model wins over t.model for the price calc — token counters and
+// the displayed Snapshot.Model stay tied to the tracker's primary
+// model, so the dashboard shows the user-configured base model while
+// the bill reflects actual tier routing.
+//
+// Pre-fix, every persona that routed the plan tier to a cheaper model
+// (Haiku for read-only defender personas, Sonnet for plan-tier
+// downshift) silently still got billed at the operator's --model
+// rate, often overstating cost 5x.
+func (t *Tracker) AddUsageFullForModel(model string, inTokens, outTokens, cacheReadTokens, cacheCreationTokens int64) {
 	// Clamp individual negative values to 0. The original guard only
 	// no-ops when ALL four are <= 0, so a mixed call like
 	// (-100, 50, 0, 0) would decrement t.inTokens. Token counts come
@@ -192,7 +213,11 @@ func (t *Tracker) AddUsageFull(inTokens, outTokens, cacheReadTokens, cacheCreati
 	t.outTokens += outTokens
 	t.cacheReadTokens += cacheReadTokens
 	t.cacheCreationTokens += cacheCreationTokens
-	t.totalUSD += t.pricer.CostWithCache(t.model, inTokens, outTokens, cacheReadTokens, cacheCreationTokens)
+	priceModel := model
+	if priceModel == "" {
+		priceModel = t.model
+	}
+	t.totalUSD += t.pricer.CostWithCache(priceModel, inTokens, outTokens, cacheReadTokens, cacheCreationTokens)
 	wasOffline := t.offline
 	t.errorRun = 0
 	t.offline = false

@@ -505,6 +505,14 @@ type Usage struct {
 	OutputTokens        int64
 	CacheReadTokens     int64
 	CacheCreationTokens int64
+
+	// Model identifies the upstream model that produced this usage
+	// block. Populated from the resolved tier-model for each call (e.g.
+	// the plan tier for a main turn, the classify tier for a router
+	// narrowing). Downstream cost trackers can use it to bill at the
+	// per-call rate via cost.Tracker.AddUsageFullForModel — falling
+	// back to the tracker's configured model when Model is "".
+	Model string
 }
 
 // SetUsageCallback registers a per-response token counter. Fires once
@@ -1316,6 +1324,7 @@ func (a *Agent) streamOnce(ctx context.Context, sysPrompt string, tools []anthro
 			OutputTokens:        msg.Usage.OutputTokens,
 			CacheReadTokens:     msg.Usage.CacheReadInputTokens,
 			CacheCreationTokens: msg.Usage.CacheCreationInputTokens,
+			Model:               model,
 		})
 	}
 	// Stamp usage + finish reason onto the current agent-turn span.

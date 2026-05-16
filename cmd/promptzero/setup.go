@@ -606,7 +606,10 @@ func setupCostTracker(cfg *config.Config, ai *agent.Agent, rec *obs.Recorder) *c
 		}
 	})
 	ai.SetUsageCallback(func(u agent.Usage) {
-		tracker.AddUsageFull(u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheCreationTokens)
+		// Use the per-call model so persona-routed tier models (Haiku
+		// for classify, Sonnet for plan, Opus for exploit) are billed
+		// at their real rates instead of the tracker's --model fallback.
+		tracker.AddUsageFullForModel(u.Model, u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheCreationTokens)
 		if rec != nil {
 			rec.RecordTokens("input", u.InputTokens)
 			rec.RecordTokens("output", u.OutputTokens)
