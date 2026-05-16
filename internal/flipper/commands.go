@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,6 +12,16 @@ import (
 
 	"github.com/xunholy/promptzero/internal/clisafe"
 	pb "github.com/xunholy/promptzero/internal/flipper/rpc/pb"
+)
+
+// Infrared carrier bounds mirror the Flipper firmware
+// (lib/infrared/encoder_decoder/infrared_common.h):
+// INFRARED_MIN_FREQUENCY..INFRARED_MAX_FREQUENCY. Out-of-range values
+// either silently no-op or are rejected with an opaque firmware error,
+// so we reject up front and give the caller a useful diagnostic.
+const (
+	irMinFrequencyHz uint32 = 10000
+	irMaxFrequencyHz uint32 = 56000
 )
 
 // pbStorageDirType is a local alias for the pb.File DIR type so the
@@ -224,8 +235,22 @@ func (f *Flipper) IRTxParsed(protocol string, address string, command string) (s
 }
 
 // IRTxRaw transmits a raw infrared signal.
+//
+// Validates frequency and duty cycle before transport: out-of-range
+// values either silently no-op on the firmware or come back as an
+// opaque "invalid frequency" error several seconds later. Reject
+// up front so the LLM gets a useful diagnostic on its next turn.
 // CLI: ir tx RAW F:<freq> DC:<duty_cycle> <data>
 func (f *Flipper) IRTxRaw(frequency uint32, dutyCycle float64, data string) (string, error) {
+	if frequency < irMinFrequencyHz || frequency > irMaxFrequencyHz {
+		return "", fmt.Errorf("invalid IR carrier frequency %d Hz (valid: %d-%d)", frequency, irMinFrequencyHz, irMaxFrequencyHz)
+	}
+	if math.IsNaN(dutyCycle) || math.IsInf(dutyCycle, 0) || dutyCycle <= 0 || dutyCycle > 1 {
+		return "", fmt.Errorf("invalid IR duty cycle %v (valid: 0 < dc <= 1; typical 0.33)", dutyCycle)
+	}
+	if strings.TrimSpace(data) == "" {
+		return "", fmt.Errorf("invalid IR raw data: empty timing list")
+	}
 	return f.Exec(fmt.Sprintf("ir tx RAW F:%d DC:%g %s", frequency, dutyCycle, sanitizeArg(data)))
 }
 
