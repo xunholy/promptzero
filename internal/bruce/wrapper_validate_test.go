@@ -100,3 +100,74 @@ func TestEvilTwin_RejectsEmptySSID(t *testing.T) {
 		}
 	}
 }
+
+func TestLoRaScan_RejectsOutOfBandFrequency(t *testing.T) {
+	c, _ := newTestClient(Capabilities{HasLoRa: true})
+	for _, freq := range []float64{0, -1, 50, 1500, 2400} {
+		err := c.LoRaScan(context.Background(), freq)
+		if err == nil {
+			t.Errorf("expected error for freq=%.1f; got nil", freq)
+			continue
+		}
+		if !strings.Contains(err.Error(), "LoRa frequency") {
+			t.Errorf("freq=%.1f err = %v; want LoRa frequency validation error", freq, err)
+		}
+	}
+}
+
+func TestIRSend_RejectsEmptyArgs(t *testing.T) {
+	c, _ := newTestClient(Capabilities{HasIR: true})
+	if err := c.IRSend(context.Background(), "", "0xDEAD"); err == nil {
+		t.Error("expected error for empty protocol; got nil")
+	}
+	if err := c.IRSend(context.Background(), "NEC", ""); err == nil {
+		t.Error("expected error for empty code; got nil")
+	}
+}
+
+func TestBadUSBRun_RejectsEmpty(t *testing.T) {
+	c, _ := newTestClient(Capabilities{})
+	for _, name := range []string{"", "   ", "\t"} {
+		err := c.BadUSBRun(context.Background(), name)
+		if err == nil {
+			t.Errorf("expected error for filename=%q; got nil", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "BadUSB filename") {
+			t.Errorf("name=%q err = %v; want BadUSB filename error", name, err)
+		}
+	}
+}
+
+func TestBadUSBRun_RejectsPathSeparators(t *testing.T) {
+	c, _ := newTestClient(Capabilities{})
+	cases := []string{
+		"/etc/payload.txt",
+		"sub/payload.txt",
+		"foo\\bar.txt",
+	}
+	for _, name := range cases {
+		err := c.BadUSBRun(context.Background(), name)
+		if err == nil {
+			t.Errorf("expected error for filename=%q; got nil", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "path separators") {
+			t.Errorf("name=%q err = %v; want path-separator error", name, err)
+		}
+	}
+}
+
+func TestBadUSBRun_RejectsPathTraversal(t *testing.T) {
+	c, _ := newTestClient(Capabilities{})
+	for _, name := range []string{"..", "..hidden.txt"} {
+		err := c.BadUSBRun(context.Background(), name)
+		if err == nil {
+			t.Errorf("expected error for filename=%q; got nil", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "path traversal") {
+			t.Errorf("name=%q err = %v; want path-traversal error", name, err)
+		}
+	}
+}
