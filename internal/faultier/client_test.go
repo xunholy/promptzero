@@ -212,6 +212,52 @@ func TestSweepRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSweep_PreservesPriorPulseUS pins the contract that Sweep keeps
+// the pulse_us configured by a prior SetPulse / Configure call across
+// every iteration. Pre-fix the loop body called SetPulse(delay, 0),
+// silently zeroing the pulse — the documented
+// glitch_set_pulse → glitch_sweep workflow injected no faults.
+func TestSweep_PreservesPriorPulseUS(t *testing.T) {
+	c, m := NewMockClient()
+	t.Cleanup(func() { _ = c.Close() })
+
+	// Operator workflow: configure the pulse width once, then sweep
+	// the delay range.
+	mustOK(t, "SetPulse", c.SetPulse(0, 25))
+	mustOK(t, "Sweep", c.Sweep(context.Background(), 100, 300, 100))
+
+	m.mu.Lock()
+	got := m.State.Config
+	m.mu.Unlock()
+
+	if got.DelayUS != 300 {
+		t.Errorf("final DelayUS = %d, want 300", got.DelayUS)
+	}
+	if got.PulseUS != 25 {
+		t.Errorf("final PulseUS = %d, want 25 (must preserve the pre-Sweep SetPulse value)", got.PulseUS)
+	}
+}
+
+// TestSweep_NoPriorSetPulse_UsesZeroPulse pins the no-op-baseline
+// behaviour: when the caller never configured a pulse width, Sweep
+// iterates with pulse=0 (every Fire triggers but injects no fault).
+// Documented as the deliberate fallback so tests catch any future
+// "should this error instead?" regression.
+func TestSweep_NoPriorSetPulse_UsesZeroPulse(t *testing.T) {
+	c, m := NewMockClient()
+	t.Cleanup(func() { _ = c.Close() })
+
+	mustOK(t, "Sweep", c.Sweep(context.Background(), 10, 20, 10))
+
+	m.mu.Lock()
+	got := m.State.Config
+	m.mu.Unlock()
+
+	if got.PulseUS != 0 {
+		t.Errorf("PulseUS = %d, want 0 (no prior SetPulse → baseline pulse)", got.PulseUS)
+	}
+}
+
 // TestSweepZeroStepErrors verifies Sweep rejects a zero step.
 func TestSweepZeroStepErrors(t *testing.T) {
 	c, _ := NewMockClient()
