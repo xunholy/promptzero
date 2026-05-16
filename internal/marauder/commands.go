@@ -427,7 +427,19 @@ func (m *Marauder) GetChannel() (string, error) {
 // AddSSID adds a named SSID to the SSID list. Double-quotes, CR, LF and NUL
 // in `name` are stripped so the argument cannot break out of the quoted form
 // the Marauder CLI expects.
+//
+// An empty/whitespace SSID is rejected up front: the firmware accepts the
+// add but the resulting list entry is invisible (the SSID field stays
+// empty in beacon spam frames), so the operator silently broadcasts
+// nothing. 802.11 also caps SSID at 32 bytes — anything longer is
+// dropped by the radio.
 func (m *Marauder) AddSSID(name string) (string, error) {
+	if strings.TrimSpace(name) == "" {
+		return "", fmt.Errorf("invalid SSID: empty (must be 1-32 bytes)")
+	}
+	if len(name) > 32 {
+		return "", fmt.Errorf("invalid SSID length %d (802.11 caps at 32 bytes)", len(name))
+	}
 	return m.Exec(fmt.Sprintf(`ssid -a -n "%s"`, clisafe.SanitizeArg(name)), 5*time.Second)
 }
 
@@ -653,6 +665,15 @@ var gpsValidFields = map[string]struct{}{
 	"date": {}, "accuracy": {}, "text": {}, "nmea": {},
 }
 
+// gpsValidNavSystems mirrors the docstring's eight-token nav-system
+// allowlist. Pre-fix, GPSField forwarded the navSystem arg verbatim,
+// so a hallucinated value like "GPS" (uppercase) or "iridium" reached
+// the firmware as an opaque "unknown system" error.
+var gpsValidNavSystems = map[string]struct{}{
+	"native": {}, "all": {}, "gps": {}, "glonass": {},
+	"galileo": {}, "navic": {}, "qzss": {}, "beidou": {},
+}
+
 // GPSField returns a single GPS datum selected by `field`. Accepts:
 // fix, sat, lon, lat, alt, date, accuracy, text, nmea. The optional
 // navSystem token selects the satellite system: "native", "all", "gps",
@@ -660,6 +681,11 @@ var gpsValidFields = map[string]struct{}{
 func (m *Marauder) GPSField(field, navSystem string) (string, error) {
 	if _, ok := gpsValidFields[field]; !ok {
 		return "", fmt.Errorf("invalid gps field %q (valid: fix, sat, lon, lat, alt, date, accuracy, text, nmea)", field)
+	}
+	if navSystem != "" {
+		if _, ok := gpsValidNavSystems[navSystem]; !ok {
+			return "", fmt.Errorf("invalid gps nav_system %q (valid: native, all, gps, glonass, galileo, navic, qzss, beidou)", navSystem)
+		}
 	}
 	cmd := "gps -g " + clisafe.SanitizeArg(field)
 	if navSystem != "" {
