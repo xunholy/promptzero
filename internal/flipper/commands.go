@@ -1149,8 +1149,16 @@ func gpioPinByName(name string) (pb.GpioPin, bool) {
 // --- BadUSB ---
 
 // BadUSBRun launches a BadUSB script via the app loader.
+//
+// Rejects empty/whitespace scriptPath before transport: an empty path
+// produces `loader open "Bad USB" ` (trailing space) which either
+// crashes the loader or launches BadUSB with no script — the operator
+// then sees the app idle on the Flipper screen with no diagnostic.
 // CLI: loader open "Bad USB" <script_path>
 func (f *Flipper) BadUSBRun(scriptPath string) (string, error) {
+	if strings.TrimSpace(scriptPath) == "" {
+		return "", fmt.Errorf("invalid BadUSB script path: empty (expected e.g. /ext/badusb/payload.txt)")
+	}
 	return f.ExecLong(fmt.Sprintf("loader open \"Bad USB\" %s", sanitizeArg(scriptPath)), 2*time.Minute)
 }
 
@@ -1168,7 +1176,14 @@ func (f *Flipper) BadUSBRun(scriptPath string) (string, error) {
 // either, so the (string, error) contract is identical across transports.
 //
 // CLI: loader open "<app_name>" [args]
+//
+// Rejects empty/whitespace appName before transport. Empty names
+// produce `loader open ""` which the firmware rejects with an
+// opaque parse error.
 func (f *Flipper) LoaderOpen(appName string, args string) (string, error) {
+	if strings.TrimSpace(appName) == "" {
+		return "", fmt.Errorf("invalid app name: empty (expected e.g. \"Bad USB\", \"NFC\", \"Sub-GHz\")")
+	}
 	return f.dispatch(
 		"loader_open",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
