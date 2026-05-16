@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.198.0] - 2026-05-17
+
+**Capability-aware Deauth: 5 GHz channels now require `HasFiveGHz`.**
+
+### Fixed
+
+- `bruce.Client.Deauth` accepted channels 1-165 unconditionally. On
+  boards without a 5 GHz radio (anything pre-ESP32-C5), tuning to
+  channels 36+ silently failed at the firmware — the operator saw an
+  opaque error and couldn't tell whether the deauth target was wrong,
+  the antennas were obstructed, or the radio just couldn't reach
+  that band.
+
+  Capability gate now matches the existing `Scan5GHz` /
+  `ZigbeeScan` / `LoRaScan` / `IRReceive` / `NFCRead` contracts:
+  any 5 GHz channel without `HasFiveGHz` returns
+  `ErrCapabilityNotAvailable` immediately so operator-facing tools
+  can render a consistent "board doesn't support this" diagnostic
+  across radios. 2.4 GHz (1-14) stays unconditional.
+
+  Two regression tests: `TestDeauth_5GHzChannelRequires5GHzCap`
+  pins the rejection across all 5 GHz channels on a non-5 GHz
+  board; `TestDeauth_5GHzChannelAllowedWithCap` pins pass-through
+  when the cap is present.
+
 ## [0.197.0] - 2026-05-17
 
 **Empty-path rejection on the four destructive Flipper wrappers, plus
