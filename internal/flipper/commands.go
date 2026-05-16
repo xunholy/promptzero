@@ -899,6 +899,38 @@ func (f *Flipper) IButtonReadCtx(ctx context.Context, timeout time.Duration) (st
 	})
 }
 
+// validIButtonProtocols mirrors the three protocols the Flipper iButton
+// stack supports (lib/ibutton/protocols/). Case-sensitive on the wire —
+// an LLM hallucinating "dallas" or "Maxim" gets back an opaque
+// "unknown protocol" banner otherwise.
+var validIButtonProtocols = map[string]struct{}{
+	"Dallas":  {},
+	"Cyfral":  {},
+	"Metakom": {},
+}
+
+// validateIButtonHex strips whitespace separators and confirms the
+// remaining input decodes as hex. Used by both IButtonEmulate and
+// IButtonWrite.
+func validateIButtonHex(hexData string) error {
+	if strings.TrimSpace(hexData) == "" {
+		return fmt.Errorf("invalid iButton hex_data: empty")
+	}
+	compact := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' {
+			return -1
+		}
+		return r
+	}, hexData)
+	if len(compact)%2 != 0 {
+		return fmt.Errorf("invalid iButton hex_data %q: odd length %d", hexData, len(compact))
+	}
+	if _, err := hex.DecodeString(compact); err != nil {
+		return fmt.Errorf("invalid iButton hex_data: %w", err)
+	}
+	return nil
+}
+
 // IButtonEmulate emulates an iButton key for the given duration. The
 // firmware command is streaming (prints "Emulating key ..." then waits
 // for Ctrl+C), so the wrapper uses ExecLong with streaming semantics.
@@ -910,13 +942,32 @@ func (f *Flipper) IButtonEmulate(protocol string, hexData string, duration time.
 }
 
 // IButtonEmulateCtx is the context-aware variant of IButtonEmulate.
+//
+// Validates protocol against the three-entry firmware allowlist and
+// hexData as valid hex before transport. Bad protocol names otherwise
+// reach the firmware as opaque "unknown protocol" banners; malformed
+// hex gets rejected mid-stream after the emulation window has already
+// burned wall-clock.
 func (f *Flipper) IButtonEmulateCtx(ctx context.Context, protocol string, hexData string, duration time.Duration) (string, error) {
+	if _, ok := validIButtonProtocols[protocol]; !ok {
+		return "", fmt.Errorf("invalid iButton protocol %q (valid: Dallas, Cyfral, Metakom)", protocol)
+	}
+	if err := validateIButtonHex(hexData); err != nil {
+		return "", err
+	}
 	return f.ExecLongCtx(ctx, fmt.Sprintf("ikey emulate %s %s", sanitizeArg(protocol), sanitizeArg(hexData)), duration)
 }
 
 // IButtonWrite writes an iButton key (Dallas only).
+//
+// Dallas keys are exactly 8 bytes (16 hex chars including family code
+// + serial + CRC); shorter / longer input or non-hex characters are
+// rejected up front rather than handed to the firmware writer.
 // CLI: ikey write Dallas <hex_data>
 func (f *Flipper) IButtonWrite(hexData string) (string, error) {
+	if err := validateIButtonHex(hexData); err != nil {
+		return "", err
+	}
 	return f.ExecLong(fmt.Sprintf("ikey write Dallas %s", sanitizeArg(hexData)), 30*time.Second)
 }
 
