@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.183.0] - 2026-05-16
+
+**Validate-before-transport sweep across the Marauder wrappers.** The
+pattern that drove v0.181/v0.182 on the Flipper side hits the Marauder
+firmware just as hard: passing a negative index or a 5-GHz channel to
+the ESP32 Marauder silently no-ops at the firmware. The agent saw a
+clean empty response and had no way to tell the request did nothing.
+
+### Fixed
+
+- `Marauder.AddAP` validates `bssid` via `net.ParseMAC` (accepts any
+  common separator), `channel` against the 2.4-GHz range 1-14, and
+  rejects empty `essid`. `Marauder.AddStation` validates `bssid`
+  and `apIndex >= 0`.
+- Nine more wrappers route through a shared `validateListIndex` /
+  `validateWiFiChannel24Int` and reject negative indices, zero/negative
+  counts, or out-of-range channels: `CloneStaMAC`, `InfoAP`,
+  `BTSpoofAirtag`, `Karma`, `EvilPortalSetAP`, `SetChannel`,
+  `GenerateSSIDs`, `RemoveSSID`, `CloneAPMAC`, `Join`.
+- New regression suites: `internal/marauder/addap_validate_test.go`
+  (10 funcs) and `internal/marauder/index_count_channel_validate_test.go`
+  (13 funcs). Existing wire-form tests already used valid args and
+  continue to pass unchanged.
+
 ## [0.182.0] - 2026-05-16
 
 **Three more validate-before-transport fixes covering crypto, LED, and
