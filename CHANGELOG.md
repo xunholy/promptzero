@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.185.0] - 2026-05-16
+
+**Continued the validate-before-transport sweep over LF/iButton TX paths.**
+The high-cost failure mode here is silent corruption: the LLM converts a
+captured fob to decimal or trims a digit, the firmware accepts the
+malformed hex, and the device emulates or *writes* a corrupted card for
+the full duration window. Catching it before the wire dispatch saves
+real hardware state.
+
+### Fixed
+
+- `Flipper.IButtonEmulateCtx` allowlists the three protocols in the
+  firmware lib/ibutton/protocols/ (Dallas, Cyfral, Metakom) — hallucinated
+  "dallas" / "Maxim" no longer reaches the firmware.
+- `Flipper.IButtonEmulateCtx` and `Flipper.IButtonWrite` both run
+  `validateIButtonHex` (whitespace-tolerant, even length, hex chars
+  only) before the wire dispatch.
+- `Flipper.RFIDEmulateCtx` and `Flipper.RFIDWrite` route through a
+  shared `validateRFIDArgs` that rejects empty protocol and malformed
+  hex data. Protocol is deliberately *not* allowlisted — the firmware
+  table varies across stock/Momentum/Unleashed/Xtreme and the
+  firmware error on a bad protocol is already clear; the corruption-
+  on-write path was the gap worth closing.
+- Regression suites: `internal/flipper/ibutton_validate_test.go`
+  (4 funcs) and `internal/flipper/rfid_validate_test.go` (8 funcs).
+
 ## [0.184.0] - 2026-05-16
 
 **Two more Marauder validators, plus 100% coverage on the device-info
