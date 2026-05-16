@@ -111,6 +111,137 @@ func TestDiff_IR(t *testing.T) {
 	}
 }
 
+func TestDiff_NFC(t *testing.T) {
+	a, err := ParseNFC([]byte(nfcFixture))
+	if err != nil {
+		t.Fatalf("ParseNFC a: %v", err)
+	}
+	b, err := ParseNFC([]byte(nfcFixture))
+	if err != nil {
+		t.Fatalf("ParseNFC b: %v", err)
+	}
+	// Mutate one scalar (UID) and one block.
+	b.UID = "AA BB CC DD EE FF 00"
+	b.Blocks[1] = "11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11"
+
+	d, err := Diff(FormatNFC, a, FormatNFC, b)
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	if !d.SameFormat {
+		t.Fatalf("SameFormat = false; want true")
+	}
+	// All scalar fields + every block index that exists in either side
+	// must surface — diff must not silently drop a missing block.
+	var sawUID, sawBlock0, sawBlock1, sawBlock4 bool
+	for _, e := range d.Entries {
+		switch e.Field {
+		case "uid":
+			if e.Same {
+				t.Error("uid entry Same=true after mutation")
+			}
+			sawUID = true
+		case "block_0":
+			sawBlock0 = true
+			if !e.Same {
+				t.Errorf("block_0 Same=false; values unchanged should match")
+			}
+		case "block_1":
+			sawBlock1 = true
+			if e.Same {
+				t.Error("block_1 Same=true after mutation")
+			}
+		case "block_4":
+			sawBlock4 = true
+		}
+	}
+	for name, ok := range map[string]bool{"uid": sawUID, "block_0": sawBlock0, "block_1": sawBlock1, "block_4": sawBlock4} {
+		if !ok {
+			t.Errorf("entry %q missing from diff result", name)
+		}
+	}
+}
+
+func TestDiff_NFC_BlockOnlyInOne(t *testing.T) {
+	a, _ := ParseNFC([]byte(nfcFixture))
+	b, _ := ParseNFC([]byte(nfcFixture))
+	// Add a block to b that doesn't exist in a — diff must still
+	// emit an entry for it with a's value empty.
+	b.Blocks[7] = "FF FF FF FF FF FF FF FF 00 00 00 00 00 00 00 00"
+	d, err := Diff(FormatNFC, a, FormatNFC, b)
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	var sawBlock7 bool
+	for _, e := range d.Entries {
+		if e.Field == "block_7" {
+			sawBlock7 = true
+			if e.Same {
+				t.Error("block_7 Same=true; only b has it")
+			}
+			if e.AField != "" {
+				t.Errorf("block_7 a side = %q; want empty (block not in a)", e.AField)
+			}
+		}
+	}
+	if !sawBlock7 {
+		t.Error("block_7 entry missing for block-only-in-b case")
+	}
+}
+
+func TestDiff_RFID(t *testing.T) {
+	a, err := ParseRFID([]byte(rfidFixture))
+	if err != nil {
+		t.Fatalf("ParseRFID a: %v", err)
+	}
+	b, err := ParseRFID([]byte(rfidFixture))
+	if err != nil {
+		t.Fatalf("ParseRFID b: %v", err)
+	}
+	b.Data = "FF FF FF FF FF"
+	b.KeyType = "HIDProx"
+
+	d, err := Diff(FormatRFID, a, FormatRFID, b)
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	if !d.SameFormat {
+		t.Fatalf("SameFormat = false; want true")
+	}
+	var sawData, sawKeyType bool
+	for _, e := range d.Entries {
+		switch e.Field {
+		case "data":
+			if e.Same {
+				t.Error("data Same=true after mutation")
+			}
+			sawData = true
+		case "key_type":
+			if e.Same {
+				t.Error("key_type Same=true after mutation")
+			}
+			sawKeyType = true
+		}
+	}
+	if !sawData || !sawKeyType {
+		t.Errorf("missing entries: data=%v key_type=%v", sawData, sawKeyType)
+	}
+}
+
+func TestDiff_RFID_Identical(t *testing.T) {
+	a, _ := ParseRFID([]byte(rfidFixture))
+	b, _ := ParseRFID([]byte(rfidFixture))
+	d, err := Diff(FormatRFID, a, FormatRFID, b)
+	if err != nil {
+		t.Fatalf("Diff: %v", err)
+	}
+	for _, e := range d.Entries {
+		if !e.Same {
+			t.Errorf("identical files but entry %q differs: %q vs %q", e.Field, e.AField, e.BField)
+		}
+	}
+}
+
 // TestToInt_GoNativeNumericTypes pins the v0.159 contract: toInt
 // accepts the full {float64, float32, int, int32, int64, string}
 // set. Mirrors v0.157 tools.intOr and v0.158 workflows.paramInt —
