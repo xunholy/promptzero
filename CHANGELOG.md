@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.201.0] - 2026-05-17
+
+**Extends the v0.200 warn-on-timeout pattern to the two remaining
+tier-call sites — every per-call deadline now surfaces in the obs log.**
+
+### Fixed
+
+v0.200.0 added timeout warn logs to `prospective` / `reflect` /
+`routeGroups` but the same silent-fail pattern persisted on the two
+other tier-call sites that have per-call deadlines:
+
+- `verifyPayload` returned `{Severity:"none", Verified:false}` on
+  timeout — every `generate_*` call quietly went uncertified with no
+  operator-visible signal.
+- `session.callTitleAPI` returned `""` on timeout — sessions stayed
+  on their auto-derived title forever with no polish-step-failed
+  signal.
+
+Apply the same `errors.Is(callCtx.Err(), context.DeadlineExceeded)`
+discriminator. New warn records:
+- `verify_timeout` — `payload_type`, `model`, `timeout`
+- `title_gen_timeout` — `model`, `timeout`
+
+### Tests
+
+- `TestVerifyPayload_TimeoutEmitsWarnLog`: httptest server sleeps
+  10.5 s (just past the 10 s `verifyTimeout`); verifies the warn
+  fires and verdict stays benign (fail-open contract).
+- `TestVerifyPayload_NonTimeoutErrorStaysQuiet`: 5xx response does
+  not fire `verify_timeout`.
+
+After v0.199 → v0.200 → v0.201, every tier-call site that holds
+`a.mu` while making an SDK call has:
+1. A per-call deadline.
+2. A loud warn log when the deadline fires.
+3. Quiet handling of transient non-timeout errors.
+
 ## [0.200.0] - 2026-05-17
 
 **Warn-log on tier-call timeouts so silent gate-disabling is no longer
