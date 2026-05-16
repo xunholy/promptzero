@@ -155,20 +155,7 @@ func ValidateEvilPortal(name, html string) Report {
 			continue
 		}
 		lineNo := 1 + strings.Count(html[:idx[0]], "\n")
-		excerpt := ""
-		if lineNo-1 < len(lines) {
-			excerpt = strings.TrimSpace(lines[lineNo-1])
-			if len(excerpt) > 120 {
-				// UTF-8-aware: walk back from continuation bytes
-				// so a multi-byte rune at the boundary doesn't get
-				// split. Mirrors session.clipTitle / generate.capSize.
-				cut := 120
-				for cut > 0 && excerpt[cut]&0xC0 == 0x80 {
-					cut--
-				}
-				excerpt = excerpt[:cut] + "…"
-			}
-		}
+		excerpt := excerptAtLine(lines, lineNo)
 		rep.Findings = append(rep.Findings, Finding{
 			Severity: br.severity,
 			Rule:     br.id,
@@ -185,20 +172,7 @@ func ValidateEvilPortal(name, html string) Report {
 	if matches := formCountRE.FindAllStringIndex(html, -1); len(matches) > 1 {
 		idx := matches[1][0] // point at the second <form> as the "extra"
 		lineNo := 1 + strings.Count(html[:idx], "\n")
-		excerpt := ""
-		if lineNo-1 < len(lines) {
-			excerpt = strings.TrimSpace(lines[lineNo-1])
-			if len(excerpt) > 120 {
-				// UTF-8-aware: walk back from continuation bytes
-				// so a multi-byte rune at the boundary doesn't get
-				// split. Mirrors session.clipTitle / generate.capSize.
-				cut := 120
-				for cut > 0 && excerpt[cut]&0xC0 == 0x80 {
-					cut--
-				}
-				excerpt = excerpt[:cut] + "…"
-			}
-		}
+		excerpt := excerptAtLine(lines, lineNo)
 		rep.Findings = append(rep.Findings, Finding{
 			Severity: SeverityCritical,
 			Rule:     "ep_multiple_forms",
@@ -215,4 +189,29 @@ func ValidateEvilPortal(name, html string) Report {
 		}
 	}
 	return rep
+}
+
+// excerptAtLine returns a UTF-8-safe trimmed copy of lines[lineNo-1]
+// suitable for a Finding.Excerpt. Lines beyond the slice (lineNo
+// > len(lines)) return empty rather than panicking. Long excerpts
+// are walked back from continuation bytes so a multi-byte rune at
+// the 120-byte boundary doesn't get split — mirrors the discipline
+// in session.clipTitle / generate.capSize / agent.truncatePreview.
+// The 120-byte cap matches both legacy duplicated sites; raising it
+// here lifts the limit everywhere.
+const excerptCap = 120
+
+func excerptAtLine(lines []string, lineNo int) string {
+	if lineNo-1 >= len(lines) || lineNo < 1 {
+		return ""
+	}
+	excerpt := strings.TrimSpace(lines[lineNo-1])
+	if len(excerpt) <= excerptCap {
+		return excerpt
+	}
+	cut := excerptCap
+	for cut > 0 && excerpt[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return excerpt[:cut] + "…"
 }
