@@ -125,12 +125,37 @@ var nfcAllowedSubcommands = map[string]struct{}{
 	"mfu":     {},
 }
 
+// validLEDChannels mirrors the firmware notification module — anything
+// else is silently no-op'd or comes back as an opaque "unknown channel"
+// banner depending on fork.
+var validLEDChannels = map[string]struct{}{
+	"r":  {},
+	"g":  {},
+	"b":  {},
+	"bl": {},
+}
+
+// validateLEDArgs centralises channel + brightness checks for SetLED
+// and LED.
+func validateLEDArgs(channel string, value int) error {
+	if _, ok := validLEDChannels[channel]; !ok {
+		return fmt.Errorf("invalid LED channel %q (valid: r, g, b, bl)", channel)
+	}
+	if value < 0 || value > 255 {
+		return fmt.Errorf("invalid LED value %d (must be 0-255)", value)
+	}
+	return nil
+}
+
 // SetLED sets the RGB LED to the given color + brightness (0-255). Best-effort
 // — errors are returned but most callers ignore them. The REPL drives this at
 // turn scope so the LED stays steady for the whole prompt, rather than
 // flickering on/off per scan.
 // Color is one of "r", "g", "b" (or "bl" for backlight).
 func (f *Flipper) SetLED(color string, brightness int) error {
+	if err := validateLEDArgs(color, brightness); err != nil {
+		return err
+	}
 	_, err := f.Exec(fmt.Sprintf("led %s %d", sanitizeArg(color), brightness))
 	return err
 }
@@ -1797,9 +1822,17 @@ func (f *Flipper) Vibro(on bool) (string, error) {
 }
 
 // LED sets a single LED channel to a brightness value (0-255).
+//
+// Validates channel against the four-entry firmware allowlist and
+// value to [0, 255] before transport. Unknown channels are silently
+// no-op'd on stock firmware; out-of-range values either clamp or
+// trigger an opaque firmware banner depending on fork.
 // CLI: led <r|g|b|bl> <0-255>
 // channel: "r" (red), "g" (green), "b" (blue), "bl" (backlight)
 func (f *Flipper) LED(channel string, value int) (string, error) {
+	if err := validateLEDArgs(channel, value); err != nil {
+		return "", err
+	}
 	return f.Exec(fmt.Sprintf("led %s %d", sanitizeArg(channel), value))
 }
 
