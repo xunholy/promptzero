@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.194.0] - 2026-05-17
+
+**Workflow-layer hardening + new coverage on the badge/garage-door
+helpers.**
+
+### Fixed
+
+- `workflows.subGHzNextSteps` previously dispatched on
+  `s["rolling"].(bool)` — an unchecked type assertion. The only
+  caller (the garage-door workflow) always populates `rolling` as a
+  bool, so the panic path was unreachable today; but a future
+  refactor or a workflow consumer building its own signals slice
+  would hit it. Switched to comma-ok form: malformed signals are
+  skipped, not crashed over. Five new regression tests pin every
+  branch including missing-key and wrong-type-key inputs.
+
+### Tests
+
+- New `internal/workflows/badge_walk_helpers_test.go` covers
+  `csvField` (RFC 4180-style quote doubling), `recordIfNew`
+  (dedupe by `radio|identifier`, separate buckets per radio),
+  `parseRFIDBadge` (line-anchored protocol, identifier extraction,
+  no-match still returns the radio field), and `parseIButtonBadge`
+  (Dallas / Cyfral / Metakom + protocol-without-key handling).
+- New `internal/workflows/garage_door_helpers_test.go` covers
+  `parseSubGHzDecode` (rolling-protocol allowlist sweep, hex
+  upper-case normalisation), `looksLikeEmptyCapture` (every
+  documented no-signal phrasing plus the short-output heuristic),
+  and `subGHzAttackPath` (rolling vs fixed vs unknown protocol).
+- All seven helpers reach 100% statement coverage.
+
 ## [0.193.0] - 2026-05-17
 
 **BadUSBRun + LoaderOpen reject empty-arg invocations before
