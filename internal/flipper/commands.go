@@ -872,14 +872,61 @@ func (f *Flipper) RFIDEmulate(protocol string, data string, duration time.Durati
 	return f.RFIDEmulateCtx(context.Background(), protocol, data, duration)
 }
 
+// validateRFIDArgs catches the two failure modes most likely to come
+// from an LLM: an empty protocol name, and data that isn't valid hex
+// (or has the wrong shape because the model converted to decimal).
+//
+// We deliberately do NOT allowlist the protocol name. The firmware
+// table varies across stock/Momentum/Unleashed/Xtreme — short names
+// like "HIDProx" map to "H10301" on some forks, niche names like
+// "Pyramid"/"Viking"/"Jablotron" only exist on some. A wrong protocol
+// produces a clear firmware error already; a malformed hex payload
+// can silently write a corrupted tag, which is the high-cost outcome
+// worth catching.
+func validateRFIDArgs(protocol string, data string) error {
+	if strings.TrimSpace(protocol) == "" {
+		return fmt.Errorf("invalid RFID protocol: empty (e.g. EM4100, HIDProx, Indala, AWID, FDX-A, FDX-B)")
+	}
+	if strings.TrimSpace(data) == "" {
+		return fmt.Errorf("invalid RFID data: empty")
+	}
+	compact := strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' {
+			return -1
+		}
+		return r
+	}, data)
+	if len(compact)%2 != 0 {
+		return fmt.Errorf("invalid RFID data %q: odd length %d", data, len(compact))
+	}
+	if _, err := hex.DecodeString(compact); err != nil {
+		return fmt.Errorf("invalid RFID data: %w", err)
+	}
+	return nil
+}
+
 // RFIDEmulateCtx is the context-aware variant of RFIDEmulate.
+//
+// Validates protocol non-empty and data as valid hex before the
+// emulation window opens. Malformed hex would otherwise silently
+// emulate a corrupted card for the full duration.
 func (f *Flipper) RFIDEmulateCtx(ctx context.Context, protocol string, data string, duration time.Duration) (string, error) {
+	if err := validateRFIDArgs(protocol, data); err != nil {
+		return "", err
+	}
 	return f.ExecLongCtx(ctx, fmt.Sprintf("rfid emulate %s %s", sanitizeArg(protocol), sanitizeArg(data)), duration)
 }
 
 // RFIDWrite writes data to an RFID tag.
+//
+// Same up-front validation as RFIDEmulateCtx — malformed data
+// silently writes a corrupted T5577 blank, which is much harder
+// to spot than a clean error before TX.
 // CLI: rfid write <protocol> <hex_data>
 func (f *Flipper) RFIDWrite(protocol string, data string) (string, error) {
+	if err := validateRFIDArgs(protocol, data); err != nil {
+		return "", err
+	}
 	return f.ExecLong(fmt.Sprintf("rfid write %s %s", sanitizeArg(protocol), sanitizeArg(data)), 30*time.Second)
 }
 
