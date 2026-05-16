@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // maxReflectionsPerTurn caps how many tool failures within a single user
@@ -109,6 +111,16 @@ func (a *Agent) reflect(ctx context.Context, toolName string, input json.RawMess
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(userText))},
 	})
 	if err != nil {
+		// Loud on timeout (operator should know the diagnoser is stalled),
+		// quiet on transient SDK errors (they recover on the next call).
+		// See prospective.go for the same fail-open + selective-log
+		// rationale.
+		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			obs.FromCtx(ctx).Warn("reflect_timeout",
+				"tool", toolName,
+				"model", model,
+				"timeout", reflectTimeout.String())
+		}
 		return ""
 	}
 	a.fireTierUsage(model, resp.Usage)

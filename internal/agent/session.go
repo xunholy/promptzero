@@ -22,6 +22,13 @@ const HandoffResumeSentinel = "<handoff-resume>"
 // titleMaxLen caps auto-derived session titles so the sidebar stays readable.
 const titleMaxLen = 60
 
+// titleGenTimeout caps the title-generation Haiku call. Matches the
+// per-call timeout pattern verifyPayload / reflect / prospective /
+// router use. Five seconds is generous for a 32-token title response
+// — on timeout the goroutine cancels the in-flight HTTP request and
+// the session keeps its auto-derived title (no operator-facing error).
+const titleGenTimeout = 5 * time.Second
+
 // DefaultSessionStore creates a Store rooted at ~/.promptzero/sessions.
 func DefaultSessionStore() (*session.Store, error) {
 	home, err := os.UserHomeDir()
@@ -483,7 +490,7 @@ func (a *Agent) runTitleGeneration(id, model, derivedSnapshot string, history []
 		a.mu.Unlock()
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), titleGenTimeout)
 	defer cancel()
 
 	title := a.callTitleAPI(ctx, model, history)
