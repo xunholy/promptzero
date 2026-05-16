@@ -2658,8 +2658,18 @@ func (f *Flipper) PowerRebootDFU() (string, error) {
 
 // UpdateInstall applies a firmware update from an already-staged manifest on
 // the SD card. Long-running — uses a 5-minute deadline. Critical.
+//
+// Rejects empty/whitespace manifestPath before transport: the firmware
+// command form is `update install <path>` and an empty path produces
+// `update install ` which the loader may treat as either a no-op or
+// a parse error (fork-dependent). On a real update path that took
+// minutes to set up via Updater Builder, sending an empty manifest
+// path is a high-cost LLM mistake; reject up front with a clear nudge.
 // CLI: update install <manifest_path>
 func (f *Flipper) UpdateInstall(manifestPath string) (string, error) {
+	if strings.TrimSpace(manifestPath) == "" {
+		return "", fmt.Errorf("invalid firmware manifest path: empty (expected e.g. /ext/update/momentum/update.fuf)")
+	}
 	return f.ExecLong(fmt.Sprintf("update install %s", sanitizeArg(manifestPath)), 5*time.Minute)
 }
 
