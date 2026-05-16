@@ -189,3 +189,74 @@ func TestValidateEvilPortal_FindingFieldsPopulated(t *testing.T) {
 		}
 	}
 }
+
+// TestExcerptAtLine_HappyPaths pins the basic behaviour of the
+// shared helper extracted in this commit: short lines pass through
+// trimmed, missing lines return empty, and the 120-byte cap is
+// enforced with an ellipsis marker.
+func TestExcerptAtLine_HappyPaths(t *testing.T) {
+	lines := []string{
+		"   first   ",
+		"",
+		strings.Repeat("x", 200), // > 120
+	}
+	// 1-based: lineNo=1 → lines[0].
+	if got := excerptAtLine(lines, 1); got != "first" {
+		t.Errorf("trimmed line = %q; want 'first'", got)
+	}
+	// Blank line (after trim).
+	if got := excerptAtLine(lines, 2); got != "" {
+		t.Errorf("blank line = %q; want empty", got)
+	}
+	// Long line — should truncate at 120 + ellipsis (not panic).
+	got := excerptAtLine(lines, 3)
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("long line should end with ellipsis: %q", got)
+	}
+	// Ellipsis is 3 bytes ("…"); excerpt is at most excerptCap bytes
+	// of head + the ellipsis marker.
+	if len(got) > excerptCap+4 {
+		t.Errorf("long line over cap: len=%d, want ≤ %d", len(got), excerptCap+4)
+	}
+}
+
+// TestExcerptAtLine_OutOfRangeReturnsEmpty pins the bounds guard.
+// Pre-helper, the inline code only checked `lineNo-1 < len(lines)`
+// — a zero or negative lineNo would index lines[-1] and panic.
+// The helper adds a `lineNo < 1` guard on top.
+func TestExcerptAtLine_OutOfRangeReturnsEmpty(t *testing.T) {
+	lines := []string{"only line"}
+	cases := []int{0, -1, 2, 99}
+	for _, ln := range cases {
+		if got := excerptAtLine(lines, ln); got != "" {
+			t.Errorf("excerptAtLine(_, %d) = %q; want empty", ln, got)
+		}
+	}
+	// Empty lines slice — any lineNo returns empty.
+	if got := excerptAtLine(nil, 1); got != "" {
+		t.Errorf("empty lines, lineNo=1 = %q; want empty", got)
+	}
+}
+
+// TestExcerptAtLine_UTF8BoundaryWalkBack pins the UTF-8-safe
+// truncation. Construct a line where the 120-byte cap lands inside
+// a multi-byte rune; the helper must walk back to the rune start so
+// the output stays valid UTF-8 (renderer downstream rejects U+FFFD).
+func TestExcerptAtLine_UTF8BoundaryWalkBack(t *testing.T) {
+	// "…" is 3 bytes. Build a string of 119 ASCII + one "…" so the
+	// cap (120) lands mid-rune at byte 120.
+	line := strings.Repeat("a", 119) + "…" + "trailing"
+	lines := []string{line}
+	got := excerptAtLine(lines, 1)
+	// Must end in our marker ellipsis, not the embedded "…" of the
+	// line — verifying we cut before the multi-byte rune started.
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("truncated output missing ellipsis: %q", got)
+	}
+	// The walked-back cut should drop the "…" entirely (it would
+	// have been split), so the body is just the 119 'a' chars.
+	wantHead := strings.Repeat("a", 119)
+	if !strings.HasPrefix(got, wantHead) {
+		t.Errorf("truncated output corrupted head: %q", got)
+	}
+}
