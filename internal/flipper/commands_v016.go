@@ -9,11 +9,32 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/flipper/rpc"
 )
+
+// validateCryptoSlotString mirrors the firmware's crypto_cli slot
+// parsing — slot must be a decimal integer in [1, 100]. Slot 0 is
+// reserved (device-bound master key) and out-of-range slots get an
+// opaque "invalid slot" banner from the firmware. Pre-fix, an LLM
+// guessing slot="mySlot" or slot="" would get the opaque reply.
+func validateCryptoSlotString(slot string) error {
+	trimmed := strings.TrimSpace(slot)
+	if trimmed == "" {
+		return fmt.Errorf("invalid crypto slot: empty (must be a decimal integer in 1-100)")
+	}
+	n, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return fmt.Errorf("invalid crypto slot %q (must be a decimal integer 1-100): %w", slot, err)
+	}
+	if n < 1 || n > 100 {
+		return fmt.Errorf("invalid crypto slot %d (must be in 1-100; slot 0 is reserved)", n)
+	}
+	return nil
+}
 
 // ─── Sub-GHz device-explicit wrappers ────────────────────────────────────────
 
@@ -42,7 +63,14 @@ func (f *Flipper) SubGHzChatDevice(frequency uint32, duration time.Duration, dev
 }
 
 // SubGHzChatDeviceCtx is the context-aware variant of SubGHzChatDevice.
+//
+// Validates frequency against the firmware-permitted bands before TX.
+// Out-of-band requests come back as "Frequency not allowed!" after a
+// slow round-trip — same failure mode as SubGHzTxKey before v0.181.
 func (f *Flipper) SubGHzChatDeviceCtx(ctx context.Context, frequency uint32, duration time.Duration, device int) (string, error) {
+	if !subGHzFreqAllowed(frequency) {
+		return "", fmt.Errorf("invalid Sub-GHz frequency %d Hz (allowed bands: 300-348 MHz, 387-464 MHz, 779-928 MHz)", frequency)
+	}
 	cmd := fmt.Sprintf("subghz chat %d -d %d", frequency, device)
 	return f.ExecLongCtx(ctx, cmd, duration)
 }
@@ -50,23 +78,35 @@ func (f *Flipper) SubGHzChatDeviceCtx(ctx context.Context, frequency uint32, dur
 // ─── Crypto enclave ───────────────────────────────────────────────────────────
 
 // CryptoEncrypt encrypts hex-encoded data using the key in the named slot.
-// The slot argument is the string slot identifier used by the firmware.
+// slot is a decimal-integer string in 1-100 (matches the firmware's
+// crypto_cli_encrypt slot parser).
 // CLI: crypto encrypt <slot> <hex-data>
 func (f *Flipper) CryptoEncrypt(slot string, data string) (string, error) {
+	if err := validateCryptoSlotString(slot); err != nil {
+		return "", err
+	}
 	return f.Exec(fmt.Sprintf("crypto encrypt %s %s",
 		sanitizeArg(slot), sanitizeArg(data)))
 }
 
 // CryptoDecrypt decrypts hex-encoded ciphertext using the key in the named slot.
+// slot must be a decimal-integer string in 1-100.
 // CLI: crypto decrypt <slot> <hex-data>
 func (f *Flipper) CryptoDecrypt(slot string, data string) (string, error) {
+	if err := validateCryptoSlotString(slot); err != nil {
+		return "", err
+	}
 	return f.Exec(fmt.Sprintf("crypto decrypt %s %s",
 		sanitizeArg(slot), sanitizeArg(data)))
 }
 
 // CryptoHasKey reports whether a key is stored in the named slot.
+// slot must be a decimal-integer string in 1-100.
 // CLI: crypto has_key <slot>
 func (f *Flipper) CryptoHasKey(slot string) (string, error) {
+	if err := validateCryptoSlotString(slot); err != nil {
+		return "", err
+	}
 	return f.Exec(fmt.Sprintf("crypto has_key %s", sanitizeArg(slot)))
 }
 

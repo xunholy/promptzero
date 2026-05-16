@@ -98,8 +98,9 @@ func TestSubGHzChatDevice_WireCommand(t *testing.T) {
 // ─── Crypto enclave ───────────────────────────────────────────────────────────
 
 // TestCryptoEncrypt_WireCommand verifies `crypto encrypt <slot> <hex-data>`.
+// slot is a decimal-integer string in 1-100 (matches firmware crypto_cli).
 func TestCryptoEncrypt_WireCommand(t *testing.T) {
-	const slot = "mySlot"
+	const slot = "5"
 	const data = "DEADBEEF01020304"
 
 	m := mock.Spawn(t,
@@ -134,8 +135,9 @@ func TestCryptoEncrypt_WireCommand(t *testing.T) {
 }
 
 // TestCryptoDecrypt_WireCommand verifies `crypto decrypt <slot> <hex-data>`.
+// slot is a decimal-integer string in 1-100 (matches firmware crypto_cli).
 func TestCryptoDecrypt_WireCommand(t *testing.T) {
-	const slot = "mySlot"
+	const slot = "7"
 	const cipher = "AABBCCDD"
 
 	m := mock.Spawn(t,
@@ -170,8 +172,9 @@ func TestCryptoDecrypt_WireCommand(t *testing.T) {
 }
 
 // TestCryptoHasKey_WireCommand verifies `crypto has_key <slot>`.
+// slot is a decimal-integer string in 1-100 (matches firmware crypto_cli).
 func TestCryptoHasKey_WireCommand(t *testing.T) {
-	const slot = "slot0"
+	const slot = "10"
 
 	m := mock.Spawn(t,
 		mock.WithHandler("crypto", func(args []string) string {
