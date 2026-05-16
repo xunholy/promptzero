@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -292,9 +293,56 @@ func (f *Flipper) SubGHzTxKey(keyHex string, freq uint32, te uint32, repeat int)
 
 // --- Infrared ---
 
+// validIRProtocols mirrors the protocol table from the Flipper firmware
+// (lib/infrared/encoder_decoder/). Names are case-sensitive on the wire.
+// Stable across stock, Momentum, Unleashed, and Xtreme — the IR protocol
+// parser lives in the shared libinfrared and isn't fork-customised.
+var validIRProtocols = map[string]struct{}{
+	"NEC":       {},
+	"NECext":    {},
+	"NEC42":     {},
+	"NEC42ext":  {},
+	"Samsung32": {},
+	"RC5":       {},
+	"RC5X":      {},
+	"RC6":       {},
+	"SIRC":      {},
+	"SIRC15":    {},
+	"SIRC20":    {},
+	"Kaseikyo":  {},
+	"RCA":       {},
+	"Pioneer":   {},
+}
+
+// IRProtocolNames returns the sorted list of valid IR protocols. Used in
+// the validation error message and exposed for any caller that wants to
+// enumerate the firmware-supported set (e.g. spec schema generators).
+func IRProtocolNames() []string {
+	names := make([]string, 0, len(validIRProtocols))
+	for k := range validIRProtocols {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // IRTxParsed transmits a decoded infrared signal.
+//
+// Validates protocol against the firmware allowlist before transport.
+// Common LLM hallucinations ("Sony" instead of SIRC, "Panasonic"
+// instead of Kaseikyo, lower-case "nec") otherwise reach the firmware
+// as an opaque "unknown protocol" banner with a usage dump.
 // CLI: ir tx <protocol> <address_hex> <command_hex>
 func (f *Flipper) IRTxParsed(protocol string, address string, command string) (string, error) {
+	if _, ok := validIRProtocols[protocol]; !ok {
+		return "", fmt.Errorf("invalid IR protocol %q (valid: %s)", protocol, strings.Join(IRProtocolNames(), ", "))
+	}
+	if strings.TrimSpace(address) == "" {
+		return "", fmt.Errorf("invalid IR address: empty")
+	}
+	if strings.TrimSpace(command) == "" {
+		return "", fmt.Errorf("invalid IR command: empty")
+	}
 	return f.Exec(fmt.Sprintf("ir tx %s %s %s", sanitizeArg(protocol), sanitizeArg(address), sanitizeArg(command)))
 }
 
