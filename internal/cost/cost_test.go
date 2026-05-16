@@ -87,6 +87,65 @@ func TestSetModel_UpdatesSnapshotAndPricingPath(t *testing.T) {
 	}
 }
 
+// TestAddUsageFullForModel_PerCallModelOverridesTrackerModel pins the
+// tier-routing pricing fix: a tracker configured with Opus rates must
+// bill Haiku-tier calls at Haiku rates when the per-call model is
+// supplied. Pre-fix, every persona that routed plan-tier to Haiku
+// silently still got billed at Opus rates (5x overstatement on a
+// per-token basis, larger gap on cache-heavy turns).
+func TestAddUsageFullForModel_PerCallModelOverridesTrackerModel(t *testing.T) {
+	p := NewPricer(nil)
+	// Tracker primary model: Opus ($15/MTok input). Cost dashboard
+	// shows this in Snapshot.Model — operator's configured baseline.
+	tr := NewTracker(p, "claude-opus-4-7", nil)
+
+	// Haiku-tier classify call: 1M input tokens.
+	// Haiku rate is $0.80/MTok → expected ~$0.80, NOT $15 (Opus).
+	tr.AddUsageFullForModel("claude-haiku-4-5", 1_000_000, 0, 0, 0)
+
+	snap := tr.Snapshot()
+	if snap.Model != "claude-opus-4-7" {
+		t.Errorf("Snapshot.Model = %q; want primary opus (per-call model must NOT overwrite the displayed primary)", snap.Model)
+	}
+	if snap.TotalUSD < 0.79 || snap.TotalUSD > 0.81 {
+		t.Errorf("TotalUSD = %f; want ~$0.80 (Haiku $0.80/MTok), not Opus $15/MTok", snap.TotalUSD)
+	}
+
+	// Now an exploit-tier Opus call: 1M input → +$15.
+	tr.AddUsageFullForModel("claude-opus-4-7", 1_000_000, 0, 0, 0)
+	snap = tr.Snapshot()
+	wantTotal := 0.80 + 15.0
+	if diff := snap.TotalUSD - wantTotal; diff < -0.01 || diff > 0.01 {
+		t.Errorf("TotalUSD after mixed tiers = %f; want %f ($0.80 haiku + $15 opus)", snap.TotalUSD, wantTotal)
+	}
+}
+
+// TestAddUsageFullForModel_EmptyModelFallsBackToTrackerModel pins the
+// backward-compat behaviour: an empty per-call model means "use the
+// tracker's configured model", matching the legacy AddUsageFull path.
+func TestAddUsageFullForModel_EmptyModelFallsBackToTrackerModel(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+	tr.AddUsageFullForModel("", 1_000_000, 0, 0, 0)
+	// Sonnet rate: $3/MTok input.
+	snap := tr.Snapshot()
+	if snap.TotalUSD < 2.99 || snap.TotalUSD > 3.01 {
+		t.Errorf("empty per-call model: TotalUSD = %f; want ~$3 (Sonnet)", snap.TotalUSD)
+	}
+}
+
+// TestAddUsageFull_StillUsesTrackerModel pins that the legacy
+// AddUsageFull wrapper continues to price using the tracker model —
+// it now delegates to AddUsageFullForModel("", ...).
+func TestAddUsageFull_StillUsesTrackerModel(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-haiku-4-5", nil)
+	tr.AddUsageFull(1_000_000, 0, 0, 0)
+	// Haiku rate: $0.80/MTok.
+	snap := tr.Snapshot()
+	if snap.TotalUSD < 0.79 || snap.TotalUSD > 0.81 {
+		t.Errorf("AddUsageFull: TotalUSD = %f; want ~$0.80 (Haiku tracker model)", snap.TotalUSD)
+	}
+}
+
 // TestSetModel_ConcurrentSafe pins SetModel's mutex coverage —
 // concurrent Snapshot reads during a SetModel write must not race.
 // `go test -race` is the real check; this just exercises the path.
