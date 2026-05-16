@@ -231,7 +231,7 @@ func findCoveringCSNs(targetCoverage, maxN int, rng *rand.Rand) ([][8]byte, erro
 	return csns[:maxN], nil
 }
 
-// countBits// countBits counts the number of 1-bits in a uint32.
+// countBits counts the number of 1-bits in a uint32.
 func countBits(x uint32) int {
 	n := 0
 	for x != 0 {
