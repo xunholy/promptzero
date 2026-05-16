@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.193.0] - 2026-05-17
+
+**BadUSBRun + LoaderOpen reject empty-arg invocations before
+transport, plus web helper coverage uplift.**
+
+### Fixed
+
+- `Flipper.BadUSBRun("")`: produced `loader open "Bad USB" `
+  (trailing space) — either crashed the loader or launched BadUSB
+  with no script, leaving the operator staring at an idle Flipper
+  screen with no diagnostic. Now rejects empty/whitespace path with
+  a clear `"expected e.g. /ext/badusb/payload.txt"` nudge.
+- `Flipper.LoaderOpen("", args)`: produced `loader open ""` which
+  the firmware rejects with an opaque parse error. Now rejects
+  empty/whitespace appName up front with an
+  `"expected e.g. Bad USB, NFC, Sub-GHz"` nudge.
+
+The `badusb_run` / `loader_open` tool specs at `internal/tools/`
+already gated against empty file/name via the validator path, but
+the wrappers are also reachable from non-tool code (workflows,
+the loader-FAP helpers like `LoaderNFCMagic`) — wrapper-layer
+defense matches the Bruce v0.190 / Marauder v0.189 pattern.
+
+### Tests
+
+- New `internal/web/helpers_test.go` covers three pure helpers that
+  had been at 0% statement coverage: `sanitizePath` (CR/LF/NUL/quote
+  stripped, spaces and tabs preserved), `splitLines` (CRLF
+  normalised, blank lines dropped after trim), and `parseWhenWebStr`
+  (three success grammars — `Nd` days, `time.ParseDuration`,
+  RFC3339 — plus empty / unparseable / negative-duration errors).
+  web coverage: 70.8% → 72.2%.
+
 ## [0.192.0] - 2026-05-17
 
 **Faultier Sweep now preserves the pulse width configured by a prior
