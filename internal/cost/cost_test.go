@@ -47,6 +47,75 @@ func TestPricer_CostWithCache(t *testing.T) {
 	}
 }
 
+// TestSetModel_UpdatesSnapshotAndPricingPath pins two contracts for
+// SetModel: the change reflects in the next Snapshot.Model, and any
+// AddUsage call after SetModel is billed at the new model's rate
+// rather than the constructor's. Past usage stays attributed to the
+// prior model (the totalUSD running total is intentionally NOT
+// re-priced — only future AddUsage calls).
+func TestSetModel_UpdatesSnapshotAndPricingPath(t *testing.T) {
+	// Opus and Sonnet rates differ enough that 1M-token usage produces
+	// a clearly different USD bump; pin that.
+	p := NewPricer(nil)
+	tr := NewTracker(p, "claude-sonnet-4-6", nil)
+
+	// First batch billed at Sonnet rate.
+	tr.AddUsage(1_000_000, 0) // 1M input @ $3/MTok = $3.00
+	snapBefore := tr.Snapshot()
+	if snapBefore.Model != "claude-sonnet-4-6" {
+		t.Errorf("pre-switch Model = %q; want sonnet", snapBefore.Model)
+	}
+	if snapBefore.TotalUSD < 2.99 || snapBefore.TotalUSD > 3.01 {
+		t.Fatalf("pre-switch TotalUSD = %f; want ~$3 (1M @ $3/MTok)", snapBefore.TotalUSD)
+	}
+
+	// Switch model — future usage billed at Opus rate ($15/MTok input).
+	tr.SetModel("claude-opus-4-7")
+	tr.AddUsage(1_000_000, 0) // 1M input @ $15/MTok = $15.00 more
+
+	snapAfter := tr.Snapshot()
+	if snapAfter.Model != "claude-opus-4-7" {
+		t.Errorf("post-switch Model = %q; want opus", snapAfter.Model)
+	}
+	wantTotal := 3.0 + 15.0
+	if diff := snapAfter.TotalUSD - wantTotal; diff < -0.01 || diff > 0.01 {
+		t.Errorf("post-switch TotalUSD = %f; want %f ($3 sonnet + $15 opus)", snapAfter.TotalUSD, wantTotal)
+	}
+	// Token counters keep accumulating regardless of model.
+	if snapAfter.InputTokens != 2_000_000 {
+		t.Errorf("InputTokens = %d; want 2_000_000", snapAfter.InputTokens)
+	}
+}
+
+// TestSetModel_ConcurrentSafe pins SetModel's mutex coverage —
+// concurrent Snapshot reads during a SetModel write must not race.
+// `go test -race` is the real check; this just exercises the path.
+func TestSetModel_ConcurrentSafe(t *testing.T) {
+	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			tr.SetModel("claude-opus-4-7")
+			tr.SetModel("claude-haiku-4-5")
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			_ = tr.Snapshot().Model
+		}
+	}()
+	wg.Wait()
+	// Either model is valid here — we only care that no race occurred.
+	got := tr.Snapshot().Model
+	if got != "claude-opus-4-7" && got != "claude-haiku-4-5" {
+		t.Errorf("unexpected final model: %q", got)
+	}
+}
+
 func TestTracker_AddUsageFull_AccumulatesCache(t *testing.T) {
 	tr := NewTracker(NewPricer(nil), "claude-sonnet-4-6", nil)
 	tr.AddUsageFull(1000, 500, 2000, 100)
