@@ -105,8 +105,11 @@ func flipperWireCommandCases() []flipperWireCommandCase {
 		}},
 
 		// --- Crypto ---
-		{"CryptoStoreKey", "crypto store_key 1 aes256 256 DEADBEEF", func(f *flipper.Flipper) (string, error) {
-			return f.CryptoStoreKey(1, "aes256", 256, "DEADBEEF")
+		// Wire form pins the 4-arg shape — use valid keyType/keySize/hex so
+		// the pre-transport validator in CryptoStoreKey doesn't short-circuit
+		// before the wire dispatch runs. 32-char hex = 128-bit key.
+		{"CryptoStoreKey", "crypto store_key 1 simple 128 DEADBEEFDEADBEEFDEADBEEFDEADBEEF", func(f *flipper.Flipper) (string, error) {
+			return f.CryptoStoreKey(1, "simple", 128, "DEADBEEFDEADBEEFDEADBEEFDEADBEEF")
 		}},
 
 		// --- Bluetooth ---
