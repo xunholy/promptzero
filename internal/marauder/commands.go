@@ -399,6 +399,9 @@ func (m *Marauder) EvilPortalSetHTMLStr() (string, error) {
 
 // SetChannel sets the WiFi channel (1–14).
 func (m *Marauder) SetChannel(channel int) (string, error) {
+	if err := validateWiFiChannel24Int(channel); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf("channel -s %d", channel), 5*time.Second)
 }
 
@@ -418,11 +421,17 @@ func (m *Marauder) AddSSID(name string) (string, error) {
 
 // GenerateSSIDs generates count random SSIDs and adds them to the list.
 func (m *Marauder) GenerateSSIDs(count int) (string, error) {
+	if count <= 0 {
+		return "", fmt.Errorf("invalid SSID count %d (must be >= 1)", count)
+	}
 	return m.Exec(fmt.Sprintf("ssid -a -g %d", count), 5*time.Second)
 }
 
 // RemoveSSID removes the SSID at the given index from the list.
 func (m *Marauder) RemoveSSID(index int) (string, error) {
+	if err := validateListIndex("SSID index", index); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf("ssid -r %d", index), 5*time.Second)
 }
 
@@ -432,6 +441,9 @@ func (m *Marauder) RemoveSSID(index int) (string, error) {
 // The password is quoted and sanitised so embedded spaces / special chars
 // survive the Marauder CLI parser; CR/LF/NUL/quote are stripped.
 func (m *Marauder) Join(apIndex int, password string) (string, error) {
+	if err := validateListIndex("AP index", apIndex); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf(`join -a %d -p "%s"`, apIndex, clisafe.SanitizeArg(password)), 15*time.Second)
 }
 
@@ -523,6 +535,9 @@ func (m *Marauder) RandomStaMAC() (string, error) {
 
 // CloneAPMAC clones the MAC address of the AP at the given index.
 func (m *Marauder) CloneAPMAC(index int) (string, error) {
+	if err := validateListIndex("AP index", index); err != nil {
+		return "", err
+	}
 	return m.Exec(fmt.Sprintf("cloneapmac -a %d", index), 5*time.Second)
 }
 
