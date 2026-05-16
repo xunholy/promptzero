@@ -4,12 +4,43 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"sync"
 	"time"
 
 	"go.bug.st/serial"
 )
+
+// validateBSSID accepts a 6-octet MAC in any common separator form
+// (colon, hyphen, period). The Bruce firmware parses these formats but
+// silently no-ops on malformed input — reject up front so the LLM (or
+// a direct caller bypassing the tool spec layer) gets a clear error
+// instead of a quiet failure.
+func validateBSSID(bssid string) error {
+	if strings.TrimSpace(bssid) == "" {
+		return fmt.Errorf("bruce: invalid BSSID: empty")
+	}
+	mac, err := net.ParseMAC(bssid)
+	if err != nil {
+		return fmt.Errorf("bruce: invalid BSSID %q (want MAC, e.g. AA:BB:CC:DD:EE:FF): %w", bssid, err)
+	}
+	if len(mac) != 6 {
+		return fmt.Errorf("bruce: invalid BSSID %q (want 6 octets; got %d)", bssid, len(mac))
+	}
+	return nil
+}
+
+// validateWiFiChannel rejects clearly-out-of-range channel numbers.
+// Bruce supports 2.4 GHz (1-14) and 5 GHz (36-165) per its tool schema;
+// the firmware does the precise validation but a negative or
+// 1000-style value is always wrong — reject before transport.
+func validateWiFiChannel(channel int) error {
+	if channel < 1 || channel > 165 {
+		return fmt.Errorf("bruce: invalid Wi-Fi channel %d (must be 1-14 for 2.4 GHz or 36-165 for 5 GHz)", channel)
+	}
+	return nil
+}
 
 // defaultBaud is the Bruce firmware default baud rate (USB CDC-ACM).
 const defaultBaud = 115200
@@ -198,7 +229,18 @@ func (c *Client) Scan5GHz(ctx context.Context) ([]AP, error) {
 
 // Deauth sends a deauthentication attack against the specified BSSID on the
 // given channel. AUTHORIZED PENTEST / LAB USE ONLY.
+//
+// Validates BSSID format and channel range before transport. The tool
+// layer (internal/tools/bruce.go) already catches empty bssid / zero
+// channel; this is defense-in-depth for direct callers and catches
+// malformed MACs / out-of-range channels that the tool layer doesn't.
 func (c *Client) Deauth(ctx context.Context, bssid string, channel int) error {
+	if err := validateBSSID(bssid); err != nil {
+		return err
+	}
+	if err := validateWiFiChannel(channel); err != nil {
+		return err
+	}
 	cmd := fmt.Sprintf("wifi deauth %s %d", bssid, channel)
 	_, err := c.RawCommand(ctx, cmd)
 	return err
@@ -206,7 +248,15 @@ func (c *Client) Deauth(ctx context.Context, bssid string, channel int) error {
 
 // EvilTwin starts a rogue access point cloning ssid/bssid. The fake AP uses
 // the same SSID to lure clients.  AUTHORIZED PENTEST / LAB USE ONLY.
+//
+// Validates BSSID format and rejects empty SSID before transport.
 func (c *Client) EvilTwin(ctx context.Context, ssid, bssid string) error {
+	if strings.TrimSpace(ssid) == "" {
+		return fmt.Errorf("bruce: invalid SSID: empty")
+	}
+	if err := validateBSSID(bssid); err != nil {
+		return err
+	}
 	cmd := fmt.Sprintf("wifi evil %s %s", ssid, bssid)
 	_, err := c.RawCommand(ctx, cmd)
 	return err
