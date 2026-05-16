@@ -37,6 +37,14 @@ type Client struct {
 	port    Port
 	closeMu sync.Mutex // guards closed
 	closed  bool
+
+	// cfgMu guards lastPulseUS, the most recently configured pulse
+	// width. Sweep uses this to preserve the pulse_us configured by a
+	// prior SetPulse / Configure call across its delay iterations —
+	// otherwise the loop would zero out the pulse on every step,
+	// producing no actual glitch.
+	cfgMu       sync.Mutex
+	lastPulseUS uint32
 }
 
 // DefaultBaud is the baud rate for the Faultier serial bridge.
@@ -104,10 +112,10 @@ type GlitcherConfig struct {
 // Fire.  Both values are in microseconds.  Maps to the upstream Python
 // configure_glitcher(delay=..., pulse=...) call.
 //
-// Note: pulseUS=0 is permitted because Sweep relies on it as a control-
-// iteration baseline (the firmware reads pulse=0 as "no fault this
-// round"). LLM-facing tool specs upstream catch obviously-broken pulse
-// widths before reaching this wrapper.
+// The pulseUS value is also recorded in the Client and re-used by
+// subsequent Sweep calls — so the documented workflow
+// (glitch_set_pulse → glitch_sweep) preserves the pulse width across
+// every step of the sweep instead of zeroing it.
 func (c *Client) SetPulse(delayUS, pulseUS uint32) error {
 	cfg := GlitcherConfig{
 		TriggerType:   TriggerNone,
@@ -121,12 +129,22 @@ func (c *Client) SetPulse(delayUS, pulseUS uint32) error {
 
 // Configure sends a full GlitcherConfig to the device (OpConfigure).
 // Call this before Arm or Fire when you need more than just delay/pulse.
+//
+// On success, Configure records cfg.PulseUS as the Client's most-
+// recently-configured pulse width so a subsequent Sweep can replay it
+// across every iteration instead of zeroing it.
 func (c *Client) Configure(cfg GlitcherConfig) error {
 	payload := encodeConfigPayload(cfg)
 	if err := c.sendFrame(OpConfigure, payload); err != nil {
 		return fmt.Errorf("faultier.Configure: %w", err)
 	}
-	return c.expectOK("Configure")
+	if err := c.expectOK("Configure"); err != nil {
+		return err
+	}
+	c.cfgMu.Lock()
+	c.lastPulseUS = cfg.PulseUS
+	c.cfgMu.Unlock()
+	return nil
 }
 
 // Arm arms the trigger. The device waits for the configured trigger condition
@@ -163,6 +181,12 @@ func (c *Client) Disarm() error {
 // re-configures and re-fires the device; there is no sweep opcode in the wire
 // protocol.
 //
+// Sweep preserves the pulse width configured by the most recent SetPulse
+// or Configure call. If the caller never configured a pulse width (or
+// configured pulseUS=0), Sweep iterates with pulse=0 — every Fire still
+// triggers, but no fault is actually injected. The intended workflow is
+// glitch_set_pulse(delay=0, pulse=<width>) → glitch_sweep(start, end, step).
+//
 // ctx is checked at the start of every iteration so the sweep can be cancelled
 // promptly by the caller's deadline or cancel signal.
 //
@@ -175,11 +199,14 @@ func (c *Client) Sweep(ctx context.Context, startUS, endUS, stepUS uint32) error
 	if startUS > endUS {
 		return fmt.Errorf("faultier.Sweep: start_us (%d) > end_us (%d)", startUS, endUS)
 	}
+	c.cfgMu.Lock()
+	pulse := c.lastPulseUS
+	c.cfgMu.Unlock()
 	for delay := startUS; delay <= endUS; delay += stepUS {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("faultier.Sweep: %w", err)
 		}
-		if err := c.SetPulse(delay, 0); err != nil {
+		if err := c.SetPulse(delay, pulse); err != nil {
 			return fmt.Errorf("faultier.Sweep at delay=%d: configure: %w", delay, err)
 		}
 		if err := c.Fire(); err != nil {
