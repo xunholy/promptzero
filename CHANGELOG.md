@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.189.0] - 2026-05-17
+
+**Three more validate-before-transport fixes across the Marauder
+wrappers.** Three wrappers were forwarding LLM-supplied args verbatim
+to a firmware that either silently no-op'd or returned an opaque
+banner.
+
+### Fixed
+
+- `Marauder.AddSSID`: rejects empty/whitespace names and SSIDs
+  longer than 32 bytes (the 802.11 cap). Pre-fix, the firmware
+  accepted the call but the resulting list entry was invisible in
+  subsequent beacon spam — the SSID field stayed empty in the
+  broadcast frames.
+- `Marauder.GPSField`: allowlists the `navSystem` arg against the
+  eight tokens its docstring already documented (native, all, gps,
+  glonass, galileo, navic, qzss, beidou). Empty stays empty
+  (firmware default). Pre-fix, hallucinations like "GPS" (uppercase)
+  or "iridium" reached the firmware as opaque "unknown system"
+  errors.
+- `Marauder.EvilPortalSetHTML`: rejects empty/whitespace filenames.
+  Unlike `EvilPortalStart` (where empty selects the firmware
+  default), `sethtml` requires an explicit filename; the empty
+  form produces `evilportal -c sethtml ""` which the firmware
+  rejects with an opaque banner. The diagnostic now points the
+  caller at `EvilPortalStart` for the default-page case.
+
 ## [0.188.0] - 2026-05-17
 
 **Two more validate-before-transport gaps in the v0.16 wrappers, plus
