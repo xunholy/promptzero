@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.197.0] - 2026-05-17
+
+**Empty-path rejection on the four destructive Flipper wrappers, plus
+regression tests pinning v0.195/v0.196 budget interaction.**
+
+### Fixed
+
+- `Flipper.UpdateInstall("")` produced `update install ` (trailing
+  space) which the loader handles inconsistently across forks
+  (some no-op, some opaque parse error). On a real update path that
+  took minutes to set up via Updater Builder, an empty manifest is
+  a high-cost LLM mistake.
+- `Flipper.BackupCreate("")` left some forks writing the backup to a
+  firmware-default location — the operator never saw where it
+  landed. Empty path now rejected with an `e.g.` example.
+- `Flipper.BackupRestore("")` — the most dangerous of the four —
+  some forks treat empty as "restore from default location" which
+  could surface a stale backup over the operator's current /int
+  state.
+- `Flipper.StorageExtract("", outdir)` / `(archive, "")` produced
+  double-space or trailing-space command forms; firmware parsers
+  handled them inconsistently. Both args now required non-empty.
+
+All four reject empty/whitespace up front with diagnostics that name
+a plausible example so the LLM has a concrete shape to converge to.
+
+### Tests
+
+- `internal/cost/budget_test.go` gains two regression tests pinning
+  the v0.195/v0.196 budget interaction:
+  - `MixedTierPricing_FiresAtCorrectThreshold`: an Opus-configured
+    tracker with a $1 cap doesn't fire warn early just because 1M
+    Haiku-tier tokens went through (correctly priced at $0.80, not
+    Opus's $15).
+  - `OpusVsHaikuPricedDifferently`: same 1M tokens against a $5
+    cap trips both warn+hit for Opus-tier but neither for Haiku-tier.
+- `internal/flipper/destructive_paths_validate_test.go` pins the
+  empty-path rejections above.
+
 ## [0.196.0] - 2026-05-17
 
 **Closes the v0.195.0 known-gap: six tier-call sites now report usage
