@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.202.0] - 2026-05-17
+
+**Validator refactor with a tighter bounds guard, plus a
+default-branch coverage sweep across four packages.**
+
+### Fixed
+
+- `internal/validator/evilportal.go`: `ValidateEvilPortal` had two
+  near-identical inline blocks for truncating a source-line excerpt
+  at 120 bytes with UTF-8 walk-back — one in the bad-rules loop, one
+  in the multi-form check. Live HTML fixtures stayed well under
+  120 bytes so the truncation paths were both at 0% coverage; any
+  divergence between the duplicates would silently slip past CI.
+
+  Extracted into `excerptAtLine(lines, lineNo)` with a tighter
+  bounds guard: the original inline code only checked
+  `lineNo-1 < len(lines)`, so `lineNo=0` would index `lines[-1]`
+  and panic. The helper adds an explicit `lineNo < 1` guard.
+
+  Three new direct tests — happy paths, out-of-range bounds,
+  UTF-8 boundary walk-back (constructed line where the 120-byte
+  cap lands mid-rune; verifies the helper walks back to the rune
+  start so output stays valid UTF-8).
+
+### Tests
+
+Six small coverage gaps across pure-logic switch defaults and
+trivial helpers, bundled from the previous test-only iteration:
+
+- `mode.DisplayName`: first-letter-uppercase default for unknown
+  modes.
+- `mode.Description`: "unknown mode" sentinel.
+- `mode.Reason`: Sprintf default (mode + group name preserved).
+- `mode.Allows`: degrade-open for unknown modes.
+- `validator.Severity.String`: covers every constant + the
+  out-of-range "unknown" default.
+- `validator.plural`, `persona.UserDir`, `breaker.writeInt`
+  (negative + zero branches).
+
+Per-package coverage:
+- `mode` 91.2% → 100.0%
+- `validator` 85.7% → 97.0%
+- `persona` 87.1% → 91.9%
+- `breaker` 96.0% → 100.0%
+
+`mode` and `breaker` join the 100%-statement-coverage tier.
+
 ## [0.201.0] - 2026-05-17
 
 **Extends the v0.200 warn-on-timeout pattern to the two remaining
