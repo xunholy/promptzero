@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.187.0] - 2026-05-17
+
+**Coverage uplift across the audit, rules, fileformat, and iclass
+packages — plus a small doc-comment fix in iclass.**
+
+### Fixed
+
+- `internal/iclass/capture.go countBits`: doc comment was
+  `// countBits// countBits counts…` (refactor leftover). Trimmed
+  to a single identifier so `go doc` renders the summary correctly.
+
+### Tests
+
+- `internal/audit`: `SetTechniqueResolver` now covered for the
+  populated, unknown-tool, and nil-resolver-disables-hook paths.
+- `internal/rules`: `Engine.Remove` (cooldown + fire counter
+  cleared alongside the rule, no-op on unknown name) and
+  `LLMDetector.Name` (built-in constructors + custom detector)
+  both pinned.
+- `internal/fileformat`: `Diff` now covered for NFC (scalar +
+  block-by-block, plus block-only-in-one-side) and RFID (mutated
+  fields + identical-input baseline). `diffNFC` and `diffRFID`
+  reach 100% statement coverage.
+- `internal/iclass`: short-mode unit tests for `countBits` and
+  `DiversifyKey`. Both were previously exercised only by the
+  `TestLoclassEndToEnd` brute-force run, which is gated behind
+  `!testing.Short()` and therefore invisible to CI's quick gate.
+
+Per-package coverage moves:
+- audit: 79.3% → 80.1%
+- rules: 88.2% → 90.2%
+- fileformat: 81.9% → 84.6%
+- iclass (short): 57.3% → 59.7%
+
 ## [0.186.0] - 2026-05-17
 
 **One more validate-before-transport fix, plus workflow-layer parser
