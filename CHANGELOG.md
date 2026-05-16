@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.186.0] - 2026-05-17
+
+**One more validate-before-transport fix, plus workflow-layer parser
+coverage that had been missed.**
+
+### Fixed
+
+- `Marauder.WardrivePOI` and `Marauder.GpsPoi("mark", …)` now reject
+  empty/whitespace labels. Pre-fix, the firmware silently wrote an
+  unnamed POI marker into the wardrive/GPS log — unrecoverable
+  without the label, since the operator can't tell two empty markers
+  apart. The `GpsPoi` docstring had always declared "label required"
+  for the mark action; the code now matches it.
+
+### Tests
+
+- `internal/workflows/nfc_parse_classify_test.go`: pin
+  `classifyNFCFamily`, `nfcFamilyHint`, and the full
+  `parseNFCDetectOutput` walker including SAK-byte fallback, UID/ATQA
+  case normalisation, and DESFire-vs-SAK precedence.
+- `internal/workflows/firstline_paramstringlist_test.go`: pin
+  `firstLine` (happy paths, whitespace-only, empty) and
+  `paramStringList` (present, missing, wrong type set, non-string
+  filtering, empty array).
+- `internal/marauder/poi_label_validate_test.go`: regressions for
+  the POI fix above.
+- All five helpers (`parseNFCDetectOutput`, `classifyNFCFamily`,
+  `nfcFamilyHint`, `paramStringList`, `firstLine`) now at 100%
+  statement coverage. Workflows package coverage: 27.6% → 33.6%.
+
 ## [0.185.0] - 2026-05-16
 
 **Continued the validate-before-transport sweep over LF/iButton TX paths.**
