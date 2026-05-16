@@ -398,7 +398,15 @@ func (m *Marauder) EvilPortalStart(filename string) (string, error) {
 
 // EvilPortalSetHTML sets the evil portal HTML page to the given filename on
 // the SD card. Filename is sanitised and quoted (see EvilPortalStart).
+//
+// Unlike EvilPortalStart (where empty filename selects the firmware's
+// default page), the `sethtml` verb requires an explicit filename. An
+// empty arg currently produces `evilportal -c sethtml ""` which the
+// firmware rejects with an opaque error — reject up front instead.
 func (m *Marauder) EvilPortalSetHTML(filename string) (string, error) {
+	if strings.TrimSpace(filename) == "" {
+		return "", fmt.Errorf("invalid EvilPortal HTML filename: empty (use EvilPortalStart with empty filename for the firmware default page)")
+	}
 	return m.Exec(fmt.Sprintf(`evilportal -c sethtml "%s"`, clisafe.SanitizeArg(filename)), 5*time.Second)
 }
 
