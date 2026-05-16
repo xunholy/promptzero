@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.190.0] - 2026-05-17
+
+**Defense-in-depth: Bruce client wrappers now validate their args
+independent of the tool spec layer.**
+
+The tool spec layer in `internal/tools/bruce.go` has caught empty
+bssid / ssid / filename / channel since v0.177, but the underlying
+`bruce.Client` wrappers did no validation of their own. Direct callers
+(internal tests, scripts, future MCP-mode bypasses, or downstream
+consumers of the library) would forward malformed args straight to
+`wifi deauth` / `wifi evil` / `rf lora scan` / `ir send` / `badusb run`.
+
+### Fixed
+
+- `bruce.Client.Deauth`: BSSID validated via `net.ParseMAC`; channel
+  enforced to 1-165 (2.4 GHz 1-14 + 5 GHz 36-165 from the tool schema).
+- `bruce.Client.EvilTwin`: BSSID validated; SSID rejected if empty.
+- `bruce.Client.LoRaScan`: frequency must be in the coarse 100-1000 MHz
+  band that covers all common LoRa carriers (169, 433.92, 868.1, 915.0).
+  Catches obvious LLM mistakes like `freq=0` or `freq=2400` (confusing
+  LoRa with Wi-Fi). Tight regional gating remains firmware-side.
+- `bruce.Client.IRSend`: protocol and code rejected if empty.
+- `bruce.Client.BadUSBRun`: filename rejected if empty, contains path
+  separators (`/`, `\`), or contains `..` (traversal). The Bruce
+  firmware expects only a flat filename on the SD card root; a model
+  passing `"/etc/x"` or `"../y"` would silently fail at runtime.
+
+`TestBruce_Deauth_HostileBSSIDProducesValidJSON` was a legacy
+defender against a marshal-path bug (v0.152) that can no longer
+trigger now that hostile BSSIDs are rejected pre-transport.
+Replaced with `TestBruce_Deauth_HostileBSSIDRejectedByValidator`
+pinning the new error-shape contract.
+
 ## [0.189.0] - 2026-05-17
 
 **Three more validate-before-transport fixes across the Marauder
