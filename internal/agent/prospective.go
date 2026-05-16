@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/xunholy/promptzero/internal/obs"
 )
 
 // prospectiveTimeout caps a single prospective critique call. Same
@@ -137,6 +139,19 @@ func (a *Agent) prospective(ctx context.Context, toolName string, input json.Raw
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(userMsg))},
 	})
 	if err != nil {
+		// A timeout here silently disables the prospective gate on the
+		// next tool call — that's the documented fail-open contract, but
+		// the operator should still know it happened so they can spot a
+		// stalled classifier API. Other errors (the SDK returning 5xx,
+		// network blip) stay quiet — they tend to recover and aren't
+		// gate-disabling. Match the "loud on timeout, quiet on transient"
+		// posture verifyPayload uses by inspection of context state.
+		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			obs.FromCtx(ctx).Warn("prospective_timeout",
+				"tool", toolName,
+				"model", model,
+				"timeout", prospectiveTimeout.String())
+		}
 		return ""
 	}
 	a.fireTierUsage(model, resp.Usage)

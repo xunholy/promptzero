@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -241,6 +242,14 @@ func (a *Agent) routeGroups(ctx context.Context, userInput string, available map
 		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(userInput))},
 	})
 	if err != nil {
+		// Loud on timeout — a stalled router means EVERY subsequent
+		// turn pays the timeout before falling back to the full catalog.
+		// Quiet on other errors per the pattern in reflect/prospective.
+		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+			obs.FromCtx(ctx).Warn("router_timeout",
+				"model", model,
+				"timeout", routerTimeout.String())
+		}
 		return nil, fmt.Errorf("router: %w", err)
 	}
 	a.fireTierUsage(model, resp.Usage)
