@@ -540,6 +540,11 @@ func (a *Agent) callTitleAPI(ctx context.Context, model string, history []anthro
 	if err != nil {
 		return ""
 	}
+	// fireTierUsage matches the same lock-free contract as
+	// streamOnce's usageCb read — a.usageCb is set once at setup
+	// before any session-autoname goroutine spawns. Title generation
+	// runs from runTitleGeneration without holding a.mu.
+	a.fireTierUsage(model, resp.Usage)
 	for _, block := range resp.Content {
 		if block.Type == "text" && block.Text != "" {
 			return clipTitle(strings.Trim(block.Text, "\"'.\n "))

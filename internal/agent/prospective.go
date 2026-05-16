@@ -124,6 +124,7 @@ func (a *Agent) prospective(ctx context.Context, toolName string, input json.Raw
 	if err != nil {
 		return ""
 	}
+	a.fireTierUsage(model, resp.Usage)
 	var raw string
 	for _, b := range resp.Content {
 		if b.Type == "text" {

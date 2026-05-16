@@ -100,6 +100,7 @@ func (a *Agent) reflect(ctx context.Context, toolName string, input json.RawMess
 	if err != nil {
 		return ""
 	}
+	a.fireTierUsage(model, resp.Usage)
 	for _, block := range resp.Content {
 		if block.Type == "text" && block.Text != "" {
 			return block.Text

@@ -116,6 +116,7 @@ func (a *Agent) prospectiveWithModel(ctx context.Context, toolName string, input
 		)
 		return ""
 	}
+	a.fireTierUsage(model, resp.Usage)
 	var raw string
 	for _, b := range resp.Content {
 		if b.Type == "text" {
