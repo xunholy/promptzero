@@ -24,6 +24,36 @@ const (
 	irMaxFrequencyHz uint32 = 56000
 )
 
+// subGHzFreqAllowed reports whether freq falls inside the bands the
+// Flipper firmware permits for TX. Out-of-band requests come back as
+// an opaque "Frequency not allowed!" banner after a slow round-trip.
+// Bands mirror firmware furi_hal_subghz.c regional-table defaults.
+func subGHzFreqAllowed(freq uint32) bool {
+	switch {
+	case freq >= 300_000_000 && freq <= 348_000_000,
+		freq >= 387_000_000 && freq <= 464_000_000,
+		freq >= 779_000_000 && freq <= 928_000_000:
+		return true
+	}
+	return false
+}
+
+// validateSubGHzTxKey checks freq/te/repeat fall in firmware-permitted
+// ranges. te=0 means no signal; repeat<=0 means no transmission.
+// Frequency out-of-band fails fast with a band-list diagnostic.
+func validateSubGHzTxKey(freq uint32, te uint32, repeat int) error {
+	if !subGHzFreqAllowed(freq) {
+		return fmt.Errorf("invalid Sub-GHz frequency %d Hz (allowed bands: 300-348 MHz, 387-464 MHz, 779-928 MHz)", freq)
+	}
+	if te == 0 {
+		return fmt.Errorf("invalid Sub-GHz te=0 (timing element must be > 0 µs; typical 100-50000)")
+	}
+	if repeat <= 0 {
+		return fmt.Errorf("invalid Sub-GHz repeat count %d (must be >= 1)", repeat)
+	}
+	return nil
+}
+
 // pbStorageDirType is a local alias for the pb.File DIR type so the
 // dispatch helpers in this file can compare GetType() without taking a
 // dependency on the pb constant from every call site. Mirrors the
@@ -217,8 +247,16 @@ func (f *Flipper) SubGHzDecode(filePath string) (string, error) {
 // SubGHzTxKey transmits a raw Sub-GHz key. Xtreme firmware requires a
 // trailing <device> arg (0=internal CC1101, 1=external); appended when the
 // detected capability flag is set.
+//
+// Validates freq/te/repeat before transport: out-of-band frequency
+// either no-ops or returns an opaque firmware banner; te=0 produces
+// a broken signal; repeat<=0 means no TX. Reject up front so the
+// LLM gets a useful diagnostic on its next turn.
 // CLI: subghz tx <key_hex> <frequency> <te> <repeat> [device]
 func (f *Flipper) SubGHzTxKey(keyHex string, freq uint32, te uint32, repeat int) (string, error) {
+	if err := validateSubGHzTxKey(freq, te, repeat); err != nil {
+		return "", err
+	}
 	cmd := fmt.Sprintf("subghz tx %s %d %d %d", sanitizeArg(keyHex), freq, te, repeat)
 	if f.Capabilities().SubGHzNeedsDev {
 		cmd += " 0"
