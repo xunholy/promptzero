@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.188.0] - 2026-05-17
+
+**Two more validate-before-transport gaps in the v0.16 wrappers, plus
+MCP/webhook accessor coverage.**
+
+### Fixed
+
+- `Flipper.SubGHzChatDeviceCtx` now rejects out-of-band frequencies
+  via the same `subGHzFreqAllowed` allowlist (300-348 / 387-464 /
+  779-928 MHz) that `SubGHzTxKey` has used since v0.181. Pre-fix,
+  picking 100 MHz for chat returned an opaque "Frequency not
+  allowed!" banner after a slow round-trip.
+- `Flipper.CryptoEncrypt`, `Flipper.CryptoDecrypt`, and
+  `Flipper.CryptoHasKey` now route slot through
+  `validateCryptoSlotString` — trim whitespace, parse as a decimal
+  integer, enforce 1-100 (slot 0 is the reserved device-bound
+  master key). The Flipper firmware `crypto_cli` parses the slot
+  identically; the previous string-form was always firmware-invalid
+  on values like `"mySlot"`. Existing wire tests used those invalid
+  forms (the mock echoed any input) — updated to use valid integer
+  strings.
+
+### Tests
+
+- `internal/mcp`: `SetBruce`, `SetFaultier`, `SetBusPirate`,
+  `PromptNames`, `ResourceNames` now covered (all five were at 0%).
+  Pins the defensive-copy contract on the name accessors.
+  mcp coverage: 82.2% → 88.9%.
+- `internal/webhook`: `Subscriptions` and `RecentResults` now
+  covered with the defensive-copy contract pinned. webhook
+  coverage: 80.1% → 87.0%.
+
 ## [0.187.0] - 2026-05-17
 
 **Coverage uplift across the audit, rules, fileformat, and iclass
