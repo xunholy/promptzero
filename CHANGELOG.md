@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.192.0] - 2026-05-17
+
+**Faultier Sweep now preserves the pulse width configured by a prior
+SetPulse / Configure call** — fixes a pre-existing bug flagged in
+v0.191.0's investigation notes.
+
+### Fixed
+
+- `faultier.Client.Sweep` previously called `SetPulse(delay, 0)` on
+  every iteration of its loop, zeroing the pulse width the operator
+  had just configured via `glitch_set_pulse`. The mock test only
+  asserted the final `DelayUS`, so the bug never surfaced; on real
+  hardware the firmware fired the crowbar with a zero-width pulse
+  on every step, injecting no actual fault. The documented workflow
+  (`glitch_set_pulse(delay=0, pulse=<width>)` → `glitch_sweep(start,
+  end, step)`) was effectively a no-op.
+
+  Fix: the Client now tracks `lastPulseUS` from any `SetPulse` /
+  `Configure` call (guarded by a new `cfgMu`). `Sweep` reads that
+  value once at the top of its loop and re-uses it for every
+  `SetPulse` it issues. Behaviour with no prior `SetPulse` is
+  unchanged (`pulse = 0` baseline). Two regression tests added:
+  `TestSweep_PreservesPriorPulseUS` and
+  `TestSweep_NoPriorSetPulse_UsesZeroPulse`.
+
 ## [0.191.0] - 2026-05-17
 
 **Bus Pirate pin-range validation + hw_recon helper coverage.**
