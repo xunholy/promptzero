@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.191.0] - 2026-05-17
+
+**Bus Pirate pin-range validation + hw_recon helper coverage.**
+
+### Fixed
+
+- `buspirate.Client.PinSet` and `buspirate.Client.PinRead` now route
+  through a shared `validatePin` helper that rejects pins outside
+  0-7 (Bus Pirate 5 exposes IO0-IO7). Pre-fix, an LLM picking
+  `pin=99` got `D 99 1` / `a 99` silently no-op'd by the firmware.
+
+### Docs
+
+- `faultier.Client.SetPulse` docstring now spells out the
+  `pulse_us=0` contract — Sweep relies on it as a control-iteration
+  baseline (firmware reads 0 as "no fault this round"), so the
+  wrapper deliberately permits it.
+
+### Tests
+
+- New `internal/workflows/hw_recon_helpers_test.go` covers
+  `parseI2CAddresses`, `parseOneWireDevices`, `gpioValueFromOutput`,
+  `summariseHWRecon`, and `suggestHWReconNextSteps` — all five had
+  been at 0% coverage despite being load-bearing for HWReconBlackbox.
+  Pinned: dedupe + case normalisation behaviour, both ROM-code
+  formats accepted, default-safe "= 1 or high → 1, else 0" logic on
+  GPIO output, per-chip I²C hint table, and the OneWire / nothing-
+  found fallbacks. workflows coverage: 33.6% → 39.3%.
+- `internal/buspirate/pin_validate_test.go`: pins validatePin and
+  PinSet/PinRead rejection paths.
+
 ## [0.190.0] - 2026-05-17
 
 **Defense-in-depth: Bruce client wrappers now validate their args
