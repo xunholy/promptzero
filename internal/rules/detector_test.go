@@ -27,6 +27,29 @@ func erroringJudge() JudgeFunc {
 	}
 }
 
+func TestLLMDetector_NameReturnsDetectorName(t *testing.T) {
+	// The Detector interface contract: Name() must return the same
+	// string the engine registered the detector under. Built-in
+	// detectors set it via their constructor; verify each is wired
+	// correctly and a hand-rolled LLMDetector also reflects its
+	// DetectorName field.
+	cases := []struct {
+		name string
+		d    *LLMDetector
+		want string
+	}{
+		{"deauth", NewDeauthSuccessDetector(judgeStub("{}")), "wifi_deauth_success"},
+		{"pmkid", NewPMKIDValidityDetector(judgeStub("{}")), "pmkid_capture_validity"},
+		{"nfc", NewNFCCloneFidelityDetector(judgeStub("{}")), "nfc_clone_fidelity"},
+		{"custom", &LLMDetector{DetectorName: "custom_judge"}, "custom_judge"},
+	}
+	for _, c := range cases {
+		if got := c.d.Name(); got != c.want {
+			t.Errorf("%s: Name() = %q; want %q", c.name, got, c.want)
+		}
+	}
+}
+
 func TestLLMDetector_ParsesSuccessVerdict(t *testing.T) {
 	d := NewDeauthSuccessDetector(judgeStub(
 		`{"verdict":"success","confidence":0.91,"evidence":"23 deauth frames acked by target"}`,

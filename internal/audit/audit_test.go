@@ -364,6 +364,81 @@ func TestRequireOpen(t *testing.T) {
 	}
 }
 
+// TestTechniqueResolver_PopulatesEntryTechniqueIDs pins that
+// SetTechniqueResolver wires its lookup through to the Entry
+// observers see. The list is derived in-memory only (not persisted)
+// so this test exercises the resolver path end-to-end via the
+// observer hook, mirroring the persona-context resolver pattern below.
+func TestTechniqueResolver_PopulatesEntryTechniqueIDs(t *testing.T) {
+	log := openTestLog(t)
+	log.SetTechniqueResolver(func(tool string) []string {
+		switch tool {
+		case "wifi_deauth":
+			return []string{"T1498.001", "T1498.002"}
+		case "badusb_run":
+			return []string{"T1200"}
+		default:
+			return nil
+		}
+	})
+
+	var captured []Entry
+	log.AddObserver(func(e Entry) { captured = append(captured, e) })
+
+	log.Record("wifi_deauth", map[string]string{}, "ok", "high", LevelInfo, 0, true)
+	log.Record("badusb_run", map[string]string{}, "ok", "critical", LevelInfo, 0, true)
+	log.Record("unknown_tool", map[string]string{}, "ok", "low", LevelInfo, 0, true)
+
+	if len(captured) != 3 {
+		t.Fatalf("captured %d entries; want 3", len(captured))
+	}
+	if want := []string{"T1498.001", "T1498.002"}; !sliceEq(captured[0].TechniqueIDs, want) {
+		t.Errorf("wifi_deauth TechniqueIDs = %v; want %v", captured[0].TechniqueIDs, want)
+	}
+	if want := []string{"T1200"}; !sliceEq(captured[1].TechniqueIDs, want) {
+		t.Errorf("badusb_run TechniqueIDs = %v; want %v", captured[1].TechniqueIDs, want)
+	}
+	if len(captured[2].TechniqueIDs) != 0 {
+		t.Errorf("unknown_tool TechniqueIDs = %v; want empty", captured[2].TechniqueIDs)
+	}
+}
+
+// TestTechniqueResolver_NilDisables pins that passing nil to
+// SetTechniqueResolver clears the hook — entries afterwards carry
+// no TechniqueIDs.
+func TestTechniqueResolver_NilDisables(t *testing.T) {
+	log := openTestLog(t)
+	log.SetTechniqueResolver(func(tool string) []string {
+		return []string{"T9999"}
+	})
+	var captured Entry
+	log.AddObserver(func(e Entry) { captured = e })
+	log.Record("any_tool", map[string]string{}, "ok", "low", LevelInfo, 0, true)
+	if len(captured.TechniqueIDs) == 0 {
+		t.Fatal("resolver wired but TechniqueIDs empty")
+	}
+
+	log.SetTechniqueResolver(nil)
+	captured = Entry{}
+	log.Record("any_tool", map[string]string{}, "ok", "low", LevelInfo, 0, true)
+	if len(captured.TechniqueIDs) != 0 {
+		t.Errorf("after SetTechniqueResolver(nil), TechniqueIDs = %v; want empty",
+			captured.TechniqueIDs)
+	}
+}
+
+func sliceEq(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // TestPersonaContextResolver_PopulatesEntryFields pins that the
 // resolver hook (P3-31) flows through into the Entry observers see.
 // Mirrors the TechniqueResolver test pattern — derived in-memory

@@ -197,6 +197,43 @@ func TestEngine_List(t *testing.T) {
 	}
 }
 
+func TestEngine_Remove(t *testing.T) {
+	var fires int
+	eng := New(Deps{
+		WebhookFire: func(_ string, _ map[string]any) { fires++ },
+	})
+	eng.Register(Rule{
+		Name:    "r",
+		Match:   Match{Tool: "t"},
+		Actions: []Action{{Kind: ActionWebhook}},
+		Enabled: true,
+	})
+
+	// Fire once to populate lastFire + fires counters; Remove must
+	// clear both alongside the rule itself.
+	eng.Handle(audit.Entry{Tool: "t"})
+	if fires != 1 {
+		t.Fatalf("pre-Remove fires=%d want 1", fires)
+	}
+	if got := eng.List(); len(got) != 1 {
+		t.Fatalf("pre-Remove List len=%d want 1", len(got))
+	}
+
+	eng.Remove("r")
+
+	if got := eng.List(); len(got) != 0 {
+		t.Fatalf("post-Remove List len=%d want 0", len(got))
+	}
+	// Subsequent events for the removed rule must not fire its action.
+	eng.Handle(audit.Entry{Tool: "t"})
+	if fires != 1 {
+		t.Errorf("post-Remove fires=%d want 1 (no new fires)", fires)
+	}
+
+	// Remove of an unknown rule is a documented no-op.
+	eng.Remove("does-not-exist")
+}
+
 func TestEngine_Test(t *testing.T) {
 	eng := New(Deps{})
 	eng.Register(Rule{
