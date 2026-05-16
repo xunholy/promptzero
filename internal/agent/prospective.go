@@ -5,9 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 )
+
+// prospectiveTimeout caps a single prospective critique call. Same
+// rationale as verifyTimeout / reflectTimeout — Run() holds a.mu for
+// the whole turn, so a hung classifier API wedges every other reader.
+// Eight seconds is generous for the bounded JSON-only response shape;
+// timeout degrades to no critique (the call proceeds without the
+// pre-flight gate firing) — fail-open same as reflect / verify.
+//
+// Used by both prospective() and prospectiveWithModel(), so the
+// consensus ensemble loop bounds each voter individually rather than
+// adding up to a multi-minute wedge across N models.
+const prospectiveTimeout = 8 * time.Second
 
 // Prospective reflection (Batch A). Before any critical-risk tool
 // fires, a classification-tier pass produces a structured plan
@@ -115,7 +128,9 @@ func (a *Agent) prospective(ctx context.Context, toolName string, input json.Raw
 	model := a.modelForLocked(TierClassify)
 	userMsg := fmt.Sprintf("tool: %s\ninput: %s", toolName, string(input))
 
-	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	callCtx, cancel := context.WithTimeout(ctx, prospectiveTimeout)
+	defer cancel()
+	resp, err := a.client.Messages.New(callCtx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
 		MaxTokens: 256,
 		System:    []anthropic.TextBlockParam{{Text: system}},

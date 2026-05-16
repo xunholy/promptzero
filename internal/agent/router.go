@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/xunholy/promptzero/internal/attack"
@@ -13,6 +14,14 @@ import (
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/tools"
 )
+
+// routerTimeout caps the tool-group narrower's Haiku call. The router
+// must finish before any tool runs — a hung call delays every turn
+// it triggers on. Three seconds is enough for the JSON-only response
+// shape; on timeout we degrade to "no narrowing" (full catalog
+// returned) — same fail-open posture as reflect / prospective /
+// verify.
+const routerTimeout = 3 * time.Second
 
 // Tool groups are the coarse-grained buckets the router reasons over.
 // Each tool in the agent catalog maps to exactly one group via
@@ -223,7 +232,9 @@ func (a *Agent) routeGroups(ctx context.Context, userInput string, available map
 		"Available groups: " + strings.Join(groups, ", ")
 
 	model := a.modelForLocked(TierClassify)
-	resp, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	callCtx, cancel := context.WithTimeout(ctx, routerTimeout)
+	defer cancel()
+	resp, err := a.client.Messages.New(callCtx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
 		MaxTokens: 128,
 		System:    []anthropic.TextBlockParam{{Text: system}},
