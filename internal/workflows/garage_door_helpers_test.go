@@ -118,3 +118,92 @@ func TestSubGHzAttackPath_UnknownProtocolSuggestsRawReplay(t *testing.T) {
 		t.Errorf("unknown protocol path should still suggest raw replay: %q", got)
 	}
 }
+
+func TestSubGHzNextSteps_NoSignals(t *testing.T) {
+	got := subGHzNextSteps(nil)
+	joined := strings.Join(got, " | ")
+	if !strings.Contains(joined, "No signals captured") {
+		t.Errorf("empty-input branch missing 'No signals captured': %v", got)
+	}
+}
+
+func TestSubGHzNextSteps_FixedSignal(t *testing.T) {
+	signals := []map[string]interface{}{
+		{"rolling": false, "protocol": "Princeton"},
+	}
+	got := subGHzNextSteps(signals)
+	joined := strings.Join(got, " | ")
+	if !strings.Contains(joined, "fixed-code") && !strings.Contains(joined, "subghz_transmit") {
+		t.Errorf("fixed signal: expected replay suggestion; got %v", got)
+	}
+	if strings.Contains(joined, "rolljam") {
+		t.Errorf("fixed-only signals: rolljam suggestion should not appear; got %v", got)
+	}
+}
+
+func TestSubGHzNextSteps_RollingSignal(t *testing.T) {
+	signals := []map[string]interface{}{
+		{"rolling": true, "protocol": "KeeLoq"},
+	}
+	got := subGHzNextSteps(signals)
+	joined := strings.Join(got, " | ")
+	if !strings.Contains(joined, "rolljam") {
+		t.Errorf("rolling signal: expected rolljam suggestion; got %v", got)
+	}
+}
+
+func TestSubGHzNextSteps_MixedSignals(t *testing.T) {
+	signals := []map[string]interface{}{
+		{"rolling": false, "protocol": "Princeton"},
+		{"rolling": true, "protocol": "KeeLoq"},
+	}
+	got := subGHzNextSteps(signals)
+	joined := strings.Join(got, " | ")
+	// Both buckets contribute a suggestion.
+	if !strings.Contains(joined, "fixed-code") && !strings.Contains(joined, "subghz_transmit") {
+		t.Errorf("mixed: missing fixed-code replay suggestion; got %v", got)
+	}
+	if !strings.Contains(joined, "rolljam") {
+		t.Errorf("mixed: missing rolljam suggestion; got %v", got)
+	}
+}
+
+// TestSubGHzNextSteps_MissingRollingKey is the defense-in-depth
+// regression for the comma-ok type assertion. Pre-fix, a signal map
+// missing the "rolling" key would panic at `s["rolling"].(bool)`.
+// Post-fix, the signal is skipped and the function returns whatever
+// the other signals classified (here: empty buckets → empty slice).
+func TestSubGHzNextSteps_MissingRollingKey(t *testing.T) {
+	signals := []map[string]interface{}{
+		{"protocol": "Unknown"}, // no "rolling" key
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("subGHzNextSteps panicked on missing rolling key: %v", r)
+		}
+	}()
+	got := subGHzNextSteps(signals)
+	// Skipped signal → no rolljam, no replay; valid empty-slice result.
+	for _, line := range got {
+		if strings.Contains(line, "rolljam") || strings.Contains(line, "fixed-code") {
+			t.Errorf("malformed signal should not produce classification: %q", line)
+		}
+	}
+}
+
+func TestSubGHzNextSteps_WrongTypeRollingKey(t *testing.T) {
+	signals := []map[string]interface{}{
+		{"rolling": "yes", "protocol": "Maybe"}, // string, not bool
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("subGHzNextSteps panicked on wrong-type rolling key: %v", r)
+		}
+	}()
+	got := subGHzNextSteps(signals)
+	for _, line := range got {
+		if strings.Contains(line, "rolljam") || strings.Contains(line, "fixed-code") {
+			t.Errorf("malformed signal should not produce classification: %q", line)
+		}
+	}
+}

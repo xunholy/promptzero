@@ -210,7 +210,16 @@ func subGHzNextSteps(signals []map[string]interface{}) []string {
 	seenRolling := false
 	seenReplay := false
 	for _, s := range signals {
-		if s["rolling"].(bool) {
+		// The workflow always populates "rolling" as a bool, but a
+		// future refactor (or a workflow consumer building its own
+		// signals slice) could omit the key or pass the wrong type.
+		// Defensive comma-ok keeps the suggestion list useful even
+		// then — unclassified signals are skipped, not panicked over.
+		rolling, ok := s["rolling"].(bool)
+		if !ok {
+			continue
+		}
+		if rolling {
 			seenRolling = true
 		} else {
 			seenReplay = true
