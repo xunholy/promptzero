@@ -280,7 +280,16 @@ func (c *Client) ZigbeeScan(ctx context.Context) ([]ZigbeePeer, error) {
 
 // LoRaScan passively listens on freq (MHz) for LoRa packets.
 // Returns ErrCapabilityNotAvailable when HasLoRa is false.
+//
+// Validates freq against a coarse plausibility window (100-1000 MHz)
+// that covers the four major LoRa bands (433.92 EU/AS, 868.1 EU,
+// 915.0 US, plus 169 / 433 niche bands). Tighter regional gating is
+// left to the firmware — we only catch obvious LLM mistakes like
+// freq=0 or freq=2400 (mixing LoRa with WiFi).
 func (c *Client) LoRaScan(ctx context.Context, freq float64) error {
+	if freq < 100 || freq > 1000 {
+		return fmt.Errorf("bruce: invalid LoRa frequency %.3f MHz (must be 100-1000 MHz; common: 433.92, 868.1, 915.0)", freq)
+	}
 	c.mu.Lock()
 	hasL := c.caps.HasLoRa
 	c.mu.Unlock()
@@ -294,7 +303,16 @@ func (c *Client) LoRaScan(ctx context.Context, freq float64) error {
 
 // IRSend transmits an IR signal using the specified protocol and code string.
 // Returns ErrCapabilityNotAvailable when HasIR is false.
+//
+// Validates protocol + code non-empty before transport (defense in
+// depth — the tool spec layer catches these too).
 func (c *Client) IRSend(ctx context.Context, protocol, code string) error {
+	if strings.TrimSpace(protocol) == "" {
+		return fmt.Errorf("bruce: invalid IR protocol: empty (e.g. NEC, RC5, Samsung, SONY)")
+	}
+	if strings.TrimSpace(code) == "" {
+		return fmt.Errorf("bruce: invalid IR code: empty")
+	}
 	c.mu.Lock()
 	hasIR := c.caps.HasIR
 	c.mu.Unlock()
@@ -325,7 +343,21 @@ func (c *Client) IRReceive(ctx context.Context) (Capture, error) {
 // BadUSBRun executes a Ducky Script payload from Bruce's SD card.
 // ducky is the filename (without leading path) on the Bruce SD card.
 // AUTHORIZED PENTEST / LAB USE ONLY.
+//
+// Validates that the filename is non-empty and doesn't try to traverse
+// the SD card root — the firmware accepts only a flat filename, but a
+// model passing "../etc/payload.txt" or "/foo/x.txt" would silently
+// fail to find the file at runtime.
 func (c *Client) BadUSBRun(ctx context.Context, ducky string) error {
+	if strings.TrimSpace(ducky) == "" {
+		return fmt.Errorf("bruce: invalid BadUSB filename: empty")
+	}
+	if strings.Contains(ducky, "/") || strings.Contains(ducky, "\\") {
+		return fmt.Errorf("bruce: invalid BadUSB filename %q (must be a flat filename — no path separators)", ducky)
+	}
+	if strings.Contains(ducky, "..") {
+		return fmt.Errorf("bruce: invalid BadUSB filename %q (path traversal not allowed)", ducky)
+	}
 	cmd := fmt.Sprintf("badusb run %s", ducky)
 	_, err := c.RawCommand(ctx, cmd)
 	return err
