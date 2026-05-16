@@ -520,6 +520,29 @@ type Usage struct {
 // prompt-cache read / creation tokens. Pass nil to disable.
 func (a *Agent) SetUsageCallback(f func(u Usage)) { a.usageCb = f }
 
+// fireTierUsage reports a non-streaming tier-call's usage to the
+// usage callback. Pre-v0.196 the reflexion / consensus / prospective
+// / router / verify / session-autoname call sites bypassed the cost
+// callback entirely, so their tokens never reached the dashboard.
+// The model arg carries the actual upstream model (resolved via
+// modelForLocked at the call site) so cost.Tracker.AddUsageFullForModel
+// bills at the tier's real rate.
+//
+// Concurrency contract matches the call sites: they all hold a.mu, so
+// reading a.usageCb without re-locking is safe.
+func (a *Agent) fireTierUsage(model string, u anthropic.Usage) {
+	if a.usageCb == nil {
+		return
+	}
+	safeCallUsage(a.usageCb, Usage{
+		InputTokens:         u.InputTokens,
+		OutputTokens:        u.OutputTokens,
+		CacheReadTokens:     u.CacheReadInputTokens,
+		CacheCreationTokens: u.CacheCreationInputTokens,
+		Model:               model,
+	})
+}
+
 // SetStreamErrorCallback registers a hook that fires when the upstream
 // Messages.NewStreaming call returns an error. Wired to the cost
 // Tracker so consecutive network failures flip the offline banner.

@@ -173,6 +173,7 @@ func (a *Agent) verifyPayload(ctx context.Context, payloadType, content string) 
 	if err != nil {
 		return VerificationVerdict{Severity: VerifySeverityNone, Verified: false}, nil
 	}
+	a.fireTierUsage(model, resp.Usage)
 
 	var raw string
 	for _, b := range resp.Content {

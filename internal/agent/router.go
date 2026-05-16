@@ -232,6 +232,7 @@ func (a *Agent) routeGroups(ctx context.Context, userInput string, available map
 	if err != nil {
 		return nil, fmt.Errorf("router: %w", err)
 	}
+	a.fireTierUsage(model, resp.Usage)
 
 	var text string
 	for _, b := range resp.Content {
