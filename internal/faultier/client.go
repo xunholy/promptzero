@@ -103,6 +103,11 @@ type GlitcherConfig struct {
 // SetPulse configures the glitch delay and pulse width before the next Arm or
 // Fire.  Both values are in microseconds.  Maps to the upstream Python
 // configure_glitcher(delay=..., pulse=...) call.
+//
+// Note: pulseUS=0 is permitted because Sweep relies on it as a control-
+// iteration baseline (the firmware reads pulse=0 as "no fault this
+// round"). LLM-facing tool specs upstream catch obviously-broken pulse
+// widths before reaching this wrapper.
 func (c *Client) SetPulse(delayUS, pulseUS uint32) error {
 	cfg := GlitcherConfig{
 		TriggerType:   TriggerNone,

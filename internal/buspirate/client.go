@@ -263,13 +263,27 @@ func (c *Client) MeasureVoltages(ctx context.Context) (map[int]float64, error) {
 	return ParseVoltages(out)
 }
 
+// validatePin enforces the Bus Pirate 5 IO pin range (IO0-IO7).
+// Out-of-range pins reach the firmware as `D 99 1` which the parser
+// either silently no-ops or rejects with an opaque banner.
+func validatePin(pin int) error {
+	if pin < 0 || pin > 7 {
+		return fmt.Errorf("buspirate: invalid pin %d (must be 0-7; Bus Pirate 5 has IO0-IO7)", pin)
+	}
+	return nil
+}
+
 // PinSet drives a digital or analog level on an IO pin. vOrLogic may be:
 //   - int / float64 — written as a voltage e.g. `D 1 3.3` (pin 1 → 3.3 V)
 //   - bool — written as `D 1 1` (high) or `D 1 0` (low)
 //   - string "0"/"1"/"high"/"low" — same semantics as bool
 //
 // Requires the client to already be in a mode that supports pin output.
+// Pin must be in 0-7 (IO0-IO7 on Bus Pirate 5).
 func (c *Client) PinSet(ctx context.Context, pin int, vOrLogic any) error {
+	if err := validatePin(pin); err != nil {
+		return err
+	}
 	var voltStr string
 	switch v := vOrLogic.(type) {
 	case bool:
@@ -316,7 +330,11 @@ func (c *Client) PinSet(ctx context.Context, pin int, vOrLogic any) error {
 //
 // Verified: Bus Pirate 5 uses `a` for analog pin reads; `A` is the uppercase
 // alias that also prints the percentage of full scale.
+// Pin must be in 0-7 (IO0-IO7 on Bus Pirate 5).
 func (c *Client) PinRead(ctx context.Context, pin int) (float64, error) {
+	if err := validatePin(pin); err != nil {
+		return 0, err
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
