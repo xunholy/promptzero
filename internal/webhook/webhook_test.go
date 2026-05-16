@@ -29,6 +29,80 @@ func waitFor(t *testing.T, deadline time.Duration, fn func() bool) {
 	t.Fatalf("condition never satisfied within %s", deadline)
 }
 
+// TestDispatcher_Subscriptions_ReturnsCopy pins that Subscriptions
+// returns a defensive copy of the configured list — callers mutating
+// the returned slice (e.g. the /webhooks page sorting it for display)
+// must not corrupt the dispatcher's internal state.
+func TestDispatcher_Subscriptions_ReturnsCopy(t *testing.T) {
+	subs := []Subscription{
+		{Name: "a", URL: "https://example.com/a"},
+		{Name: "b", URL: "https://example.com/b"},
+	}
+	d := New(subs).(*dispatcher)
+	defer func() { _ = d.Close(context.Background()) }()
+
+	got := d.Subscriptions()
+	if len(got) != 2 {
+		t.Fatalf("Subscriptions len=%d, want 2", len(got))
+	}
+	if got[0].Name != "a" || got[1].Name != "b" {
+		t.Errorf("Subscriptions out of order: %+v", got)
+	}
+
+	// Mutate the returned slice; the dispatcher must not observe it.
+	got[0].Name = "__sentinel__"
+	again := d.Subscriptions()
+	if again[0].Name == "__sentinel__" {
+		t.Error("Subscriptions returns internal slice (mutation leaked)")
+	}
+}
+
+// TestDispatcher_RecentResults_TracksSuccessfulSends pins that the
+// recent-results rolling buffer is populated after a successful POST
+// and that RecentResults returns a defensive copy.
+func TestDispatcher_RecentResults_TracksSuccessfulSends(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	subs := []Subscription{{
+		Name:   "primary",
+		URL:    srv.URL,
+		Events: []Event{EventSessionStarted},
+	}}
+	d := New(subs).(*dispatcher)
+	defer func() { _ = d.Close(context.Background()) }()
+
+	d.Fire(EventSessionStarted, map[string]any{"ok": true})
+	waitFor(t, 2*time.Second, func() bool {
+		return len(d.RecentResults("primary")) >= 1
+	})
+
+	got := d.RecentResults("primary")
+	if len(got) == 0 {
+		t.Fatal("RecentResults empty after a successful Fire")
+	}
+	if got[0].StatusCode < 200 || got[0].StatusCode >= 300 {
+		t.Errorf("first result Status = %d; want 2xx", got[0].StatusCode)
+	}
+
+	// Defensive-copy contract.
+	if len(got) > 0 {
+		got[0].StatusCode = -1
+		again := d.RecentResults("primary")
+		if again[0].StatusCode == -1 {
+			t.Error("RecentResults returns internal slice (mutation leaked)")
+		}
+	}
+
+	// Unknown subscription → nil (not an empty slice; the API
+	// distinguishes "no such sub" from "no results yet").
+	if r := d.RecentResults("does-not-exist"); r != nil {
+		t.Errorf("RecentResults(unknown) = %v; want nil", r)
+	}
+}
+
 func TestDispatcher_FireAndBodyShape(t *testing.T) {
 	var bodies [][]byte
 	var mu sync.Mutex
