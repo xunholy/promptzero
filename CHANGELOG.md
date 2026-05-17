@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.207.0] - 2026-05-17
+
+**Second native-fit gap: full EMV BER-TLV walker for offline
+contactless-payment-card analysis.**
+
+### Added
+
+- **`nfc_emv_decode`** (`Risk.Low`, `GroupHostTools`) — parses an
+  EMV BER-TLV blob (FCI templates, Application Templates, GET
+  PROCESSING OPTIONS / READ RECORD responses) into a structured
+  tree with tag names. Walks constructed templates recursively;
+  recognises ~80 of the most common EMV tags from EMV Books 1-4
+  (PAN, AID, FCI, AIP, AFL, ATC, AC, ARQC/TC/AAC, PDOL, CDOL1/2,
+  CVM List, etc.) with operator-facing names. Accepts `:` / `-` /
+  `_` / whitespace separators so loosely-formatted captures decode
+  without preprocessing.
+
+  Source: `docs/catalog/gap-analysis.md §3` rank 21
+  (`nfc_emv_parse`). Wrap-vs-native: **NATIVE** — EMV BER-TLV is
+  a public spec (EMV Book 3 §B Annex B), the walker is ~150 lines
+  of recursive descent, no hardware needed.
+
+### Internal
+
+- New `internal/emv/` package: `parser.go` (BER-TLV walker
+  supporting multi-byte tags up to 4 bytes, short + long form
+  lengths up to 4-byte length field) and `tags.go` (curated
+  ~80-entry tag-name table).
+- Parser test vectors lifted from EMVCo's public reference set:
+  Visa test PAN, Mastercard FCI template, common Amount
+  Authorised encoding. Edge cases covered: multi-byte tags,
+  long-form length, padding zeros between top-level TLVs,
+  operator-tolerant separators, truncated-input error contract.
+- Deliberately out of scope: cryptogram verification (needs
+  issuer public keys); online auth flow; TLV write/re-encode.
+
+Registry size: 282 → 283.
+
 ## [0.206.0] - 2026-05-17
 
 **First implementation under the wrap-vs-native principle: when an
