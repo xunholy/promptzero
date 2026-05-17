@@ -91,7 +91,10 @@ func TestRegistrySize(t *testing.T) {
 	// pinning, and parse-before-write validation).
 	// v0.204.0 added three FAP wrappers from gap-analysis top-30:
 	// loader_sentry_safe, loader_pocsag_pager, loader_magspoof.
-	const expected = 277
+	// v0.205.0 added four more: loader_weather_station,
+	// loader_subghz_jammer_detect, loader_logic_analyzer,
+	// loader_oscilloscope.
+	const expected = 281
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -66,6 +66,11 @@ var toolLevels = func() map[string]Level {
 		// receive-only — same risk class as the Pocsag CLI tools the
 		// Momentum firmware bundles. No transmit, no writes.
 		"loader_pocsag_pager",
+		// v0.205 (gap-analysis top-30): receive-only RF decoders.
+		// Weather Station = LaCrosse/Acurite/Oregon 433 MHz pull-only;
+		// Sub-GHz Jammer Detect = RSSI dwell heuristic, defensive.
+		"loader_weather_station",
+		"loader_subghz_jammer_detect",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
@@ -152,6 +157,11 @@ var toolLevels = func() map[string]Level {
 		"loader_protoview", "loader_spectrum_analyzer",
 		"loader_signal_generator", "loader_uart_terminal",
 		"loader_spi_mem_manager",
+		// v0.205 (gap-analysis top-30): sample-only hw recon FAPs.
+		// 8-channel logic capture + 1 MS/s ADC — no signal generation,
+		// same tier as the existing Spectrum Analyzer / UART Terminal.
+		"loader_logic_analyzer",
+		"loader_oscilloscope",
 		"fileformat_edit",
 		"loader_close",
 		"workflow_garage_door_triage",
