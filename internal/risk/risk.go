@@ -75,6 +75,10 @@ var toolLevels = func() map[string]Level {
 		// decoder. Pure offline parser, no Flipper required, host-side
 		// only. Same risk band as the existing wiegand_decode.
 		"em4100_decode",
+		// v0.207 (NATIVE-fit gap from top-30 rank 21): EMV BER-TLV
+		// decoder for contactless-card APDU responses. Pure offline
+		// parser; no card crypto verification (deliberately scoped out).
+		"nfc_emv_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
