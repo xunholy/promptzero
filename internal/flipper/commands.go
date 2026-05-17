@@ -2568,6 +2568,39 @@ func (f *Flipper) LoaderSPIMemManager() (string, error) {
 // sensors over the GPIO header.
 func (f *Flipper) LoaderUnitemp() (string, error) { return f.LoaderOpen("Unitemp", "") }
 
+// LoaderSentrySafe launches the "Sentry Safe" FAP from
+// H4ckd4ddy/flipperzero-sentry-safe-plugin. Drives the factory-test
+// backdoor sequence on Sentry / Master Lock electronic safes via the
+// Flipper GPIO header (TX line into the safe's debug port). Physical
+// pentest primitive — needs the operator to wire the Flipper to the
+// target safe's reset pads before launching.
+//
+// Source: apps top-20 #10 per docs/catalog/gap-analysis.md §3 (rank 2).
+func (f *Flipper) LoaderSentrySafe() (string, error) {
+	return f.LoaderOpen("Sentry Safe", "")
+}
+
+// LoaderPocsagPager launches the "Pocsag Pager" FAP from
+// Next-Flip/Momentum-Apps. Receive-only POCSAG paging decoder on
+// the Flipper's CC1101 — common European paging dragnet target.
+// Bundled in Momentum / RogueMaster / ATP / Unleashed firmwares.
+//
+// Source: apps top-20 #11 per docs/catalog/gap-analysis.md §3 (rank 4).
+func (f *Flipper) LoaderPocsagPager() (string, error) {
+	return f.LoaderOpen("Pocsag Pager", "")
+}
+
+// LoaderMagSpoof launches the "MagSpoof" FAP from
+// zacharyweiss/magspoof_flipper — Samy Kamkar's wireless mag-stripe
+// emulator, GPIO-driven coil over the Flipper's external header.
+// Emits Track 1/2/3 data into nearby mag-stripe readers; the
+// Electronic Cats fork takes an external coil module instead.
+//
+// Source: apps top-20 #9 per docs/catalog/gap-analysis.md §3 (rank 3).
+func (f *Flipper) LoaderMagSpoof() (string, error) {
+	return f.LoaderOpen("MagSpoof", "")
+}
+
 // --- System (capability-gap primitives) ---
 
 // LoaderInfo returns metadata about the currently running app (name, flags).

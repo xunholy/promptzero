@@ -62,6 +62,10 @@ var toolLevels = func() map[string]Level {
 		"loader_info", "log_stream",
 		"bt_hci_info",
 		"loader_unitemp",
+		// v0.204 (gap-analysis top-30): POCSAG paging decoder is
+		// receive-only — same risk class as the Pocsag CLI tools the
+		// Momentum firmware bundles. No transmit, no writes.
+		"loader_pocsag_pager",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
@@ -288,6 +292,12 @@ var toolLevels = func() map[string]Level {
 		// blast radius as badusb_run; same tier.
 		"nrf24_mousejack_start",
 		"workflow_mousejack",
+		// v0.204: physical-pentest FAPs from gap-analysis top-30.
+		// Sentry Safe opens any in-scope safe via factory backdoor;
+		// MagSpoof emits mag-stripe data into nearby readers — both
+		// need same risk gating as the other physical-attack tools.
+		"loader_sentry_safe",
+		"loader_magspoof",
 		"js_run",
 		"power_reboot_dfu",
 		"update_install",

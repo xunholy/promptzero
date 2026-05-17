@@ -263,4 +263,56 @@ func init() {
 			return d.Flipper.LoaderUnitemp()
 		},
 	})
+
+	// --- New FAP wrappers from gap-analysis top-30 (v0.204 wave) ---
+
+	Register(Spec{
+		Name: "loader_sentry_safe",
+		Description: "Launch the Sentry Safe FAP (H4ckd4ddy/flipperzero-sentry-safe-plugin) — " +
+			"drives the factory-test backdoor sequence on Sentry / Master Lock electronic safes via " +
+			"the Flipper GPIO header (TX line into the safe's debug port). Physical pentest primitive — " +
+			"the operator must wire the Flipper to the target safe's reset pads before launching. " +
+			"Critical: opens any in-scope safe; authorise the engagement before use. " +
+			"Requires the FAP to be installed.",
+		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:  nil,
+		Risk:      risk.Critical,
+		Group:     GroupFlipperSystem,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderSentrySafe()
+		},
+	})
+
+	Register(Spec{
+		Name: "loader_pocsag_pager",
+		Description: "Launch the Pocsag Pager FAP (Next-Flip/Momentum-Apps) — receive-only POCSAG paging " +
+			"decoder on the Flipper's CC1101. Common European paging dragnet target. Bundled in Momentum, " +
+			"RogueMaster, ATP, and Unleashed firmwares. Read-only.",
+		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:  nil,
+		Risk:      risk.Low,
+		Group:     GroupFlipperSubGHz,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderPocsagPager()
+		},
+	})
+
+	Register(Spec{
+		Name: "loader_magspoof",
+		Description: "Launch the MagSpoof FAP (zacharyweiss/magspoof_flipper) — Samy Kamkar's wireless " +
+			"mag-stripe emulator, GPIO-driven coil over the Flipper's external header. Emits Track 1/2/3 " +
+			"data into nearby mag-stripe readers. Critical: high-leverage physical-pentest primitive; " +
+			"authorise the engagement before use. Requires the FAP to be installed and (optionally) an " +
+			"external coil module for the Electronic Cats fork.",
+		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:  nil,
+		Risk:      risk.Critical,
+		Group:     GroupFlipperSystem,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderMagSpoof()
+		},
+	})
 }

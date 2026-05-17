@@ -89,7 +89,9 @@ func TestRegistrySize(t *testing.T) {
 	// allowlisted importer that pulls Freqman lists from vetted
 	// public hosts into ~/.promptzero/freqman/ with size cap, hash
 	// pinning, and parse-before-write validation).
-	const expected = 274
+	// v0.204.0 added three FAP wrappers from gap-analysis top-30:
+	// loader_sentry_safe, loader_pocsag_pager, loader_magspoof.
+	const expected = 277
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
