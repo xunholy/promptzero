@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/clisafe"
 )
 
 // Severity is the three-tier classification used by the pre-flight gate.
@@ -326,22 +328,13 @@ func splitHead(line string) (head, rest string) {
 	return token, strings.TrimLeft(line[idx:], " \t")
 }
 
+// truncate is a thin wrapper over clisafe.TruncateWithEllipsis kept
+// for back-compat with the existing call sites in this file. The
+// shared helper centralises the UTF-8 walk-back so the same fix lands
+// across every truncating site (evilportal, badusb, future migration
+// targets in agent / generate / report / audit).
 func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	// UTF-8-aware: walk back from continuation bytes so a multi-byte
-	// rune at the boundary doesn't get split. Without this, a
-	// DuckyScript STRING line that contains an emoji or non-ASCII
-	// character near the 120-byte cap could produce an invalid-UTF-8
-	// excerpt, which then corrupts the JSON audit row / report
-	// rendering downstream. Mirrors the inline pattern in
-	// evilportal.go and session.clipTitle / generate.capSize.
-	cut := n
-	for cut > 0 && s[cut]&0xC0 == 0x80 {
-		cut--
-	}
-	return s[:cut] + "…"
+	return clisafe.TruncateWithEllipsis(s, n)
 }
 
 // RenderText formats a Report as the human-readable block shown in REPL

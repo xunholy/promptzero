@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/clisafe"
 )
 
 // Evil Portal static validator. Mirrors the BadUSB rule-based approach
@@ -194,24 +196,15 @@ func ValidateEvilPortal(name, html string) Report {
 // excerptAtLine returns a UTF-8-safe trimmed copy of lines[lineNo-1]
 // suitable for a Finding.Excerpt. Lines beyond the slice (lineNo
 // > len(lines)) return empty rather than panicking. Long excerpts
-// are walked back from continuation bytes so a multi-byte rune at
-// the 120-byte boundary doesn't get split — mirrors the discipline
-// in session.clipTitle / generate.capSize / agent.truncatePreview.
-// The 120-byte cap matches both legacy duplicated sites; raising it
-// here lifts the limit everywhere.
+// are truncated via clisafe.TruncateWithEllipsis so a multi-byte
+// rune at the boundary doesn't get split — same helper truncate()
+// in badusb.go uses (raising excerptCap here lifts the limit for
+// every evilportal finding without touching badusb).
 const excerptCap = 120
 
 func excerptAtLine(lines []string, lineNo int) string {
 	if lineNo-1 >= len(lines) || lineNo < 1 {
 		return ""
 	}
-	excerpt := strings.TrimSpace(lines[lineNo-1])
-	if len(excerpt) <= excerptCap {
-		return excerpt
-	}
-	cut := excerptCap
-	for cut > 0 && excerpt[cut]&0xC0 == 0x80 {
-		cut--
-	}
-	return excerpt[:cut] + "…"
+	return clisafe.TruncateWithEllipsis(strings.TrimSpace(lines[lineNo-1]), excerptCap)
 }
