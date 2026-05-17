@@ -71,6 +71,10 @@ var toolLevels = func() map[string]Level {
 		// Sub-GHz Jammer Detect = RSSI dwell heuristic, defensive.
 		"loader_weather_station",
 		"loader_subghz_jammer_detect",
+		// v0.206 (NATIVE-fit gap from top-30 rank 19): EM4100 customer-ID
+		// decoder. Pure offline parser, no Flipper required, host-side
+		// only. Same risk band as the existing wiegand_decode.
+		"em4100_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
