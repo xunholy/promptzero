@@ -97,7 +97,9 @@ func TestRegistrySize(t *testing.T) {
 	// v0.206.0 added em4100_decode (native offline parser — first
 	// implementation under the wrap-vs-native principle: pure
 	// algorithms get reimplemented rather than wrapped via a FAP).
-	const expected = 282
+	// v0.207.0 added nfc_emv_decode (native EMV BER-TLV walker with
+	// ~80-entry tag-name table from EMV Books 1-4).
+	const expected = 283
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
