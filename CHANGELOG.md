@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.206.0] - 2026-05-17
+
+**First implementation under the wrap-vs-native principle: when an
+upstream FAP is a thin algorithmic wrapper around a public protocol,
+reimplement natively instead of adding a FAP loader.**
+
+### Added
+
+- **`em4100_decode`** (`Risk.Low`, `GroupHostTools`) — native parser
+  for EM4100 5-byte customer IDs. Returns the operator-facing forms
+  ops actually cross-reference: zero-padded decimal serial (printed
+  sticker form), 8-bit version + 32-bit serial split (HID-style
+  reader printouts), 16/16 facility/card split (niche printers),
+  `AllZero` / `AllFF` sentinel flags for placeholder reads. Accepts
+  `:` / `-` / `_` / whitespace separators so `rfid_read` output,
+  freqman dumps, and printed serials with dashes all decode without
+  preprocessing.
+
+  Source: `docs/catalog/gap-analysis.md §3` rank 19
+  (`rfid_pacs_decode`). The HID Prox H10301 side is already covered
+  by `wiegand_decode` (which takes the raw 26-bit Wiegand frame);
+  this Spec handles the EM4100 baseline that the Wiegand frame is
+  often a derivative of.
+
+  Wrap-vs-native rationale: EM4100 is a 5-byte customer ID with a
+  well-documented public layout. Wrapping a FAP for this would add
+  an SD-card install step + a firmware-fork dependency for a
+  30-line parser. Native gives host-side analysis (operators can
+  decode a printed serial without a Flipper connected), inline unit
+  tests against published vectors, no fork dependency, and zero
+  runtime overhead. The wrap-vs-native judgement is now the default
+  decision step before implementing each gap.
+
+Registry size: 281 → 282.
+
 ## [0.205.0] - 2026-05-17
 
 **Four more FAP wrappers from the gap-analysis top-30 — RF sensing
