@@ -2601,6 +2601,48 @@ func (f *Flipper) LoaderMagSpoof() (string, error) {
 	return f.LoaderOpen("MagSpoof", "")
 }
 
+// LoaderWeatherStation launches the "Weather Station" FAP
+// (flipperdevices/flipperzero-good-faps/weather_station). Receive-only
+// 433 MHz decoder for LaCrosse / Acurite / Oregon Scientific weather
+// sensors. Bundled in OFW, Momentum, RogueMaster, ATP.
+//
+// Source: docs/catalog/gap-analysis.md §3 rank 5 (subghz_weather_decode).
+func (f *Flipper) LoaderWeatherStation() (string, error) {
+	return f.LoaderOpen("Weather Station", "")
+}
+
+// LoaderSubGHzJammerDetect launches the "Sub-GHz Jammer Detect" FAP
+// (RogueMaster/flipperzero-firmware-wPlugins). Receive-only RSSI floor
+// + dwell heuristic that flags suspected jammer activity in the
+// 300-928 MHz bands. Defensive primitive — no transmission.
+//
+// Source: docs/catalog/gap-analysis.md §3 rank 16 (subghz_jammer_detect).
+func (f *Flipper) LoaderSubGHzJammerDetect() (string, error) {
+	return f.LoaderOpen("Sub-GHz Jammer Detect", "")
+}
+
+// LoaderLogicAnalyzer launches the "Logic Analyzer" FAP
+// (RogueMaster/flipperzero-firmware-wPlugins). 8-channel logic capture
+// on the Flipper's GPIO header. Sample-only — no signal generation.
+// Pairs with the hw_recon workflow as the device-internal scope path
+// before reaching for a Bus Pirate or external logic analyzer.
+//
+// Source: docs/catalog/gap-analysis.md §3 rank 12 (gpio_logic_capture).
+func (f *Flipper) LoaderLogicAnalyzer() (string, error) {
+	return f.LoaderOpen("Logic Analyzer", "")
+}
+
+// LoaderOscilloscope launches the "Oscilloscope" FAP
+// (Next-Flip/Momentum-Apps/oscilloscope). 1 MS/s single-channel ADC
+// visualiser on the GPIO header. Companion to the 8-channel Logic
+// Analyzer FAP — same sample-only safety class.
+//
+// Source: docs/catalog/apps.md line 234 (Flipper Scope), referenced by
+// gap-analysis.md §3 rank 12.
+func (f *Flipper) LoaderOscilloscope() (string, error) {
+	return f.LoaderOpen("Oscilloscope", "")
+}
+
 // --- System (capability-gap primitives) ---
 
 // LoaderInfo returns metadata about the currently running app (name, flags).

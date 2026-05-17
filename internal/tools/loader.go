@@ -315,4 +315,69 @@ func init() {
 			return d.Flipper.LoaderMagSpoof()
 		},
 	})
+
+	// --- RF sense + hw recon FAPs (v0.205 wave) ---
+
+	Register(Spec{
+		Name: "loader_weather_station",
+		Description: "Launch the Weather Station FAP (flipperdevices/flipperzero-good-faps) — " +
+			"receive-only 433 MHz decoder for LaCrosse, Acurite, and Oregon Scientific weather sensors. " +
+			"Bundled in OFW, Momentum, RogueMaster, and ATP firmwares. Read-only RF sensing — pairs " +
+			"naturally with the existing TPMS / subghz_classify decoders.",
+		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:  nil,
+		Risk:      risk.Low,
+		Group:     GroupFlipperSubGHz,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderWeatherStation()
+		},
+	})
+
+	Register(Spec{
+		Name: "loader_subghz_jammer_detect",
+		Description: "Launch the Sub-GHz Jammer Detect FAP (RogueMaster/flipperzero-firmware-wPlugins) — " +
+			"receive-only RSSI floor + dwell heuristic that flags suspected jammer activity in the " +
+			"300-928 MHz bands. Defensive primitive — no transmission. Pairs with rolljam detection " +
+			"workflows.",
+		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:  nil,
+		Risk:      risk.Low,
+		Group:     GroupFlipperSubGHz,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderSubGHzJammerDetect()
+		},
+	})
+
+	Register(Spec{
+		Name: "loader_logic_analyzer",
+		Description: "Launch the Logic Analyzer FAP (RogueMaster/flipperzero-firmware-wPlugins) — " +
+			"8-channel logic capture on the Flipper's GPIO header. Sample-only (no signal generation). " +
+			"The device-internal alternative to a Bus Pirate or external logic analyzer for the " +
+			"hw_recon workflow.",
+		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:  nil,
+		Risk:      risk.Medium,
+		Group:     GroupFlipperSystem,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderLogicAnalyzer()
+		},
+	})
+
+	Register(Spec{
+		Name: "loader_oscilloscope",
+		Description: "Launch the Oscilloscope FAP (Next-Flip/Momentum-Apps/oscilloscope) — 1 MS/s " +
+			"single-channel ADC visualiser on the GPIO header. Companion to Logic Analyzer for " +
+			"analogue waveform inspection on unfamiliar boards. Sample-only.",
+		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
+		Required:  nil,
+		Risk:      risk.Medium,
+		Group:     GroupFlipperSystem,
+		AgentOnly: false,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			return d.Flipper.LoaderOscilloscope()
+		},
+	})
 }
