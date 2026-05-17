@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.205.0] - 2026-05-17
+
+**Four more FAP wrappers from the gap-analysis top-30 — RF sensing
+and hardware-recon adjacencies.**
+
+### Added
+
+- **`loader_weather_station`** (rank 5 → `subghz_weather_decode`) —
+  receive-only 433 MHz decoder for LaCrosse / Acurite / Oregon
+  Scientific sensors. Bundled in OFW, Momentum, RogueMaster, ATP.
+  Source: `flipperdevices/flipperzero-good-faps/weather_station`.
+  Risk: Low (RX-only).
+- **`loader_subghz_jammer_detect`** (rank 16) — receive-only RSSI
+  floor + dwell heuristic across 300-928 MHz. Defensive primitive
+  pairing with rolljam workflows. Source:
+  `RogueMaster/flipperzero-firmware-wPlugins/subghz_jammer_detect`.
+  Risk: Low (defensive, RX-only).
+- **`loader_logic_analyzer`** (rank 12 → `gpio_logic_capture`) —
+  8-channel logic capture on the Flipper GPIO header. Sample-only;
+  the device-internal scope path for `hw_recon` workflows before
+  reaching for a Bus Pirate. Source:
+  `RogueMaster/flipperzero-firmware-wPlugins/logic_analyzer`.
+  Risk: Medium.
+- **`loader_oscilloscope`** (rank 12 companion) — 1 MS/s
+  single-channel ADC visualiser, analogue waveform companion to
+  Logic Analyzer for unknown-board recon. Source:
+  `Next-Flip/Momentum-Apps/oscilloscope`. Risk: Medium.
+
+Same pattern as v0.204: thin `Flipper.LoaderX` wrappers, Spec
+entries with risk bands matching actual blast radius, wire-form
+mock tests pinning the canonical `loader open "<name>"` shape, and
+risk-classifier entries so the spec.Risk cross-check stays
+consistent.
+
+Registry size: 277 → 281.
+
 ## [0.204.0] - 2026-05-17
 
 **First feature-focused release under the new loop cadence: three
