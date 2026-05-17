@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.203.0] - 2026-05-17
+
+**`clisafe.TruncateWithEllipsis` — canonical UTF-8-safe truncation
+helper; first two of 15 inline duplicates migrated.**
+
+### Refactored
+
+15 inline copies of the UTF-8 walk-back truncation pattern were
+scattered across the codebase (evilportal, badusb-validator,
+agent handoff/verify/session, generate, report, audit, rag,
+consensus). Each had drifted slightly — some missed the `cut <= 0`
+guard, some omitted the ellipsis, one used the inverted
+`0xC0 != 0x80` condition. Any future fix had to land in 15 places.
+
+`clisafe.TruncateWithEllipsis` is the canonical implementation:
+
+- Uses `unicode/utf8.RuneStart` for the walk-back instead of
+  inlining the `0xC0 == 0x80` byte check (clearer intent).
+- Handles `n <= 0` (returns just the marker — "this is too long
+  to show" semantics).
+- Exports `EllipsisMarker` so downstream comparators don't repeat
+  the literal `"…"`.
+- 100% statement coverage with five direct tests including a
+  byte-position sweep that pins "every output is valid UTF-8 for
+  every cap position" against an emoji-heavy source.
+
+The two validator call sites in this commit (`badusb.truncate`
+and `evilportal.excerptAtLine` — both 120-byte
+head-truncate-with-ellipsis, same shape as the new helper) now
+delegate. The other 12 sites in agent / generate / report / audit
+/ rag / consensus stay inline for now; each has slightly different
+surrounding logic (head vs tail trim, no ellipsis, different caps)
+and will migrate in follow-up PRs as their tests are touched.
+
+clisafe coverage: 100.0% (new helper).
+
 ## [0.202.0] - 2026-05-17
 
 **Validator refactor with a tighter bounds guard, plus a
