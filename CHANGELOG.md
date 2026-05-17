@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.204.0] - 2026-05-17
+
+**First feature-focused release under the new loop cadence: three
+FAP wrappers from the gap-analysis top-30.**
+
+### Added
+
+Three new loader-FAP Specs covering ranks 2-4 from
+`docs/catalog/gap-analysis.md §3`:
+
+- **`loader_sentry_safe`** (rank 2) — drives the factory-test
+  backdoor sequence on Sentry / Master Lock electronic safes via
+  the Flipper GPIO header. Source:
+  `H4ckd4ddy/flipperzero-sentry-safe-plugin`. Risk: Critical.
+- **`loader_magspoof`** (rank 3) — Samy Kamkar's wireless mag-stripe
+  emulator, GPIO-driven coil over the external header. Emits
+  Track 1/2/3 into nearby mag-stripe readers. Source:
+  `zacharyweiss/magspoof_flipper`. Risk: Critical.
+- **`loader_pocsag_pager`** (rank 4) — receive-only POCSAG paging
+  decoder on the Flipper's CC1101. Common European paging dragnet
+  target. Bundled in Momentum / RogueMaster / ATP / Unleashed
+  firmwares. Source: `Next-Flip/Momentum-Apps/pocsag_pager`.
+  Risk: Low (RX only).
+
+All three follow the established loader-FAP pattern:
+`Flipper.LoaderX` wrapper → `LoaderOpen("Name", "")` → Spec
+registered in `internal/tools/loader.go`. Wire-form tests pin the
+canonical `loader open "<name>"` shape on the mock. Risk-classifier
+entries added so the spec.Risk cross-check stays consistent.
+
+Registry size: 274 → 277.
+
 ## [0.203.0] - 2026-05-17
 
 **`clisafe.TruncateWithEllipsis` — canonical UTF-8-safe truncation
