@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.216.0] - 2026-05-19
+
+**Eleventh native-fit gap: ISO/IEC 14443-3 Type A anti-collision
+tag-type identifier — the "what kind of NFC card is this?"
+decoder operators need every time they `nfc read`.**
+
+### Added
+
+- **`nfc_iso14443a_identify`** (`Risk.Low`, `GroupHostTools`) —
+  identify an ISO 14443A NFC card from its ATQA + SAK + UID,
+  with optional ATS parsing. Decodes:
+
+  - **ATQA** (2-byte Answer To Request): UID size hint
+    (single 4-byte / double 7-byte / triple 10-byte),
+    bit-frame anti-collision, proprietary high-byte bits, RFU.
+    Auto-detects reversed-endian display so operators don't
+    need to know their tool's convention.
+  - **SAK** (1-byte Select Acknowledge): cascade bit, ISO
+    14443-4 compliance, ISO 14443-3-only flag — per
+    ISO/IEC 14443-3 §6.4.2 Table 9 bit layout.
+  - **UID** (4 / 7 / 10 bytes): length classification +
+    length-invalid flag, cascade-tag (0x88) detection,
+    manufacturer name from the documented ISO/IEC 7816-6 IC
+    manufacturer code (NXP / Infineon / STMicro / Samsung /
+    Toshiba etc.) — picked from either byte 0 or post-
+    cascade-tag byte.
+  - **Tag type** lookup from the (ATQA, SAK) combination:
+    Mifare Classic 1K / 4K / Mini, Mifare Ultralight / NTAG,
+    Mifare Ultralight C, Mifare DESFire EV1/EV2/EV3, JCOP,
+    SmartMX with Mifare Classic 1K / 4K emulation, Mifare
+    Plus EV1 / EV2 (SL1 + SL3), Infineon Mifare 1K. Two-level
+    fallback (exact pair → ATQA-only → SAK-only) so even
+    unfamiliar combinations get a coarse family identification.
+  - **ATS** (optional Answer To Select per ISO 14443-4 §5.2):
+    TL + T0 with FSCI → FSC frame-size table mapping, TA1 /
+    TB1 / TC1 presence + raw interface bytes, historical bytes
+    as both hex and printable-ASCII preview.
+
+  Pure offline parser — operators paste a Flipper / Proxmark
+  "nfc read" output and identify the card type without
+  re-presenting the card. Pairs with the Bruce / Proxmark /
+  Flipper `nfc read` transports and with the existing
+  `mifare_classic_decode_block` (decodes content once the type
+  is known). Accepts `:` / `-` / `_` / whitespace separators in
+  all fields.
+
+  Source: `docs/catalog/gap-analysis.md` (NFC decode space).
+  Wrap-vs-native: **NATIVE** — NXP AN10833 Table 6, AN10927
+  UID formats, and ISO/IEC 14443-3 / 14443-4 are fully public,
+  the walker is a lookup table + bitfield decoder.
+
+### Internal
+
+- New `internal/iso14443a/identify.go`: ATQA / SAK / UID / ATS
+  parsers + top-level Identify orchestrator.
+- New `internal/iso14443a/types.go`: tag-type lookup tables (16
+  documented exact-pair entries + SAK-only fallback) +
+  ISO/IEC 7816-6 IC manufacturer code table.
+- Tests cover Mifare Classic 1K / 4K / Ultralight / NTAG /
+  DESFire EV1+ATS / DESFire+historicals identifications, 10-byte
+  UID with cascade tag and post-cascade manufacturer lookup,
+  unknown (ATQA, SAK) combination falling through to
+  "Unknown" / "Other", SAK-only fallback for unfamiliar ATQA
+  with 14443-4 SAK, ATQA reversed-endian detection, separator
+  tolerance across all three input fields, invalid-input
+  rejection (empty / short / non-hex), UID length validation
+  for non-4/7/10 cases, SAK 14443-3-vs-14443-4 compliance bit
+  cross-checks, and the FSCI → FSC frame-size table.
+
+Registry size: 292 → 293.
+
 ## [0.215.0] - 2026-05-18
 
 **Tenth native-fit gap: IEEE 802.15.4 MAC frame dissector — the
