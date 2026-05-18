@@ -116,7 +116,11 @@ func TestRegistrySize(t *testing.T) {
 	// AN10833 access-bit decode, value-block complement integrity,
 	// plain data with ASCII preview; dump variant walks a full 1K
 	// or 4K capture in one pass). +2 new specs.
-	const expected = 288
+	// v0.212.0 added ndef_decode (NFC Data Exchange Format
+	// dissector — the payload format every NDEF-formatted NFC
+	// tag stores; URI prefix table, Text record with language
+	// code, Smart Poster recursion, MIME + External pass-through).
+	const expected = 289
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

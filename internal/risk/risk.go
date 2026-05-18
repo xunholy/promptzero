@@ -104,6 +104,12 @@ var toolLevels = func() map[string]Level {
 		// mfkey32 recover keys; this decodes the data).
 		"mifare_classic_decode_block",
 		"mifare_classic_decode_dump",
+		// v0.212 (NATIVE-fit gap in the NFC decode space): NDEF
+		// (NFC Data Exchange Format) message dissector — what every
+		// NDEF-formatted NFC tag stores. URI prefix table, Text
+		// record (UTF-8 / UTF-16), Smart Poster recursion, MIME and
+		// External type pass-through. Pure offline parser.
+		"ndef_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
