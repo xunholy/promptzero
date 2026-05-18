@@ -200,7 +200,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.231.0 added coap_packet_decode (CoAP RFC 7252 packet
 	// dissector — constrained-IoT application-layer protocol;
 	// header + token + option-list walker + payload).
-	const expected = 308
+	// v0.232.0 added bluetooth_gatt_uuid_lookup (Bluetooth SIG
+	// GATT UUID enumerator — ~75 Services + ~120
+	// Characteristics + ~16 Descriptors; 16-bit short + 128-bit
+	// canonical input with vendor-UUID detection).
+	const expected = 309
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

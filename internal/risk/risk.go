@@ -260,6 +260,14 @@ var toolLevels = func() map[string]Level {
 		// per-option name lookup + payload extraction. Pure
 		// offline parser. Pairs with mqtt_packet_decode.
 		"coap_packet_decode",
+		// v0.232 (NATIVE-fit gap in the BLE decode space):
+		// Bluetooth SIG GATT UUID enumerator — comprehensive
+		// lookup of Service/Characteristic/Descriptor UUIDs to
+		// canonical names. ~75 Services, ~120 Characteristics,
+		// ~16 Descriptors. Detects 128-bit base pattern for
+		// short-form extraction; flags vendor-allocated UUIDs.
+		// Pure offline lookup.
+		"bluetooth_gatt_uuid_lookup",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
