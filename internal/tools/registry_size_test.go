@@ -148,7 +148,11 @@ func TestRegistrySize(t *testing.T) {
 	// dissector — TS convention + T0 + TA/TB/TC/TD interface-byte
 	// chain + historical bytes + TCK validation; TA1 decode with
 	// Fi/Di clock/baud factors).
-	const expected = 295
+	// v0.219.0 added jtag_idcode_decode (JTAG IDCODE / SWD DPIDR
+	// chip identifier — IEEE 1149.1 bit walker + JEDEC JEP106
+	// manufacturer lookup + per-vendor part-number tables for
+	// ARM Cortex-M / STM32 / AVR / nRF52 / MSP430 / iCE40 / etc.).
+	const expected = 296
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -153,6 +153,14 @@ var toolLevels = func() map[string]Level {
 		// TS convention + T0 + TA/TB/TC/TD interface-byte chain +
 		// historical bytes + TCK validation. Pure offline parser.
 		"iso7816_atr_decode",
+		// v0.219 (NATIVE-fit gap in the hardware-recon decode
+		// space): JTAG IDCODE / SWD DPIDR chip identifier — IEEE
+		// 1149.1 bit walker + JEDEC JEP106 manufacturer lookup +
+		// per-vendor part-number tables (ARM Cortex-M / STM32 /
+		// AVR / SAM / nRF52 / MSP430 / iCE40 / ECP5 / Spartan-Artix
+		// / Cyclone). Pure offline parser. Pairs with Bus Pirate /
+		// hw_recon workflows.
+		"jtag_idcode_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
