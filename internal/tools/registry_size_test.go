@@ -124,7 +124,11 @@ func TestRegistrySize(t *testing.T) {
 	// dissector — WPA/WPA2/WPA3 4-way handshake with header,
 	// key-info bitfield, handshake-message ID M1/M2/M3/M4, KDE
 	// walker for RSN IE / GTK / MAC address).
-	const expected = 290
+	// v0.214.0 added lorawan_decode (LoRaWAN PHYPayload dissector
+	// — MAC-layer decode of LoRa Alliance 1.0.x/1.1 captures;
+	// MHDR + FHDR FCtrl bitfield + FPort + Join Request/Accept
+	// structural decode; FRMPayload surfaced as hex).
+	const expected = 291
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

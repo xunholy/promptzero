@@ -116,6 +116,13 @@ var toolLevels = func() map[string]Level {
 		// KDE walker for RSN IE / GTK / MAC address etc. Pure offline
 		// parser. Pairs with marauder_handoff_hashcat.
 		"wifi_eapol_decode",
+		// v0.214 (NATIVE-fit gap in the Sub-GHz decode space):
+		// LoRaWAN PHYPayload dissector — MAC-layer structural decode
+		// for LoRaWAN 1.0.x / 1.1 captures. MHDR + FHDR + FCtrl
+		// bitfield + FPort + FRMPayload (encrypted, surfaced as hex);
+		// Join Request / Accept structural decode. Pure offline
+		// parser. Pairs with bruce_lora_scan.
+		"lorawan_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
