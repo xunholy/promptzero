@@ -157,7 +157,11 @@ func TestRegistrySize(t *testing.T) {
 	// with capability info, IE walker including RSN cipher-suite
 	// decode, Vendor Specific WPA1+WPS subtype lookup, reason
 	// code table).
-	const expected = 297
+	// v0.221.0 added zigbee_nwk_decode (Zigbee Network Layer
+	// frame dissector — sits on top of IEEE 802.15.4 MAC;
+	// FC bitfield + 16-bit + 64-bit addressing + multicast +
+	// source route + aux security header walking).
+	const expected = 298
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -170,6 +170,14 @@ var toolLevels = func() map[string]Level {
 		// 802.11 reason code table. Pure offline parser. Pairs with
 		// wifi_eapol_decode for the key-exchange frames.
 		"wifi_80211_decode",
+		// v0.221 (NATIVE-fit gap in the 2.4 GHz IoT decode space):
+		// Zigbee Network Layer (NWK) frame dissector — sits on top
+		// of IEEE 802.15.4 MAC. Frame Control bitfield (Data / NWK
+		// Command / Inter-PAN + flags), 16-bit short addresses with
+		// broadcast-class lookup, optional 64-bit IEEE addresses,
+		// multicast control, source route subframe, auxiliary security
+		// header. Pure offline parser. Pairs with ieee802154_decode.
+		"zigbee_nwk_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
