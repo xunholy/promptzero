@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.213.0] - 2026-05-18
+
+**Eighth native-fit gap: WiFi EAPOL-Key frame dissector — WPA /
+WPA2 / WPA3 4-way handshake decode for offline analysis of
+captured frames.**
+
+### Added
+
+- **`wifi_eapol_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes an 802.1X EAPOL-Key frame into structured fields:
+
+  - **802.1X header**: version (1=WPA1, 2=WPA2, 3=802.1X-2010),
+    frame type, body length.
+  - **Descriptor type**: 1 (RC4 / WPA1) or 2 (RSN / WPA2 / WPA3).
+  - **Key Information bitfield**: descriptor version (TKIP /
+    CCMP / AES-CMAC for PMF), key type (Pairwise PTK or Group
+    GTK), and the Install / Ack / MIC / Secure / Error /
+    Request / Encrypted-Key-Data / SMK flags.
+  - **Handshake message identification**: M1 (Ack=1 MIC=0), M2
+    (Ack=0 MIC=1 Secure=0), M3 (Ack=1 MIC=1 Install=1), or M4
+    (Ack=0 MIC=1 Secure=1).
+  - **Key fields**: Key Length, 8-byte Replay Counter, 32-byte
+    Key Nonce (ANonce / SNonce), 16-byte Key IV, 8-byte Key
+    RSC, 16-byte Key MIC.
+  - **Key Data Encapsulation (KDE) walker**: when Key Data
+    isn't encrypted, decodes RSN IE (element 0x30), vendor
+    KDEs (0xDD wrappers) with documented type-name lookup —
+    GTK, MAC address, PMKID, IGTK, IGTK packet number, WPA
+    specification.
+
+  Pure offline parser — operators paste a captured EAPOL frame
+  from tcpdump / Wireshark / hcxdumptool / Marauder and inspect
+  every field without a WiFi adapter attached. Pairs with the
+  existing `marauder_handoff_hashcat` (which converts captured
+  frames to hashcat `.hc22000`) — this Spec lets operators
+  inspect handshake messages before / after that conversion.
+  Accepts `:` / `-` / `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (WiFi decode space
+  adjacent to rank 7 `wifi_pmkid_capture`). Wrap-vs-native:
+  **NATIVE** — EAPOL is a fully public IEEE standard (802.1X
+  for the frame, 802.11i for the Key descriptor format), the
+  walker is ~300 lines of bit-twiddling.
+
+### Internal
+
+- New `internal/eapol/decoder.go`: 802.1X header walker,
+  EAPOL-Key descriptor walker, Key Information bitfield decoder,
+  handshake-message identifier (M1/M2/M3/M4 from flag patterns),
+  KDE walker (vendor-specific 0xDD KDEs + RSN IE 0x30 pseudo-KDE
+  + documented KDE type-name table). All pure functions; no
+  transport, no hardware.
+- Tests cover all four handshake messages (M1/M2/M3/M4) with the
+  IEEE 802.11i flag patterns, RSN IE in M3 Key Data, GTK KDE in
+  M3 Key Data with proper OUI + type decode, EncryptedKeyData
+  flag skipping KDE walk, non-Key-frame rejection, truncated-
+  header / truncated-key-frame error contracts, over-declared
+  key-data-length rejection, empty / invalid-hex rejection,
+  separator tolerance, and the descriptor-version + KDE-type
+  name tables.
+
+Registry size: 289 → 290.
+
 ## [0.212.0] - 2026-05-18
 
 **Seventh native-fit gap: NDEF (NFC Data Exchange Format) message
