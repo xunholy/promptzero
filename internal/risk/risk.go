@@ -123,6 +123,13 @@ var toolLevels = func() map[string]Level {
 		// Join Request / Accept structural decode. Pure offline
 		// parser. Pairs with bruce_lora_scan.
 		"lorawan_decode",
+		// v0.215 (NATIVE-fit gap in the 2.4 GHz IoT decode space):
+		// IEEE 802.15.4 MAC frame dissector — wire format under
+		// Zigbee / Thread / OpenThread. Frame Control + addressing
+		// modes (Short / Extended), Beacon / Data / Ack / MAC
+		// Command frame types, optional FCS handling. Pure offline
+		// parser. Pairs with bruce_zigbee_scan.
+		"ieee802154_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

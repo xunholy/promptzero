@@ -128,7 +128,12 @@ func TestRegistrySize(t *testing.T) {
 	// — MAC-layer decode of LoRa Alliance 1.0.x/1.1 captures;
 	// MHDR + FHDR FCtrl bitfield + FPort + Join Request/Accept
 	// structural decode; FRMPayload surfaced as hex).
-	const expected = 291
+	// v0.215.0 added ieee802154_decode (IEEE 802.15.4 MAC frame
+	// dissector — wire format under Zigbee / Thread / OpenThread;
+	// Frame Control bitfield + addressing-mode-driven address
+	// walker (Short 16-bit + Extended 64-bit, PAN ID compression)
+	// + Beacon/Data/Ack/MAC-Command frame types + optional FCS).
+	const expected = 292
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
