@@ -130,6 +130,14 @@ var toolLevels = func() map[string]Level {
 		// Command frame types, optional FCS handling. Pure offline
 		// parser. Pairs with bruce_zigbee_scan.
 		"ieee802154_decode",
+		// v0.216 (NATIVE-fit gap in the NFC tag-identification
+		// space): ISO 14443A anti-collision identifier — maps
+		// (ATQA, SAK) combinations to documented tag types (Mifare
+		// Classic / Ultralight / NTAG / DESFire / JCOP / SmartMX /
+		// Mifare Plus), decodes UID length + manufacturer + cascade,
+		// optional ATS structural decode (T0 + interface bytes +
+		// historicals). Pure offline parser.
+		"nfc_iso14443a_identify",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

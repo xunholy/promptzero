@@ -133,7 +133,12 @@ func TestRegistrySize(t *testing.T) {
 	// Frame Control bitfield + addressing-mode-driven address
 	// walker (Short 16-bit + Extended 64-bit, PAN ID compression)
 	// + Beacon/Data/Ack/MAC-Command frame types + optional FCS).
-	const expected = 292
+	// v0.216.0 added nfc_iso14443a_identify (ISO 14443A anti-
+	// collision tag-type identifier — maps (ATQA, SAK) to
+	// documented tag types per NXP AN10833 + AN10927; decodes
+	// UID length + manufacturer + cascade; optional ATS decode
+	// with T0 + interface bytes + historicals).
+	const expected = 293
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
