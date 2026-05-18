@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.217.0] - 2026-05-19
+
+**Twelfth native-fit gap: generic BLE GAP / EIR advertisement
+walker — the outer (length, AD type, data) record structure
+that wraps every BLE advertisement.**
+
+### Added
+
+- **`ble_gap_decode`** (`Risk.Low`, `GroupHostTools`) — walks
+  a raw BLE GAP / EIR advertisement payload and surfaces
+  per-record fields for the most common AD types:
+
+  - **Flags** (0x01): LE Limited / General Discoverable,
+    BR/EDR Not Supported, Simultaneous LE & BR/EDR.
+  - **Service UUID lists** (0x02-0x07): 16-bit / 32-bit /
+    128-bit Service UUIDs in their Incomplete / Complete
+    forms, decoded from wire-order little-endian to canonical
+    big-endian rendering (128-bit UUIDs assembled into the
+    standard `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` form).
+  - **Local Name** (0x08 Shortened / 0x09 Complete): UTF-8
+    device name.
+  - **TX Power Level** (0x0A): signed int8 dBm.
+  - **Service Data 16-bit UUID** (0x16): UUID + opaque payload
+    + well-known-service name lookup (Eddystone 0xFEAA, Google
+    Fast Pair, Exposure Notification, GATT services like
+    Heart Rate / Battery / etc.).
+  - **Appearance** (0x19): 2-byte device-category code with
+    coarse-category name lookup (Phone, Watch, Heart Rate
+    Sensor, Earbud, etc.).
+  - **Manufacturer Specific Data** (0xFF): 2-byte SIG company
+    ID + opaque vendor payload + company-name lookup (Apple,
+    Microsoft, Google, Samsung, Nordic Semi, Tile, Bose, etc.).
+
+  Recognises ~30 AD types from the Bluetooth SIG Assigned
+  Numbers document; out-of-catalog types pass through with
+  `Name="Unknown"` so operators can flag novel records.
+  Handles the zero-length terminator used to pad fixed-size
+  BLE buffers (31 bytes for legacy adv).
+
+  Operators dispatch the inner payload of recognised records
+  to dedicated decoders — `ble_continuity_decode` for Apple
+  manufacturer data (company 0x004C), `ble_eddystone_decode`
+  for Eddystone service data (UUID 0xFEAA).
+
+  Pure offline parser — no Flipper / BLE adapter required.
+  Accepts `:` / `-` / `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (BLE decode space).
+  Wrap-vs-native: **NATIVE** — the GAP advertisement format
+  is a fully public Bluetooth SIG spec (Core Spec Vol 3
+  Part C §11), the walker is a length-prefixed record loop.
+
+### Internal
+
+- New `internal/ble/gap.go`: record walker, per-AD-type
+  decoders, 128-bit UUID LE-on-wire to BE-canonical conversion.
+- New `internal/ble/ad_types.go`: ~40-entry AD-type name
+  table, ~25-entry Bluetooth SIG company-ID table, ~40-entry
+  well-known GATT service UUID table, ~25-entry Appearance
+  category table.
+- Tests cover Flags + Complete Local Name, 16-bit and 128-bit
+  Service UUID lists with endian rendering, TX Power signed
+  decode, Service Data 16-bit with Eddystone-UUID name lookup,
+  Manufacturer Data with Apple + Microsoft company-ID lookup,
+  Appearance category decode, zero-length terminator handling,
+  truncated record / unknown AD type / empty / invalid-hex
+  edge cases, separator tolerance, AD-type name table spot
+  checks, and an end-to-end full advertisement (Flags + UUIDs
+  + Local Name + TX Power + Apple Manufacturer Data).
+
+Registry size: 293 → 294.
+
 ## [0.216.0] - 2026-05-19
 
 **Eleventh native-fit gap: ISO/IEC 14443-3 Type A anti-collision
