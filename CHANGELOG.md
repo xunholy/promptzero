@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.215.0] - 2026-05-18
+
+**Tenth native-fit gap: IEEE 802.15.4 MAC frame dissector — the
+wire format underneath Zigbee, Thread, OpenThread, and most 2.4
+GHz IoT mesh stacks.**
+
+### Added
+
+- **`ieee802154_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes an IEEE 802.15.4 MAC-layer frame into structured
+  fields:
+
+  - **Frame Control** (16 bits): frame type (Beacon / Data /
+    Ack / MAC Command / Multipurpose / Fragment / Extended),
+    Security Enabled / Frame Pending / Ack Request / PAN ID
+    Compression / Sequence Number Suppression / IE Present
+    flags, destination + source addressing modes (None /
+    Short 16-bit / Extended 64-bit), Frame Version
+    (2003 / 2006 / 2015).
+  - **Sequence Number** (omitted when the 2015-spec suppression
+    flag is set).
+  - **Addressing fields**: destination PAN + address, source
+    PAN + address (with PAN ID Compression: source borrows
+    destination's PAN). Both Short (16-bit) and Extended
+    (64-bit EUI-64) variants with little-endian-on-wire /
+    big-endian-rendered convention for EUIs.
+  - **Auxiliary Security Header**: when Security Enabled, the
+    header bytes are surfaced as hex (1-byte Security Control
+    determines length per KeyIdMode — implicit / 1-byte / 5-byte
+    / 9-byte key identifier).
+  - **MAC Payload**: raw hex.
+  - **FCS**: optionally treats the trailing 2 bytes as the
+    Frame Check Sequence when `include_fcs` is set (CatSniffer
+    / Sniffle include it; Bruce / Marauder outputs often
+    strip it).
+
+  Pure offline parser — operators paste a captured frame from a
+  CatSniffer / KillerBee / Sniffle / any 802.15.4-capable SDR
+  and inspect every MAC-layer field without an antenna attached.
+  Pairs with `bruce_zigbee_scan` (device-side scan). Accepts
+  `:` / `-` / `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (decode space adjacent
+  to Zigbee / Thread). Wrap-vs-native: **NATIVE** — IEEE
+  802.15.4 is a fully public spec, the walker is ~400 lines of
+  bit-twiddling.
+
+### Internal
+
+- New `internal/ieee802154/decoder.go`: FrameType + AddressingMode
+  enums with String() rendering, Frame Control bitfield decoder
+  (all 14 documented flags + sub-fields), addressing-fields
+  walker (per-mode PAN + short / extended address parsing with
+  PAN ID Compression handling), security-header length estimator
+  (KeyIdMode 0-3 + 4-byte frame counter), payload + FCS surfacing.
+  All pure functions; no transport, no hardware.
+- Tests cover Acknowledgment frame (minimum size, no addressing),
+  Data frame with Short + Short addressing under PAN ID
+  Compression, Data frame with Short + Extended addressing
+  (verifies EUI-64 LE→BE rendering), Beacon frame (no destination
+  + Short source), FCS option flag, truncated-frame and
+  truncated-addressing error contracts, reserved address mode
+  (1) rejection, empty / invalid-hex rejection, separator
+  tolerance, every Frame Type + Addressing Mode + Frame Version
+  String() value, and the per-KeyIdMode security-header-length
+  computations.
+
+Registry size: 291 → 292.
+
 ## [0.214.0] - 2026-05-18
 
 **Ninth native-fit gap: LoRaWAN PHYPayload dissector — MAC-layer
