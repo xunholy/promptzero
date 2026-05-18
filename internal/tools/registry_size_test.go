@@ -166,7 +166,11 @@ func TestRegistrySize(t *testing.T) {
 	// FC bitfield + dest endpoint/group + cluster + profile
 	// + source endpoint + APS counter + extended + security
 	// headers; well-known profile name lookup).
-	const expected = 299
+	// v0.223.0 added badusb_script_parse (DuckyScript / BadUSB
+	// syntax parser — line-by-line command + argument validation,
+	// estimated execution time; pairs with badusb_validate
+	// which scans for malicious patterns).
+	const expected = 300
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

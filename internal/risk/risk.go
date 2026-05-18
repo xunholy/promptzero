@@ -187,6 +187,13 @@ var toolLevels = func() map[string]Level {
 		// optional extended + aux security headers. Pure offline parser.
 		// Pairs with ieee802154_decode + zigbee_nwk_decode.
 		"zigbee_aps_decode",
+		// v0.223 (NATIVE-fit gap in the BadUSB decode space):
+		// DuckyScript / BadUSB syntax parser — line-by-line command
+		// + argument validation. Catches unknown commands, invalid
+		// argument types, and surfaces estimated execution time.
+		// Pure offline parser. Pairs with badusb_validate (which
+		// scans for malicious patterns).
+		"badusb_script_parse",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
