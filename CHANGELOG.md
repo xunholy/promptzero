@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.220.0] - 2026-05-19
+
+**Fifteenth native-fit gap: IEEE 802.11 management frame
+dissector — beacon, probe, authentication, association,
+deauthentication frames captured by every WiFi sniffer.**
+
+### Added
+
+- **`wifi_80211_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes an IEEE 802.11 management frame into structured
+  fields:
+
+  - **Frame Control** (16 bits): Protocol Version + Type
+    (Management / Control / Data / Extension) + Subtype with
+    documented name lookup + 8 documented flags (ToDS / FromDS
+    / More Fragments / Retry / Power Mgt / More Data /
+    Protected Frame / Order).
+  - **MAC header**: 2-byte Duration, 6-byte Destination /
+    Source / BSSID addresses (colon-separated MAC rendering),
+    12-bit sequence number + 4-bit fragment number.
+  - **Per-subtype body decode**:
+    - **Beacon (8) / Probe Response (5)**: 8-byte timestamp +
+      2-byte beacon interval + capability info (ESS / IBSS /
+      Privacy / Short Preamble / QoS / etc.) + Information
+      Elements.
+    - **Probe Request (4)**: Information Elements only.
+    - **Authentication (11)**: algorithm + sequence + status
+      code.
+    - **Association Request (0) / Response (1)**: capability +
+      listen interval / status code + IEs.
+    - **Disassociation (10) / Deauthentication (12)**: reason
+      code + documented name lookup (~40 reason codes from
+      IEEE 802.11-2020 §9.4.1.7 Table 9-49).
+  - **Information Element walker**: ~40-entry IE ID table
+    covering the standard IEs. Per-IE field decode for:
+    - **SSID (0)**: UTF-8 name string.
+    - **Supported Rates (1, 50)**: rate values in Mbps with
+      basic-rate flag.
+    - **DS Parameter Set (3)**: channel number.
+    - **Country (7)**: country code + environment byte.
+    - **RSN (48 = WPA2/WPA3)**: version + group cipher OUI +
+      pairwise count + cipher OUIs + AKM count + AKM OUIs.
+    - **Vendor Specific (221)**: OUI + vendor type +
+      well-known-vendor name lookup (Microsoft, Aruba,
+      Broadcom, Atheros, Cisco, Apple, BlackBerry) + Microsoft
+      subtype identification (WPA1 / WPS).
+
+  Non-management frames (Type=1 Control, Type=2 Data) decode
+  the MAC header only. Pure offline parser — operators paste a
+  captured frame from Marauder / hcxdumptool / aircrack-ng /
+  Wireshark and inspect every MAC-layer field without a WiFi
+  adapter attached.
+
+  Pairs with the existing `wifi_eapol_decode` for the
+  key-exchange frames inside the 4-way handshake. Accepts
+  `:` / `-` / `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (WiFi decode space).
+  Wrap-vs-native: **NATIVE** — IEEE 802.11 is a fully public
+  spec, the walker is ~500 lines of bit-twiddling + lookup
+  tables.
+
+### Internal
+
+- New `internal/ieee80211/decoder.go`: FrameType enum, Frame
+  Control bitfield decoder (all 8 documented flags), MAC
+  header walker, per-subtype body decoders (Beacon / Probe /
+  Auth / Assoc / Deauth), Information Element walker with
+  per-IE dispatch table, RSN cipher-suite decoder, Vendor
+  Specific OUI+type decode with Microsoft WPA1/WPS subtype
+  recognition.
+- New `internal/ieee80211/types.go`: ~30-entry subtype name
+  table (covers Management + Control + Data subtypes), ~40-entry
+  Information Element ID table, ~30-entry reason-code table
+  with operator-facing descriptions, ~10-entry well-known
+  Vendor Specific OUI table.
+- Tests cover Beacon frame with SSID + DS Parameter Set IEs,
+  Beacon with full RSN (WPA2/PSK) cipher-suite decode, Probe
+  Request with SSID + Supported Rates, Deauthentication with
+  reason-code name lookup, Authentication frame (algorithm +
+  sequence + status), Frame Control flag-bit coverage (all 8
+  flags set), non-management frames returning header-only
+  decode, Vendor Specific Microsoft WPS subtype recognition,
+  truncated-frame / empty / invalid-hex error contracts,
+  separator tolerance, subtype + reason-code table spot-checks.
+
+Registry size: 296 → 297.
+
 ## [0.219.0] - 2026-05-19
 
 **Fourteenth native-fit gap: JTAG IDCODE / SWD DPIDR chip
