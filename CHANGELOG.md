@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.218.0] - 2026-05-19
+
+**Thirteenth native-fit gap: ISO/IEC 7816-3 ATR (Answer To
+Reset) decoder — the cold-start response every contact smart
+card sends when reset.**
+
+### Added
+
+- **`iso7816_atr_decode`** (`Risk.Low`, `GroupHostTools`) —
+  walks the full ATR structure:
+
+  - **TS** (Initial Character): direct convention (0x3B) vs
+    inverse convention (0x3F).
+  - **T0** (Format Character): Y1 interface-byte presence
+    flags + K historical-byte count.
+  - **Interface-byte chain**: TA / TB / TC / TD bytes for each
+    round, with TDi driving the next round's protocol type
+    (T=0 character-oriented, T=1 block-oriented, T=15 global
+    parameters) + presence flags. TA1 gets dedicated decode:
+    clock conversion factor Fi (high nibble, ISO 7816-3
+    Table 7) + work etu factor Di (low nibble, Table 8) —
+    used to compute the card's bit rate.
+  - **Historical bytes** (K bytes): printable-ASCII preview,
+    Category Indicator name (0x00 / 0x10 / 0x80 compact-TLV /
+    0x8x / 0x9x life-cycle).
+  - **TCK** (Check Character): XOR of all bytes from T0
+    onwards. Required when any non-T=0 protocol is announced;
+    we surface the expected value + a validity flag for
+    debugging mismatches.
+
+  Pure offline parser — operators paste an ATR from any PC/SC
+  reader output (`pcsc_scan`, `gscriptor`, `pcscd` logs) and
+  identify the card type without a card present. Useful for
+  EMV chip cards, SIM cards (3GPP TS 102.221), Java Cards,
+  ePassports, citizen ID cards.
+
+  Pairs with the existing `nfc_emv_decode` (BER-TLV inside
+  EMV READ RECORD responses) and `nfc_iso14443a_identify` (the
+  contactless equivalent of this tool). Accepts `:` / `-` /
+  `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (contact-smart-card
+  decode space). Wrap-vs-native: **NATIVE** — ISO 7816-3 is a
+  fully public spec, the walker is ~300 lines of bit-twiddling.
+
+### Internal
+
+- New `internal/iso7816/atr.go`: Convention enum + walker for
+  TS / T0 / interface-byte rounds (TA / TB / TC / TD with
+  presence-flag driven chain) / historical bytes / TCK
+  XOR-integrity check. TA1-specific Fi/Di decoding with
+  ISO 7816-3 Tables 7 + 8 lookup. Historical-byte Category
+  Indicator name lookup (ISO 7816-4 §8). Pure functions; no
+  transport.
+- Tests cover basic T0-only ATR, invalid-TS rejection, inverse
+  convention recognition, historicals-only ATR with ASCII
+  preview, TA1 Fi/Di decode (0x96 → Fi=9/512, Di=6/32),
+  two-round TD chain announcing T=0 + T=1 with valid TCK,
+  TCK-required-but-missing error, TCK-invalid surfacing,
+  T=0-only no-TCK case, Category Indicator name lookup,
+  real-world EMV card ATR structural decode, too-short input,
+  truncated interface-byte, empty / invalid-hex rejection,
+  separator tolerance, and Fi/Di table spot-checks.
+
+Registry size: 294 → 295.
+
 ## [0.217.0] - 2026-05-19
 
 **Twelfth native-fit gap: generic BLE GAP / EIR advertisement
