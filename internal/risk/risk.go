@@ -147,6 +147,12 @@ var toolLevels = func() map[string]Level {
 		// + appearance-category lookup tables. Pairs with
 		// ble_continuity_decode / ble_eddystone_decode.
 		"ble_gap_decode",
+		// v0.218 (NATIVE-fit gap in the contact-smart-card decode
+		// space): ISO/IEC 7816-3 ATR (Answer To Reset) dissector —
+		// what every PC/SC reader returns when a card is inserted.
+		// TS convention + T0 + TA/TB/TC/TD interface-byte chain +
+		// historical bytes + TCK validation. Pure offline parser.
+		"iso7816_atr_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

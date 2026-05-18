@@ -144,7 +144,11 @@ func TestRegistrySize(t *testing.T) {
 	// TX Power / Service Data / Appearance / Manufacturer Data;
 	// SIG company-ID + well-known-service + appearance-category
 	// lookup tables).
-	const expected = 294
+	// v0.218.0 added iso7816_atr_decode (ISO/IEC 7816-3 ATR
+	// dissector — TS convention + T0 + TA/TB/TC/TD interface-byte
+	// chain + historical bytes + TCK validation; TA1 decode with
+	// Fi/Di clock/baud factors).
+	const expected = 295
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
