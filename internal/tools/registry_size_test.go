@@ -120,7 +120,11 @@ func TestRegistrySize(t *testing.T) {
 	// dissector — the payload format every NDEF-formatted NFC
 	// tag stores; URI prefix table, Text record with language
 	// code, Smart Poster recursion, MIME + External pass-through).
-	const expected = 289
+	// v0.213.0 added wifi_eapol_decode (802.1X EAPOL-Key frame
+	// dissector — WPA/WPA2/WPA3 4-way handshake with header,
+	// key-info bitfield, handshake-message ID M1/M2/M3/M4, KDE
+	// walker for RSN IE / GTK / MAC address).
+	const expected = 290
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

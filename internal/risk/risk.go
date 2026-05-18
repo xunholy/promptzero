@@ -110,6 +110,12 @@ var toolLevels = func() map[string]Level {
 		// record (UTF-8 / UTF-16), Smart Poster recursion, MIME and
 		// External type pass-through. Pure offline parser.
 		"ndef_decode",
+		// v0.213 (NATIVE-fit gap in the WiFi decode space): EAPOL-Key
+		// frame dissector — WPA/WPA2/WPA3 4-way handshake. Header,
+		// key-info bitfield, handshake-message ID (M1/M2/M3/M4),
+		// KDE walker for RSN IE / GTK / MAC address etc. Pure offline
+		// parser. Pairs with marauder_handoff_hashcat.
+		"wifi_eapol_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
