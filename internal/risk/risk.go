@@ -276,6 +276,13 @@ var toolLevels = func() map[string]Level {
 		// automotive coverage backwards to classic-car restoration
 		// workflows.
 		"automotive_j1850_decode",
+		// v0.234 (NATIVE-fit gap — host-side complement to the
+		// existing hardware ibutton_* family): Dallas 1-Wire ROM
+		// ID dissector for iButton dumps. 8-byte ROM layout +
+		// ~45-entry Maxim family-code lookup table + Dallas
+		// CRC-8 validation (poly 0x31 reflected). Pure offline
+		// parser. Pairs with ibutton_read for live captures.
+		"ibutton_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

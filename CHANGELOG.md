@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.234.0] - 2026-05-19
+
+**Twenty-ninth native-fit gap: Dallas 1-Wire ROM ID (iButton)
+host-side dissector — the missing forensic complement to the
+existing hardware-side `ibutton_read` / `ibutton_emulate` /
+`ibutton_write` tools.**
+
+### Added
+
+- **`ibutton_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an 8-byte Dallas 1-Wire ROM ID into a structured view:
+
+  - **64-bit ROM layout** — 8-bit family code + 48-bit serial
+    + 8-bit CRC, surfaced as separate `family_code` /
+    `family_hex` / `serial_hex` / `crc` fields.
+  - **Family-code → device-type lookup** (~45 entries from
+    Maxim AN001 / AN-27 / AN1796): DS1990A / DS2401 / DS2411
+    (canonical "unique ID" iButton, family 0x01), DS18B20
+    temperature sensor (0x28), DS2431 / DS1972 1Kb EEPROM
+    (0x2D), DS2438 smart battery monitor (0x26), DS2408
+    8-channel switch (0x29), DS1820 / DS18S20 (0x10),
+    DS1971 / DS2430A (0x14), DS2433 4Kb EEPROM (0x23),
+    DS1922 Thermochron (0x41), DS2413 dual-channel PIO
+    (0x3A), DS1963S SHA-1 (0x18), DS1996 64Kb (0x0C), and
+    the rest of the published 1-Wire device line.
+  - **Dallas CRC-8 validation** — polynomial 0x31 (reflected
+    as 0x8C), init 0x00, no final XOR, per Maxim AN-27.
+    Surfaces both `crc` (captured byte) and `crc_expected`
+    (computed) for forensic diffing of misread frames.
+  - **Hex input tolerance** — `:`, `-`, `_`, whitespace
+    separators stripped; `0x` prefix tolerated; case-
+    insensitive.
+  - **Length enforcement** — exactly 8 bytes (16 hex chars);
+    Cyfral and Metakom keys have different widths and
+    require separate decoders (planned for future iterations
+    as `ibutton_cyfral_decode` / `ibutton_metakom_decode`).
+
+### Why this matters
+
+The `ibutton_read` / `ibutton_emulate` / `ibutton_write` tools
+all need physical contact with the key. Operators routinely
+end up with a captured ROM ID hex blob (printed by the Flipper
+UI, dumped from a saved `.ibtn` file, or pasted from another
+tool's output) and want to know what kind of device it is and
+whether the bytes are well-formed — without re-touching the
+key. This decoder fills that gap natively: drop in 16 hex
+chars, get back the canonical device name (DS1990A vs DS18B20
+vs DS2431, etc.), the 48-bit serial in display form, and a
+CRC-validity flag. Pure offline parse, no hardware dependency.
+
 ## [0.233.0] - 2026-05-19
 
 **Twenty-eighth native-fit gap: SAE J1850 frame dissector — legacy

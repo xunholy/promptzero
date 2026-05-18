@@ -207,7 +207,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.233.0 added automotive_j1850_decode (SAE J1850 frame
 	// dissector for legacy pre-2008 GM/Ford OBD-II; header +
 	// ECU lookup + OBD-II mode/PID decode + CRC-8 validation).
-	const expected = 310
+	// v0.234.0 added ibutton_decode (host-side Dallas 1-Wire
+	// ROM ID dissector — 8-byte ROM layout + ~45-entry family
+	// code table + Dallas CRC-8 validation; complements the
+	// hardware-side ibutton_read/emulate/write tools).
+	const expected = 311
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
