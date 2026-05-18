@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.231.0] - 2026-05-19
+
+**Twenty-sixth native-fit gap: CoAP (Constrained Application
+Protocol, RFC 7252) packet dissector — the application-layer
+protocol used by constrained IoT devices on 6LoWPAN / Thread /
+OpenThread / Zigbee IP. Pairs with `mqtt_packet_decode` to cover
+both IoT application-layer protocols.**
+
+### Added
+
+- **`coap_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a CoAP packet per RFC 7252:
+
+  - **Fixed header**: 2-bit version + 2-bit type (Confirmable /
+    Non-Confirmable / Acknowledgement / Reset) + 4-bit token
+    length + 8-bit code + 16-bit big-endian message ID.
+  - **Code**: standard CoAP 'c.dd' notation (0.01 GET, 0.02
+    POST, 0.03 PUT, 0.04 DELETE, 0.05 FETCH, 0.06 PATCH, 0.07
+    iPATCH for requests; 2.01 Created / 2.02 Deleted / 2.04
+    Changed / 2.05 Content / 2.31 Continue success codes;
+    4.00 Bad Request through 4.15 Unsupported Content-Format
+    client errors; 5.00 Internal Server Error through 5.05
+    Proxying Not Supported server errors).
+  - **Token** (0-8 bytes): for request-response correlation.
+  - **Options**: delta + length nibble encoding with
+    extensions (nibble 13 = +1 byte extension, 14 = +2 byte
+    extension). Per-option-number name lookup for the
+    documented options:
+    - Uri-Host (3), Uri-Port (7), Uri-Path (11), Uri-Query (15)
+    - Content-Format (12), Accept (17), Max-Age (14), ETag (4)
+    - If-Match (1), If-None-Match (5)
+    - Location-Path (8), Location-Query (20)
+    - Observe (6), Block1 (27), Block2 (23)
+    - Size1 (60), Size2 (28)
+    - Proxy-Uri (35), Proxy-Scheme (39)
+  - **Per-type value interpretation**: string for path/query
+    options, uint for port/format/observe/block options.
+  - **Payload**: surfaced after the 0xFF marker, both as hex
+    and as printable-ASCII string when applicable.
+
+  Pure offline parser — operators paste a captured CoAP packet
+  from Wireshark / any UDP sniffer and inspect every field
+  without re-running the capture. Pairs with the existing IoT
+  decoders (`mqtt_packet_decode` for the IP-side broker
+  protocol, `zigbee_zcl_decode` for the Zigbee application
+  layer); CoAP is the constrained-IoT counterpart that runs on
+  smaller mesh networks.
+
+  Accepts `:` / `-` / `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (IoT application-
+  layer decode space). Wrap-vs-native: **NATIVE** — CoAP is a
+  fully public IETF spec (RFC 7252), the walker is bit-level
+  decoding over a 4-byte fixed header + variable token +
+  option list + optional payload.
+
+### Internal
+
+- New `internal/coap/decoder.go`: Type enum + String()
+  rendering, Header + Option + Packet types, fixed header
+  walker, option list walker with delta + length nibble
+  encoding and the 13/14 extension bytes (extension 13 = +1
+  byte with value+13, extension 14 = +2 byte BE with value
+  +269 per RFC 7252 §3.1), code-text formatter (class.detail
+  rendering like "2.05"), code name catalog (~30 entries),
+  option name catalog (~18 entries), per-option-type value
+  interpretation (string / uint).
+- Tests cover GET request with Uri-Path option ("sensors"),
+  2.05 Content response with token + Content-Format option +
+  JSON payload, 4.04 Not Found response, option extension
+  delta encoding (delta nibble 13 with extension byte → +13
+  computation), multiple Uri-Path options chaining via
+  delta-zero subsequent options, no-options packet, payload
+  without options, truncated-header / invalid-TKL / truncated-
+  token / truncated-option-value error contracts, empty /
+  invalid-hex rejection, all 7 request method names, all 4
+  type names, option name table spot-checks.
+
+Registry size: 307 → 308.
+
 ## [0.230.0] - 2026-05-19
 
 **Twenty-fifth native-fit gap: Mifare DESFire Application
