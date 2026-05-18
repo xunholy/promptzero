@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.227.0] - 2026-05-19
+
+**Twenty-second native-fit gap: DCF77 time-signal dissector —
+60-bit long-wave (77.5 kHz Germany) broadcast that carries the
+current Central European time + date.**
+
+### Added
+
+- **`dcf77_decode`** (`Risk.Low`, `GroupHostTools`) — decodes
+  a 60-bit DCF77 frame per PTB DCF77 specification:
+
+  - **Header** (bits 0-19): start-of-minute marker (must be
+    0), encrypted weather data (bits 1-14, surfaced as binary),
+    antenna-switch announcement, DST-change announcement,
+    CET/CEST timezone bits (10=CEST, 01=CET), leap-second
+    announcement, start-of-time marker (must be 1).
+  - **Time** (bits 20-35): minute (BCD weights 1,2,4,8,10,20,40)
+    + even parity, hour (BCD weights 1,2,4,8,10,20) + even
+    parity.
+  - **Date** (bits 36-58): day of month (BCD 1..31), day of
+    week (ISO 1=Monday through 7=Sunday with English name
+    lookup), month (BCD 1..12), year (BCD 0..99 — caller
+    chooses the century), date parity (even over bits 36-57).
+  - **Formatted outputs**: time as 'HH:MM', date as
+    'YYYY-MM-DD' (using 20YY century assumption that covers
+    DCF77's current operating window 2000-2099).
+  - **Integrity flags**: per-field parity validity + a single
+    `all_parity_valid` convenience flag.
+  - **Timezone offset**: derived from CEST flag — +1 for CET,
+    +2 for CEST.
+
+  Pure offline parser — operators paste a 60-bit DCF77
+  bit-stream captured by their SDR (rtl_sdr → gnuradio
+  DCF77 block) or consumer radio-clock test pin and decode the
+  time without running a fresh capture. Accepts `:` / `-` /
+  `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (Sub-GHz time-signal
+  decode space). Wrap-vs-native: **NATIVE** — the DCF77 frame
+  format is fully public (PTB DCF77 spec, ETSI EN 300 220-1),
+  the walker is bit-level decoding over a 60-bit frame.
+
+### Internal
+
+- New `internal/dcf77/decoder.go`: 60-bit frame walker with
+  BCD-weighted field decoding (1+2+4+8+10+20+40 style rather
+  than positional powers of 2), even-parity checks for minute /
+  hour / date fields, day-of-week name lookup (ISO 1-7
+  Monday-Sunday), CET/CEST timezone interpretation from the
+  bits 17-18 flag.
+- Tests cover happy-path decode of a specific time
+  (14:35 Tuesday 2026-04-22 CEST), CET vs CEST timezone
+  toggling, all 7 day-of-week names, start-of-minute and
+  start-of-time marker validation flags, individual parity
+  invalidation tests (flip bit 28 / 35 / 58 → parity flags
+  surface false), weather-data binary string surfacing,
+  antenna-switch / DST-change / leap-second announcement
+  flag decoding, wrong-length rejection (must be exactly 60
+  bits), non-0/1 character rejection, separator tolerance.
+
+Registry size: 303 → 304.
+
 ## [0.226.0] - 2026-05-19
 
 **Twenty-first native-fit gap: Bluetooth Classic Class of
