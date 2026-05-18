@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.208.0] - 2026-05-18
+
+**Third native-fit gap: Apple Continuity BLE dissector for
+host-side offline decode of NearbyInfo, Handoff, ProximityPairing,
+AirDrop, and the rest of the published action types.**
+
+### Added
+
+- **`ble_continuity_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes an Apple Continuity BLE manufacturer-data payload (Apple
+  SIG 0x004C) into a structured list of action TLVs with named
+  types. For documented types the public-facing fields (status
+  flags, battery nibbles, device-model IDs, action codes) are
+  surfaced by name; unknown types still appear with the type byte
+  + raw value hex so the operator can flag novel signatures.
+  Auto-strips the optional 0x4C00 manufacturer-ID prefix or the
+  full `<len> FF 4C 00 ...` AD-structure wrapper, so operators can
+  paste hex from btmon / Wireshark / NRF Connect without
+  preprocessing. Tolerates `:` / `-` / `_` / whitespace
+  separators.
+
+  Per-type decoders cover the well-documented Continuity
+  action-type catalog: NearbyInfo (0x10), NearbyAction (0x0F),
+  Handoff (0x0C), InstantHotspotTethering (0x0D),
+  ProximityPairing (0x07 — AirPods/Beats battery nibbles +
+  model-name lookup), AirDrop (0x05 — four contact-hash slots),
+  MagicSwitch (0x0B), iBeacon (0x02). HomeKit / HeySiri /
+  AirPlay* / AirPrint / Offline Finding are named but not
+  field-decoded (their bodies are encrypted past the public
+  prefix).
+
+  Source: `docs/catalog/gap-analysis.md §3` rank 8
+  (`ble_continuity_classify`). Wrap-vs-native: **NATIVE** — the
+  format is a reverse-engineered public spec (furiousMAC,
+  AppleJuice, AppleBleee), the walker is ~150 lines, no hardware
+  needed. Pairs with `defense_classify_advertisement` (which
+  decides spam vs legit) — this decodes the legit content.
+
+### Internal
+
+- New `internal/ble/` package: `continuity.go` (TLV walker with
+  prefix auto-strip and operator-tolerant hex intake) and
+  `types.go` (per-action-type field decoders + action-type-name
+  catalog + AirPods/Beats model-ID lookup table). Both files are
+  pure functions; no transport, no hardware.
+- Tests cover happy-path field decode for every well-documented
+  action type, prefix auto-strip (`none` / `manufacturer` /
+  `ad_structure`), separator tolerance, unknown-type pass-through,
+  short-payload warning surface, truncated-TLV / missing-length /
+  invalid-hex error contracts.
+
+Registry size: 283 → 284.
+
 ## [0.207.0] - 2026-05-17
 
 **Second native-fit gap: full EMV BER-TLV walker for offline
