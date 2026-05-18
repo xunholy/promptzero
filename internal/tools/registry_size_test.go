@@ -180,7 +180,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.226.0 added bluetooth_cod_decode (Bluetooth Class of
 	// Device dissector — 24-bit device-type field with major +
 	// minor class lookups and service-class bitmap).
-	const expected = 303
+	// v0.227.0 added dcf77_decode (DCF77 time-signal dissector
+	// — 60-bit long-wave time/date broadcast from Mainflingen
+	// Germany; BCD minute/hour/date + parity validation +
+	// timezone + leap-second decode).
+	const expected = 304
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -221,6 +221,13 @@ var toolLevels = func() map[string]Level {
 		// BLE dissectors (ble_continuity_decode / ble_eddystone_decode
 		// / ble_gap_decode).
 		"bluetooth_cod_decode",
+		// v0.227 (NATIVE-fit gap in the Sub-GHz time-signal decode
+		// space): DCF77 time-signal dissector — 60-bit long-wave
+		// (77.5 kHz Germany) time/date broadcast. Header + BCD
+		// minute/hour/date + parity validation + CET/CEST timezone
+		// + leap-second + DST-change announcement decode.
+		// Pure offline parser.
+		"dcf77_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
