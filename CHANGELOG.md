@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.223.0] - 2026-05-19
+
+**Eighteenth native-fit gap: DuckyScript / BadUSB syntax parser
+— complements the existing severity-pattern scanner with
+structural line-by-line validation.**
+
+### Added
+
+- **`badusb_script_parse`** (`Risk.Low`, `GroupHostTools`) —
+  parses a DuckyScript / BadUSB payload script into a
+  structured line-by-line view with per-line syntactic
+  validation. For each line:
+
+  - Classifies as `blank` / `comment` / `command` / `invalid`.
+  - For commands, identifies the command name and validates
+    arguments:
+    - **DELAY / DEFAULTDELAY**: non-negative integer
+      milliseconds.
+    - **STRING / STRINGLN**: free text (required, non-empty).
+    - **REPEAT**: positive integer.
+    - **Single-key commands** (ENTER / TAB / ESC / BACKSPACE /
+      SPACE / DELETE / F1-F12 / navigation / locks): no args.
+    - **Modifier commands** (GUI / WINDOWS / META / CTRL / ALT
+      / SHIFT / OPTION / COMMAND + compound combos like
+      CTRL-ALT-DEL): standalone or single-key argument.
+    - **REM**: comment line, content preserved.
+    - **Unknown commands**: flagged with an Issue.
+  - Per-line estimated execution time (DELAY value +
+    DEFAULTDELAY accumulated between commands + 1 ms per
+    STRING character).
+  - Total estimated execution time across the whole script.
+
+  Pure offline parser — operators paste a BadUSB script and
+  get line-numbered diagnostics before deployment. Pairs with
+  the existing `badusb_validate` (which scans for malicious
+  patterns like `powershell -enc` / `rm -rf /`) — together
+  they cover the syntactic + semantic validation surface.
+
+  Source: `docs/catalog/gap-analysis.md` (BadUSB decode space).
+  Wrap-vs-native: **NATIVE** — DuckyScript v1 is a public
+  language (Hak5 USB Rubber Ducky reference), the walker is a
+  line-based lexer with a ~50-command dispatch table.
+
+### Internal
+
+- New `internal/badusb/parser.go`: Line + Script types,
+  line-based tokeniser, per-command validator with documented
+  argument-type expectations, single-key + modifier-key
+  catalogs (~50 commands total covering the DuckyScript v1
+  surface), estimated-execution-time calculation that
+  accumulates DEFAULTDELAY between commands and per-keystroke
+  STRING typing.
+- Tests cover basic script (REM + DELAY + GUI + STRING +
+  ENTER), DEFAULTDELAY shifting subsequent pacing, unknown
+  command flagging, bad DELAY argument flagging (non-numeric
+  + negative), empty STRING flagging, modifier+key combos
+  including compound CTRL-ALT-DEL, bad modifier argument
+  flagging, function keys F1-F12 with no args, single-key
+  commands rejecting stray args, REPEAT positive-int
+  validation, REM comment-content preservation, blank-line
+  ignoring, case-insensitive command parsing, CRLF line
+  endings, empty-script handling, STRING typing-time estimate
+  (1 ms/char), STRING intra-arg whitespace preservation.
+
+Registry size: 299 → 300. **Round number milestone — 18
+native-fit decoders shipped since v0.206.0.**
+
 ## [0.222.0] - 2026-05-19
 
 **Seventeenth native-fit gap: Zigbee APS (Application Support
