@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.210.0] - 2026-05-18
+
+**Fifth native-fit gap: Google Eddystone BLE-beacon dissector
+covering the UID / URL / TLM / EID frame types of the open
+service-data spec.**
+
+### Added
+
+- **`ble_eddystone_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a Google Eddystone BLE-beacon service-data payload
+  (service UUID 0xFEAA) into the structured frame type:
+
+  - **UID**: 16-byte beacon ID (10-byte namespace + 6-byte
+    instance) + tx-power.
+  - **URL**: decoded URL with scheme byte (http/https,
+    optionally `www.`-prefixed) + TLD-compression-table
+    expansion (`.com/`, `.org/`, `.com`, etc.). Reserved bytes
+    (0x0E-0x20, 0x7F-0xFF) are surfaced in a `reserved_bytes`
+    list rather than silently dropped or appended.
+  - **TLM**: telemetry — battery mV, temperature (signed
+    8.8 fixed-point), advertisement count, uptime in seconds.
+    eTLM version 0x01 is recognised by name; its encrypted body
+    is surfaced as hex without dissection.
+  - **EID**: 8-byte ephemeral ID + tx-power (resolution
+    requires the per-beacon identity key the operator owns
+    out-of-band).
+
+  Auto-strips the optional 0xAAFE service-UUID prefix or the
+  full `<len> 16 AA FE ...` AD-structure wrapper. Tolerates
+  `:` / `-` / `_` / whitespace separators.
+
+  Pure offline parser — complements `ble_continuity_decode`
+  (Apple manufacturer-data space) by covering the Google
+  service-data space. Together the two cover the two
+  highest-volume open BLE-beacon catalogs.
+
+  Source: `docs/catalog/gap-analysis.md §3` (BLE beacon decode
+  space adjacent to rank 8). Wrap-vs-native: **NATIVE** —
+  Eddystone is a fully open spec at `github.com/google/eddystone`,
+  the walker is a one-byte switch over four frame layouts.
+
+### Internal
+
+- New `internal/ble/eddystone.go`: prefix auto-strip
+  (UUID-only or full AD-structure), per-frame-type dispatcher,
+  per-type decoders for UID / URL / TLM / EID, URL-table
+  TLD-expansion lookup. All pure functions; reuses
+  `hexString` / `stripSeparators` from `continuity.go`.
+- Tests cover happy-path field decode for every well-documented
+  frame type, the canonical `https://www.google.com` worked
+  example from the spec, reserved-byte handling in URL frames,
+  bad-scheme warning, eTLM version recognition, prefix
+  auto-strip (UUID-only and AD-structure), unknown-frame-type
+  pass-through, short-payload warning, separator tolerance,
+  empty / invalid-hex error contracts.
+
+Registry size: 285 → 286.
+
 ## [0.209.0] - 2026-05-18
 
 **Fourth native-fit gap: POCSAG paging-protocol decoder for
