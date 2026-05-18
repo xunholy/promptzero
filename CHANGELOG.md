@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.222.0] - 2026-05-19
+
+**Seventeenth native-fit gap: Zigbee APS (Application Support
+sublayer) frame dissector — completes the IoT mesh stack chain
+(MAC → NWK → APS).**
+
+### Added
+
+- **`zigbee_aps_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a Zigbee APS frame into structured fields:
+
+  - **Frame Control** (8 bits): frame type (Data / APS Command
+    / Acknowledge / Inter-PAN), delivery mode (Unicast /
+    Indirect / Broadcast / Group), ack format / security /
+    ack request / extended header flags.
+  - **Addressing** (Data + Ack frames): 1-byte destination
+    endpoint (or 2-byte group address for Group delivery),
+    2-byte Cluster ID, 2-byte Profile ID with well-known
+    profile name lookup (ZDP / HA / SE / ZLL / Smart Energy /
+    Green Power), 1-byte source endpoint.
+  - **APS Counter**: 1-byte sequence counter (present on all
+    frame types).
+  - **Extended Header** (when flag set): 3-byte fragmentation
+    header surfaced as hex.
+  - **Aux Security Header** (when flag set): sized via the
+    security control byte (same shape as NWK security header),
+    surfaced as hex.
+  - **APS Payload**: surfaced as hex; ZCL dissection deferred
+    to follow-on Specs.
+
+  Pure offline parser — operators chain `ieee802154_decode` →
+  `zigbee_nwk_decode` → `zigbee_aps_decode` for full Zigbee
+  MAC + NWK + APS frame analysis. Accepts `:` / `-` / `_` /
+  whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (2.4 GHz IoT decode
+  space, completes the chain started in v0.215 / v0.221).
+  Wrap-vs-native: **NATIVE** — Zigbee APS is a fully public
+  spec, the walker is bit-level decoding over a ~10-byte
+  header + variable payload.
+
+### Internal
+
+- New `internal/zigbee/aps.go`: APSFrameType + DeliveryMode
+  enums with String() rendering, APS Frame Control byte
+  decoder (frame type / delivery mode / 4 flag bits),
+  per-frame-type addressing walker (group address vs dest
+  endpoint based on delivery mode + frame type), APS counter
+  + optional extended header + optional aux security header
+  walking, well-known Zigbee profile name lookup (~15 entries
+  covering ZDP / HA / SE / ZLL / Industrial / Telecom / Health
+  Care / Light Link / Green Power profiles).
+- New `internal/zigbee/aps.go` provides a local `hexDecode` +
+  `hexNibble` to keep nwk.go and aps.go independently testable
+  without import-time churn.
+- Tests cover Data Unicast happy path (HA profile / On/Off
+  cluster), Group delivery (group address replaces dest
+  endpoint), APS Command frame (no addressing — skip to
+  counter + payload), Acknowledge frame with addressing,
+  Security flag with aux header sizing, Extended Header
+  surfacing, ZDP profile (0x0000) name lookup, unknown
+  profile pass-through, truncated-dest-endpoint /
+  truncated-cluster-ID / truncated-counter error contracts,
+  empty / invalid-hex rejection, separator tolerance, APS
+  frame type + delivery mode + profile name table spot-checks.
+
+Registry size: 298 → 299.
+
 ## [0.221.0] - 2026-05-19
 
 **Sixteenth native-fit gap: Zigbee Network Layer (NWK) frame
