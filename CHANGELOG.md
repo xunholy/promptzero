@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.212.0] - 2026-05-18
+
+**Seventh native-fit gap: NDEF (NFC Data Exchange Format) message
+dissector — the payload format every NDEF-formatted NFC tag
+stores.**
+
+### Added
+
+- **`ndef_decode`** (`Risk.Low`, `GroupHostTools`) — walks an
+  NDEF message into structured records. Per-record decode:
+  - Header flags (MB / ME / CF / SR / IL) + TNF.
+  - Type / ID / payload fields (short-record SR=1 with 1-byte
+    payload length AND long-record SR=0 with 4-byte big-endian
+    payload length; optional ID-length field when IL=1).
+  - Well-known type field decode:
+    - **URI** record (`U`): expands the 36-entry NFC Forum
+      prefix table (`http://www.`, `tel:`, `mailto:`, `urn:`,
+      `urn:nfc:`, etc.) and surfaces the full URI string.
+    - **Text** record (`T`): decodes the status byte
+      (UTF-8 vs UTF-16 BE/LE with BOM detection + language-code
+      length), surfaces the ISO 639-1/2 language code and the
+      decoded text.
+    - **Smart Poster** (`Sp`): recursively decodes the nested
+      NDEF message so operators see the URI / Text / Action
+      records inside.
+  - MIME-type records (TNF=2): MIME type + payload size.
+  - Absolute URI records (TNF=3): URI string.
+  - External-type records (TNF=4): vendor:name string + payload
+    size.
+  - Empty / Unknown / Unchanged records pass through with raw
+    hex.
+
+  Pure offline parser — operators paste an NFC dump (or the
+  NDEF bytes pulled out of any tag-format wrapper) and decode
+  every record without the tag present. Accepts `:` / `-` / `_`
+  / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (NFC decode space).
+  Wrap-vs-native: **NATIVE** — NDEF is a fully open NFC Forum
+  spec, the walker is a recursive descent with a small
+  well-known-type table.
+
+### Internal
+
+- New `internal/ndef/` package: `parser.go` — TNF enum + record
+  walker + per-well-known-type decoders (URI prefix table
+  expansion, Text record with UTF-16 BOM handling, Smart Poster
+  with recursive nested-message decode). All pure functions; no
+  transport, no hardware.
+- Tests cover the canonical NFC Forum "https://example.com"
+  URI worked example, every documented URI prefix code (7 spot
+  checks from the 36-entry table), out-of-range prefix warning,
+  Text record (UTF-8 + UTF-16), multi-record message with
+  MB/ME flag handling, MIME-type record, long-record (SR=0,
+  4-byte payload length) path, IL=1 ID-length path, Smart
+  Poster recursive nesting, truncated-payload error contract,
+  empty / invalid-hex rejection, MB-missing warning, separator
+  tolerance, and every TNF enum's String() value.
+
+Registry size: 288 → 289.
+
 ## [0.211.0] - 2026-05-18
 
 **Sixth native-fit gap: Mifare Classic block + dump dissector
