@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.232.0] - 2026-05-19
+
+**Twenty-seventh native-fit gap: Bluetooth SIG GATT UUID
+enumerator — comprehensive lookup catalog operators need every
+time they enumerate a BLE GATT database.**
+
+### Added
+
+- **`bluetooth_gatt_uuid_lookup`** (`Risk.Low`,
+  `GroupHostTools`) — resolves a Bluetooth SIG-assigned GATT
+  UUID to its canonical name + category (Service /
+  Characteristic / Descriptor):
+
+  - **Input formats**: 16-bit short ('180F'), 128-bit
+    canonical ('0000180F-0000-1000-8000-00805F9B34FB'),
+    128-bit unhyphenated, with optional `0x` prefix.
+  - **128-bit base-pattern detection**: matches the SIG base
+    UUID `0000XXXX-0000-1000-8000-00805F9B34FB` to extract
+    the short form. Vendor-allocated random 128-bit UUIDs
+    (e.g. Nordic UART Service, manufacturer-specific app
+    services) are flagged as `vendor_specific` with no name
+    lookup.
+  - **Catalog coverage**:
+    - **~75 Services**: full 0x18xx range (Generic Access,
+      Generic Attribute, Device Information, Heart Rate,
+      Battery, HID, Environmental Sensing, full BLE Audio
+      stack 0x1843-0x1859, Mesh) + proprietary 0xFEXX
+      services (Eddystone, Google Fast Pair, COVID-19
+      Exposure Notification, Apple AirTag, Tile, Apple
+      iBeacon).
+    - **~120 Characteristics**: Device Name, Battery Level,
+      Heart Rate Measurement, Temperature, Humidity,
+      Manufacturer Name, HID Report, and the full
+      Environmental Sensing + Health + Fitness sets.
+    - **~16 Descriptors**: CCCD (0x2902 — the most common,
+      for notification subscriptions), Characteristic User
+      Description (0x2901), Server Characteristic
+      Configuration (0x2903), Characteristic Presentation
+      Format (0x2904), Valid Range (0x2906), Report
+      Reference (0x2908), Environmental Sensing
+      Configuration (0x290B).
+
+  Pure offline parser — operators enumerating a BLE GATT
+  database (with bluetoothctl / nRF Connect / btmon / Flipper
+  BT scan) paste each UUID they see and get the canonical
+  name + category back without re-running the enumeration.
+  Pairs with the existing BLE decoders (`ble_gap_decode` for
+  advertisement records, `ble_continuity_decode` /
+  `ble_eddystone_decode` for specific service payloads,
+  `bluetooth_cod_decode` for the BT Classic side).
+
+  Accepts `0x` prefix and `:` / `-` / `_` / whitespace
+  separators.
+
+  Source: `docs/catalog/gap-analysis.md` (BLE decode space).
+  Wrap-vs-native: **NATIVE** — Bluetooth Assigned Numbers
+  (GATT Services / Characteristics / Descriptors documents)
+  are fully public, the walker is a lookup + 128-bit
+  base-pattern detector.
+
+### Internal
+
+- New `internal/btuuid/lookup.go`: Result struct + Lookup
+  entry point with 16-bit and 128-bit input handling,
+  base-pattern detector, short→canonical conversion.
+- New `internal/btuuid/services.go`: ~75-entry services
+  catalog.
+- New `internal/btuuid/characteristics.go`: ~120-entry
+  characteristics catalog.
+- New `internal/btuuid/descriptors.go`: ~16-entry descriptors
+  catalog.
+- Tests cover Battery service (0x180F), Device Name
+  characteristic (0x2A00), CCCD descriptor (0x2902),
+  Eddystone 0xFEXX service, 128-bit SIG base-pattern UUID
+  → short-form extraction (canonical + unhyphenated forms),
+  vendor-allocated 128-bit UUID flagged correctly (Nordic
+  UART Service example), unknown 16-bit UUID structural
+  decode without name, 0x prefix + case-insensitive +
+  separator tolerance, empty / wrong-length / invalid-hex
+  rejection, spot-checks for 16 well-known UUIDs across all
+  3 categories.
+
+Registry size: 308 → 309.
+
 ## [0.231.0] - 2026-05-19
 
 **Twenty-sixth native-fit gap: CoAP (Constrained Application
