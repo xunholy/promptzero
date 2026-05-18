@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.224.0] - 2026-05-19
+
+**Nineteenth native-fit gap: NRF24L01 Enhanced Shockburst (ESB)
+packet dissector — pairs with the existing nrf24_* tools by
+giving operators a host-side parser for captured Mousejack
+packets.**
+
+### Added
+
+- **`nrf24_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes an NRF24L01 ESB packet (the wire format used by
+  Nordic NRF24 radios + Logitech Unifying wireless
+  keyboards/mice, Mousejack's target surface):
+
+  - **Address** (3 / 4 / 5 bytes, configurable): the RF
+    address captured from the packet head.
+  - **Packet Control Field**: 6-bit payload length + 2-bit
+    Packet ID (PID, wraps mod 4) + NO_ACK flag.
+  - **Payload** (0-32 bytes): surfaced as hex.
+  - **CRC** (1 or 2 bytes, configurable): surfaced as hex.
+  - **Logitech Unifying / Mousejack recognition**: when the
+    payload starts with a device-index byte + a known Logitech
+    report-type byte, the decoder surfaces a structured
+    Logitech view with device index + report type + body.
+    Recognised report types (per Bastille's Mousejack
+    research):
+    - 0x40 — HID Boot Keyboard report
+    - 0x4D / 0x4E — Mouse movement (current / deprecated)
+    - 0x4F — Encrypted keyboard report
+    - 0x50 / 0x51 — HID++ short / long messages
+    - 0xC1 — Set / get keepalive
+    - 0xC2 — Plaintext keyboard report (legacy)
+    - 0xD3 / 0xDF — Pairing request/response / notification
+
+  Pure offline parser — operators paste a packet body captured
+  by their Crazyradio / nRF Sniffer / Marauder NRF24 module
+  and inspect every field without re-running the capture.
+  Pairs with the existing `nrf24_sniff_start` /
+  `nrf24_list_targets` / `nrf24_mousejack_start` /
+  `nrf24_payload_build` Specs. Accepts `:` / `-` / `_` /
+  whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (NRF24 / Mousejack
+  decode space). Wrap-vs-native: **NATIVE** — NRF24L01 ESB
+  is a public Nordic data-sheet spec, Logitech Unifying is a
+  reverse-engineered public format (Bastille's Mousejack
+  research).
+
+### Internal
+
+- New `internal/nrf24/packet.go`: PacketControlField +
+  Packet + LogitechReport types, DecodeOptions for
+  AddressLength + CRCLength configuration, byte-aligned ESB
+  packet walker (address + PCF byte + payload + CRC), per-type
+  payload classifier with the Logitech Unifying report-type
+  catalog (~10 entries).
+- Tests cover minimal 5-byte-address packet, PCF bitfield
+  edge cases (PayloadLength + PID extraction), 3-byte short
+  address path, 1-byte CRC option, Logitech HID Boot
+  Keyboard report recognition (0x40), Logitech Encrypted
+  Keyboard (0x4F), Logitech Mouse Movement (0x4D), unknown
+  report type pass-through, truncated payload error,
+  invalid address-length / CRC-length rejection, buffer-too-
+  short error, empty / invalid-hex rejection, separator
+  tolerance, Logitech report-type name table spot-check.
+
+Registry size: 300 → 301.
+
 ## [0.223.0] - 2026-05-19
 
 **Eighteenth native-fit gap: DuckyScript / BadUSB syntax parser
