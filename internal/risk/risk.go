@@ -194,6 +194,14 @@ var toolLevels = func() map[string]Level {
 		// Pure offline parser. Pairs with badusb_validate (which
 		// scans for malicious patterns).
 		"badusb_script_parse",
+		// v0.224 (NATIVE-fit gap in the NRF24 / Mousejack decode
+		// space): NRF24L01 Enhanced Shockburst (ESB) packet
+		// dissector — address + PCF (PayloadLen + PID + NO_ACK) +
+		// payload + CRC walk. Logitech Unifying / Mousejack
+		// report-type recognition (HID Boot Keyboard / Encrypted
+		// Keyboard / Mouse / HID++ / Pairing). Pure offline parser.
+		// Pairs with nrf24_sniff_start / nrf24_mousejack_start.
+		"nrf24_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

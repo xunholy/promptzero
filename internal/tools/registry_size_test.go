@@ -170,7 +170,10 @@ func TestRegistrySize(t *testing.T) {
 	// syntax parser — line-by-line command + argument validation,
 	// estimated execution time; pairs with badusb_validate
 	// which scans for malicious patterns).
-	const expected = 300
+	// v0.224.0 added nrf24_packet_decode (NRF24L01 ESB packet
+	// dissector — address + PCF + payload + CRC walk with
+	// Logitech Unifying / Mousejack report-type recognition).
+	const expected = 301
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
