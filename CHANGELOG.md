@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.211.0] - 2026-05-18
+
+**Sixth native-fit gap: Mifare Classic block + dump dissector
+covering manufacturer, sector trailer (with NXP AN10833 access-bit
+decode), value block, and plain data block kinds.**
+
+### Added
+
+- **`mifare_classic_decode_block`** (`Risk.Low`,
+  `GroupHostTools`) — decode a single 16-byte Mifare Classic
+  block into its structured view. Block-kind classification:
+
+  - **manufacturer** (sector 0, block 0): NUID (4 bytes) + BCC
+    integrity check + SAK + ATQA + IC manufacturer name lookup
+    (NXP, Infineon, STMicro, Samsung, Toshiba, etc.) +
+    8-byte manufacturer data.
+  - **sector trailer** (last block of each sector): Key A +
+    access bytes + GPB + Key B, plus full **per-block access
+    permission expansion** per NXP AN10833 Table 6 (data
+    blocks: read / write / increment / decrement allowed for
+    Key A only, Key B only, both, or neither) and Table 7
+    (trailer: Key A write / access-bits read / access-bits
+    write / Key B read / Key B write). Inversion-bit integrity
+    check exposed as `access_bits_valid`.
+  - **value block** (recognised structurally): signed int32
+    value with complement integrity check across bytes 0-3 / 4-7
+    / 8-11, plus address byte with complement check across bytes
+    12-15.
+  - **data block** (catch-all): raw hex + ASCII preview.
+
+  Operators provide the block index when known — that's what
+  selects manufacturer / trailer classification. With index < 0
+  the classifier still works structurally (value vs data); it
+  just can't identify the manufacturer block.
+
+- **`mifare_classic_decode_dump`** (`Risk.Low`,
+  `GroupHostTools`) — decode a full 1K (1024 bytes / 64 blocks)
+  or 4K (4096 bytes / 256 blocks) Mifare Classic dump in one
+  pass. Each block gets the same per-kind decoder as the
+  single-block Spec; the index field drives the trailer-and-
+  manufacturer classification.
+
+  Both Specs are pure offline parsers — no Flipper required.
+  Pair with `internal/crypto1` (mfoc / mfcuk / mfkey32 recover
+  keys; these decode the data once you have it). Accept `:` /
+  `-` / `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (NFC decode space
+  adjacent to rank 23 `nfc_mfp_sl1_read` — the Classic baseline
+  operators see most often). Wrap-vs-native: **NATIVE** — block
+  layouts are public NXP application notes (AN10833, AN10834,
+  AN10927), the walker is ~400 lines of bit-twiddling.
+
+### Internal
+
+- New `internal/mifare/` package: `block.go` (block-kind
+  classifier, manufacturer / trailer / value / data decoders,
+  dump walker, IC-manufacturer-code lookup table) and `access.go`
+  (the non-trivial NXP AN10833 access-bit unpacker — three bits
+  per block (C1/C2/C3) packed across three bytes with inversions,
+  plus the per-permission lookup tables for data and trailer
+  blocks). All pure functions; no transport, no hardware.
+- Tests cover the canonical default-transport trailer (Key A/B =
+  FF…, access bytes FF 07 80) with full access-bit expansion,
+  manufacturer block with BCC integrity (valid + corrupted
+  cases), value block (positive + negative int32) with complement
+  integrity, data block with ASCII preview, no-index structural
+  classification, dump walker across multiple sectors with
+  correct manufacturer / trailer / sector-index assignment, dump
+  length validation, access-bits integrity-check edge cases, and
+  the 1K (4-block) + 4K large-sector (16-block) trailer-index
+  layouts.
+
+Registry size: 286 → 288.
+
 ## [0.210.0] - 2026-05-18
 
 **Fifth native-fit gap: Google Eddystone BLE-beacon dissector
