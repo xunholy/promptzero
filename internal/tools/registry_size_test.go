@@ -184,7 +184,11 @@ func TestRegistrySize(t *testing.T) {
 	// — 60-bit long-wave time/date broadcast from Mainflingen
 	// Germany; BCD minute/hour/date + parity validation +
 	// timezone + leap-second decode).
-	const expected = 304
+	// v0.228.0 added mqtt_packet_decode (MQTT v3.1.1 control
+	// packet dissector — IoT application-layer protocol with
+	// CONNECT/CONNACK/PUBLISH/SUBSCRIBE/SUBACK/PUB*/UNSUB*/
+	// PINGREQ/DISCONNECT decoding).
+	const expected = 305
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

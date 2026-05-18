@@ -228,6 +228,14 @@ var toolLevels = func() map[string]Level {
 		// + leap-second + DST-change announcement decode.
 		// Pure offline parser.
 		"dcf77_decode",
+		// v0.228 (NATIVE-fit gap in the IoT application-layer
+		// decode space): MQTT v3.1.1 control packet dissector —
+		// the IP-side application-layer protocol most IoT devices
+		// speak to their brokers. Fixed header + per-packet-type
+		// variable header + payload extraction. CONNECT / CONNACK
+		// / PUBLISH / SUBSCRIBE / SUBACK / PINGREQ / DISCONNECT
+		// + the PUB* / UNSUB* helpers. Pure offline parser.
+		"mqtt_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
