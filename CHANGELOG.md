@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.221.0] - 2026-05-19
+
+**Sixteenth native-fit gap: Zigbee Network Layer (NWK) frame
+dissector — sits on top of the IEEE 802.15.4 MAC decoder for
+full Zigbee frame analysis.**
+
+### Added
+
+- **`zigbee_nwk_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a Zigbee NWK frame into structured fields:
+
+  - **Frame Control** (16 bits): frame type (Data / NWK
+    Command / Inter-PAN), protocol version (Zigbee Pro R22 =
+    2), discover route (Suppress / Enable), and 5 presence
+    flags (Multicast / Security / Source Route / Destination
+    IEEE / Source IEEE).
+  - **Addressing**: 16-bit destination + source NWK short
+    addresses with broadcast-class identification
+    (0xFFFF = all nodes, 0xFFFD = all non-sleepy, 0xFFFC = all
+    routers + coordinator, 0xFFFB = low-power routers), radius
+    (hop limit), sequence number, optional 64-bit destination
+    + source IEEE addresses (little-endian on wire, rendered
+    big-endian to match device-label form).
+  - **Multicast control byte** (when multicast flag set):
+    mode (Non-member / Member) + non-member radius + max
+    non-member radius.
+  - **Source route subframe** (when source-route flag set):
+    relay count + relay index + relay address list (surfaced
+    as hex).
+  - **Auxiliary security header** (when security flag set):
+    walks the 1-byte security control to size the header per
+    KeyID + extended-nonce flag; surfaces the full header as
+    hex (decryption needs the network key out-of-band).
+  - **NWK payload**: surfaced as hex; APS / ZCL dissection
+    deferred to follow-on Specs.
+
+  Pure offline parser — operators decode the IEEE 802.15.4
+  MAC frame with `ieee802154_decode`, then dispatch the MAC
+  payload here for NWK-layer fields. Together the two Specs
+  cover the full Zigbee MAC + NWK stack. Accepts `:` / `-` /
+  `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (2.4 GHz IoT decode
+  space, adjacent to `ieee802154_decode`). Wrap-vs-native:
+  **NATIVE** — Zigbee NWK is a fully public Zigbee Alliance
+  spec (Zigbee Pro 2015 R21+), the walker is ~400 lines of
+  bit-twiddling.
+
+### Internal
+
+- New `internal/zigbee/nwk.go`: NWKFrameType + DiscoverRoute
+  enums with String() rendering, Frame Control bitfield
+  decoder (all 5 presence flags + protocol version + discover
+  route nibble), standard-header walker (16-bit + 64-bit
+  addresses with LE-on-wire / BE-rendered convention),
+  multicast control byte decoder, source-route subframe length
+  calculation (relay count × 2 bytes per relay address),
+  security header length estimator (KeyID + extended-nonce
+  flag), broadcast-class name lookup, payload pass-through.
+- Tests cover minimal Data frame, broadcast-class lookup
+  (0xFFFD = all non-sleepy), Destination IEEE flag with LE→BE
+  rendering, Multicast Control byte (mode + radius nibbles),
+  Security flag with extended-nonce + network-key header sizing,
+  NWK Command frame type, Discover Route Enable flag, Source
+  Route Subframe with relay-count walking, truncated-frame /
+  truncated-IEEE / empty / invalid-hex error contracts,
+  separator tolerance, NWK frame type + broadcast class +
+  security-header-length table spot-checks.
+
+Registry size: 297 → 298.
+
 ## [0.220.0] - 2026-05-19
 
 **Fifteenth native-fit gap: IEEE 802.11 management frame
