@@ -161,7 +161,12 @@ func TestRegistrySize(t *testing.T) {
 	// frame dissector — sits on top of IEEE 802.15.4 MAC;
 	// FC bitfield + 16-bit + 64-bit addressing + multicast +
 	// source route + aux security header walking).
-	const expected = 298
+	// v0.222.0 added zigbee_aps_decode (Zigbee APS Application
+	// Support sublayer dissector — sits on top of Zigbee NWK;
+	// FC bitfield + dest endpoint/group + cluster + profile
+	// + source endpoint + APS counter + extended + security
+	// headers; well-known profile name lookup).
+	const expected = 299
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
