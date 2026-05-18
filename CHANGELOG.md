@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.226.0] - 2026-05-19
+
+**Twenty-first native-fit gap: Bluetooth Classic Class of
+Device (CoD) dissector — the 24-bit device-type identifier
+every BT Classic device advertises during inquiry.**
+
+### Added
+
+- **`bluetooth_cod_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a 24-bit Bluetooth Class of Device value per
+  Bluetooth Assigned Numbers Baseband §1.2:
+
+  - **Major Device Class** (bits 12..8): Computer / Phone /
+    LAN / Audio-Video / Peripheral / Imaging / Wearable / Toy /
+    Health / Uncategorized / Miscellaneous.
+  - **Minor Device Class** (bits 7..2): sub-category specific
+    to the major class. Per-major lookup tables:
+    - **Computer**: Desktop / Server / Laptop / Handheld PC /
+      Palm-sized / Wearable / Tablet.
+    - **Phone**: Cellular / Cordless / Smart / Wired Modem /
+      ISDN.
+    - **Audio/Video**: Wearable Headset / Hands-free /
+      Microphone / Loudspeaker / Headphones / Portable Audio /
+      Car Audio / Set-top Box / HiFi / VCR / Video Camera /
+      Camcorder / Video Monitor / Video Conferencing.
+    - **Peripheral**: keyboard + pointing-device combo flags +
+      device type (joystick / gamepad / remote / tablet / etc.).
+    - **Imaging**: display / camera / scanner / printer flag
+      combination.
+    - **Wearable**: Wristwatch / Pager / Jacket / Helmet /
+      Glasses.
+    - **Toy**: Robot / Vehicle / Doll / Controller / Game.
+    - **Health**: Blood Pressure / Thermometer / Scale /
+      Glucose / Pulse Oximeter / Heart Rate / Step Counter /
+      etc.
+  - **Service Classes** (bits 23..13): bitmap of advertised
+    capabilities — Limited Discoverable, LE Audio,
+    Positioning, Networking, Rendering, Capturing, Object
+    Transfer, Audio, Telephony, Information.
+  - **Format Type** (bits 1..0): always 0 in the current
+    spec; surfaced for callers to flag non-standard values.
+
+  Pure offline parser — operators paste a CoD value from any
+  BT inquiry tool (hciconfig / bluetoothctl / btmon / nRF
+  Connect / Marauder BT scan) and identify the device class
+  without a re-scan. Pairs with the BLE dissectors
+  (`ble_continuity_decode` / `ble_eddystone_decode` /
+  `ble_gap_decode`); this is the BT Classic counterpart.
+
+  Accepts `0x` prefix and `:` / `-` / `_` / whitespace
+  separators.
+
+  Source: `docs/catalog/gap-analysis.md` (Bluetooth decode
+  space). Wrap-vs-native: **NATIVE** — Bluetooth Assigned
+  Numbers Baseband §1.2 is fully public, the walker is a
+  24-bit bit-shift + per-major minor-class lookup tables.
+
+### Internal
+
+- New `internal/btclassic/cod.go`: CoD struct + Decode +
+  DecodeUint24 entry points, ~12-entry Major Class lookup
+  table, per-major Minor Class lookup functions (Computer /
+  Phone / Audio-Video / Peripheral / Imaging / Wearable /
+  Toy / Health) with the documented identifier values per
+  Bluetooth Assigned Numbers Baseband §1.2 Table 7,
+  Service Class bitmap decoder with all 10 documented bits.
+- Tests cover Smart Phone (Major=Phone + minor=3 + Telephony
+  + Object Transfer service classes), Laptop (Major=Computer
+  + minor=3 + Networking service class), Headphones
+  (Major=Audio/Video + minor=6 + Audio + Rendering service
+  classes), Peripheral keyboard+pointing combo, Health
+  Thermometer (Major=9 + minor=2), Uncategorized Major
+  (0x1F), 0x prefix + separator tolerance, empty / wrong
+  length / invalid hex rejection, reserved Format Type
+  surfaced, Major Class name table spot-checks,
+  all-service-classes-set bitmap decoding.
+
+Registry size: 302 → 303.
+
 ## [0.225.0] - 2026-05-19
 
 **Twentieth native-fit gap: Zigbee Cluster Library (ZCL) frame
