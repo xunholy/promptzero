@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.230.0] - 2026-05-19
+
+**Twenty-fifth native-fit gap: Mifare DESFire Application
+Identifier (AID) dissector — the 3-byte values returned by the
+DESFire GetApplicationIDs command.**
+
+### Added
+
+- **`nfc_desfire_aid_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a 3-byte DESFire AID per NXP DESFire reference + ISO
+  7816-5 + NXP AN10833 (MAD format):
+
+  - **Special-value detection**: empty (0x000000 — card master,
+    no application), MIFARE Classic emulation (0xF40000 —
+    DESFire pretending to be a Classic), wildcard (0xFFFFFF).
+  - **MAD-formatted AID detection** (high nibble 0xF): the
+    MIFARE Application Directory format. Splits into 12-bit
+    function code (category) + 12-bit vendor sub-ID.
+  - **Function code category** lookup for MAD AIDs:
+    - 0xF40: MIFARE Classic emulation
+    - 0xF48: Transit applications
+    - 0xF44: Banking
+    - 0xFA4: Retail / loyalty
+    - 0xFA0: Loyalty cards
+    - 0xFCA: Access control
+    - 0xFC4: Vending
+    - 0xFCC: Parking
+    - 0xFD2: Time recording / attendance
+    - 0xFE0: Membership
+    - 0xFE4: Health
+    - 0xFE8: Education
+    - 0xF80-0xF8F: Vendor-specific (NXP-allocated)
+    - 0xFFE-0xFFF: Reserved by ISO/NXP
+  - **Well-known AID name** catalog: full-AID matches for
+    OV-chipkaart (Dutch transit), HID iCLASS-SE NDEF, Adam
+    Opel Card loyalty, MIFARE DESFire MAD3 entry, MIFARE
+    Classic emulation, ePassport entries.
+
+  Pure offline parser — operators paste a DESFire AID from a
+  Flipper / Proxmark / pcsc_scan 'list applications' output
+  and identify the application without re-presenting the card.
+  Pairs with the existing NFC decoders
+  (`nfc_iso14443a_identify` for card-type identification,
+  `mifare_classic_decode` for the Classic emulation path,
+  `nfc_emv_decode` for EMV BER-TLV inside DESFire
+  applications).
+
+  Accepts `0x` prefix and `:` / `-` / `_` / whitespace
+  separators.
+
+  Source: `docs/catalog/gap-analysis.md` (DESFire decode
+  space). Wrap-vs-native: **NATIVE** — DESFire AID format is
+  a public NXP spec, the walker is a 3-byte lookup with a
+  per-function-code category table.
+
+### Internal
+
+- New `internal/desfire/aid.go`: AID struct + Decode +
+  DecodeUint24 entry points, ~14-entry MAD function code
+  category table, ~11-entry well-known AID catalog.
+- Tests cover empty AID (0x000000), MIFARE Classic emulation
+  (0xF40000), wildcard (0xFFFFFF), transit MAD (0xF48484)
+  with function code + vendor sub-ID extraction, banking
+  MAD (0xF44400), retail MAD (0xFA4800 = Adam Opel Card),
+  OV-chipkaart (0x9011F2 — non-MAD), HID iCLASS-SE (0x484952),
+  unknown AID structural decode, non-MAD high nibbles 0-0xE,
+  '0x' prefix + separator tolerance, empty / wrong-length /
+  invalid-hex rejection, MAD category table spot-checks,
+  vendor-sub-ID extraction.
+
+Registry size: 306 → 307.
+
 ## [0.229.0] - 2026-05-19
 
 **Twenty-fourth native-fit gap: Zigbee Cluster Library
