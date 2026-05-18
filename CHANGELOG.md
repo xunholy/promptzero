@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.233.0] - 2026-05-19
+
+**Twenty-eighth native-fit gap: SAE J1850 frame dissector — legacy
+OBD-II automotive analysis for pre-2008 GM/Ford vehicles, fully
+host-side with no hardware dependency.**
+
+### Added
+
+- **`automotive_j1850_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses SAE J1850 frames (PWM/VPW) into a structured view:
+
+  - **3-byte consolidated header** breakdown — priority (3 bits),
+    header type (1 bit), message ID (4 bits), plus target / source
+    ECU addresses.
+  - **ECU name lookup** — ~12 well-known module addresses (ECM,
+    TCM, BCM, ABS, HVAC, instrument cluster, diagnostic tool,
+    broadcast).
+  - **OBD-II overlay** — when payload looks like SAE J1979/OBD-II
+    (Mode ∈ 0x01..0x0A or response Mode ∈ 0x41..0x4A), surfaces:
+    - **Service ID / Mode** name (Show current data, Stored
+      DTCs, Freeze frame, O2 sensor, Vehicle info, etc.) with
+      request/response flag (response = request + 0x40).
+    - **Mode 1 PID lookup** — ~30 well-known PIDs (Engine Load,
+      Coolant Temp, Fuel Trim, MAP, Engine RPM, Vehicle Speed,
+      Timing Advance, IAT, MAF, Throttle Position, Fuel Tank
+      Level, etc.).
+    - Payload bytes after Mode + PID exposed as hex.
+  - **CRC-8 validation** per SAE J1850 §5.4 (poly 0x1D,
+    init 0xFF, final XOR 0xFF) with `crc_valid` flag and
+    `crc_expected` for forensic diffing.
+  - **Hex input tolerance** — `:`, `-`, `_`, whitespace
+    separators stripped; `0x` prefix tolerated.
+  - **Frame length bounds** — 4..11 bytes per SAE J1850 single
+    frame (multi-frame HFM mode rejected explicitly).
+
+  Tool fields: `priority`, `header_type`, `message_id`,
+  `target_hex`/`target_name`, `source_hex`/`source_name`,
+  `data_hex`, `crc`/`crc_expected`/`crc_valid`, and optional
+  nested `obdii` block (`mode`, `mode_name`, `is_response`,
+  `pid`, `pid_name`, `payload_hex`).
+
+### Why this matters
+
+Legacy OBD-II vehicles (GM 1996-2010, Ford 1996-2008 — millions
+still on the road) speak SAE J1850 over PWM (Ford) or VPW (GM)
+on pin 2/10 of the OBD-II connector. Tools like Flipper Zero with
+a J1850 transceiver shield can capture these frames, but raw
+hex bytes are opaque — operators need to know *which ECU* a
+frame came from, *which mode* a request invokes, and *which PID*
+is being polled. This decoder fills that gap natively, with no
+hardware dependency: drop in a hex capture, get a human-readable
+breakdown.
+
 ## [0.232.0] - 2026-05-19
 
 **Twenty-seventh native-fit gap: Bluetooth SIG GATT UUID

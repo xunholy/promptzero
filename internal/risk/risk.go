@@ -268,6 +268,14 @@ var toolLevels = func() map[string]Level {
 		// short-form extraction; flags vendor-allocated UUIDs.
 		// Pure offline lookup.
 		"bluetooth_gatt_uuid_lookup",
+		// v0.233 (NATIVE-fit gap in the automotive decode space):
+		// SAE J1850 frame dissector — legacy OBD-II protocol used
+		// by pre-2008 GM/Ford vehicles. Header + ECU address +
+		// OBD-II Mode + PID decoding + CRC-8 validation. Pure
+		// offline parser. Pairs with canbus_* tools to extend
+		// automotive coverage backwards to classic-car restoration
+		// workflows.
+		"automotive_j1850_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

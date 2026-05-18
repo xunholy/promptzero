@@ -204,7 +204,10 @@ func TestRegistrySize(t *testing.T) {
 	// GATT UUID enumerator — ~75 Services + ~120
 	// Characteristics + ~16 Descriptors; 16-bit short + 128-bit
 	// canonical input with vendor-UUID detection).
-	const expected = 309
+	// v0.233.0 added automotive_j1850_decode (SAE J1850 frame
+	// dissector for legacy pre-2008 GM/Ford OBD-II; header +
+	// ECU lookup + OBD-II mode/PID decode + CRC-8 validation).
+	const expected = 310
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
