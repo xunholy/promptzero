@@ -202,6 +202,16 @@ var toolLevels = func() map[string]Level {
 		// Keyboard / Mouse / HID++ / Pairing). Pure offline parser.
 		// Pairs with nrf24_sniff_start / nrf24_mousejack_start.
 		"nrf24_packet_decode",
+		// v0.225 (NATIVE-fit gap in the 2.4 GHz IoT decode space):
+		// Zigbee Cluster Library (ZCL) frame dissector — the
+		// application layer in the Zigbee stack (MAC → NWK → APS →
+		// ZCL). Frame Control bitfield (Profile-wide vs Cluster-
+		// specific + manufacturer-specific + direction + disable-
+		// default-response), optional manufacturer code, transaction
+		// sequence number, command ID with profile-wide command
+		// name lookup. Pure offline parser. Completes the Zigbee
+		// stack chain.
+		"zigbee_zcl_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -173,7 +173,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.224.0 added nrf24_packet_decode (NRF24L01 ESB packet
 	// dissector — address + PCF + payload + CRC walk with
 	// Logitech Unifying / Mousejack report-type recognition).
-	const expected = 301
+	// v0.225.0 added zigbee_zcl_decode (Zigbee Cluster Library
+	// frame dissector — application layer above APS;
+	// completes the MAC → NWK → APS → ZCL chain; profile-wide
+	// command name lookup).
+	const expected = 302
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
