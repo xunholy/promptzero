@@ -161,6 +161,15 @@ var toolLevels = func() map[string]Level {
 		// / Cyclone). Pure offline parser. Pairs with Bus Pirate /
 		// hw_recon workflows.
 		"jtag_idcode_decode",
+		// v0.220 (NATIVE-fit gap in the WiFi decode space): IEEE
+		// 802.11 management frame dissector — beacon / probe req+resp
+		// / auth / assoc / deauth / disassoc with full per-subtype
+		// body decode, capability info bitfield, Information Element
+		// walker (SSID / Rates / DS / RSN with WPA2/WPA3 cipher
+		// suites / Vendor Specific with WPA1+WPS subtype lookup),
+		// 802.11 reason code table. Pure offline parser. Pairs with
+		// wifi_eapol_decode for the key-exchange frames.
+		"wifi_80211_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -152,7 +152,12 @@ func TestRegistrySize(t *testing.T) {
 	// chip identifier — IEEE 1149.1 bit walker + JEDEC JEP106
 	// manufacturer lookup + per-vendor part-number tables for
 	// ARM Cortex-M / STM32 / AVR / nRF52 / MSP430 / iCE40 / etc.).
-	const expected = 296
+	// v0.220.0 added wifi_80211_decode (IEEE 802.11 management
+	// frame dissector — beacon / probe / auth / assoc / deauth
+	// with capability info, IE walker including RSN cipher-suite
+	// decode, Vendor Specific WPA1+WPS subtype lookup, reason
+	// code table).
+	const expected = 297
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
