@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.225.0] - 2026-05-19
+
+**Twentieth native-fit gap: Zigbee Cluster Library (ZCL) frame
+dissector — completes the full Zigbee stack chain MAC → NWK →
+APS → ZCL. This is where actual application commands live
+(On/Off, Level Control, Temperature Measurement, Battery,
+Identify).**
+
+### Added
+
+- **`zigbee_zcl_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a Zigbee ZCL frame into structured fields:
+
+  - **Frame Control** (8 bits): frame type (Profile-wide vs
+    Cluster-specific), manufacturer-specific flag, direction
+    (Client→Server vs Server→Client), disable-default-response
+    flag.
+  - **Manufacturer Code** (2 bytes, when flag set): the
+    SIG-assigned 16-bit manufacturer identifier for
+    vendor-specific commands (e.g. 0x117C for Philips Hue).
+  - **Transaction Sequence Number** (1 byte): links request →
+    response across ZCL exchanges.
+  - **Command ID** (1 byte): the cluster command being invoked.
+    For Profile-wide frames, surfaces the canonical name from
+    the documented catalog (Read Attributes, Report
+    Attributes, Default Response, Configure Reporting, Discover
+    Attributes, Write Attributes, etc. — ~23 entries).
+    Cluster-specific commands surface command ID + payload
+    for cross-reference with the APS-layer Cluster ID.
+  - **Payload**: command body bytes (uppercase hex).
+
+  Pure offline parser — operators chain `ieee802154_decode` →
+  `zigbee_nwk_decode` → `zigbee_aps_decode` → `zigbee_zcl_decode`
+  for full Zigbee frame analysis from the radio bytes up to
+  the cluster command. Accepts `:` / `-` / `_` / whitespace
+  separators.
+
+  Source: `docs/catalog/gap-analysis.md` (2.4 GHz IoT decode
+  space — completes the Zigbee stack chain started in v0.215 /
+  v0.221 / v0.222). Wrap-vs-native: **NATIVE** — ZCL is a
+  fully public spec (Zigbee Cluster Library Specification
+  07-5123-08), the walker is bit-level decoding over a 3-byte
+  minimum header + variable payload.
+
+### Internal
+
+- New `internal/zigbee/zcl.go`: ZCLFrameType enum (Profile-wide
+  / Cluster-specific), ZCL Frame Control byte decoder, optional
+  manufacturer code path, transaction sequence number + command
+  ID extraction, ~23-entry profile-wide command catalog
+  covering all documented ZCL general commands.
+- Tests cover Read Attributes (command 0x00), Report Attributes
+  (0x0A) with Server→Client direction, Default Response (0x0B)
+  with DisableDefaultResponse flag, Manufacturer Specific frame
+  (FC bit 2 + 2-byte manuf code), Cluster-specific frame
+  (no profile-wide name expected), Configure Reporting (0x06),
+  Discover Attributes (0x0C), truncated-frame /
+  truncated-manuf-code error contracts, empty / invalid-hex
+  rejection, separator tolerance, ZCL frame type + profile-wide
+  command table spot-checks.
+
+Registry size: 301 → 302.
+
+**Milestone — the full Zigbee stack chain (MAC → NWK → APS →
+ZCL) is now natively decodable end-to-end.**
+
 ## [0.224.0] - 2026-05-19
 
 **Nineteenth native-fit gap: NRF24L01 Enhanced Shockburst (ESB)
