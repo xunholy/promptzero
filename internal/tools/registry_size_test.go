@@ -197,7 +197,10 @@ func TestRegistrySize(t *testing.T) {
 	// dissector — 3-byte Application Identifier per NXP DESFire
 	// reference; special-value detection, MAD format detection,
 	// function code category lookup, well-known AID catalog).
-	const expected = 307
+	// v0.231.0 added coap_packet_decode (CoAP RFC 7252 packet
+	// dissector — constrained-IoT application-layer protocol;
+	// header + token + option-list walker + payload).
+	const expected = 308
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

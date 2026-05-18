@@ -252,6 +252,14 @@ var toolLevels = func() map[string]Level {
 		// / retail / parking / etc.), well-known AID catalog.
 		// Pure offline parser.
 		"nfc_desfire_aid_decode",
+		// v0.231 (NATIVE-fit gap in the IoT application-layer
+		// decode space): CoAP (RFC 7252) packet dissector — the
+		// constrained-IoT counterpart to MQTT, used in 6LoWPAN /
+		// Thread / OpenThread / Zigbee IP. Header + token +
+		// option list with delta+length nibble encoding +
+		// per-option name lookup + payload extraction. Pure
+		// offline parser. Pairs with mqtt_packet_decode.
+		"coap_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
