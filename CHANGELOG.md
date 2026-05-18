@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.209.0] - 2026-05-18
+
+**Fourth native-fit gap: POCSAG paging-protocol decoder for
+offline analysis of bit-streams from FSK demodulators or
+pre-aligned codeword dumps.**
+
+### Added
+
+- **`subghz_pocsag_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a POCSAG (ITU-R M.584-2) paging-protocol bit-stream or
+  hex-codeword list into structured pages with 21-bit RIC address,
+  function tag (numeric / alphanumeric / tone), and decoded
+  message text. Two input modes:
+
+  - `bits`: a string of '0' / '1' characters from an FSK
+    demodulator (multimon-ng -a POCSAG1200, rtl_433, or a
+    Flipper-side FSK sub-GHz capture pre-extracted to bits). The
+    decoder scans for the sync word (0x7CD215D8) at every bit
+    offset so the stream doesn't need to start at sync.
+  - `codewords`: a hex-string list of pre-aligned 32-bit
+    codewords (8 hex chars each), separated by whitespace,
+    commas, colons, or hyphens. Useful when the operator already
+    extracted codewords from a Flipper-side analyzer or a
+    recorded scan.
+
+  Decodes numeric pages via the 4-bit BCD-plus-extended table
+  (space, U, -, ), (), and alphanumeric pages as 7-bit ASCII with
+  LSB-first packing across codeword boundaries. Reports parity-
+  error count and the bit offsets where syncs were found so
+  operators can verify their bit-stream alignment. Pure offline
+  parser — no Flipper / SDR required. Pairs with the
+  `loader_pocsag_pager` FAP wrapper (live Flipper-side decode) —
+  this Spec covers the offline analyst flow.
+
+  Source: `docs/catalog/gap-analysis.md §3` rank 4
+  (`subghz_pocsag_decode`). Wrap-vs-native: **NATIVE** — POCSAG
+  is a public spec (ITU-R M.584-2), the walker is ~300 lines of
+  pure bit-twiddling, no hardware needed.
+
+### Internal
+
+- New `internal/pocsag/` package: `decoder.go` (sync detector,
+  batch/frame/codeword walker, idle-skip, address + message
+  codeword classification, numeric BCD with spec's LSB-first
+  nibble packing, alphanumeric 7-bit ASCII with cross-codeword
+  packing, lightweight even-parity check). Pure functions; no
+  transport, no hardware. BCH error-correction deliberately out
+  of scope — only operators with very noisy captures need it,
+  and they can pre-filter with multimon-ng.
+- Tests cover the sync- and idle-word constants, parity check,
+  numeric / alphanumeric / tone page reconstruction with full
+  21-bit RIC round-trip (frame-index encoding in the bottom 3
+  bits), multi-page batches with idle-flush separation, bit-
+  stream walking with sync-detection at non-zero offsets, orphan
+  message codeword warning, frame-index-driven address bottom
+  bits, codewords-hex input path, and the standard empty /
+  short / no-sync / invalid-hex error contracts.
+
+Registry size: 284 → 285.
+
 ## [0.208.0] - 2026-05-18
 
 **Third native-fit gap: Apple Continuity BLE dissector for
