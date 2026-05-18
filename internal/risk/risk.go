@@ -244,6 +244,14 @@ var toolLevels = func() map[string]Level {
 		// uint 8-64 / floats / strings / time / IEEE address).
 		// Pure offline parser.
 		"zigbee_zcl_attribute_decode",
+		// v0.230 (NATIVE-fit gap in the DESFire decode space):
+		// 3-byte Application Identifier (AID) dissector. Special
+		// value detection (empty / MIFARE Classic emulation /
+		// wildcard), MAD-formatted AID detection (high nibble
+		// 0xF), function code category lookup (transit / banking
+		// / retail / parking / etc.), well-known AID catalog.
+		// Pure offline parser.
+		"nfc_desfire_aid_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

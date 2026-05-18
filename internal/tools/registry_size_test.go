@@ -193,7 +193,11 @@ func TestRegistrySize(t *testing.T) {
 	// decoding typed values per ZCL §2.5.2 catalog of 30 data
 	// types: boolean / bitmaps / int/uint 8-64 / floats / strings
 	// / time / IEEE address / cluster ID / etc.).
-	const expected = 306
+	// v0.230.0 added nfc_desfire_aid_decode (DESFire AID
+	// dissector — 3-byte Application Identifier per NXP DESFire
+	// reference; special-value detection, MAD format detection,
+	// function code category lookup, well-known AID catalog).
+	const expected = 307
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
