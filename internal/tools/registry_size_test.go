@@ -188,7 +188,12 @@ func TestRegistrySize(t *testing.T) {
 	// packet dissector — IoT application-layer protocol with
 	// CONNECT/CONNACK/PUBLISH/SUBSCRIBE/SUBACK/PUB*/UNSUB*/
 	// PINGREQ/DISCONNECT decoding).
-	const expected = 305
+	// v0.229.0 added zigbee_zcl_attribute_decode (ZCL attribute
+	// value type dissector — extends zigbee_zcl_decode by
+	// decoding typed values per ZCL §2.5.2 catalog of 30 data
+	// types: boolean / bitmaps / int/uint 8-64 / floats / strings
+	// / time / IEEE address / cluster ID / etc.).
+	const expected = 306
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

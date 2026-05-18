@@ -236,6 +236,14 @@ var toolLevels = func() map[string]Level {
 		// / PUBLISH / SUBSCRIBE / SUBACK / PINGREQ / DISCONNECT
 		// + the PUB* / UNSUB* helpers. Pure offline parser.
 		"mqtt_packet_decode",
+		// v0.229 (NATIVE-fit extension of the Zigbee ZCL chain):
+		// ZCL attribute value type dissector — extends
+		// zigbee_zcl_decode by decoding typed attribute values
+		// inside Read/Report/Write Attributes payloads. ~30 data
+		// types from ZCL Spec §2.5.2 (boolean / bitmaps / int/
+		// uint 8-64 / floats / strings / time / IEEE address).
+		// Pure offline parser.
+		"zigbee_zcl_attribute_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
