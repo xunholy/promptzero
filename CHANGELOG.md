@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.229.0] - 2026-05-19
+
+**Twenty-fourth native-fit gap: Zigbee Cluster Library
+attribute value type dissector — extends the existing
+`zigbee_zcl_decode` chain by decoding typed attribute values
+inside Read/Report/Write Attributes payloads.**
+
+### Added
+
+- **`zigbee_zcl_attribute_decode`** (`Risk.Low`,
+  `GroupHostTools`) — decodes a ZCL attribute value (type tag +
+  value bytes) per ZCL Spec §2.5.2 Table 2-10. Handles ~30
+  documented data types:
+
+  - **Null / unknown** (0x00 / 0xFF): zero-length values.
+  - **Generic data** (0x08-0x0B): 8/16/24/32-bit raw.
+  - **Boolean** (0x10).
+  - **Bitmaps** (0x18 / 0x19 / 0x1B): 8/16/32-bit.
+  - **Unsigned integers** (0x20-0x27): uint8/uint16/uint24/
+    uint32/uint64.
+  - **Signed integers** (0x28-0x2F): int8/int16/int32/int64.
+  - **Enumerations** (0x30 / 0x31): 8/16-bit.
+  - **Floats** (0x38 / 0x39 / 0x3A): semi-precision (16-bit
+    half — full IEEE 754 conversion handling subnormals +
+    infinities + NaN) / single / double.
+  - **Strings** (0x41 / 0x42 / 0x43 / 0x44): octet string +
+    char string with 1-byte length prefix; long variants with
+    2-byte length prefix.
+  - **Time** (0xE0): time of day (HH:MM:SS.SS format).
+  - **Date** (0xE1): year-1900 / month / day / day-of-week.
+  - **UTC time** (0xE2): 32-bit seconds since 2000-01-01.
+  - **Cluster ID** (0xE8): 16-bit hex.
+  - **Attribute ID** (0xE9): 16-bit hex.
+  - **BACnet OID** (0xEA): 32-bit object identifier.
+  - **IEEE address** (0xF0): 8-byte EUI-64 (LE on wire, BE
+    rendered).
+  - **Security key** (0xF1): 128-bit network/link key.
+
+  Returns the bytes-consumed count so callers walking
+  multi-attribute payloads can advance the offset. Pairs with
+  `zigbee_zcl_decode` (the frame walker that surfaces the
+  payload). Accepts `:` / `-` / `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (Zigbee application-
+  layer decode space). Wrap-vs-native: **NATIVE** — ZCL Spec
+  07-5123-08 §2.5.2 is fully public, the walker is a type-byte
+  dispatch with per-type value decoders.
+
+### Internal
+
+- New `internal/zigbee/zcl_attribute.go`: AttributeValue
+  struct + DecodeAttribute / DecodeAttributeBytes entry
+  points returning (value, consumed-bytes, error). Per-type
+  decoder dispatch covering all 30 documented types.
+  IEEE 754 half-precision float converter with subnormal /
+  infinity / NaN handling.
+- Tests cover boolean (true + false), uint8, uint16 with
+  little-endian wire encoding (0x1234), int16 with negative
+  value (-100), int8 with negative (-1), float32 (1.5 round
+  trip), char string ("hello"), octet string ("AABBCC"),
+  long char string with 2-byte length prefix, IEEE address
+  with LE→BE rendering, time of day formatting (HH:MM:SS.SS),
+  cluster ID hex rendering, no-data type, bitmap8, uint32
+  (0xDEADBEEF), enum8, truncated-uint16 error, unknown-type
+  error, empty input rejection, type-name table spot-checks,
+  IEEE 754 half-float conversion spot-checks (0.0 / 1.0 /
+  2.0 / -1.0).
+
+Registry size: 305 → 306.
+
 ## [0.228.0] - 2026-05-19
 
 **Twenty-third native-fit gap: MQTT v3.1.1 control packet
