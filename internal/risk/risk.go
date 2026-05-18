@@ -138,6 +138,15 @@ var toolLevels = func() map[string]Level {
 		// optional ATS structural decode (T0 + interface bytes +
 		// historicals). Pure offline parser.
 		"nfc_iso14443a_identify",
+		// v0.217 (NATIVE-fit gap in the BLE decode space): generic
+		// GAP / EIR advertisement walker — the outer (length, AD type,
+		// data) record loop that wraps every BLE advertisement.
+		// Per-type decoders for Flags, Service UUID lists (16/32/128-bit),
+		// Local Name, TX Power, Service Data 16-bit, Appearance,
+		// Manufacturer Specific Data. SIG company-ID + service-UUID
+		// + appearance-category lookup tables. Pairs with
+		// ble_continuity_decode / ble_eddystone_decode.
+		"ble_gap_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

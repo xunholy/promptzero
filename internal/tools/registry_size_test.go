@@ -138,7 +138,13 @@ func TestRegistrySize(t *testing.T) {
 	// documented tag types per NXP AN10833 + AN10927; decodes
 	// UID length + manufacturer + cascade; optional ATS decode
 	// with T0 + interface bytes + historicals).
-	const expected = 293
+	// v0.217.0 added ble_gap_decode (generic BLE GAP / EIR
+	// advertisement walker — (length, AD type, data) record loop
+	// with per-type decoders for Flags / UUIDs / Local Name /
+	// TX Power / Service Data / Appearance / Manufacturer Data;
+	// SIG company-ID + well-known-service + appearance-category
+	// lookup tables).
+	const expected = 294
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
