@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.214.0] - 2026-05-18
+
+**Ninth native-fit gap: LoRaWAN PHYPayload dissector — MAC-layer
+structural decode for LoRa Alliance 1.0.x / 1.1 captures, covering
+data frames, Join Request, and Join Accept.**
+
+### Added
+
+- **`lorawan_decode`** (`Risk.Low`, `GroupHostTools`) — decodes
+  a LoRaWAN PHYPayload frame into structured MAC-layer fields:
+
+  - **MHDR**: MType (Join Request, Join Accept, Confirmed /
+    Unconfirmed Data Up / Down, Rejoin Request, Proprietary) +
+    Major version + uplink/downlink classification.
+  - **Data frames** (MType 2-5): FHDR (4-byte DevAddr stored
+    little-endian-on-wire / rendered big-endian to match
+    network-server / chirpstack conventions, FCtrl bitfield,
+    2-byte FCnt little-endian, 0-15-byte FOpts MAC commands),
+    FPort byte, FRMPayload (encrypted application payload —
+    surfaced as hex; decryption needs AppSKey out-of-band).
+  - **FCtrl bitfield**: differs uplink (ADR / ADRACKReq / ACK /
+    ClassB / FOptsLen) vs downlink (ADR / RFU / ACK / FPending /
+    FOptsLen); the decoder picks the right interpretation from
+    the MType.
+  - **Join Request** (MType 0): 8-byte JoinEUI + 8-byte DevEUI
+    (both little-endian on wire, rendered big-endian to match
+    device-label form) + 2-byte DevNonce.
+  - **Join Accept** (MType 1, after operator decryption): AppNonce
+    + NetID + DevAddr + DLSettings + RxDelay + optional 16-byte
+    CFList (12-byte or 28-byte payload form).
+  - **MIC**: 4-byte Message Integrity Code at frame end
+    (validation needs NwkSKey / NwkSEncKey out-of-band).
+
+  Pure offline parser — operators paste a captured PHYPayload
+  (from a Flipper LoRa sub-board, a CatSniffer, or any LoRa SDR)
+  and inspect every MAC-layer field without an antenna attached.
+  Pairs with `bruce_lora_scan` (device-side LoRa scan) — this
+  Spec is the offline-analyst entry point. Accepts `:` / `-` /
+  `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (Sub-GHz decode space
+  adjacent to honourable-mention `bruce_lora_scan` →  LoRaWAN
+  replay). Wrap-vs-native: **NATIVE** — LoRaWAN is a fully open
+  spec at lora-alliance.org, the walker is ~350 lines of
+  bit-twiddling.
+
+### Internal
+
+- New `internal/lorawan/decoder.go`: MType enum + uplink
+  classifier, MHDR walker, data-frame MACPayload walker (FHDR +
+  FCtrl bitfield with uplink/downlink-specific interpretation +
+  FOpts + FPort + FRMPayload), Join Request walker with
+  little-endian-to-big-endian EUI rendering, Join Accept walker
+  with 12-byte (no CFList) and 28-byte (with CFList) variants,
+  Rejoin Request / Proprietary pass-through. All pure functions;
+  no transport, no hardware.
+- Tests cover Unconfirmed Data Up + Confirmed Data Down with full
+  FCtrl bitfield interpretation per direction, Join Request with
+  EUI byte-order rendering, Join Accept with and without CFList,
+  FCnt little-endian decoding, no-FRMPayload case (FPort and
+  FRMPayload both nil/empty), Rejoin Request / Proprietary MType
+  surfacing, truncated-frame / bad-Join-Request-length /
+  over-declared-FOptsLen error contracts, empty / invalid-hex
+  rejection, separator tolerance, and every MType String() value
+  + uplink classification.
+
+Registry size: 290 → 291.
+
 ## [0.213.0] - 2026-05-18
 
 **Eighth native-fit gap: WiFi EAPOL-Key frame dissector — WPA /
