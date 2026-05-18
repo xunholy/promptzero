@@ -212,6 +212,15 @@ var toolLevels = func() map[string]Level {
 		// name lookup. Pure offline parser. Completes the Zigbee
 		// stack chain.
 		"zigbee_zcl_decode",
+		// v0.226 (NATIVE-fit gap in the Bluetooth decode space):
+		// Bluetooth Class of Device (CoD) dissector — 24-bit
+		// device-type identifier every BT Classic device advertises
+		// during inquiry. Major + Minor Device Class lookup tables,
+		// Service Class bitmap (Audio / Telephony / Networking /
+		// Information / etc.). Pure offline parser. Pairs with the
+		// BLE dissectors (ble_continuity_decode / ble_eddystone_decode
+		// / ble_gap_decode).
+		"bluetooth_cod_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

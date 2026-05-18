@@ -177,7 +177,10 @@ func TestRegistrySize(t *testing.T) {
 	// frame dissector — application layer above APS;
 	// completes the MAC → NWK → APS → ZCL chain; profile-wide
 	// command name lookup).
-	const expected = 302
+	// v0.226.0 added bluetooth_cod_decode (Bluetooth Class of
+	// Device dissector — 24-bit device-type field with major +
+	// minor class lookups and service-class bitmap).
+	const expected = 303
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
