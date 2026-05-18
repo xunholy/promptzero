@@ -103,7 +103,11 @@ func TestRegistrySize(t *testing.T) {
 	// dissector — gap-analysis rank 8; named action types + per-type
 	// field decoders for NearbyInfo/NearbyAction/Handoff/Tethering/
 	// ProximityPairing/AirDrop/MagicSwitch/iBeacon).
-	const expected = 284
+	// v0.209.0 added subghz_pocsag_decode (native POCSAG paging
+	// decoder — gap-analysis rank 4; sync-aligned bit-stream walker
+	// + 32-bit codeword walker with numeric BCD and alphanumeric
+	// 7-bit ASCII content decoding).
+	const expected = 285
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

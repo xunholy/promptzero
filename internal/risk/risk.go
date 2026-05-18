@@ -84,6 +84,12 @@ var toolLevels = func() map[string]Level {
 		// blob. Pairs with the existing defense_classify_advertisement
 		// which decides spam vs. legit; this decodes the legit content.
 		"ble_continuity_decode",
+		// v0.209 (NATIVE-fit gap from top-30 rank 4): POCSAG paging
+		// protocol decoder — pure offline walker over a bit-stream or
+		// pre-aligned codeword list. Receive-only / parse-only; no
+		// transmit, no Flipper, no SDR. Pairs with the loader_pocsag_pager
+		// FAP wrapper which covers the live-device flow.
+		"subghz_pocsag_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
