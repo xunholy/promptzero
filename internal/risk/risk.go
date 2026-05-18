@@ -96,6 +96,14 @@ var toolLevels = func() map[string]Level {
 		// Receive-only / parse-only. Complements ble_continuity_decode
 		// in the Google service-data space.
 		"ble_eddystone_decode",
+		// v0.211 (NATIVE-fit gap in the NFC decode space): Mifare
+		// Classic block + dump dissector — manufacturer block / sector
+		// trailer (with access-bit decode per NXP AN10833) / value
+		// block (with complement integrity check) / data block. Pure
+		// offline parser. Complements internal/crypto1 (mfoc / mfcuk /
+		// mfkey32 recover keys; this decodes the data).
+		"mifare_classic_decode_block",
+		"mifare_classic_decode_dump",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -110,7 +110,13 @@ func TestRegistrySize(t *testing.T) {
 	// v0.210.0 added ble_eddystone_decode (Google Eddystone BLE
 	// beacon dissector — UID / URL / TLM / EID frame walkers,
 	// URL-table TLD compression decode, eTLM-version recognition).
-	const expected = 286
+	// v0.211.0 added mifare_classic_decode_block and
+	// mifare_classic_decode_dump (native NFC dissectors:
+	// manufacturer NUID+BCC integrity, sector trailer with NXP
+	// AN10833 access-bit decode, value-block complement integrity,
+	// plain data with ASCII preview; dump variant walks a full 1K
+	// or 4K capture in one pass). +2 new specs.
+	const expected = 288
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
