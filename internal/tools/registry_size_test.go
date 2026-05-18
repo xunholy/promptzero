@@ -99,7 +99,11 @@ func TestRegistrySize(t *testing.T) {
 	// algorithms get reimplemented rather than wrapped via a FAP).
 	// v0.207.0 added nfc_emv_decode (native EMV BER-TLV walker with
 	// ~80-entry tag-name table from EMV Books 1-4).
-	const expected = 283
+	// v0.208.0 added ble_continuity_decode (native Apple Continuity
+	// dissector — gap-analysis rank 8; named action types + per-type
+	// field decoders for NearbyInfo/NearbyAction/Handoff/Tethering/
+	// ProximityPairing/AirDrop/MagicSwitch/iBeacon).
+	const expected = 284
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

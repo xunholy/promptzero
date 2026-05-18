@@ -79,6 +79,11 @@ var toolLevels = func() map[string]Level {
 		// decoder for contactless-card APDU responses. Pure offline
 		// parser; no card crypto verification (deliberately scoped out).
 		"nfc_emv_decode",
+		// v0.208 (NATIVE-fit gap from top-30 rank 8): Apple Continuity
+		// dissector — pure offline parser over a manufacturer-data hex
+		// blob. Pairs with the existing defense_classify_advertisement
+		// which decides spam vs. legit; this decodes the legit content.
+		"ble_continuity_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
