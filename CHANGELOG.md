@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.219.0] - 2026-05-19
+
+**Fourteenth native-fit gap: JTAG IDCODE / SWD DPIDR chip
+identifier — turn a 32-bit ID register dump from openocd /
+Bus Pirate / urjtag into "this is an ARM Cortex-M JTAG-DP" /
+"this is an STM32F411xx".**
+
+### Added
+
+- **`jtag_idcode_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes a 32-bit JTAG IDCODE (IEEE 1149.1) or SWD DPIDR /
+  TARGETID value into manufacturer + part-number + version:
+
+  - **bit 0**: must be 1 per IEEE 1149.1; we flag malformed
+    inputs via `fixed_bit_valid`.
+  - **bits 11..1** (Manufacturer ID): IDCODE-encoded JEDEC
+    manufacturer code (continuation-byte-count << 7 | byte).
+    Looks up the vendor name from our ~120-entry JEP106 table
+    (Intel / NXP / STMicro / Atmel / TI / ARM / Microchip /
+    Nordic / Infineon / Cypress / Espressif / etc.).
+  - **bits 27..12** (Part Number): vendor-specific 16-bit
+    chip identifier. Looks up the chip name from a per-vendor
+    part-number table covering ARM Cortex-M / STM32 F-/L-/G-/H-
+    series / AVR / SAM / nRF52 / MSP430 / Tiva-C / PSoC /
+    Espressif (ESP32 / S2 / S3 / C3) / Lattice iCE40 + ECP5 /
+    Xilinx Spartan-Artix / Altera Cyclone IV / Bouffalo
+    BL602/702 RISC-V.
+  - **bits 31..28** (Version): 4-bit revision number.
+
+  Pure offline parser — operators paste an IDCODE from openocd
+  / `bp` / urjtag / Bus Pirate output and identify the chip.
+  Accepts `0x` prefix and `:` / `-` / `_` / whitespace
+  separators.
+
+  Source: `docs/catalog/gap-analysis.md` (hardware-recon
+  decode space). Wrap-vs-native: **NATIVE** — IEEE 1149.1 +
+  JEDEC JEP106 are fully public, the walker is a 32-bit
+  bit-shift + two lookup tables.
+
+### Internal
+
+- New `internal/jtag/idcode.go`: 32-bit IDCODE bit walker
+  (fixed bit + manuf + part + version) with both hex-string
+  and uint32 entry points.
+- New `internal/jtag/jep106.go`: ~120-entry manufacturer code
+  table keyed by the IDCODE-encoded 11-bit form (so ARM is
+  0x23B, not the raw JEP106 0x39).
+- New `internal/jtag/parts.go`: per-vendor part-number tables
+  covering the chip families operators commonly target during
+  hardware-recon work — ARM CoreSight / STMicro STM32 (16
+  variants) / Microchip-Atmel (ATmega + SAMD) / Nordic nRF
+  (51 + 52 + 53 series) / TI (MSP430 + Tiva-C) / Cypress PSoC /
+  Espressif (ESP32 / S2 / S3 / C3) / NXP Kinetis + iMX / Lattice
+  iCE40 + ECP5 / Xilinx Spartan-Artix / Altera Cyclone IV /
+  Bouffalo BL602+BL702.
+- Tests cover the canonical ARM Cortex-M JTAG-DP IDCODE
+  (0x4BA00477), STM32F411 (0x16431041), Nordic nRF52840
+  (synthesised), unknown vendor (still structured decode but
+  no names), bit-0-zero fixed-bit-valid flag, 0x prefix +
+  separator tolerance, empty / wrong-length / invalid-hex
+  rejection, integer-input variant, JEP106 spot-checks for
+  Intel / Philips / TI / Atmel / STMicro / Microchip / Infineon
+  / ARM / Nordic, ARM CoreSight part-number lookup.
+
+Registry size: 295 → 296.
+
 ## [0.218.0] - 2026-05-19
 
 **Thirteenth native-fit gap: ISO/IEC 7816-3 ATR (Answer To
