@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.228.0] - 2026-05-19
+
+**Twenty-third native-fit gap: MQTT v3.1.1 control packet
+dissector — the IP-side application-layer protocol most IoT
+devices speak to their brokers.**
+
+### Added
+
+- **`mqtt_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decodes an MQTT v3.1.1 control packet per OASIS spec:
+
+  - **Fixed header**: 4-bit packet type (CONNECT / CONNACK /
+    PUBLISH / PUBACK / PUBREC / PUBREL / PUBCOMP / SUBSCRIBE /
+    SUBACK / UNSUBSCRIBE / UNSUBACK / PINGREQ / PINGRESP /
+    DISCONNECT) + 4-bit flags + variable-byte-integer
+    remaining length (1-4 bytes).
+  - **CONNECT**: protocol name + version + flags (clean
+    session / will / username / password) + keep-alive +
+    client ID + optional will topic/message + optional
+    username/password (all strings 2-byte length-prefixed
+    UTF-8).
+  - **CONNACK**: session-present flag + return code with
+    documented name lookup (Accepted / unacceptable protocol
+    version / identifier rejected / server unavailable / bad
+    username or password / not authorized).
+  - **PUBLISH**: DUP / QoS / RETAIN flags from the fixed
+    header + topic name + optional packet ID (QoS > 0) +
+    payload (surfaced as both hex and ASCII string when
+    printable).
+  - **SUBSCRIBE / UNSUBSCRIBE**: packet ID + topic-filter
+    list with per-filter QoS.
+  - **SUBACK**: packet ID + per-filter return codes.
+  - **PUBACK / PUBREC / PUBREL / PUBCOMP / UNSUBACK**:
+    packet ID.
+  - **PINGREQ / PINGRESP / DISCONNECT**: header-only.
+
+  Pure offline parser — operators paste a captured MQTT
+  packet from Wireshark / mosquitto_sub / any MQTT sniffer
+  and inspect every field without re-running the capture.
+  Pairs with the existing IoT decoders
+  (`zigbee_zcl_decode` / `nrf24_packet_decode` /
+  `ble_gap_decode`); MQTT is the IP-side application-layer
+  protocol IoT devices speak to their brokers.
+
+  Accepts `:` / `-` / `_` / whitespace separators.
+
+  Source: `docs/catalog/gap-analysis.md` (IoT application-
+  layer decode space). Wrap-vs-native: **NATIVE** — MQTT
+  v3.1.1 is a fully public OASIS spec, the walker is bit-
+  level decoding over a 2-5 byte fixed header + variable
+  header + payload.
+
+### Internal
+
+- New `internal/mqtt/decoder.go`: PacketType enum with
+  String() rendering for all 16 control packet types
+  (including v5 AUTH which we recognise by name only),
+  FixedHeader + PublishFlags + Packet types, MQTT-style
+  string reader (2-byte BE length prefix + UTF-8 body),
+  variable-byte-integer remaining-length decoder (1-4 byte
+  encoding), per-packet-type body decoders, CONNACK return
+  code name lookup.
+- Tests cover minimal CONNECT (proto MQTT v4, clean session,
+  client ID "testClient"), CONNECT with username + password
+  flags + auth payload, CONNACK accepted (return code 0)
+  and refused-bad-credentials (return code 4), PUBLISH QoS 0
+  with ASCII payload, PUBLISH QoS 1 with RETAIN flag and
+  packet ID, SUBSCRIBE with 2 topic filters and per-filter
+  QoS, SUBACK with 2 return codes, PUBACK with packet ID,
+  PINGREQ and DISCONNECT header-only packets,
+  variable-byte-integer encoding test (multi-byte remaining
+  length 200), truncated-remaining-length error, empty /
+  too-short / invalid-hex rejection, separator tolerance,
+  packet type name table spot-checks.
+
+Registry size: 304 → 305.
+
 ## [0.227.0] - 2026-05-19
 
 **Twenty-second native-fit gap: DCF77 time-signal dissector —
