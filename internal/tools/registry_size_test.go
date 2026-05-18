@@ -107,7 +107,10 @@ func TestRegistrySize(t *testing.T) {
 	// decoder — gap-analysis rank 4; sync-aligned bit-stream walker
 	// + 32-bit codeword walker with numeric BCD and alphanumeric
 	// 7-bit ASCII content decoding).
-	const expected = 285
+	// v0.210.0 added ble_eddystone_decode (Google Eddystone BLE
+	// beacon dissector — UID / URL / TLM / EID frame walkers,
+	// URL-table TLD compression decode, eTLM-version recognition).
+	const expected = 286
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

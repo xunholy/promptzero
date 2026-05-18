@@ -90,6 +90,12 @@ var toolLevels = func() map[string]Level {
 		// transmit, no Flipper, no SDR. Pairs with the loader_pocsag_pager
 		// FAP wrapper which covers the live-device flow.
 		"subghz_pocsag_decode",
+		// v0.210 (NATIVE-fit gap adjacent to top-30 rank 8): Google
+		// Eddystone BLE-beacon dissector — pure offline walker over a
+		// service-data payload (UID / URL / TLM / EID frame types).
+		// Receive-only / parse-only. Complements ble_continuity_decode
+		// in the Google service-data space.
+		"ble_eddystone_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
