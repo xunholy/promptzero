@@ -387,7 +387,11 @@ func TestRegistrySize(t *testing.T) {
 	// Specific; 7 chassis/port ID subtypes; 11-bit capability
 	// flag table; 5 OUI name table). Foundational datacenter
 	// L2 discovery.
-	const expected = 342
+	// v0.266.0 added cdp_decode (Cisco Discovery Protocol —
+	// 4-byte header, TLV walker over 17 documented types,
+	// 10-bit capability flag table). Cisco-proprietary
+	// sibling to LLDP; coexists on Cisco-heavy networks.
+	const expected = 343
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -600,6 +600,17 @@ var toolLevels = func() map[string]Level {
 		// flag table; 5 OUI name table for Org Specific TLVs;
 		// mandatory-TLV ordering check.
 		"lldp_decode",
+		// v0.266 (NATIVE-fit gap — Cisco-proprietary sibling
+		// to LLDP): CDP packet dissector. 4-byte header
+		// (version + TTL + checksum) + TLV walker over ~17
+		// documented TLV types (Device ID / Addresses / Port
+		// ID / Capabilities / Software Version / Platform /
+		// VTP Mgmt Domain / Native VLAN / Duplex / VoIP VLAN
+		// / Power Consumption / MTU / Trust Bitmap / System
+		// Name / System OID / Management Address). 10-bit
+		// capability flag table. Coexists with LLDP on the
+		// same wire on Cisco-heavy networks.
+		"cdp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
