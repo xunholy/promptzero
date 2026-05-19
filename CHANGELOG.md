@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.280.0] - 2026-05-20
+
+**Seventy-fifth native-fit gap: BFD (Bidirectional Forwarding
+Detection) Control packet dissector per RFC 5880. BFD is the
+sub-second link-failure detection protocol that pairs with
+OSPF / BGP / static routes to give routing protocols 100ms
+convergence in datacenter and ISP backbone deployments —
+every modern service-provider network and every cloud-native
+overlay runs BFD on its critical paths. Pairs with
+`ospf_packet_decode` + `bgp_message_decode` for the complete
+routing + liveness picture.**
+
+### Added
+
+- **`bfd_control_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a BFD Control packet into a structured view:
+
+  - **24-byte mandatory header** (RFC 5880 §4.1):
+    - byte 0: Version (3 bits; 1) + **Diagnostic** (5 bits)
+      with **9-entry name table**:
+      - 0 No Diagnostic
+      - 1 Control Detection Time Expired
+      - 2 Echo Function Failed
+      - 3 Neighbor Signaled Session Down
+      - 4 Forwarding Plane Reset
+      - 5 Path Down
+      - 6 Concatenated Path Down
+      - 7 Administratively Down
+      - 8 Reverse Concatenated Path Down
+    - byte 1: **State** (2 bits) with **4-entry name
+      table** (0 AdminDown, 1 Down, 2 Init, 3 Up) + **6
+      flag bits**: P (Poll), F (Final), C (Control Plane
+      Independent), A (Authentication Present), D (Demand
+      Mode), M (Multipoint, reserved).
+    - byte 2: Detect Mult.
+    - byte 3: Length.
+    - bytes 4-7: My Discriminator (uint32 BE).
+    - bytes 8-11: Your Discriminator (uint32 BE).
+    - bytes 12-15: **Desired Min TX Interval** (uint32 BE
+      microseconds, converted to ms).
+    - bytes 16-19: **Required Min RX Interval** (uint32 BE
+      microseconds, converted to ms).
+    - bytes 20-23: **Required Min Echo RX Interval**
+      (uint32 BE microseconds, converted to ms).
+  - **Authentication Section** (when A flag set): Auth
+    Type (1 byte; **5-entry name table**: 1 Simple
+    Password, 2 Keyed MD5, 3 Meticulous Keyed MD5, 4 Keyed
+    SHA1, 5 Meticulous Keyed SHA1) + Auth Len + Auth Key
+    ID + Auth Data. Simple Password surfaces decoded text;
+    MD5/SHA1 variants surface Sequence Number + digest hex.
+  - **Conformance check** — Version != 1 surfaces a Note;
+    Length != actual buffer length surfaces a Note; Detect
+    Mult == 0 surfaces a Note (must be ≥ 1).
+
+- **Tooling** — registry capacity bumped from 356 → 357.
+
+### Why this gap
+
+- BFD is universal in modern datacenter and ISP backbones.
+  Operators paste BFD bytes (UDP dest port 3784 single-hop
+  / 4784 multi-hop) from a `tcpdump -X udp port 3784` line,
+  a Wireshark Follow-UDP-Stream view, a Quagga / FRR / BIRD
+  / Juniper / Cisco debug log, or any BFD-speaking router's
+  tcpdump.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 5880 is fully public; wire format
+  is a tight 24-byte mandatory header with an optional
+  variable-length Authentication Section; no crypto at the
+  parse layer.
+- Completes the routing-control-plane decoder trio with
+  `bgp_message_decode` (EGP), `ospf_packet_decode` (IGP),
+  and `bfd_control_decode` (liveness). Operators now have
+  visibility into the full routing-protocol layer.
+
+### Out of scope (deferred to future iterations)
+
+- UDP / IP framing — feed the UDP-payload bytes after the
+  outer IP+UDP header strip.
+- BFD Echo packets — opaque user-defined format; the
+  receiver loops them back without inspection.
+- S-BFD (Seamless BFD, RFC 7880) — different stateless
+  approach; future Spec.
+- Cryptographic verification — Auth Type 2-5 are recognised
+  but digest verification belongs in a separate Spec.
+- BFD-on-MPLS / BFD-for-VxLAN / BFD-for-Geneve — same BFD
+  wire format but different encapsulations.
+
 ## [0.279.0] - 2026-05-20
 
 **Seventy-fourth native-fit gap: OSPFv2 packet dissector per
