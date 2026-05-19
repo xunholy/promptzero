@@ -250,7 +250,11 @@ func TestRegistrySize(t *testing.T) {
 	// public key + signature algorithm, SAN, key usage, EKU,
 	// basic constraints, AIA, CRL, SKI/AKI, SHA-1/SHA-256
 	// fingerprints. Complements tls_handshake_decode).
-	const expected = 319
+	// v0.243.0 added jwt_decode (JWT dissector per RFC 7519/
+	// 7515/7516 — JWS+JWE detection, header + registered
+	// claims + custom claims, alg=none + expired/nbf
+	// security flags. Pure decode; no signature verification).
+	const expected = 320
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

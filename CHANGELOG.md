@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.243.0] - 2026-05-19
+
+**Thirty-eighth native-fit gap: JSON Web Token (JWT) dissector
+per RFC 7519 + 7515 + 7516 — the dominant API auth token format
+in modern web stacks (OAuth 2.0 / OIDC / REST API auth / SSO).
+Pure offline parse with no key material required.**
+
+### Added
+
+- **`jwt_decode`** (`Risk.Low`, `GroupHostTools`) — parses a
+  JWT Compact Serialization token (JWS 3-segment or JWE
+  5-segment):
+
+  - **Compact Serialization detection** — 3 base64url
+    segments joined by `.` → JWS (signed); 5 segments →
+    JWE (encrypted). Leading `Bearer ` prefix from an
+    Authorization header value is auto-stripped.
+  - **JWS header field decode** (RFC 7515 §4) — `alg`
+    (algorithm name + family classification: none / HS*
+    HMAC / RS* RSA-PKCS1 / ES* ECDSA / PS* RSA-PSS / EdDSA
+    / RSA-OAEP / AES-GCM-KW / ECDH-ES / etc.), `typ`,
+    `cty`, `kid`, `x5t`, `x5t#S256`, `x5c` chain count,
+    `jku`, `crit` extensions list.
+  - **JWT payload registered claims** (RFC 7519 §4.1) —
+    `iss`, `sub`, `aud` (both single-string and array
+    forms), `exp`, `nbf`, `iat`, `jti`. Timestamp claims
+    surfaced both as raw Unix epoch values and as RFC 3339
+    strings for human inspection.
+  - **Custom claims preserved** as a free-form map so
+    OIDC claims (`email`, `given_name`, `family_name`,
+    `picture`, etc.) and application-specific claims
+    survive to the output.
+  - **Security flags** for at-a-glance triage:
+    - `alg_none` — `alg == "none"`, the famous JWT
+      vulnerability class (CVE-2015-2951 and friends).
+    - `signature_missing` — empty signature segment on a
+      JWS.
+    - `expired` / `not_yet_valid` — computed from `exp` /
+      `nbf` against current wall clock.
+    - `hours_until_expiry` / `hours_since_expired` —
+      numeric triage values.
+  - **JWE handling** — 5-segment tokens are labeled, the
+    plaintext header is decoded (`alg` + `enc` are the
+    most important), and the four encrypted segments
+    (`encrypted_key` / `iv` / `ciphertext` / `auth_tag`)
+    are surfaced as raw base64url. Decryption requires
+    the recipient private key and is deliberately out of
+    scope for a pure-decode primitive.
+
+### Why this matters
+
+JWTs are everywhere in modern APIs — every OAuth flow, every
+OIDC identity-provider integration, every Authorization-bearer
+service-to-service call. Operators routinely need to inspect
+the cleartext header + payload + claims of a token in flight
+(debugging an auth failure, triaging an expired-token incident,
+spotting an `alg=none` attack, validating audience scope) and
+end up reaching for `jwt.io` or a one-off Python script. This
+Spec brings the same primitive client-side: paste a token (with
+or without the `Bearer ` prefix), get back a fully structured
+view with algorithm classification, claims breakdown, expiry
+triage, and security flags. Pure offline parse, no key material
+required, no signature verification claimed.
+
 ## [0.242.0] - 2026-05-19
 
 **Thirty-seventh native-fit gap: X.509 v3 certificate dissector

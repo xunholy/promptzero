@@ -362,6 +362,16 @@ var toolLevels = func() map[string]Level {
 		// tls_handshake_decode (whose Certificate body is raw
 		// hex). Stdlib crypto/x509 for the ASN.1 DER walk.
 		"x509_certificate_decode",
+		// v0.243 (NATIVE-fit gap in the modern web-auth decode
+		// space): JWT decoder per RFC 7519 + 7515 + 7516.
+		// Three-segment JWS compact + five-segment JWE detection.
+		// Header (alg + family classification, kid, x5t, jku, x5c,
+		// crit), registered claims (iss/sub/aud/exp/nbf/iat/jti),
+		// custom claims preserved. Security flags: alg_none
+		// detection (CVE-2015-2951-class), signature_missing,
+		// expired/not-yet-valid, hours_until_expiry. Pure decode,
+		// no signature verification.
+		"jwt_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
