@@ -696,6 +696,18 @@ var toolLevels = func() map[string]Level {
 		// heuristic (IPv4/IPv6/EoMPLS first-nibble);
 		// Router-Alert-at-bottom violation note.
 		"mpls_decode",
+		// v0.275 (NATIVE-fit gap — foundational L2 loop-
+		// prevention protocol): STP/RSTP/MSTP BPDU dissector
+		// per IEEE 802.1D-2004 + 802.1Q-2014 §13. 4-byte
+		// common header (Protocol ID + Version + Type); 31-
+		// byte Configuration body (Flags + Root ID + Path
+		// Cost + Bridge ID + Port ID + Message Age + Max Age
+		// + Hello Time + Forward Delay); RSTP flag bits (TC
+		// / Proposal / Port Role / Learning / Forwarding /
+		// Agreement / TC Ack); Bridge ID priority + System
+		// ID Extension + MAC split; 1/256-sec timer
+		// formatting to ms.
+		"stp_bpdu_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

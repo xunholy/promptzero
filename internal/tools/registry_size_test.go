@@ -440,7 +440,13 @@ func TestRegistrySize(t *testing.T) {
 	// label table; inner payload heuristic; Router-Alert-at-
 	// bottom violation note). Foundational service-provider
 	// label-switching protocol.
-	const expected = 351
+	// v0.275.0 added stp_bpdu_decode (STP/RSTP/MSTP BPDU per
+	// IEEE 802.1D-2004 + 802.1Q-2014 §13 — 4-byte common
+	// header + 31-byte Configuration body + per-version
+	// dispatch; flags decoded; Bridge ID priority + System ID
+	// Extension + MAC split; timer formatting). Foundational
+	// L2 loop-prevention protocol.
+	const expected = 352
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
