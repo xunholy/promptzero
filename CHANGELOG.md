@@ -7,6 +7,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.258.0] - 2026-05-19
+
+**Fifty-third native-fit gap: WebSocket frame dissector per
+RFC 6455. WebSocket is the post-Upgrade duplex framing that
+HTTP/1.x switches into for long-lived browser↔server channels
+— every real-time web app (chat, trading dashboards,
+multiplayer games, collaborative editors), every GraphQL
+subscription, every MQTT-over-WebSocket bridge runs on it.
+Natural follow-on to `http_message_decode` (which surfaces
+the Upgrade handshake but stops at the 101 Switching
+Protocols response) — closing the explicit out-of-scope gap
+called out in v0.256.0.**
+
+### Added
+
+- **`websocket_frame_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses one or more concatenated WebSocket frames into a
+  structured view:
+
+  - **Frame header** — 2-byte bit-pack: FIN | RSV1 | RSV2 |
+    RSV3 | opcode (4 bits) on byte 0; MASK | payload-len
+    (7 bits) on byte 1.
+  - **Extended payload length** — payload-len == 126 escapes
+    into a 16-bit uint16 BE; payload-len == 127 escapes into
+    a 64-bit uint64 BE (MSB must be 0 per §5.2 — enforced).
+  - **Mask key** — 4 bytes immediately after the length field
+    when MASK == 1. RFC 6455 §5.3: every client→server frame
+    MUST be masked; server→client frames MUST NOT be masked.
+    The decoder demasks payload bytes (b[i] ^= mask[i%4])
+    automatically and surfaces the mask key as hex for
+    traceability.
+  - **Opcode table** (RFC 6455 §11.8) — 0x0 Continuation /
+    0x1 Text (UTF-8) / 0x2 Binary / 0x8 Close / 0x9 Ping /
+    0xA Pong. 0x3-0x7 reserved non-control; 0xB-0xF reserved
+    control. Control-frame invariants enforced: payload ≤125
+    bytes; FIN must equal 1 (no fragmentation).
+  - **Close frame body** (opcode 0x8) — 2-byte uint16 BE
+    status code per RFC 6455 §7.4.1 + optional UTF-8 reason
+    text. Status name table covers:
+    - 1000 Normal Closure / 1001 Going Away / 1002 Protocol
+      Error / 1003 Unsupported Data / 1004 Reserved
+    - 1005 No Status Rcvd (reserved — must not be sent on
+      the wire) / 1006 Abnormal Closure (reserved — must
+      not be sent on the wire)
+    - 1007 Invalid Frame Payload Data / 1008 Policy
+      Violation / 1009 Message Too Big / 1010 Mandatory
+      Extension
+    - 1011 Internal Error / 1012 Service Restart / 1013 Try
+      Again Later / 1014 Bad Gateway / 1015 TLS Handshake
+      (reserved)
+    - 1016-2999 reserved for future IETF use
+    - 3000-3999 library/framework-defined (IANA-registered)
+    - 4000-4999 application-defined (private use)
+  - **Text/Binary body rendering** — Text frames surface as
+    a UTF-8 string when printable, otherwise hex; Binary
+    always as hex; Ping/Pong surface text when printable
+    (operators often echo a string for liveness debugging).
+  - **Fragmentation detection** — FIN=0 + opcode!=0 marks a
+    fragment opener; FIN=0/1 + opcode=0 marks a Continuation.
+    Notes are emitted to flag the fragment shape; reassembly
+    is left to the caller.
+  - **Multi-frame buffer walking** — a single buffer may
+    carry several concatenated frames; the walker iterates
+    frame-by-frame until consumption and emits a per-frame
+    breakdown plus an opcode-sequence summary
+    (e.g. "Text + Ping + Close").
+  - **Notes** — RSV1=1 emits a permessage-deflate (RFC 7692)
+    note; RSV2/RSV3 emit extension-defined-semantics notes;
+    FIN=0 non-control emits a fragmentation note.
+
+- **Tooling** — registry capacity bumped from 334 → 335.
+
+### Why this gap
+
+- WebSocket is the dominant duplex transport for live web
+  apps. Operators paste WebSocket frame bytes from a
+  mitmproxy capture, `wsdump` output, a Chrome DevTools
+  Network panel export, a Burp WebSocket history entry, or
+  any frame-emitting tool and inspect every documented field.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: a public IETF spec, a tight bit-packed
+  header, a simple XOR-masking scheme, no compression unless
+  permessage-deflate is in play.
+- Explicitly closes the gap noted in v0.256.0 — the HTTP/1.x
+  Upgrade handshake is already handled by
+  `http_message_decode`; this Spec picks up where that stops
+  and walks the post-101 frame stream.
+
+### Out of scope (deferred to future iterations)
+
+- HTTP/1.x Upgrade handshake (Sec-WebSocket-Key / Accept /
+  Version / Extensions / Protocol) — already handled by
+  `http_message_decode`.
+- Per-message Deflate (RFC 7692) — RSV1 flagged and
+  compressed bytes surfaced raw. Operators who need cleartext
+  pipe the bytes through their own decompressor.
+- Subprotocol-specific framing (MQTT-over-WebSocket, STOMP,
+  graphql-ws) — Text/Binary payloads surface raw;
+  subprotocol parsing belongs in a sibling helper.
+- Continuation-chain reassembly — fragments are flagged but
+  not stitched into a single logical message.
+
 ## [0.257.0] - 2026-05-19
 
 **Fifty-second native-fit gap: RTP + RTCP packet dissector per
