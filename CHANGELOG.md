@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.238.0] - 2026-05-19
+
+**Thirty-third native-fit gap: AIS NMEA marine vessel dissector
+— the maritime counterpart of ADS-B, transmitted on 161.975 /
+162.025 MHz from every commercial vessel >300 GT under SOLAS
+Chapter V, decoded host-side with no hardware dependency.**
+
+### Added
+
+- **`ais_nmea_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  AIS NMEA 0183 sentences per ITU-R M.1371-5 + IEC 61162-1:
+
+  - **NMEA envelope** — `!AIVDM` / `!AIVDO` talker IDs,
+    fragment count + index + sequence ID + AIS channel (A/B),
+    payload, padding bits, XOR checksum validation. Multi-
+    fragment messages (Type 5 is always 2 fragments) are
+    reassembled when newline-separated sentences are passed
+    in one call.
+  - **6-bit ASCII payload unpack** — canonical AIS bit-soup
+    decode (char - 48; if > 40 subtract another 8) walked
+    6 bits at a time with the trailing padding bits
+    stripped.
+  - **Type 1 / 2 / 3 Position Report Class A** — MMSI,
+    Navigation Status (16-state table covering Under way
+    using engine, At anchor, Not under command, Restricted
+    manoeuvrability, Constrained by draught, Moored, Aground,
+    Engaged in fishing, Under way sailing, AIS-SART /
+    MOB-AIS / EPIRB-AIS, etc.), Rate of Turn, Speed Over
+    Ground, Position Accuracy, Longitude / Latitude (signed
+    28-/27-bit at 1/10000 minute resolution with sentinel
+    detection), Course Over Ground, True Heading, Timestamp,
+    Manoeuvre Indicator, RAIM flag.
+  - **Type 4 Base Station Report** — shore-side AIS station
+    UTC year/month/day/hour/minute/second + position + EPFD
+    type.
+  - **Type 5 Static and Voyage Related Data** — assembled
+    from the 2-fragment delivery: AIS version, IMO number,
+    callsign, vessel name (20-char 6-bit ASCII), ship type
+    (grouped table covering WIG / Fishing / Sailing /
+    High-speed craft / Pilot / SAR / Tug / Pleasure craft /
+    Passenger / Cargo / Tanker / etc.), dimensions to bow /
+    stern / port / starboard, EPFD type, ETA (month / day /
+    hour / minute), draught, destination, DTE flag.
+  - **Type 18 Standard Class B Position Report** — small-
+    vessel position broadcast (MMSI + Speed + Position +
+    Course + Heading + Timestamp + CS / Display / DSC /
+    Band / Msg22 / Assigned / RAIM flags).
+  - **Type 24 Static Data Class B** — Part A (vessel name)
+    or Part B (ship type + vendor ID + callsign + dimensions
+    for regular vessels; mothership MMSI for auxiliary craft
+    with MMSI prefix 98).
+  - **Sentinel value detection** — longitude 181°, latitude
+    91°, COG 360°, SOG 102.3, heading 511 (the canonical
+    "value not available" markers) are stripped to null
+    fields rather than reported as bogus positions.
+
+### Why this matters
+
+AIS is the highest-traffic OSINT decode target on the maritime
+VHF bands — operators with RTL-SDR / dAISy / AIS-catcher /
+rtl_ais routinely capture thousands of vessel reports per hour
+from coastal waters and need them broken down by MMSI, vessel
+name, position, course, ship type, and destination. Aggregator
+services (MarineTraffic, AISHub) do this server-side; this Spec
+brings the same primitive client-side so operators can inspect
+a single capture at the table without round-tripping to a web
+service. Complements the existing `adsb_mode_s_decode` Spec:
+ADS-B covers aircraft at 1090 MHz, AIS covers ships at
+~162 MHz; together they're the SDR transportation-OSINT
+decode stack. Pure offline parse, no SDR or live demodulation
+required.
+
 ## [0.237.0] - 2026-05-19
 
 **Thirty-second native-fit gap: APRS / AX.25 ham-radio packet

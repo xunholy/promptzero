@@ -225,7 +225,11 @@ func TestRegistrySize(t *testing.T) {
 	// input; address parsing, info-field dispatch,
 	// uncompressed position with symbol lookup, PHG
 	// extension, status, message, basic telemetry).
-	const expected = 314
+	// v0.238.0 added ais_nmea_decode (AIS NMEA sentence
+	// dissector — maritime counterpart of ADS-B; ITU-R
+	// M.1371-5 envelope + 6-bit ASCII unpack + dispatch on
+	// Types 1/2/3, 4, 5 (multi-fragment), 18, 24).
+	const expected = 315
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

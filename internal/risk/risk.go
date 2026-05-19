@@ -312,6 +312,16 @@ var toolLevels = func() map[string]Level {
 		// basic telemetry. Pairs with subghz_pocsag_decode for
 		// the paging-dragnet workflow.
 		"aprs_packet_decode",
+		// v0.238 (NATIVE-fit gap in the maritime decode space):
+		// AIS NMEA sentence dissector — the maritime AIS VHF
+		// counterpart of ADS-B. Pure offline parser per
+		// ITU-R M.1371-5 + NMEA 0183. Covers Types 1/2/3
+		// (Position Class A), 4 (Base Station), 5 (Static &
+		// Voyage, multi-fragment reassembly), 18 (Class B
+		// position), 24 (Class B static). MMSI + lat/lon + nav
+		// status + vessel name + IMO + ship type + dimensions
+		// + destination. Companion to adsb_mode_s_decode.
+		"ais_nmea_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
