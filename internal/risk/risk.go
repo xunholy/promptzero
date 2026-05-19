@@ -721,6 +721,18 @@ var toolLevels = func() map[string]Level {
 		// End Marker, G-PDU); inner IP heuristic. Used on
 		// every cellular S1-U / N3 / N9 interface.
 		"gtp_u_decode",
+		// v0.277 (NATIVE-fit gap — foundational fixed-line
+		// broadband protocol): PPPoE per RFC 2516. 6-byte
+		// header (Version+Type + Code + Session ID + Length);
+		// 6-entry Code name table (PADI / PADO / PADR / PADS
+		// / PADT / Session); Discovery TLV walker with 10-
+		// entry Tag Type name table (Service-Name / AC-Name /
+		// Host-Uniq / AC-Cookie / Vendor-Specific / Relay-
+		// Session-ID / 3 error tags / End-Of-List); Session-
+		// stage PPP protocol-ID dispatch with 9-entry name
+		// table (IPv4 / IPv6 / IPCP / IPv6CP / LCP / PAP /
+		// CHAP / EAP variants).
+		"pppoe_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

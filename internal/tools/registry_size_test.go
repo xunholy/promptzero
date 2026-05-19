@@ -452,7 +452,13 @@ func TestRegistrySize(t *testing.T) {
 	// name table + 6-entry message type table + inner IP
 	// heuristic). Foundational cellular telco protocol
 	// (S1-U / N3 / N9 user-plane wrapping).
-	const expected = 353
+	// v0.277.0 added pppoe_decode (PPPoE per RFC 2516 — 6-
+	// byte header, 6-entry Code name table, Discovery TLV
+	// walker with 10-entry Tag Type table, Session-stage PPP
+	// protocol-ID dispatch with 9-entry name table).
+	// Foundational fixed-line broadband protocol; universal
+	// in DSL/FTTH BNG deployments.
+	const expected = 354
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
