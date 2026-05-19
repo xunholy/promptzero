@@ -686,6 +686,16 @@ var toolLevels = func() map[string]Level {
 		// for canonical TEB case. Rounds out overlay trio
 		// with vxlan_decode + gre_decode.
 		"geneve_decode",
+		// v0.274 (NATIVE-fit gap — foundational service-
+		// provider protocol): MPLS label stack dissector per
+		// RFC 3032 + 5462. 4-byte-per-label walker (Label
+		// 20-bit + TC 3-bit + S 1-bit + TTL 8-bit); iterates
+		// until S=1 bottom-of-stack; 8-entry reserved label
+		// name table (IPv4/IPv6 Explicit NULL, Router Alert,
+		// ELI, GAL, OAM Alert, Extension); inner payload
+		// heuristic (IPv4/IPv6/EoMPLS first-nibble);
+		// Router-Alert-at-bottom violation note.
+		"mpls_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

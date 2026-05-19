@@ -435,7 +435,12 @@ func TestRegistrySize(t *testing.T) {
 	// Class name table, inner Ethernet peek for TEB).
 	// Next-generation datacenter overlay; rounds out the trio
 	// with vxlan_decode + gre_decode.
-	const expected = 350
+	// v0.274.0 added mpls_decode (MPLS label stack per RFC
+	// 3032 + 5462 — 4-byte-per-label walker; 8-entry reserved
+	// label table; inner payload heuristic; Router-Alert-at-
+	// bottom violation note). Foundational service-provider
+	// label-switching protocol.
+	const expected = 351
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
