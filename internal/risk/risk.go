@@ -520,6 +520,17 @@ var toolLevels = func() map[string]Level {
 		// to http_message_decode (which surfaces the Upgrade
 		// handshake but stops at the 101 response).
 		"websocket_frame_decode",
+		// v0.259 (NATIVE-fit gap — top-30 #19, RFID PACS
+		// payload dissector): HID Prox / iCLASS / EM PACS
+		// formats per HID OEM spec sheets. Bit-string OR
+		// hex+bit_length input; HID H10301 26-bit (canonical),
+		// H10306 34-bit, H10304 37-bit, H10302 37-bit (no FC),
+		// Corporate 1000 35-bit and 48-bit. Parity computation
+		// + validation per format. Multi-candidate dispatch
+		// when the bit length is ambiguous (37-bit → both
+		// H10304 and H10302). Natural sibling to
+		// wiegand_decode.
+		"rfid_pacs_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

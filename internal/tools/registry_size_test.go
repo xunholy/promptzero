@@ -342,7 +342,13 @@ func TestRegistrySize(t *testing.T) {
 	// with 14-entry status code table + RSV1 deflate flag
 	// + multi-frame walker + fragmentation detection).
 	// Natural follow-on to http_message_decode.
-	const expected = 335
+	// v0.259.0 added rfid_pacs_decode (HID Prox PACS format
+	// dissector — H10301 26-bit, H10306 34-bit, H10304 +
+	// H10302 37-bit, Corporate 1000 35-bit + 48-bit; parity
+	// computation and validation per format; multi-candidate
+	// dispatch for ambiguous bit widths). Top-30 gap #19;
+	// natural sibling to wiegand_decode.
+	const expected = 336
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
