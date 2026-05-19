@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.274.0] - 2026-05-20
+
+**Sixty-ninth native-fit gap: MPLS label stack dissector per
+RFC 3032 (stack encoding) + RFC 5462 (TC field rename from
+EXP) + the reserved-label catalogue from RFC 4182 / 5586 /
+6790 / 7274. MPLS is the foundational label-switching
+protocol of every ISP backbone, every L3VPN (MPLS-VPN), every
+EVPN/VPLS service, every MPLS-TE traffic-engineering tunnel,
+every carrier-Ethernet pseudowire. Pairs with `vlan_decode`
+/ `vxlan_decode` / `gre_decode` / `geneve_decode` for the
+complete encapsulation-protocol picture.**
+
+### Added
+
+- **`mpls_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an MPLS label stack into a structured view:
+
+  - **4-byte-per-label entry**:
+    - **Label** (20 bits, big-endian) — the actual MPLS
+      label value
+    - **TC** (Traffic Class, 3 bits) — formerly EXP
+      (Experimental, RFC 5462 renamed); QoS class indicator
+    - **S** (Bottom of Stack, 1 bit) — 1 = innermost label
+    - **TTL** (Time to Live, 8 bits)
+  - **Stack walker** — iterates 4-byte entries until S=1 is
+    reached, then surfaces the remaining bytes as the
+    payload. Errors if the buffer is exhausted before any
+    label sets S=1.
+  - **Reserved label name table** (8 documented entries):
+    - 0 IPv4 Explicit NULL (RFC 3032 §2.1)
+    - 1 Router Alert (RFC 3032 — must NEVER be at bottom
+      of stack)
+    - 2 IPv6 Explicit NULL (RFC 3032 §2.1)
+    - 3 Implicit NULL (signalling only, never on wire)
+    - 7 Entropy Label Indicator (ELI, RFC 6790)
+    - 13 Generic Associated Channel Label (GAL, RFC 5586)
+    - 14 OAM Alert Label (RFC 3429)
+    - 15 Extension Label (RFC 7274)
+  - **Inner payload heuristic** — after the bottom-of-stack
+    label:
+    - first nibble 4 → IPv4
+    - first nibble 6 → IPv6
+    - bottom label 0 → IPv4 (from Explicit NULL)
+    - bottom label 2 → IPv6 (from Explicit NULL)
+    - first nibble 0 → EoMPLS / pseudowire control word
+      (RFC 4385)
+    - otherwise → likely Ethernet for EoMPLS / VPLS
+      pseudowires
+  - **Conformance check** — Router Alert label (1) at the
+    bottom of stack surfaces a Note flagging the RFC 3032
+    §2.1 violation.
+
+- **Tooling** — registry capacity bumped from 350 → 351.
+
+### Why this gap
+
+- MPLS is universal in service-provider networks. Operators
+  paste MPLS frame bytes (after the EtherType 0x8847
+  unicast / 0x8848 multicast strip, or after the outer
+  IP+UDP for MPLS-over-UDP per RFC 7510, or after the outer
+  GRE for MPLS-in-GRE) from a
+  `tcpdump -X ether proto 0x8847` line, a Wireshark
+  Follow-Frame view, a Cisco IOS `show mpls forwarding-table`
+  capture, or any MPLS-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 3032 / 5462 / 5586 / 6790 / 7274 are
+  all fully public; wire format is a tight 4-byte-per-entry
+  bit-packed field; no crypto, no compression, no varints.
+- Adds the service-provider piece to the encapsulation-
+  protocol picture alongside VLAN (L2 tag), VXLAN (DC
+  overlay), GRE (IP-in-IP), and Geneve (next-gen overlay).
+
+### Out of scope (deferred to future iterations)
+
+- Ethernet framing — feed the MPLS bytes after the EtherType
+  0x8847 / 0x8848 strip.
+- Inner payload decoding — operators pipe the payload to
+  `ip_packet_decode` for IPv4/IPv6, or a future Ethernet
+  decoder for EoMPLS pseudowires.
+- MPLS Control Word (RFC 4385) and Pseudowire Type dispatch
+  — detected as leading-0-nibble payload but the operator
+  decides what pseudowire type it is.
+- LDP / RSVP-TE / BGP-LU label-distribution protocols —
+  control-plane; a separate Spec.
+
 ## [0.273.0] - 2026-05-20
 
 **Sixty-eighth native-fit gap: Geneve (Generic Network
