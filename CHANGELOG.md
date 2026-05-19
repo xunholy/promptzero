@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.255.0] - 2026-05-19
+
+**Fiftieth native-fit gap: SIP message dissector per RFC 3261.
+The dominant VoIP / video / IM signaling protocol on the
+internet — every PBX / softphone / SBC (Session Border
+Controller) / WebRTC gateway / unified-communications platform
+speaks it. Natural companion to `stun_packet_decode` for the
+complete VoIP/WebRTC decode stack.**
+
+### Added
+
+- **`sip_message_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a SIP message into a structured view:
+
+  - **Start-line dispatch** — auto-detect request (METHOD URI
+    VERSION) vs response (VERSION CODE REASON) by whether the
+    first token starts with `SIP/`.
+  - **14 documented request methods** (RFC 3261 + 3262 + 3265
+    + 3428 + 3515 + 3903): INVITE, ACK, BYE, CANCEL, OPTIONS,
+    REGISTER, PRACK, SUBSCRIBE, NOTIFY, PUBLISH, INFO, REFER,
+    MESSAGE, UPDATE.
+  - **~40-entry status-code name table** across all six
+    response classes:
+    - 1xx Provisional: 100 Trying / 180 Ringing / 181 Call
+      Is Being Forwarded / 182 Queued / 183 Session Progress
+      / 199 Early Dialog Terminated.
+    - 2xx Success: 200 OK / 202 Accepted / 204 No
+      Notification.
+    - 3xx Redirection: 300 Multiple Choices / 301 Moved
+      Permanently / 302 Moved Temporarily / 305 Use Proxy /
+      380 Alternative Service.
+    - 4xx Client error: 400 / 401 / 403 / 404 / 405 / 406 /
+      407 / 408 / 409 / 410 / 413 / 414 / 415 / 416 / 420 /
+      421 / 422 / 423 / 480 / 481 / 482 / 483 / 484 / 485 /
+      486 / 487 / 488 / 491 / 493 — full RFC 3261 §21.4
+      coverage.
+    - 5xx Server error: 500 / 501 / 502 / 503 / 504 / 505 /
+      513.
+    - 6xx Global failure: 600 / 603 / 604 / 606.
+  - **Header field parsing** with case-insensitive name
+    match + compact-form expansion per RFC 3261 §7.3.3:
+    `m`→Contact, `v`→Via, `l`→Content-Length, `t`→To,
+    `f`→From, `i`→Call-ID, `e`→Content-Encoding,
+    `k`→Supported, `c`→Content-Type, `s`→Subject. Multi-
+    value headers (Via, Contact, Route) preserved as ordered
+    lists. Line continuation (lines starting with whitespace)
+    folded into the previous header.
+  - **Typed envelope fields surfaced**: Via (route trace),
+    From, To, Call-ID, CSeq (sequence number + method
+    broken out), Contact, Content-Type, Content-Length,
+    Max-Forwards, User-Agent, Server.
+  - **SDP body decode** (RFC 4566) when Content-Type is
+    `application/sdp`: v=version + o=origin + s=session-
+    name + c=connection-info + t=timing + m=media-
+    description (audio/video/application/etc. + port +
+    protocol + payload types) + a=attribute lines collected
+    per media section.
+
+### Why this matters
+
+SIP is the universal call-signaling protocol for VoIP
+telephony, video conferencing, and WebRTC. Every PBX,
+softphone, IP phone, SBC, and unified-communications gateway
+speaks it. Operators routinely end up with SIP messages from
+Wireshark "Follow Stream" views, tshark `sip.*` extractions,
+captured SIP trace files, PBX log lines (Asterisk /
+FreeSWITCH / Kamailio / OpenSIPS), or SBC audit trails, and
+need them broken down by request/response, method/status,
+header fields with compact-form normalization, and media
+negotiation (SDP). This decoder fills that gap natively:
+paste a SIP message, get back a fully structured view with
+every documented field, status codes named, and SDP media
+descriptors broken out. Together with `stun_packet_decode`
+and `ip_packet_decode`, completes the VoIP/WebRTC signaling
+decode stack — IP/UDP for transport, STUN for NAT discovery,
+SIP for call signaling, SDP for media negotiation.
+
 ## [0.254.0] - 2026-05-19
 
 **Forty-ninth native-fit gap: STUN/TURN packet dissector per

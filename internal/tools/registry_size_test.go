@@ -315,7 +315,12 @@ func TestRegistrySize(t *testing.T) {
 	// with method/class split + magic cookie validation +
 	// ~30-entry attribute name table + XOR address
 	// un-masking + ERROR-CODE with named codes).
-	const expected = 331
+	// v0.255.0 added sip_message_decode (SIP message
+	// dissector per RFC 3261 — request/response auto-detect
+	// + 14 documented methods + ~40-entry status code table
+	// across all 6 classes + compact-form header expansion
+	// + CSeq parsing + SDP body decode).
+	const expected = 332
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

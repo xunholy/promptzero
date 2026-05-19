@@ -477,6 +477,14 @@ var toolLevels = func() map[string]Level {
 		// with named codes. Companion to ip_packet_decode
 		// for VoIP / WebRTC flow analysis.
 		"stun_packet_decode",
+		// v0.255 (NATIVE-fit gap — VoIP / WebRTC signaling):
+		// SIP message dissector per RFC 3261. Auto-detect
+		// request vs response start line + 14 documented
+		// methods + ~40-entry status code name table across
+		// all 6 classes + compact-form header expansion +
+		// CSeq parsing + SDP body decode for media
+		// negotiation. Companion to stun_packet_decode.
+		"sip_message_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
