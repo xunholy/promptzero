@@ -748,6 +748,18 @@ var toolLevels = func() map[string]Level {
 		// tables. Runs every ISP backbone / CDN edge / cloud
 		// provider network.
 		"bgp_message_decode",
+		// v0.279 (NATIVE-fit gap — foundational interior
+		// gateway routing protocol): OSPFv2 packet dissector
+		// per RFC 2328. 24-byte common header (Version + Type
+		// + Length + Router ID + Area ID + Checksum + AuType
+		// + Auth); 5 packet types with per-type body dispatch
+		// (Hello / DBD / LSR / LSU / LSAck); LSA Header
+		// 20-byte struct with 9-entry LS Type name table
+		// (Router / Network / Summary network / Summary ASBR
+		// / AS-External / NSSA External / Opaque variants);
+		// AuType 3-entry name table; OSPF Options bit
+		// decoding (E / MC / NP / EA / DC / O / DN).
+		"ospf_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

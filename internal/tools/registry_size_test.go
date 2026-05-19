@@ -465,7 +465,13 @@ func TestRegistrySize(t *testing.T) {
 	// NLRI walkers; NOTIFICATION error code+subcode tables;
 	// ROUTE-REFRESH AFI/SAFI tables). Foundational Internet
 	// inter-AS routing protocol.
-	const expected = 355
+	// v0.279.0 added ospf_packet_decode (OSPFv2 per RFC 2328
+	// — 24-byte common header, 5 packet types with per-type
+	// bodies (Hello/DBD/LSR/LSU/LSAck), LSA Header with 9-
+	// entry LS Type name table, AuType+Options decoded).
+	// Foundational IGP routing protocol; pairs with
+	// bgp_message_decode for inside-plus-outside routing.
+	const expected = 356
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
