@@ -244,7 +244,13 @@ func TestRegistrySize(t *testing.T) {
 	// envelope + handshake dispatch + cipher suite + extension
 	// lookup (SNI/ALPN/supported_versions/groups/sig_algs/
 	// key_share) + JA3 fingerprint with GREASE stripping).
-	const expected = 318
+	// v0.242.0 added x509_certificate_decode (X.509 v3
+	// certificate dissector per RFC 5280 — PEM/DER input,
+	// subject/issuer DN, validity + days_remaining + expired,
+	// public key + signature algorithm, SAN, key usage, EKU,
+	// basic constraints, AIA, CRL, SKI/AKI, SHA-1/SHA-256
+	// fingerprints. Complements tls_handshake_decode).
+	const expected = 319
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

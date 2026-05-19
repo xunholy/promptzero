@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.242.0] - 2026-05-19
+
+**Thirty-seventh native-fit gap: X.509 v3 certificate dissector
+per RFC 5280 — the natural complement to `tls_handshake_decode`
+whose Certificate handshake message is surfaced as raw hex.
+Pure offline parse using Go stdlib `crypto/x509`.**
+
+### Added
+
+- **`x509_certificate_decode`** (`Risk.Low`, `GroupHostTools`)
+  — parses an X.509 v3 certificate from either PEM or
+  hex-encoded DER bytes:
+
+  - **PEM and DER input auto-detection** — input starting
+    with `-----BEGIN CERTIFICATE-----` is parsed as PEM (with
+    base64 unwrap + chain support: first cert is decoded,
+    total chain length reported via `chain_length_seen`).
+    Everything else is treated as hex-encoded DER.
+  - **Subject + Issuer Distinguished Name** — full openssl-
+    style DN string + per-RDN breakdown (CommonName, Country,
+    Organization, OrganizationalUnit, Locality, Province,
+    StreetAddress, PostalCode, SerialNumber).
+  - **Serial number** — both decimal and uppercase hex
+    representations (the form printed by every certificate
+    UI).
+  - **Validity window** — `not_before` + `not_after` as
+    RFC 3339 timestamps + `days_remaining` count (negative
+    when expired) + `expired` boolean flag for quick
+    triage.
+  - **Public key algorithm + size** — RSA modulus bits
+    (1024/2048/3072/4096), ECDSA curve name (P-256/P-384/
+    P-521), Ed25519 (256 bits).
+  - **Signature algorithm** — SHA1-RSA / SHA256-RSA /
+    SHA256-ECDSA / SHA256-RSA-PSS / Ed25519 / etc.
+  - **X.509 version** (v1 / v2 / v3).
+  - **Extensions**:
+    - Subject Alternative Names (DNS, IP, email, URI).
+    - Key Usage (digitalSignature, contentCommitment,
+      keyEncipherment, dataEncipherment, keyAgreement,
+      keyCertSign, cRLSign, encipherOnly, decipherOnly).
+    - Extended Key Usage (serverAuth, clientAuth,
+      codeSigning, emailProtection, OCSPSigning,
+      timeStamping, IPSec roles, Microsoft / Netscape gated
+      crypto, etc.).
+    - Basic Constraints (CA flag + path length).
+    - Authority Information Access (OCSP responder URLs +
+      CA Issuer URLs).
+    - CRL Distribution Points.
+    - Subject Key Identifier (SKI, colon-hex).
+    - Authority Key Identifier (AKI, colon-hex).
+    - Certificate Policy OIDs.
+  - **Fingerprints** — SHA-1 + SHA-256 in canonical
+    openssl/GUI colon-separated form (the form used for
+    SPKI pinning, CT log lookups, at-a-glance cert
+    identification).
+  - **Self-signed detection** — SubjectDN == IssuerDN flag.
+
+### Why this matters
+
+Together with `tls_handshake_decode`, this Spec completes the
+TLS-traffic-analysis decode stack: the handshake decoder
+identifies the connection envelope + SNI + JA3 fingerprint;
+this Spec handles the cert chain bodies that the handshake
+decoder leaves as raw hex. Operators paste a PEM blob from an
+`openssl s_client` capture, a TLS handshake decode, a
+Wireshark `tls.handshake.certificate` field, or a CT log
+entry, and inspect every cert field without dragging out
+`openssl x509 -text` or pulling the cert into a separate
+inspection tool. Pure offline parse via Go stdlib
+`crypto/x509` — no networking, no chain validation, no key
+material required.
+
 ## [0.241.0] - 2026-05-19
 
 **Thirty-sixth native-fit gap: TLS handshake dissector

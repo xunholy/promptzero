@@ -352,6 +352,16 @@ var toolLevels = func() map[string]Level {
 		// primitive for plaintext SNI extraction + TLS-client
 		// fingerprinting.
 		"tls_handshake_decode",
+		// v0.242 (NATIVE-fit gap completing the TLS-traffic-
+		// analysis stack): X.509 certificate dissector per
+		// RFC 5280. PEM + DER input, subject/issuer DN,
+		// validity (with days_remaining/expired), public key
+		// algorithm + size, SAN, key usage, EKU, basic
+		// constraints, AIA, CRL distribution points, SKI/AKI,
+		// SHA-1/SHA-256 fingerprints. Complements
+		// tls_handshake_decode (whose Certificate body is raw
+		// hex). Stdlib crypto/x509 for the ASN.1 DER walk.
+		"x509_certificate_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
