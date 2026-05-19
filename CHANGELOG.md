@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.250.0] - 2026-05-19
+
+**Forty-fifth native-fit gap: SSH wire-protocol dissector per
+RFC 4253 + RFC 4250-4256 — handles both the SSH-2.0 version
+banner and the SSH_MSG_KEXINIT binary message with HASSH /
+HASSHServer fingerprint computation. The SSH counterpart to
+the TLS JA3 fingerprint (Salesforce, ben-aaron-bowers, 2018).**
+
+### Added
+
+- **`ssh_handshake_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses the cleartext portions of an SSH session:
+
+  - **Version exchange line** (RFC 4253 §4.2) —
+    `SSH-protoversion-softwareversion [SP comment]` broken
+    out into protocol version (1.x / 1.99 / 2.0), software
+    version (OpenSSH_8.9p1 / dropbear_2022.83 /
+    libssh2_1.10.0 / Cisco-1.25 / etc.), and optional
+    comment field (typically the OS distribution suffix
+    like `Ubuntu-3ubuntu0.10`).
+  - **Binary packet envelope** (RFC 4253 §6) —
+    `[packet_length:4][padding_length:1][payload][padding]
+    [MAC]` with length validation against the buffer and
+    minimum-size checks per the spec.
+  - **27-entry message-type dispatch** (RFC 4250 §4.1.2):
+    DISCONNECT (1), IGNORE (2), UNIMPLEMENTED (3), DEBUG
+    (4), SERVICE_REQUEST (5), SERVICE_ACCEPT (6), EXT_INFO
+    (7), NEWCOMPRESS (8), KEXINIT (20), NEWKEYS (21),
+    KEXDH_INIT (30), KEXDH_REPLY (31), USERAUTH_REQUEST (50),
+    USERAUTH_FAILURE (51), USERAUTH_SUCCESS (52),
+    USERAUTH_BANNER (53), USERAUTH_INFO_REQUEST (60),
+    USERAUTH_INFO_RESPONSE (61), GLOBAL_REQUEST (80),
+    REQUEST_SUCCESS (81), REQUEST_FAILURE (82),
+    CHANNEL_OPEN (90), CHANNEL_OPEN_CONFIRMATION (91),
+    CHANNEL_OPEN_FAILURE (92), CHANNEL_WINDOW_ADJUST (93),
+    CHANNEL_DATA (94), CHANNEL_EXTENDED_DATA (95),
+    CHANNEL_EOF (96), CHANNEL_CLOSE (97), CHANNEL_REQUEST
+    (98), CHANNEL_SUCCESS (99), CHANNEL_FAILURE (100).
+  - **SSH_MSG_KEXINIT body decode** (RFC 4253 §7.1) —
+    16-byte cookie + 10 SSH name-lists (`kex_algorithms`,
+    `server_host_key_algorithms`, `encryption_algorithms_c2s`,
+    `encryption_algorithms_s2c`, `mac_algorithms_c2s`,
+    `mac_algorithms_s2c`, `compression_algorithms_c2s`,
+    `compression_algorithms_s2c`, `languages_c2s`,
+    `languages_s2c`) + `first_kex_packet_follows` + 4-byte
+    reserved.
+  - **HASSH fingerprint** (per the Salesforce spec) — the
+    semicolon-separated string `kex_algos;encryption_algos_c2s
+    ;mac_algos_c2s;compression_algos_c2s` (with comma-
+    separated list elements) plus its MD5 hash. Identifies
+    the SSH client stack (OpenSSH version, PuTTY, libssh,
+    JSch, ParamPro, etc.) across thousands of distinct
+    signatures.
+  - **HASSHServer fingerprint** — same string format but
+    using server-side (`_s2c`) lists. Identifies the SSH
+    server stack.
+
+### Why this matters
+
+SSH is the universal remote-administration protocol, and the
+KEXINIT message is the SSH equivalent of the TLS ClientHello/
+ServerHello — both sides advertise their algorithm preferences
+in the clear before any cryptography happens. Operators
+routinely need to fingerprint the SSH client + server stack to
+correlate connections against known software versions (for
+asset inventory, version-skew detection, or detecting
+anomalous clients in a SOC). This decoder fills that gap
+natively: paste a banner line (from `echo | nc host 22`, an
+nmap -sV scan, or a Wireshark Telnet-style view) or a hex blob
+of the binary KEXINIT packet, get back a fully structured view
+with every name-list and HASSH/HASSHServer hashes ready to
+search against the public HASSH database. Together with
+`tls_handshake_decode` (JA3) and `ip_packet_decode` (the
+transport envelope), completes the encrypted-transport
+fingerprinting stack.
+
 ## [0.249.0] - 2026-05-19
 
 **Forty-fourth native-fit gap: raw IP packet dissector spanning

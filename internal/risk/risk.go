@@ -429,6 +429,16 @@ var toolLevels = func() map[string]Level {
 		// ICMPv6 type+code naming. Every other application-layer
 		// Spec sits on top of this.
 		"ip_packet_decode",
+		// v0.250 (NATIVE-fit gap in the encrypted-transport
+		// fingerprinting space): SSH wire-protocol dissector
+		// per RFC 4253. Two input modes: SSH-2.0 version
+		// banner OR binary KEXINIT packet. KEXINIT body
+		// walker (16-byte cookie + 10 name-lists +
+		// first_kex_packet_follows + reserved) with HASSH /
+		// HASSHServer fingerprint computation (MD5 of
+		// kex;enc;mac;compression). SSH counterpart to TLS
+		// JA3.
+		"ssh_handshake_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

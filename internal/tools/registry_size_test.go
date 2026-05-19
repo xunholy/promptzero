@@ -288,7 +288,13 @@ func TestRegistrySize(t *testing.T) {
 	// 792/4443 — auto-detect IP version + protocol dispatch
 	// + TCP flag breakout + TLV options walker + ICMP/ICMPv6
 	// type+code naming. Foundational network primitive).
-	const expected = 326
+	// v0.250.0 added ssh_handshake_decode (SSH wire-protocol
+	// dissector per RFC 4253 — version banner + binary
+	// packet envelope + 27-entry message-type table +
+	// KEXINIT body decode with 10 name-lists + HASSH /
+	// HASSHServer fingerprint computation. SSH counterpart
+	// to TLS JA3).
+	const expected = 327
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
