@@ -7,6 +7,106 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.264.0] - 2026-05-20
+
+**Fifty-ninth native-fit gap: HPACK header decompression per
+RFC 7541. HPACK is the header-compression layer that sits
+inside every HTTP/2 HEADERS, CONTINUATION, and PUSH_PROMISE
+frame; without it the header bytes that `http2_frame_decode`
+surfaces are opaque. Explicitly closes the gap deferred from
+v0.263.0.**
+
+### Added
+
+- **`hpack_decode`** (`Risk.Low`, `GroupHostTools`) —
+  decompresses an HPACK-encoded header block into a structured
+  view:
+
+  - **5 representation types** (RFC 7541 §6):
+    - **Indexed Header Field** (1xxxxxxx) — references the
+      static (1-61) or dynamic table by index.
+    - **Literal with Incremental Indexing** (01xxxxxx) —
+      name indexed OR literal, value literal; the (name,
+      value) pair is appended to the dynamic table.
+    - **Literal without Indexing** (0000xxxx) — name indexed
+      OR literal, value literal; NOT added to the dynamic
+      table.
+    - **Literal Never Indexed** (0001xxxx) — same as without
+      indexing, plus a 'never index in any hop' hint (used
+      for sensitive headers like Authorization).
+    - **Dynamic Table Size Update** (001xxxxx) — change max
+      dynamic table size.
+  - **N-bit prefix integer encoding** (RFC 7541 §5.1) — small
+    values fit in the prefix bits; large values use a
+    continuation chain of 7-bit-per-octet groups with the
+    high bit signalling 'more octets follow'.
+  - **Literal string** (RFC 7541 §5.2) — optional H bit
+    signals Huffman-encoded; bytes are then either raw octets
+    or a Huffman-encoded stream.
+  - **Static table** (Appendix A, **61 entries**) — pre-baked.
+    Covers :authority, :method GET/POST, :path / and
+    /index.html, :scheme http/https, :status 200/204/206/304/
+    400/404/500, and common request/response headers
+    (accept-* / authorization / cache-control / content-* /
+    cookie / etag / location / set-cookie / user-agent / etc.).
+  - **Dynamic table** — newly-indexed headers inserted with
+    the lowest index above the static table (62 per RFC 7541
+    §2.3.3) and shift older entries up; eviction when max
+    size is exceeded.
+  - **Huffman decoder** — bit-trie walker built from the RFC
+    7541 Appendix B table (symbols 0-255 plus EOS-256, code
+    lengths 5-30 bits). Trailing partial-byte padding must
+    be ≤ 7 bits AND must be all-1s (an MSB prefix of EOS);
+    EOS mid-stream is a decoding error per RFC 7541 §5.2.
+  - **Per-header representation hint** — the response
+    includes which of the five representations was used for
+    each header, so operators can spot sensitive headers
+    tagged 'never indexed', dynamic-table growth, etc.
+
+- **Tooling** — registry capacity bumped from 340 → 341.
+
+### Why this gap
+
+- HPACK closes the HTTP/2 decode loop. Operators paste an
+  HPACK block from the `body_hex` of a HEADERS / CONTINUATION
+  / PUSH_PROMISE frame surfaced by `http2_frame_decode`, a
+  Wireshark Follow HTTP/2 view's header bytes, or any
+  HPACK-emitting tool and get every decoded (name, value)
+  pair plus the per-header representation choice.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 7541 is fully public; no cryptography,
+  no third-party libraries; the entire static table + Huffman
+  code book are part of the spec.
+- Explicitly closes the gap noted in v0.263.0 — the HTTP/2
+  frame dissector surfaces compressed bytes as hex; this Spec
+  decodes them.
+
+### Test vectors
+
+Pinned against the canonical RFC 7541 Appendix C examples:
+- §C.2.1 literal with incremental indexing
+- §C.2.2 literal without indexing
+- §C.2.4 indexed header field
+- §C.3.1 first request (4 headers, no Huffman)
+- §C.4.1 first request with Huffman-encoded :authority
+- §C.4.2 'no-cache' Huffman round-trip
+- §5.1.1 1337 as N-bit prefix integer
+
+### Out of scope (deferred to future iterations)
+
+- HPACK encoding (the inverse direction) — operators
+  who need to craft requests have plenty of higher-level
+  tools.
+- Cross-frame dynamic-table continuity — each `Decode` call
+  starts with an empty dynamic table; a multi-frame session-
+  tracker would feed CONTINUATION bytes back into the same
+  Decoder.
+- Header validation (RFC 9113 §8.2.1 lower-case constraint,
+  pseudo-header rules) — names + values are surfaced verbatim;
+  semantic validation belongs in a separate Spec.
+- QPACK (HTTP/3) — different compression scheme with separate
+  static table and different framing; future Spec.
+
 ## [0.263.0] - 2026-05-20
 
 **Fifty-eighth native-fit gap: HTTP/2 frame dissector per RFC
