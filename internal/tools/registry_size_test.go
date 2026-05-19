@@ -374,7 +374,13 @@ func TestRegistrySize(t *testing.T) {
 	// table, 7-entry SETTINGS parameter table, multi-frame
 	// walker, flags decoded per frame type). Completes the
 	// HTTP/1.x + WebSocket + HTTP/2 decode stack.
-	const expected = 340
+	// v0.264.0 added hpack_decode (HPACK header decompression
+	// per RFC 7541 — 5 representation types, N-bit prefix
+	// integers, full Huffman codec from Appendix B 257-symbol
+	// table, 61-entry static table, per-call dynamic table
+	// with eviction). Explicitly closes the gap noted in
+	// v0.263 http2_frame_decode.
+	const expected = 341
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

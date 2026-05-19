@@ -580,6 +580,16 @@ var toolLevels = func() map[string]Level {
 		// PRIORITY / ACK). Completes the HTTP/1.x + WebSocket
 		// + HTTP/2 decode stack.
 		"http2_frame_decode",
+		// v0.264 (NATIVE-fit gap — closes HTTP/2 stack):
+		// HPACK header decompression per RFC 7541. Five
+		// representation types (indexed / literal incremental
+		// / literal without indexing / literal never indexed
+		// / dynamic table size update); N-bit prefix integer
+		// encoding; Huffman decoder (Appendix B, 257 symbols);
+		// 61-entry static table; per-call dynamic table with
+		// eviction. Explicitly closes the gap noted in v0.263
+		// http2_frame_decode.
+		"hpack_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
