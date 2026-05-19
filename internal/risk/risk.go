@@ -611,6 +611,19 @@ var toolLevels = func() map[string]Level {
 		// capability flag table. Coexists with LLDP on the
 		// same wire on Cisco-heavy networks.
 		"cdp_decode",
+		// v0.267 (NATIVE-fit gap — UDP equivalent of TLS):
+		// DTLS record + handshake dissector per RFC 6347
+		// (DTLS 1.2) and RFC 9147 (DTLS 1.3 legacy-form).
+		// 13-byte record layer (CT + version + epoch + 48-bit
+		// seq + length); 5 content types; 23-entry Alert
+		// description name table; 12-byte handshake header
+		// (msg_type + length + msg_seq + fragment_offset +
+		// fragment_length); 13 handshake types; ClientHello /
+		// ServerHello / HelloVerifyRequest body dissection;
+		// Heartbeat with Heartbleed (CVE-2014-0160) pattern
+		// detection; multi-record walker. Pairs with
+		// tls_handshake_decode.
+		"dtls_record_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -391,7 +391,14 @@ func TestRegistrySize(t *testing.T) {
 	// 4-byte header, TLV walker over 17 documented types,
 	// 10-bit capability flag table). Cisco-proprietary
 	// sibling to LLDP; coexists on Cisco-heavy networks.
-	const expected = 343
+	// v0.267.0 added dtls_record_decode (DTLS 1.2/1.3 record +
+	// handshake dissector per RFC 6347 / RFC 9147 — 13-byte
+	// record layer, 5 content types, 23-entry Alert table,
+	// 12-byte handshake header, 13 handshake types, ClientHello
+	// / ServerHello / HelloVerifyRequest bodies, Heartbleed
+	// detection, multi-record walker). UDP equivalent of TLS;
+	// pairs with tls_handshake_decode.
+	const expected = 344
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
