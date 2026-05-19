@@ -7,6 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.278.0] - 2026-05-20
+
+**Seventy-third native-fit gap: BGP-4 message dissector per
+RFC 4271 plus the canonical extensions — RFC 4760 (MP-BGP),
+RFC 5492 (Capabilities Optional Parameter), RFC 6793 (4-byte
+AS Number), RFC 2918 / 7313 (Route Refresh). BGP-4 is the
+foundational inter-AS routing protocol that runs the public
+Internet — every ISP backbone, every CDN edge, every cloud
+provider network, every hyperscaler peer speaks BGP.**
+
+### Added
+
+- **`bgp_message_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a BGP-4 message into a structured view:
+
+  - **19-byte fixed header** (RFC 4271 §4.1):
+    - bytes 0-15: **Marker** — MUST be 16 bytes of 0xFF.
+      Non-conformant markers surface a Note (the all-ones
+      requirement is a relic of the BGP-3 authentication
+      scheme that BGP-4 keeps for protocol fidelity).
+    - bytes 16-17: **Length** (uint16 BE; range 19-4096
+      RFC 4271, or up to 65535 with RFC 8654 BGP-EXT).
+    - byte 18: **Type** with **5-entry name table**: 1
+      OPEN, 2 UPDATE, 3 NOTIFICATION, 4 KEEPALIVE, 5
+      ROUTE-REFRESH.
+  - **OPEN body**: Version + My AS + Hold Time + BGP
+    Identifier (IPv4) + Optional Parameters walker.
+    Capabilities (Optional Param Type 2 per RFC 5492) with
+    **7-entry Capability Code name table**:
+    - 1 Multiprotocol Extensions (MP-BGP, RFC 4760)
+    - 2 Route Refresh (RFC 2918)
+    - 64 Graceful Restart (RFC 4724)
+    - 65 4-byte AS Number (RFC 6793)
+    - 67 Dynamic Capability (RFC 4396)
+    - 70 Enhanced Route Refresh (RFC 7313)
+    - 71 Long-Lived Graceful Restart (RFC 9494)
+  - **UPDATE body**: Withdrawn Routes Length + Withdrawn
+    Routes (list of length-prefixed prefixes, IPv4
+    formatted) + Total Path Attribute Length + Path
+    Attributes (Flags + Type + Length + Value) + NLRI
+    (list of length-prefixed prefixes). **13-entry Path
+    Attribute Type name table**: ORIGIN, AS_PATH, NEXT_HOP,
+    MULTI_EXIT_DISC, LOCAL_PREF, ATOMIC_AGGREGATE,
+    AGGREGATOR, COMMUNITY (RFC 1997), ORIGINATOR_ID,
+    CLUSTER_LIST, MP_REACH_NLRI (RFC 4760), MP_UNREACH_NLRI
+    (RFC 4760), EXTENDED_COMMUNITIES (RFC 4360), AS4_PATH
+    (RFC 6793), AS4_AGGREGATOR (RFC 6793), LARGE_COMMUNITY
+    (RFC 8092).
+  - **NOTIFICATION body**: Error Code + Error Subcode +
+    Data. **6-entry Error Code name table** with per-code
+    sub-tables (e.g. Cease subcodes per RFC 4486: Admin
+    Shutdown / Peer De-configured / Connection Rejected /
+    Out of Resources / Hard Reset).
+  - **KEEPALIVE body** — empty (always 19 bytes total).
+  - **ROUTE-REFRESH body** (RFC 2918): AFI + Reserved +
+    SAFI. **3-entry AFI** (IPv4 / IPv6 / L2VPN) + **8-entry
+    SAFI** (unicast / multicast / MPLS Label / MCAST-VPN /
+    EVPN / BGP-LS / VPNv4 / VPNv6) name tables.
+
+- **Tooling** — registry capacity bumped from 354 → 355.
+
+### Why this gap
+
+- BGP runs the public Internet. Operators paste BGP message
+  bytes from a `tcpdump -X tcp port 179` line, a Wireshark
+  Follow-TCP-Stream from a peering session, a Quagga / FRR
+  / GoBGP / BIRD debug log, an MRT routing-table dump, or
+  any BGP-speaking router's tcpdump.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 4271 is fully public; wire format
+  is a tight 19-byte fixed header plus per-type bit-packed
+  binary bodies; no crypto, no compression, no varints.
+- Adds the inter-AS routing leg to the protocol picture
+  alongside the L2 (STP / VLAN / LLDP / ARP) and L3 (IP /
+  ICMP / ARP) decoders, and the transport/tunneling layer
+  (VXLAN / Geneve / GRE / MPLS / GTP-U / PPPoE) — operators
+  now have visibility into every major Internet-backbone
+  control-plane protocol.
+
+### Out of scope (deferred to future iterations)
+
+- TCP framing — feed the bytes after TCP/179 stream
+  reassembly. BGP messages can span multiple TCP segments.
+- Path Attribute deep dissection — AS_PATH segments,
+  COMMUNITY tuples, MP_REACH AFI/SAFI/Next-Hop/NLRI
+  parsing — per-attribute body is raw hex. A future Spec
+  would walk each attribute type.
+- Capability Value deep dissection — most capabilities have
+  their own sub-format; we surface code + length + raw
+  value.
+- Specialised AFI/SAFI types (Route Filter / FlowSpec /
+  RT-Constraint).
+- Multi-message TCP-stream walking — this Spec handles a
+  single BGP message; the caller frames the stream.
+
 ## [0.277.0] - 2026-05-20
 
 **Seventy-second native-fit gap: Point-to-Point Protocol
