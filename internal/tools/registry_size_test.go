@@ -278,7 +278,12 @@ func TestRegistrySize(t *testing.T) {
 	// primary source / upstream IPv4) + 4 NTP timestamps
 	// with NTP→Unix epoch conversion + optional MD5/SHA-1
 	// authenticator).
-	const expected = 324
+	// v0.248.0 added syslog_message_decode (RFC 5424 IETF +
+	// RFC 3164 BSD format dissector — auto-detect by
+	// post-PRI byte; PRI broken out into facility + severity
+	// name lookup; 5424 structured-data walker with escape
+	// handling; 3164 BSD timestamp + tag[PID] split).
+	const expected = 325
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

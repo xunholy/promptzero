@@ -411,6 +411,16 @@ var toolLevels = func() map[string]Level {
 		// authenticator. High defensive value for time-sync
 		// forensics and NTP amplification DDoS detection.
 		"ntp_packet_decode",
+		// v0.248 (NATIVE-fit gap — lingua franca of log
+		// aggregation): syslog message dissector for both
+		// modern RFC 5424 IETF + legacy RFC 3164 BSD formats.
+		// Auto-detect by post-PRI byte. PRI broken out into
+		// facility (24 entries) + severity (8 levels). RFC
+		// 5424 structured-data walker with backslash-escape
+		// handling. RFC 3164 BSD timestamp + tag[PID] split.
+		// Workhorse blue-team primitive for log triage,
+		// SIEM correlation, alert generation.
+		"syslog_message_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

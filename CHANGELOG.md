@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.248.0] - 2026-05-19
+
+**Forty-third native-fit gap: syslog message dissector for
+both modern RFC 5424 (IETF) and legacy RFC 3164 (BSD)
+formats. Lingua franca of log aggregation — every operating
+system, network device, container runtime, and SIEM agent
+emits it. Workhorse blue-team primitive for log triage,
+alert generation, and SIEM correlation.**
+
+### Added
+
+- **`syslog_message_decode`** (`Risk.Low`, `GroupHostTools`)
+  — parses a syslog message into a structured view:
+
+  - **PRI** (priority value) — the leading `<NNN>` integer
+    broken out as facility + severity name lookup per RFC
+    5424 §6.2:
+    - **Facility** (24 entries): kern (0), user (1), mail
+      (2), daemon (3), auth (4), syslog (5), lpr (6), news
+      (7), uucp (8), cron (9), authpriv (10), ftp (11),
+      ntp (12), audit (13), alert (14), clock (15),
+      local0..local7 (16-23).
+    - **Severity** (8 levels): Emergency (system unusable) /
+      Alert (action required immediately) / Critical
+      (critical conditions) / Error / Warning / Notice
+      (normal but significant) / Informational / Debug.
+  - **Format auto-detection** — the byte immediately after
+    `<PRI>` distinguishes the two formats: a digit means
+    RFC 5424 (the VERSION field, always `1` in current
+    practice); anything else is RFC 3164.
+  - **RFC 5424 IETF format** —
+    `<PRI>1 TIMESTAMP HOSTNAME APP-NAME PROCID MSGID
+    [SD-ID-1@PEN key1="val1" key2="val2"] [SD-ID-2 ...] MSG`.
+    Fields use `-` for nil. TIMESTAMP is RFC 3339 with
+    optional sub-second precision and offset. Structured-
+    data parameters are walked with backslash-escape
+    handling for `\"` and `\]` inside values. SD-ID
+    supports the `@PEN` (Private Enterprise Number) suffix
+    for vendor-specific extensions.
+  - **RFC 3164 BSD format** —
+    `<PRI>TIMESTAMP HOSTNAME TAG[PID]: MSG`. TIMESTAMP is
+    `Mmm dd hh:mm:ss` (15 chars; day may be space-padded
+    for single digits). TAG may end in `[NNN]` to carry
+    the originating process ID, which is split out into a
+    separate `proc_id` field.
+  - **Severity highlighting** — the integer severity is
+    surfaced both as a number and a name; the
+    operationally-important Emergency / Alert / Critical
+    levels are trivially greppable in the JSON output for
+    SIEM alerting pipelines.
+
+### Why this matters
+
+Syslog is the universal log-aggregation format — every Linux/
+BSD/macOS system, every router/switch/firewall/AP, every
+container runtime, every SIEM agent emits it. Operators
+routinely end up with syslog lines from journalctl,
+/var/log/messages, a Splunk extraction, a Wireshark follow-
+stream of UDP/514, or a SIEM raw-event view and need them
+broken down by facility/severity, source hostname, app, and
+(for RFC 5424) the structured-data SD-IDs and parameters. This
+decoder fills that gap natively with auto-detection of both
+formats: paste a line, get back a fully structured view with
+the PRI broken out, the timestamp/hostname/app surfaced, and
+the structured data walked into named entries with key/value
+maps. Together with `dns_packet_decode` + `dhcp_packet_decode`
++ `snmp_packet_decode` + `ntp_packet_decode`, completes the
+observability decode stack: DNS for name resolution, DHCP for
+address assignment, SNMP for runtime monitoring, NTP for time
+sync, syslog for log aggregation. Pure offline parse.
+
 ## [0.247.0] - 2026-05-19
 
 **Forty-second native-fit gap: NTP / SNTP packet dissector per
