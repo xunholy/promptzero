@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.247.0] - 2026-05-19
+
+**Forty-second native-fit gap: NTP / SNTP packet dissector per
+RFC 5905 (v4) + RFC 1305 (v3) + RFC 4330 — the time-
+synchronisation protocol every networked device speaks. High
+defensive value for time-sync forensics, NTP amplification
+DDoS detection (mode 7 / monlist abuse), log-timestamp
+correlation, and certificate-validity-window debugging.**
+
+### Added
+
+- **`ntp_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an NTP/SNTP packet into a structured view:
+
+  - **Byte 0 broken out** — LI (Leap Indicator: 0 no warning
+    / 1 +61sec / 2 -61sec / 3 alarm-unsynchronised), VN
+    (Version Number 1-4), Mode (1 symmetric active / 2
+    symmetric passive / 3 client / 4 server / 5 broadcast /
+    6 NTP control / 7 private use).
+  - **Stratum** (1=primary / 2-15=secondary / 16=
+    unsynchronised / 17-255=reserved) with name lookup.
+  - **Poll** + **Precision** as signed log2 seconds, surfaced
+    as both raw log2 and as float64 seconds.
+  - **Root Delay** + **Root Dispersion** as 32-bit NTPv3
+    short-format fixed-point seconds.
+  - **Reference ID** with stratum-dependent interpretation:
+    - **Stratum 0**: Kiss-o'-Death (KoD) 4-character code
+      (ACST / AUTH / AUTO / BCST / CRYP / DENY / DROP / RSTR
+      / INIT / MCST / NKEY / NTSN / RATE / RMOT / STEP) per
+      RFC 5905 §7.4 with full name lookup (the
+      operationally important "RATE" / "DENY" codes that
+      tell clients to back off).
+    - **Stratum 1**: 4-character ASCII source identifier
+      (GPS / GAL / PPS / IRIG / WWVB / DCF77 / HBG / MSF /
+      JJY / LORC / TDF / CHU / WWV / WWVH / NIST / ACTS /
+      USNO / PTB) per RFC 5905 §7.3 with full name lookup.
+    - **Stratum 2-15**: IPv4 of the upstream server.
+  - **Four 64-bit NTP timestamps** — Reference (last clock
+    set), Origin / T1 (client send), Receive / T2 (server
+    receive), Transmit / T3 (server send). Each surfaced as
+    raw 64-bit value (32-bit integer seconds since 1900 +
+    32-bit fractional at 2^-32 resolution) AND Unix-epoch
+    seconds AND RFC 3339 string in UTC. All-zero timestamps
+    flagged with is_zero=true (typical of Origin on a first-
+    flight client request).
+  - **Optional NTPv4 extension fields** (RFC 5906): count +
+    raw hex per extension.
+  - **Optional authenticator** (RFC 5905 §7.5): detected by
+    trailing 20-byte (Key ID + 16-byte MD5 MAC) or 24-byte
+    (Key ID + 20-byte SHA-1 MAC) tail. Key ID + MAC hex +
+    algorithm name surfaced.
+
+### Why this matters
+
+NTP is the silent foundation of every network — every
+networked device speaks it, every log timestamp depends on
+it, every TLS certificate validation depends on it. Operators
+routinely end up with NTP hex blobs from a Wireshark / tshark
+/ tcpdump-of-port-123 capture and need them broken down by
+mode (client request vs server response), stratum (primary GPS
+vs secondary IPv4 vs Kiss-o'-Death backoff), reference ID
+(which upstream source / KoD reason), and the 4 timestamps
+that determine clock offset / round-trip delay. This decoder
+fills that gap natively: paste a hex frame, get back a fully
+structured view with envelope + stratum-aware Reference ID +
+timestamps as both Unix epoch and RFC 3339. Pairs with
+`dns_packet_decode` + `dhcp_packet_decode` + `snmp_packet_decode`
+to complete the network-infrastructure decode stack. Pure
+offline parse, no time server attach required.
+
 ## [0.246.0] - 2026-05-19
 
 **Forty-first native-fit gap: SNMP v1/v2c/v3 packet dissector

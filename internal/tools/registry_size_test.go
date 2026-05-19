@@ -271,7 +271,14 @@ func TestRegistrySize(t *testing.T) {
 	// msgGlobalData; PDU dispatch covering 9 types; VarBindList
 	// walker with type-specific value decode; well-known OID
 	// name lookup; named error-status + generic-trap).
-	const expected = 323
+	// v0.247.0 added ntp_packet_decode (NTP/SNTP dissector
+	// per RFC 5905 + 1305 + 4330 — 48-byte header with LI/
+	// VN/Mode/Stratum/Poll/Precision + Root Delay/Dispersion
+	// + Reference ID with stratum-dependent decode (KoD /
+	// primary source / upstream IPv4) + 4 NTP timestamps
+	// with NTP→Unix epoch conversion + optional MD5/SHA-1
+	// authenticator).
+	const expected = 324
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

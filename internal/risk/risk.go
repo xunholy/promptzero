@@ -400,6 +400,17 @@ var toolLevels = func() map[string]Level {
 		// walker with type-specific value decode + well-known
 		// OID name lookup. High OT/IT pentest value.
 		"snmp_packet_decode",
+		// v0.247 (NATIVE-fit gap — every networked device speaks
+		// it): NTP/SNTP packet dissector per RFC 5905 + 1305 +
+		// 4330. 48-byte header decode (LI/VN/Mode/Stratum/Poll/
+		// Precision/RootDelay/RootDispersion + Reference ID with
+		// stratum-dependent interpretation (Kiss-o'-Death codes
+		// / primary source identifier / upstream IPv4) + 4 NTP
+		// timestamps with NTP→Unix epoch conversion + RFC 3339
+		// rendering. Optional NTPv4 extensions + MD5/SHA-1
+		// authenticator. High defensive value for time-sync
+		// forensics and NTP amplification DDoS detection.
+		"ntp_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
