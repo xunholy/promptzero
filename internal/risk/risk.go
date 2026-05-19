@@ -655,6 +655,16 @@ var toolLevels = func() map[string]Level {
 		// 10-entry inner EtherType table. Pairs with arp_decode
 		// / lldp_decode / cdp_decode for full L2 visibility.
 		"vlan_decode",
+		// v0.271 (NATIVE-fit gap — datacenter overlay
+		// protocol): VXLAN (RFC 7348) + Cisco GBP + GPE
+		// variants. 8-byte header (Flags + 24-bit Reserved-1
+		// + 24-bit VNI + 8-bit Reserved-2); variant
+		// classification (standard / VXLAN-GBP / VXLAN-GPE /
+		// non-VXLAN); RFC 7348 conformance check; inner
+		// Ethernet peek with 13-entry EtherType name table.
+		// Dominant in VMware NSX, OpenStack, Kubernetes
+		// (Calico / Flannel / Cilium).
+		"vxlan_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

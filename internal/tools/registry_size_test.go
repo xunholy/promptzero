@@ -418,7 +418,12 @@ func TestRegistrySize(t *testing.T) {
 	// VID special-value annotations; QinQ double-tag
 	// detection; 10-entry inner EtherType table).
 	// Foundational L2 tag protocol.
-	const expected = 347
+	// v0.271.0 added vxlan_decode (VXLAN RFC 7348 + Cisco GBP
+	// + GPE variants — 8-byte header, variant classification,
+	// RFC 7348 conformance check, inner Ethernet peek with
+	// 13-entry EtherType table). Datacenter overlay protocol
+	// dominant in VMware NSX / OpenStack / Kubernetes CNIs.
+	const expected = 348
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
