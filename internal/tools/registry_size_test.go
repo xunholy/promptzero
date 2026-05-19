@@ -355,7 +355,13 @@ func TestRegistrySize(t *testing.T) {
 	// Action / AirDrop / Hey Siri / Proximity Pairing).
 	// Top-30 gap #8; defensive primitive sourced from
 	// furiousMAC + AppleJuice + apple_bleee research.
-	const expected = 337
+	// v0.261.0 added wireguard_packet_decode (WireGuard UDP
+	// packet dissector per the official protocol spec at
+	// wireguard.com/protocol — 4 message types: Handshake
+	// Initiation / Response / Cookie Reply / Transport Data;
+	// MAC2 zero detection; keep-alive detection; reserved-
+	// byte abuse flagging). Foundational modern VPN protocol.
+	const expected = 338
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -544,6 +544,17 @@ var toolLevels = func() map[string]Level {
 		// without participating in their pairing flows.
 		// Pairs with workflow_apple_continuity_audit.
 		"ble_continuity_classify",
+		// v0.261 (NATIVE-fit gap — foundational modern VPN):
+		// WireGuard packet dissector per the official protocol
+		// spec at wireguard.com/protocol. Four message types
+		// — Handshake Initiation 148B, Handshake Response 92B,
+		// Cookie Reply 64B, Transport Data variable. Per-type
+		// fixed-layout binary header walker; MAC2 zero
+		// detection (no-cookie flag); keep-alive detection
+		// (empty inner plaintext). Cryptographic material
+		// (Curve25519 / Blake2s / ChaCha20Poly1305 /
+		// XChaCha20Poly1305) surfaced as hex for traceability.
+		"wireguard_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
