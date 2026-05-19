@@ -430,7 +430,12 @@ func TestRegistrySize(t *testing.T) {
 	// PPTP Ack Number; PPTP Enhanced GRE Call ID + PayloadLen
 	// split). Foundational IP tunneling protocol; pairs with
 	// vxlan_decode.
-	const expected = 349
+	// v0.273.0 added geneve_decode (Geneve per RFC 8926 — 8-
+	// byte fixed header, TLV options walker, 6-entry Option
+	// Class name table, inner Ethernet peek for TEB).
+	// Next-generation datacenter overlay; rounds out the trio
+	// with vxlan_decode + gre_decode.
+	const expected = 350
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

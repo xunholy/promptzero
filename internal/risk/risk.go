@@ -675,6 +675,17 @@ var toolLevels = func() map[string]Level {
 		// Frame Relay / ARP); PPTP Enhanced GRE Call ID +
 		// PayloadLength split.
 		"gre_decode",
+		// v0.273 (NATIVE-fit gap — next-gen datacenter
+		// overlay protocol): Geneve per RFC 8926. 8-byte
+		// fixed header (Version + 6-bit Option Length + O/C
+		// flags + Protocol Type + 24-bit VNI + Reserved) +
+		// TLV options walker (Class + Type with C-bit +
+		// Length-in-words + Option Data); 6-entry Option
+		// Class name table covering IETF + Linux/OVS + VMware
+		// + Mellanox + Cisco + Oracle; inner Ethernet peek
+		// for canonical TEB case. Rounds out overlay trio
+		// with vxlan_decode + gre_decode.
+		"geneve_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
