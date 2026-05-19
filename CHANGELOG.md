@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.265.0] - 2026-05-20
+
+**Sixtieth native-fit gap: LLDP (Link Layer Discovery
+Protocol) per IEEE 802.1AB-2009. LLDP is the multi-vendor
+switch-to-switch and switch-to-host topology-discovery
+protocol every datacenter operator relies on — every managed
+switch advertises its chassis ID, port ID, system name,
+capabilities, and management address on every active link, and
+every modern NIC / server agent (lldpd / lldpctl / Cisco DNA
+Center / Juniper Junos / Arista EOS) consumes them.**
+
+### Added
+
+- **`lldp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an LLDP payload into a structured view:
+
+  - **TLV walker** — each TLV is 16 bits of header (7-bit
+    type + 9-bit length, big-endian) followed by `length`
+    bytes of body. The walker stops at End of LLDPDU (type
+    0) or at the buffer end.
+  - **Mandatory TLVs** (must appear in this order at the
+    start of every LLDPDU per §8.1.1):
+    - **Type 1 Chassis ID** — 1-byte subtype + variable-
+      length ID. **7 subtypes** decoded: 1 Chassis
+      component / 2 Interface alias / 3 Port component /
+      4 MAC address (formatted as XX:XX:XX:XX:XX:XX) /
+      5 Network address (1-byte AFI + address) / 6
+      Interface name / 7 Locally assigned.
+    - **Type 2 Port ID** — same TLV shape, **7 subtypes**:
+      1 Interface alias / 2 Port component / 3 MAC address
+      / 4 Network address / 5 Interface name / 6 Agent
+      circuit ID / 7 Locally assigned.
+    - **Type 3 Time-To-Live** — uint16 BE seconds.
+  - **Optional standardised TLVs**:
+    - **Type 0 End of LLDPDU**.
+    - **Type 4 Port Description** / **Type 5 System Name**
+      / **Type 6 System Description** — UTF-8 strings
+      (printable check; falls back to hex).
+    - **Type 7 System Capabilities** — 2-byte capability
+      flags + 2-byte enabled flags. **11 documented
+      capability bits**: Other, Repeater, MAC Bridge,
+      WLAN AP, Router, Telephone, DOCSIS Cable Device,
+      Station Only, C-VLAN Component, S-VLAN Component,
+      Two-port MAC Relay.
+    - **Type 8 Management Address** — address string length
+      + IANA Address Family Number subtype (1 IPv4 / 2
+      IPv6 / 6 MAC / 16 DNS name) + address + interface
+      numbering subtype (1 unknown / 2 ifIndex / 3
+      systemPortNumber) + interface number (uint32 BE) +
+      OID string length + OID bytes (BER-encoded, hex).
+  - **Organizationally Specific TLV** (type 127): 3-byte
+    OUI + 1-byte subtype + organisation-defined body. **5
+    OUI names**: 00-12-0F IEEE 802.3, 00-80-C2 IEEE 802.1,
+    00-12-BB LLDP-MED (TIA TR-41), 00-13-1F PROFIBUS /
+    PROFINET, 00-01-42 Cisco Systems.
+  - **Mandatory-TLV ordering check** — surfaces a note if
+    the first three TLVs are not Chassis ID + Port ID +
+    TTL in that order per IEEE 802.1AB §8.1.1.
+
+- **Tooling** — registry capacity bumped from 341 → 342.
+
+### Why this gap
+
+- LLDP is universal in modern datacenters. Operators paste
+  the LLDP payload (after the Ethernet header strip,
+  EtherType 0x88CC) from a `tcpdump -i ethX -X ether proto
+  0x88CC` line, a Wireshark Follow-Frame view, an `lldpctl
+  -f xml` export, or any LLDP-emitting tool and inspect
+  every documented field.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: IEEE 802.1AB is fully public; wire format
+  is a tight type/length TLV walker over a small documented
+  type catalogue, no crypto, no compression, no varints.
+- Operationally useful for asset discovery, topology mapping,
+  cabling verification, and rogue-device detection.
+
+### Out of scope (deferred to future iterations)
+
+- Ethernet framing — feed the LLDP payload after the dst MAC
+  + src MAC + EtherType bytes.
+- LLDP-MED extension TLV-by-TLV decoding — LLDP-MED OUI
+  (00-12-BB) subtypes surfaced with raw body hex; deep
+  dissection of capabilities, network policy, location
+  identification, and inventory belongs in a sibling Spec.
+- IEEE 802.1 / 802.3 OUI subtypes (VLAN ID / link
+  aggregation / max frame size / power-via-MDI) — also raw
+  body hex; deep dissection deferred.
+- CDP (Cisco Discovery Protocol, proprietary EtherType
+  0x2000) — a sibling Spec.
+
 ## [0.264.0] - 2026-05-20
 
 **Fifty-ninth native-fit gap: HPACK header decompression per
