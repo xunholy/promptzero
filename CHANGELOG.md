@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.268.0] - 2026-05-20
+
+**Sixty-third native-fit gap: QUIC long-header packet
+dissector per RFC 9000. QUIC is the modern UDP-based
+transport that underpins HTTP/3 — every major CDN
+(Cloudflare / Fastly / Akamai / Google Cloud CDN / AWS
+CloudFront / Vercel) serves HTTP/3 by default to modern
+browsers; MASQUE proxying rides on QUIC; an increasing
+number of API gateways speak QUIC. The long header carries
+the connection-setup visibility (Initial / 0-RTT / Handshake
+/ Retry / Version Negotiation) useful for forensic analysis
+without needing TLS handshake secrets.**
+
+### Added
+
+- **`quic_long_header_decode`** (`Risk.Low`, `GroupHostTools`)
+  — parses a QUIC long-header packet into a structured view:
+
+  - **First-byte dispatch**: high bit 1 = long header (this
+    Spec); high bit 0 = short header (1-RTT, not decoded —
+    surfaced with a note about the header-protected
+    packet-number length bits). Version Negotiation is
+    detected when Version == 0.
+  - **Long header common** (RFC 9000 §17.2): Header Form +
+    Fixed Bit + Long Packet Type (2 bits) + Type-Specific
+    nibble + Version (uint32 BE) + DCID Length + DCID +
+    SCID Length + SCID.
+  - **4 Long Packet Types** (RFC 9000 §17.2):
+    - **0 Initial**: Token Length (VLI) + Token + Length
+      (VLI) + Protected Packet Number + Protected Payload.
+    - **1 0-RTT**: Length (VLI) + Protected Packet Number
+      + Protected Payload.
+    - **2 Handshake**: same body shape as 0-RTT.
+    - **3 Retry**: Retry Token (variable) + Retry Integrity
+      Tag (16-byte AES-128-GCM tag covering the original
+      DCID).
+  - **Variable-Length Integer** (RFC 9000 §16): 2-bit prefix
+    indicates 1/2/4/8-byte payload length; canonical 5-case
+    test set from §16 pinned in the tests.
+  - **Version Negotiation** (RFC 9000 §17.2.1): when Version
+    == 0, the bytes after SCID are a list of uint32 BE
+    supported versions the server announces.
+  - **Version name table** (4 documented entries + GREASE
+    pattern):
+    - 0x00000001 QUIC v1 (RFC 9000)
+    - 0x6B3343CF QUIC v2 (RFC 9369)
+    - 0xFF00001D draft-29 / 0xFF000022 draft-34
+    - 0x?A?A?A?A GREASE (RFC 8701 — non-standard versions
+      deliberately used to detect middleboxes that hard-code
+      version numbers)
+
+- **Tooling** — registry capacity bumped from 344 → 345.
+
+### Why this gap
+
+- HTTP/3 is now the dominant browser-to-CDN transport.
+  Operators paste UDP-payload bytes from a Wireshark
+  Follow-UDP-Stream view, a `tcpdump -X udp port 443` line,
+  a `curl --http3 -v` trace, or any QUIC-emitting tool and
+  get the cleartext connection-setup picture.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 9000 is fully public; wire format is
+  a tight bit-packed byte plus fixed-layout fields plus VLI
+  encoding; no cryptography at the long-header layer
+  (DCID / SCID / Version / Token / supported-versions list
+  are all in the clear).
+
+### Out of scope (deferred to future iterations)
+
+- Short-header (1-RTT) packets — the packet number length
+  and key-phase bits are in the header-protected first byte,
+  so without the header-protection key we can't unambiguously
+  parse the packet number. A future Spec could surface the
+  cleartext DCID portion when the operator already knows the
+  agreed length.
+- Payload decryption — requires TLS handshake secrets;
+  protected payload is surfaced as hex.
+- Frame-layer dissection (STREAM / CRYPTO / ACK / MAX_DATA /
+  PING / etc.) — frames live inside the decrypted payload.
+- UDP / IP framing — feed the UDP payload bytes.
+- HTTP/3 framing layer (future Spec — HTTP/3 frames live in
+  QUIC STREAM frames).
+
 ## [0.267.0] - 2026-05-20
 
 **Sixty-second native-fit gap: DTLS record + handshake
