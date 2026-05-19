@@ -485,6 +485,17 @@ var toolLevels = func() map[string]Level {
 		// CSeq parsing + SDP body decode for media
 		// negotiation. Companion to stun_packet_decode.
 		"sip_message_decode",
+		// v0.256 (NATIVE-fit gap — foundational web protocol):
+		// HTTP/1.x message dissector per RFC 9112 + 9110.
+		// Auto-detect request vs response + ~10 documented
+		// methods (incl. WebDAV) + ~50-entry status code name
+		// table + header parsing with case-insensitive match
+		// + line continuation folding + typed envelope fields
+		// (Host / User-Agent / Server / Content-* /
+		// Authorization with scheme breakout / Cookie + Set-
+		// Cookie with attribute map) + Content-Length /
+		// chunked transfer-encoding body decoding.
+		"http_message_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

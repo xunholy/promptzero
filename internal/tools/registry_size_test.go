@@ -320,7 +320,14 @@ func TestRegistrySize(t *testing.T) {
 	// + 14 documented methods + ~40-entry status code table
 	// across all 6 classes + compact-form header expansion
 	// + CSeq parsing + SDP body decode).
-	const expected = 332
+	// v0.256.0 added http_message_decode (HTTP/1.x request +
+	// response dissector per RFC 9112 + 9110 — auto-detect
+	// request/response + ~50-entry status code table across
+	// all 5 classes + typed envelope fields with
+	// Authorization scheme breakout + Cookie/Set-Cookie
+	// attribute parsing + Content-Length / chunked body
+	// decoding).
+	const expected = 333
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
