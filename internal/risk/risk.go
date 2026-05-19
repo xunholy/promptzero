@@ -555,6 +555,19 @@ var toolLevels = func() map[string]Level {
 		// (Curve25519 / Blake2s / ChaCha20Poly1305 /
 		// XChaCha20Poly1305) surfaced as hex for traceability.
 		"wireguard_packet_decode",
+		// v0.262 (NATIVE-fit gap — foundational IP error /
+		// diagnostic protocol): ICMP (RFC 792) and ICMPv6
+		// (RFC 4443 + 4861) packet dissector. Auto-detect
+		// version by type-byte heuristic + explicit hint.
+		// 17 ICMPv4 types with sub-code tables; 17 ICMPv6
+		// types with sub-code tables. Per-type body
+		// decoding for Echo Request/Reply, Destination
+		// Unreachable / Time Exceeded / Parameter Problem
+		// embedded-IP carry, Redirect gateway, Packet Too
+		// Big MTU, Neighbor Solicit/Advertise, Router
+		// Solicit/Advertise. NDP option TLV walker with
+		// 9-entry option name table.
+		"icmp_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -361,7 +361,14 @@ func TestRegistrySize(t *testing.T) {
 	// Initiation / Response / Cookie Reply / Transport Data;
 	// MAC2 zero detection; keep-alive detection; reserved-
 	// byte abuse flagging). Foundational modern VPN protocol.
-	const expected = 338
+	// v0.262.0 added icmp_packet_decode (ICMP RFC 792 + ICMPv6
+	// RFC 4443 + NDP RFC 4861 packet dissector — auto-detect
+	// version, 17+17 type tables, per-type body decoding
+	// for Echo / DestUnreach / Redirect / Packet Too Big /
+	// NS+NA / RS+RA, NDP option TLV walker). Foundational
+	// network-layer diagnostic protocol; companion to
+	// ip_packet_decode.
+	const expected = 339
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
