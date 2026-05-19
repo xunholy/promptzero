@@ -7,6 +7,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.257.0] - 2026-05-19
+
+**Fifty-second native-fit gap: RTP + RTCP packet dissector per
+RFC 3550 + RFC 3551 + RFC 4585 + RFC 3611. RTP is the media
+layer of every VoIP call, every WebRTC connection, every SIP-
+signalled multimedia stream — natural completion of the
+VoIP/WebRTC decode stack alongside `sip_message_decode`
+(signaling) and `stun_packet_decode` (NAT traversal). The
+trio now covers the full SIP → STUN → RTP/RTCP pipeline.**
+
+### Added
+
+- **`rtp_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an RTP or RTCP datagram into a structured view:
+
+  - **Auto-detect** — RTP vs RTCP. Both share V=2 in the high
+    two bits of byte 0; the disambiguator is the payload-type
+    byte. RTCP standard PTs (200-207) don't overlap practical
+    RTP PTs (7-bit 0-127). RTP PTs 72-76 are RTCP-conflict
+    reserved per RFC 3551 §6 and are rejected.
+  - **RTP header** — 12 fixed bytes + optional CSRC list +
+    optional X-extension. Surfaced: V / P / X / CC / M / PT
+    / Sequence / Timestamp / SSRC / CSRC[CC] / optional
+    Extension (4-byte profile + length header + N×4 bytes
+    data) / payload / optional padding (last byte = pad
+    count when P=1).
+  - **Static payload-type table** (RFC 3551 §6) — 23
+    documented entries. Audio: PCMU, GSM, G723, DVI4 (3
+    rates), LPC, PCMA, G722, L16 mono/stereo, QCELP, CN, MPA,
+    G728, G729. Video: CelB, JPEG, nv, H261, MPV, MP2T, H263.
+    Reserved ranges (35-71, 77-95) rendered as "unassigned";
+    72-76 as "RTCP-conflict reserved"; 96-127 as "dynamic
+    (negotiated in SDP)".
+  - **RTCP composite packets** — one UDP datagram may carry
+    multiple RTCP packets concatenated. Walker follows the
+    (length+1)*4 bytes rule until the buffer is consumed.
+    Each sub-packet decoded by PT:
+    - **SR (200)** — sender SSRC + NTP timestamp + RTP
+      timestamp + sender packet/byte count + RC × reception
+      report block (source SSRC + fraction lost + cumulative
+      lost (signed 24-bit) + extended highest seq +
+      interarrival jitter + LSR + DLSR).
+    - **RR (201)** — reporter SSRC + RC × reception report.
+    - **SDES (202)** — SC × chunk (SSRC + items keyed by
+      SDES type: 1 CNAME / 2 NAME / 3 EMAIL / 4 PHONE / 5
+      LOC / 6 TOOL / 7 NOTE / 8 PRIV) with END terminator
+      + 4-byte alignment padding.
+    - **BYE (203)** — SC × SSRC + optional reason string.
+    - **APP (204)** — SSRC + 4-byte name + opaque
+      application-defined data.
+    - **RTPFB (205)** / **PSFB (206)** — feedback envelope
+      per RFC 4585. Sender SSRC + media SSRC + FCI blob.
+      FMT field decoded: RTPFB FMT 1 NACK / 3 TMMBR / 4
+      TMMBN / 15 TWCC (Transport-wide Congestion Control);
+      PSFB FMT 1 PLI / 2 SLI / 3 RPSI / 4 FIR / 5 TSTR / 6
+      TSTN / 7 VBCM / 15 AFB (REMB-style).
+    - **XR (207)** — extended-reports envelope per RFC 3611.
+      Sender SSRC + per-block (BT + type-specific + length
+      + body bytes).
+
+- **Tooling** — registry capacity bumped from 333 → 334.
+
+### Why this gap
+
+- RTP/RTCP is the media layer of every voice call, every
+  video call, every screen-share, every audio/video
+  conferencing session. Pairs naturally with the SIP+STUN
+  pair already shipped — operators paste a UDP payload from
+  a Wireshark RTP stream, a SIPp test capture, a Janus /
+  FreeSWITCH / Asterisk log replay, a WebRTC chrome://webrtc-
+  internals export, or any media-server diagnostic and
+  inspect every documented field.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: a fully public IETF spec stack, a small
+  fixed-layout binary header, a tight length-prefixed
+  composite walker (no varints, no compression).
+- Closes the VoIP/WebRTC decode trio: `sip_message_decode`
+  (signaling), `stun_packet_decode` (NAT traversal),
+  `rtp_packet_decode` (media). Together these cover the
+  full negotiation → connectivity-check → media-flow
+  pipeline that every VoIP/WebRTC session follows.
+
+### Out of scope (deferred to future iterations)
+
+- DTLS-SRTP key negotiation (RFC 5764) and SRTP payload
+  decryption — encrypted payload bytes are surfaced raw; the
+  cleartext header (which intermediaries see) is still
+  parsed.
+- SDP body parsing (RFC 4566) — already handled by
+  `sip_message_decode`'s body section.
+- RFC 5285 one-byte / two-byte header extension dissection
+  — extension is surfaced as a raw blob with profile +
+  length-words; specific extensions (audio-level,
+  abs-send-time, video-orientation) belong in a sibling
+  helper.
+- Codec-level RTP payload framing — Opus (RFC 7587), H.264
+  (RFC 6184), VP8 (RFC 7741), VP9 (RFC 9628), AV1 etc.
+  Payload bytes are surfaced raw.
+- RTCP-XR block-type-specific body decoding — BT + length
+  surfaced, body as hex (RFC 3611 defines 8 standard block
+  types each with their own layout).
+
 ## [0.256.0] - 2026-05-19
 
 **Fifty-first native-fit gap: HTTP/1.x request + response
