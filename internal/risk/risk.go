@@ -568,6 +568,18 @@ var toolLevels = func() map[string]Level {
 		// Solicit/Advertise. NDP option TLV walker with
 		// 9-entry option name table.
 		"icmp_packet_decode",
+		// v0.263 (NATIVE-fit gap — foundational web protocol):
+		// HTTP/2 frame dissector per RFC 9113. Connection
+		// preface auto-detect; 9-byte frame header; 10 frame
+		// types with per-type body decoding (DATA / HEADERS /
+		// PRIORITY / RST_STREAM / SETTINGS / PUSH_PROMISE /
+		// PING / GOAWAY / WINDOW_UPDATE / CONTINUATION);
+		// 14-entry error code table; 7-entry SETTINGS
+		// parameter table; multi-frame walker; flags decoded
+		// per frame type (END_STREAM / END_HEADERS / PADDED /
+		// PRIORITY / ACK). Completes the HTTP/1.x + WebSocket
+		// + HTTP/2 decode stack.
+		"http2_frame_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

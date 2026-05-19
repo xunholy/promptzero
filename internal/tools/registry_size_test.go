@@ -368,7 +368,13 @@ func TestRegistrySize(t *testing.T) {
 	// NS+NA / RS+RA, NDP option TLV walker). Foundational
 	// network-layer diagnostic protocol; companion to
 	// ip_packet_decode.
-	const expected = 339
+	// v0.263.0 added http2_frame_decode (HTTP/2 frame dissector
+	// per RFC 9113 — connection preface auto-detect, 10 frame
+	// types with per-type body decoding, 14-entry error code
+	// table, 7-entry SETTINGS parameter table, multi-frame
+	// walker, flags decoded per frame type). Completes the
+	// HTTP/1.x + WebSocket + HTTP/2 decode stack.
+	const expected = 340
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
