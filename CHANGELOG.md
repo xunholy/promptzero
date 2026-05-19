@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.262.0] - 2026-05-19
+
+**Fifty-seventh native-fit gap: ICMP (RFC 792) + ICMPv6 (RFC
+4443 + Neighbor Discovery RFC 4861) packet dissector. ICMP is
+the foundational error-and-diagnostic signalling layer of
+every IP network — every ping, every traceroute hop, every
+TTL expiry, every IPv6 SLAAC / neighbor-discovery exchange
+flows through it. Natural companion to `ip_packet_decode`
+(which strips the IP header and leaves the ICMP bytes).**
+
+### Added
+
+- **`icmp_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an ICMP or ICMPv6 packet into a structured view:
+
+  - **Auto-detect ICMPv4 vs ICMPv6** — `version` parameter
+    honoured when specified ('v4' or 'v6'); otherwise
+    heuristic: types ≥ 128 are ICMPv6; types 1-30 default
+    to ICMPv4 (where they collide on Destination
+    Unreachable / Time Exceeded the v4 interpretation is
+    chosen as the more common one). Pass the hint for
+    ambiguous types (e.g. type 2 = v4 Source Quench vs
+    v6 Packet Too Big).
+  - **Common 4-byte header**: Type + Code + Checksum (BE).
+  - **17 ICMPv4 types** with sub-code tables: 0 Echo Reply
+    / 3 Destination Unreachable (16 codes — Network / Host
+    / Protocol / Port Unreachable / Fragmentation Needed
+    DF set / Source Route Failed / Admin Prohibited / etc.)
+    / 5 Redirect (4 codes) / 8 Echo Request / 11 Time
+    Exceeded (TTL Expired / Fragment Reassembly Time
+    Exceeded) / 12 Parameter Problem / 13/14 Timestamp
+    Request+Reply / 17/18 Address Mask Request+Reply / plus
+    deprecated (Source Quench / Information Req+Reply /
+    Traceroute).
+  - **17 ICMPv6 types** (RFC 4443 + 4861 + 3810): 1
+    Destination Unreachable (8 codes) / 2 Packet Too Big
+    / 3 Time Exceeded / 4 Parameter Problem (4 codes) /
+    128/129 Echo Request+Reply / 130-132 MLD / 133 Router
+    Solicitation / 134 Router Advertisement / 135 Neighbor
+    Solicitation / 136 Neighbor Advertisement / 137
+    Redirect / 143 MLDv2 / etc.
+  - **Per-type body decoding**:
+    - **Echo Request/Reply**: Identifier (uint16 BE) +
+      Sequence (uint16 BE) + Data. Identifier+Sequence
+      are how `ping` correlates request/reply pairs.
+    - **Destination Unreachable / Time Exceeded /
+      Parameter Problem** (v4): 'unused' field + embedded
+      original IP packet (header + 8 bytes of payload)
+      surfaced as hex for re-feed into `ip_packet_decode`.
+    - **Redirect** (v4): Gateway IPv4 address + embedded
+      original packet.
+    - **Packet Too Big** (v6): MTU (uint32) + embedded
+      original IPv6 packet.
+    - **Neighbor Solicitation / Advertisement** (v6):
+      Target Address (16 bytes formatted as IPv6) +
+      NA-flags (R Router / S Solicited / O Override) +
+      Options (NDP TLV walker per RFC 4861 §4).
+    - **Router Advertisement** (v6): Cur Hop Limit +
+      Flags (M Managed Address Config / O Other Config /
+      H Mobile IPv6 Home Agent) + Router Lifetime +
+      Reachable Time + Retrans Timer + Options.
+  - **NDP options** (RFC 4861 §4.6) — TLV walker with
+    9-entry name table: Source / Target Link-Layer
+    Address, Prefix Information, Redirected Header, MTU,
+    Nonce (SEND), Route Information, Recursive DNS Server
+    (RDNSS), DNS Search List (DNSSL).
+
+- **Tooling** — registry capacity bumped from 338 → 339.
+
+### Why this gap
+
+- ICMP is universal — every IP network has it. Operators
+  paste ICMP bytes from a Wireshark Follow-IP-Stream view,
+  a `tcpdump -X icmp` line, an `iptables -j LOG` capture,
+  or any packet capture and inspect every documented field.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: both RFC 792 and RFC 4443 are fully
+  public; wire format is a tight fixed-layout header with a
+  small per-type body catalogue.
+- Pairs with `ip_packet_decode` (which strips the IP header)
+  for the complete IP+ICMP decode flow.
+
+### Out of scope (deferred to future iterations)
+
+- IPv4 / IPv6 header parsing — handled by `ip_packet_decode`.
+- Checksum verification — requires the IPv6 pseudo-header
+  for v6; the captured value is surfaced for visual sanity
+  checks.
+- MLD / MLDv2 group-record dissection — only the message
+  type name is surfaced.
+- Per-NDP-option deep parsing beyond the name — option-
+  specific body fields (e.g. Prefix Information's full
+  layout) are surfaced as raw hex.
+
 ## [0.261.0] - 2026-05-19
 
 **Fifty-sixth native-fit gap: WireGuard packet dissector per
