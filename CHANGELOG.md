@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.271.0] - 2026-05-20
+
+**Sixty-sixth native-fit gap: VXLAN (Virtual Extensible LAN)
+packet dissector per RFC 7348, plus per-vendor variants —
+Cisco's Group-Based Policy (VXLAN-GBP) and the Generic
+Protocol Extension (VXLAN-GPE). VXLAN is the dominant
+datacenter overlay protocol — VMware NSX uses it, OpenStack
+Neutron uses it, Kubernetes Calico/Flannel/Cilium use it,
+every modern cloud-native SDN rides on it.**
+
+### Added
+
+- **`vxlan_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a VXLAN packet into a structured view:
+
+  - **8-byte VXLAN header** (RFC 7348 §5):
+    - byte 0: **Flags**. Bit 3 (I-flag, mask 0x08) MUST be
+      1 in standard VXLAN; other 7 bits reserved. VXLAN-GBP
+      overloads bit 0 as G (Group Policy Applied) and bit 4
+      as D (Don't Learn).
+    - bytes 1-3: **Reserved-1** (24 bits, must be 0 in
+      standard VXLAN). VXLAN-GBP overloads as 16-bit Group
+      Policy ID.
+    - bytes 4-6: **VNI** (24-bit VXLAN Network Identifier;
+      16M possible).
+    - byte 7: **Reserved-2** (must be 0 in standard VXLAN).
+      VXLAN-GPE overloads as **Next Protocol** with 5-entry
+      name table (1 IPv4 / 2 IPv6 / 3 Ethernet / 4 NSH /
+      5 MPLS).
+  - **Variant classification**:
+    - **standard VXLAN (RFC 7348)** — I-flag set, reserved
+      fields zero.
+    - **VXLAN-GBP (Cisco Group-Based Policy)** — I-flag set
+      AND G or D flag set; middle 16 bits of reserved-1
+      interpreted as Group Policy ID.
+    - **VXLAN-GPE (Generic Protocol Extension)** — I-flag
+      set AND byte 7 non-zero (Next Protocol).
+    - **non-VXLAN** — I-flag not set; surfaces a Note that
+      this may be malformed or a non-VXLAN packet on UDP
+      4789.
+  - **RFC 7348 conformance check** — surfaces a Note when
+    the I-flag is not set or when reserved bits are non-zero
+    (operator can investigate as middlebox abuse,
+    non-standard variant, or corrupt frame).
+  - **Inner Ethernet peek** — bytes after the VXLAN header
+    are the encapsulated original Ethernet frame. Surfaces
+    dst MAC + src MAC + EtherType with **13-entry name
+    table** (IPv4, ARP, IPv6, RARP, 802.1Q + 802.1ad VLAN
+    tags, MPLS unicast+multicast, PPPoE Discovery+Session,
+    EAPOL, LLDP, MACsec). Operators pipe the post-Ethernet
+    bytes to the appropriate decoder.
+
+- **Tooling** — registry capacity bumped from 347 → 348.
+
+### Why this gap
+
+- VXLAN is universal in modern datacenters. Operators paste
+  UDP-payload bytes (standard outer UDP dest port 4789) from
+  a Wireshark Follow-UDP-Stream view, a
+  `tcpdump -X udp port 4789` line, an OpenStack Neutron
+  debug capture, a Kubernetes CNI traffic dump, or any
+  VXLAN-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 7348 is fully public; wire format is
+  a tight 8-byte header plus the encapsulated original
+  Ethernet frame; no crypto, no compression, no varints.
+- Closes the overlay-protocol loop. Together with
+  `vlan_decode` for the L2 tags, `arp_decode` for L2-to-L3
+  binding, `ip_packet_decode` for L3, and the L4 decoders,
+  operators have a complete cloud-native traffic-decode
+  pipeline.
+
+### Out of scope (deferred to future iterations)
+
+- UDP / IP framing — feed the UDP payload bytes after the
+  outer IP+UDP headers (standard outer UDP dest port 4789).
+- Inner Ethernet payload decoding beyond the EtherType
+  identification — operators pipe the post-header bytes to
+  the appropriate decoder.
+- VXLAN-GPE Next Protocol body dissection — only the Next
+  Protocol byte is decoded; the body is the encapsulated
+  IPv4 / IPv6 / Ethernet payload.
+- Geneve (RFC 8926) — different overlay with a TLV options
+  block; a future Spec.
+- VXLAN flooding / BUM replication semantics — per-packet
+  decoder, not a session tracker.
+
 ## [0.270.0] - 2026-05-20
 
 **Sixty-fifth native-fit gap: IEEE 802.1Q (C-tag) + 802.1ad
