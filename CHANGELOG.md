@@ -7,6 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.240.0] - 2026-05-19
+
+**Thirty-fifth native-fit gap: BACnet/IP (ASHRAE 135 Annex J)
+frame dissector — the dominant building-automation protocol
+for HVAC controllers, lighting panels, energy meters, fire-
+alarm gateways, elevator dispatch, and BMS front-ends. Pure
+host-side parse with no hardware dependency. Companion to
+`modbus_decode` for the full OT-pentest workflow.**
+
+### Added
+
+- **`bacnet_ip_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses BACnet/IP frames per ASHRAE 135 + Annex J:
+
+  - **BVLC envelope** (BACnet Virtual Link Control) — Type
+    byte (always 0x81 for BACnet/IP), Function byte with
+    12-entry name table (BVLC-Result, Write-Broadcast-
+    Distribution-Table, Forwarded-NPDU, Register-Foreign-
+    Device, Distribute-Broadcast-To-Network, Original-
+    Unicast-NPDU, Original-Broadcast-NPDU, Secure-BVLL,
+    etc.), Length field validation against actual frame
+    size.
+  - **NPDU envelope** (Network Protocol Data Unit) —
+    Version, Control byte with bit-field decode (Network
+    Layer Message / Destination Specifier / Source
+    Specifier / Reply Expected / Priority — Normal /
+    Urgent / Critical Equipment / Life Safety), optional
+    Destination Network + Address (length-prefixed),
+    optional Source Network + Address, Hop Count, and
+    optional Network Message Type for routing/management
+    traffic (20-entry table including Who-Is-Router-To-
+    Network, I-Am-Router-To-Network, Initialize-Routing-
+    Table, Establish-Connection, Network-Number-Is).
+  - **APDU envelope** (Application Protocol Data Unit) —
+    4-bit PDU Type with 8-entry table (Confirmed-Request,
+    Unconfirmed-Request, SimpleACK, ComplexACK, SegmentACK,
+    Error, Reject, Abort) and per-type flag/field decode:
+    - Confirmed-Request: SEG / MOR / SA flags, Max Segments
+      Accepted, Max APDU Length Accepted, Invoke ID,
+      segment Sequence + Window when segmented,
+      ServiceChoice.
+    - Unconfirmed-Request: ServiceChoice only.
+    - SimpleACK / ComplexACK: Invoke ID + ServiceChoice (+
+      segmentation fields for ComplexACK).
+    - SegmentACK: Server / NegativeACK flags + Invoke ID +
+      Sequence + Window.
+    - Error / Reject / Abort: Invoke ID + service or reason
+      code with name lookup.
+  - **Service choice naming** (~45 entries total):
+    - **Confirmed services** (~30): readProperty,
+      writeProperty, readPropertyMultiple,
+      writePropertyMultiple, subscribeCOV, subscribeCOVProperty,
+      acknowledgeAlarm, confirmedCOVNotification,
+      atomicReadFile, atomicWriteFile, addListElement,
+      removeListElement, createObject, deleteObject,
+      deviceCommunicationControl, reinitializeDevice, vtOpen,
+      readRange, lifeSafetyOperation, getEventInformation,
+      etc.
+    - **Unconfirmed services** (~15): i-Am, i-Have,
+      unconfirmedCOVNotification, unconfirmedEventNotification,
+      unconfirmedPrivateTransfer, timeSynchronization,
+      who-Has, who-Is, utcTimeSynchronization, writeGroup,
+      who-Am-I, you-Are, etc.
+  - **Error / Reject / Abort reason code lookup**:
+    reject reasons (other / buffer-overflow / inconsistent-
+    parameters / invalid-parameter-data-type / invalid-tag /
+    missing-required-parameter / parameter-out-of-range /
+    too-many-arguments / undefined-enumeration /
+    unrecognized-service); abort reasons (other / buffer-
+    overflow / invalid-APDU-in-this-state / preempted-by-
+    higher-priority-task / segmentation-not-supported /
+    security-error / insufficient-security / window-size-
+    out-of-range / application-exceeded-reply-time / out-of-
+    resources / tsm-timeout / apdu-too-long).
+  - **Forwarded-NPDU handling**: the 6-byte originating-
+    device B/IP address (4-byte IP + 2-byte port) that
+    precedes the NPDU in BVLC function 0x04 frames is
+    skipped automatically before NPDU decode.
+
+### Why this matters
+
+BACnet is the most-deployed building-automation protocol on
+the planet — every commercial HVAC controller, energy meter,
+fire-alarm panel, lighting controller, and BMS workstation
+since ~1995 speaks it. Operators running OT/ICS pentests
+routinely end up with BACnet/IP hex blobs from Wireshark /
+YABE / captured UDP/47808 traffic and need them broken down
+by BVLC function, NPDU addressing, APDU type, and service
+choice. This decoder fills that gap natively: paste a hex
+frame, get back a fully structured 3-layer view (BVLC →
+NPDU → APDU) with service-choice naming, reject/abort
+reason lookup, and forwarded-NPDU handling. Pairs with
+`modbus_decode` for the complete OT-protocol decode stack.
+Pure offline parse, no network attach required.
+
 ## [0.239.0] - 2026-05-19
 
 **Thirty-fourth native-fit gap: Modbus RTU + Modbus TCP frame

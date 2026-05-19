@@ -331,6 +331,16 @@ var toolLevels = func() map[string]Level {
 		// responses with named codes). Foundation for any SCADA
 		// / PLC pentest workflow.
 		"modbus_decode",
+		// v0.240 (NATIVE-fit gap in the building-automation /
+		// OT decode space): BACnet/IP (ASHRAE 135 Annex J)
+		// frame dissector — the dominant BMS protocol for HVAC,
+		// lighting, energy meters, fire-alarm gateways, BMS
+		// front-ends. Pure offline parser: BVLC + NPDU + APDU
+		// envelope decode with confirmed + unconfirmed service
+		// choice naming (~45 entries), reject/abort reason
+		// lookup. Companion to modbus_decode for the full
+		// OT-pentest workflow.
+		"bacnet_ip_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

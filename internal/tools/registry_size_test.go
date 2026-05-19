@@ -234,7 +234,12 @@ func TestRegistrySize(t *testing.T) {
 	// envelope auto-detection + RTU CRC-16 + function code
 	// dispatch covering read/write coils + registers +
 	// exception responses with named codes).
-	const expected = 316
+	// v0.240.0 added bacnet_ip_decode (BACnet/IP ASHRAE 135
+	// Annex J frame dissector — BVLC + NPDU + APDU envelope
+	// with confirmed/unconfirmed service choice naming;
+	// reject/abort reason lookup. Companion to modbus_decode
+	// for the OT/building-automation pentest workflow).
+	const expected = 317
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
