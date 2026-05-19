@@ -478,7 +478,12 @@ func TestRegistrySize(t *testing.T) {
 	// optional Authentication Section with 5-entry Auth Type
 	// table; 9-entry Diagnostic name table; 4-entry State
 	// name table). Sub-second link-failure detection.
-	const expected = 357
+	// v0.281.0 added vrrp_decode (VRRP per RFC 5798 v3 + RFC
+	// 3768 v2 — 8-byte common header with per-version body
+	// parsing, IPv4/IPv6 virtual address list walker, VRRPv2
+	// Simple Text auth decoded, priority semantic notes for
+	// 0/100/255). Foundational gateway-redundancy protocol.
+	const expected = 358
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

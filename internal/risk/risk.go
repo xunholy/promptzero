@@ -772,6 +772,16 @@ var toolLevels = func() map[string]Level {
 		// table; 4-entry State name table; sub-second link
 		// failure detection paired with OSPF/BGP/static.
 		"bfd_control_decode",
+		// v0.281 (NATIVE-fit gap — foundational gateway-
+		// redundancy protocol): VRRP per RFC 5798 (v3) +
+		// RFC 3768 (v2). 8-byte common header (Version +
+		// Type + VRID + Priority + Count + version-specific
+		// fields + Checksum); per-version body parsing;
+		// IPv4/IPv6 virtual address list walker;
+		// VRRPv2 Simple Text auth data decoded; priority
+		// semantic notes (0 = withdraw, 100 = default
+		// backup, 255 = IP owner).
+		"vrrp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
