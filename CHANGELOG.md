@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.279.0] - 2026-05-20
+
+**Seventy-fourth native-fit gap: OSPFv2 packet dissector per
+RFC 2328. OSPFv2 is the dominant interior gateway protocol
+(IGP) — every enterprise network, every data-centre, every
+ISP that isn't Cisco-IOS-only EIGRP runs OSPF inside each
+autonomous system. Pairs with `bgp_message_decode` (BGP is
+the EGP) for the complete inside-plus-outside routing
+picture.**
+
+### Added
+
+- **`ospf_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an OSPFv2 packet into a structured view:
+
+  - **24-byte common header** (RFC 2328 §A.3.1):
+    - Version (1 byte; 2 for OSPFv2)
+    - **Type** (1 byte) with **5-entry name table**: 1
+      Hello, 2 Database Description (DBD), 3 Link State
+      Request (LSR), 4 Link State Update (LSU), 5 Link
+      State Acknowledgment (LSAck).
+    - Packet Length (uint16 BE)
+    - Router ID + Area ID (4 bytes each, IPv4-formatted;
+      Area 0.0.0.0 is the backbone)
+    - Checksum (uint16 BE, hex-formatted)
+    - **AuType** (uint16 BE) with **3-entry name table**:
+      0 Null, 1 Simple Password, 2 Cryptographic
+      Authentication (MD5)
+    - Authentication (8 bytes; opaque per AuType)
+  - **Hello body**: Network Mask + HelloInterval +
+    Options (7-bit name breakdown: E/MC/NP/EA/DC/O/DN per
+    RFC 2328 + 4576) + Rtr Pri + RouterDeadInterval +
+    Designated Router + Backup Designated Router + list
+    of Neighbors.
+  - **DBD body**: Interface MTU + Options + I/M/MS flags
+    + DD Sequence Number + list of 20-byte LSA Headers.
+  - **LSR body**: list of 12-byte LSA-request entries
+    (LS Type uint32 BE + Link State ID + Advertising
+    Router).
+  - **LSU body**: Number of LSAs + LSAs (each with 20-byte
+    header + body surfaced as raw hex).
+  - **LSAck body**: list of 20-byte LSA Headers.
+  - **LSA Header** (20 bytes): LS Age + Options + **LS
+    Type** (**9-entry name table**: Router LSA, Network
+    LSA, Summary LSA network, Summary LSA ASBR, AS-
+    External LSA, NSSA External LSA RFC 3101, Link-Local
+    Opaque LSA RFC 5250, Area-Local Opaque LSA, AS-wide
+    Opaque LSA) + Link State ID + Advertising Router + LS
+    Sequence Number + LS Checksum + Length.
+
+- **Tooling** — registry capacity bumped from 355 → 356.
+
+### Why this gap
+
+- OSPF is universal in IGP deployments. Operators paste
+  OSPF packet bytes (IP protocol number 89, multicast to
+  224.0.0.5 / 224.0.0.6) from a `tcpdump -X proto 89` line,
+  a Wireshark Follow-IP-Stream view, a Quagga / FRR / BIRD
+  debug log, or any OSPF-speaking router's tcpdump.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 2328 is fully public; wire format
+  is a tight 24-byte common header plus per-type bit-packed
+  binary bodies; no crypto at the parse layer.
+- Closes the routing-protocol pair with `bgp_message_decode`:
+  BGP is the EGP that connects autonomous systems; OSPF is
+  the IGP that connects routers inside each AS. Operators
+  now have visibility into the complete Internet routing
+  control plane.
+
+### Out of scope (deferred to future iterations)
+
+- IP framing — feed OSPF bytes after the IPv4/IPv6 header
+  strip (OSPFv2 runs over IP protocol 89).
+- OSPFv3 (RFC 5340) — different header layout (no Auth
+  field; uses IPsec for authentication); a future Spec.
+- LSA body deep dissection — the LSA Header is decoded but
+  Router LSA links, Network LSA attached routers, Summary
+  LSA metric/cost, AS-External LSA forwarding address are
+  surfaced as raw hex past the header.
+- Cryptographic verification — AuType 2 (MD5) is recognised
+  but digest verification belongs in a separate Spec.
+- Opaque LSA TLV walking (RFC 5250) — type 9/10/11 surface
+  the LS Type name; opaque payload is hex.
+
 ## [0.278.0] - 2026-05-20
 
 **Seventy-third native-fit gap: BGP-4 message dissector per
