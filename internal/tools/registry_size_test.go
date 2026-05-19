@@ -220,7 +220,12 @@ func TestRegistrySize(t *testing.T) {
 	// drone Remote ID payload dissector — FAA/EU-mandated
 	// broadcast beacon. Covers Basic ID, Location/Vector,
 	// Self-ID, System, Operator ID, Message Pack types).
-	const expected = 313
+	// v0.237.0 added aprs_packet_decode (APRS / AX.25
+	// ham-radio packet dissector — TNC2 text + AX.25 hex
+	// input; address parsing, info-field dispatch,
+	// uncompressed position with symbol lookup, PHG
+	// extension, status, message, basic telemetry).
+	const expected = 314
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

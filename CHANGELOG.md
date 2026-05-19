@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.237.0] - 2026-05-19
+
+**Thirty-second native-fit gap: APRS / AX.25 ham-radio packet
+dissector — the dominant amateur-radio position + telemetry +
+messaging beacon family on 144.39 MHz NA / 144.80 MHz EU, fully
+host-side with no hardware dependency.**
+
+### Added
+
+- **`aprs_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses APRS frames per APRS101.pdf (TAPR, 2000) + AX.25 v2.2
+  (TAPR, 1998). Accepts two input forms:
+
+  - **TNC2 text** (`SRC[-SSID]>DST[-SSID][,PATH[-SSID][*]...]:
+    INFO`) — the canonical format emitted by direwolf,
+    javaAPRSSrvr, kiss-tnc, APRS-IS, and every soundmodem.
+  - **AX.25 hex bytes** — raw UI-frame bytes for operators
+    with a custom KISS path. 7-byte shifted-ASCII addresses
+    (callsign << 1 + SSID byte) walked with end-of-address
+    flag, plus the control + PID + info envelope.
+
+  Decodes:
+
+  - **Addresses**: source / destination / digipeater path with
+    callsign + SSID (0-15) + digipeated flag (the `*` suffix
+    in TNC2, or the H-bit in raw AX.25).
+  - **Info field type dispatch** via the first-byte prefix
+    table (APRS101 §5): `!` / `=` position without timestamp,
+    `/` / `@` position with timestamp, `:` message, `>`
+    status, `;` object, `)` item, `_` weather, `T#` telemetry,
+    `?` query, `<` station capabilities. Every prefix gets a
+    human-readable name even where no body decode is
+    attempted.
+  - **Uncompressed position** (APRS101 §8): `DDMM.MMN` /
+    `DDDMM.MMW` converted to signed decimal degrees with
+    hemisphere handling, plus symbol table identifier +
+    symbol code + 40+ entry symbol-name lookup (Car, House
+    QTH, Yacht, Aircraft, Police station, Repeater, Weather
+    station, Hospital, Fire engine, Bicycle, Ambulance, etc.
+    across both primary `/` and alternate `\` tables).
+  - **PHG extension** (APRS101 §7): antenna Power-Height-
+    Gain-Directivity profile (power-code-squared watts, 10 ×
+    2^h feet, gain dBi, directivity in degrees) — extracted
+    and stripped from the comment.
+  - **Status report** (`>`): bare-text extraction.
+  - **Message format** (`:`): 9-character addressee + body +
+    optional `{message-number}` suffix.
+  - **Telemetry** (`T#`): basic `T#seq,a1,a2,a3,a4,a5,bits`
+    parametric form (5 analog channels + 8-bit digital
+    field).
+  - **Timestamp** on `@` / `/` position reports — surfaced
+    as the raw 7-char zulu/local/HMS string per the spec.
+
+### Why this matters
+
+APRS is the highest-traffic decode target on the ham VHF bands
+— operators with HackRF / RTL-SDR / SDRplay / direwolf
+soundmodem routinely capture thousands of TNC2 lines per hour
+and need them broken down by source, position, status, message
+addressee, and telemetry. Aggregator services (aprs.fi, FindU)
+do this server-side; this Spec brings the same primitive
+client-side so operators can inspect a single packet at the
+table without round-tripping to a web service. Complements the
+existing `subghz_pocsag_decode` Spec: POCSAG covers paging
+dragnet on UHF (450 MHz typical), APRS covers VHF
+position-and-telemetry; together they're the SDR ham-radio
+text-message capture stack. Pure offline parse, no SDR or live
+demodulation required.
+
 ## [0.236.0] - 2026-05-19
 
 **Thirty-first native-fit gap: ASTM F3411-22 drone Remote ID

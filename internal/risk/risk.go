@@ -301,6 +301,17 @@ var toolLevels = func() map[string]Level {
 		// with ble_* / ieee80211_* coverage of the transport
 		// framing.
 		"drone_remote_id_decode",
+		// v0.237 (NATIVE-fit gap in the ham-radio decode space):
+		// APRS / AX.25 packet dissector — the dominant ham
+		// position + telemetry + messaging beacon family on
+		// 144.39 MHz NA / 144.80 MHz EU. Pure offline parser
+		// for both TNC2 text and raw AX.25 hex input forms.
+		// Covers address parsing, info-field type dispatch,
+		// uncompressed position with hemisphere + symbol
+		// lookup, PHG antenna extension, status, message,
+		// basic telemetry. Pairs with subghz_pocsag_decode for
+		// the paging-dragnet workflow.
+		"aprs_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
