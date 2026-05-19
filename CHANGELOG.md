@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.256.0] - 2026-05-19
+
+**Fifty-first native-fit gap: HTTP/1.x request + response
+dissector per RFC 9112 + 9110. The foundational application-
+layer protocol of the web — every browser-server interaction,
+every REST API call, every webhook delivery, every internal
+microservice-to-service call (when not gRPC) speaks it. Pairs
+with `tls_handshake_decode` + `x509_certificate_decode` +
+`jwt_decode` for the complete HTTPS-stack decode flow.**
+
+### Added
+
+- **`http_message_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an HTTP/1.x message into a structured view:
+
+  - **Start-line dispatch** — auto-detect request (METHOD URI
+    VERSION) vs response (VERSION CODE REASON) by whether the
+    first token starts with `HTTP/`.
+  - **Request methods** — GET, HEAD, POST, PUT, DELETE,
+    CONNECT, OPTIONS, TRACE, PATCH (RFC 5789), plus WebDAV
+    methods (PROPFIND / PROPPATCH / MKCOL / COPY / MOVE / LOCK
+    / UNLOCK per RFC 4918) tolerated.
+  - **~50-entry status code name table** spanning all 5
+    response classes — 1xx Informational, 2xx Success, 3xx
+    Redirection, 4xx Client error, 5xx Server error. Notable
+    entries: 100 Continue, 101 Switching Protocols, 200 OK,
+    206 Partial Content, 301 Moved Permanently, 304 Not
+    Modified, 401 Unauthorized, 404 Not Found, 418 I'm a
+    teapot (RFC 2324), 429 Too Many Requests, 451 Unavailable
+    For Legal Reasons, 500 Internal Server Error, 502 Bad
+    Gateway, 503 Service Unavailable.
+  - **Header field parsing** — case-insensitive name match,
+    line continuation folding (deprecated but still seen in
+    legacy traffic), multi-value preservation as ordered lists.
+  - **Typed envelope fields surfaced** — `Host`, `User-Agent`,
+    `Server`, `Content-Type`, `Content-Length`,
+    `Transfer-Encoding`, `Authorization` (with scheme breakout
+    — `Basic` / `Bearer` / `Digest`), `Cookie` (parsed into
+    key=value pairs), `Set-Cookie` (parsed into name + value
+    + attribute map for `Path` / `Domain` / `Expires` /
+    `Max-Age` / `HttpOnly` / `Secure` / `SameSite` / etc.).
+  - **Body handling** —
+    - **Content-Length**: read exactly N bytes, surface as
+      text if printable, hex if binary.
+    - **Transfer-Encoding: chunked**: decode hex-length-
+      prefixed chunks per RFC 9112 §7.1 (chunk extensions
+      after `;` tolerated). Each chunk surfaced with length +
+      data (text or hex).
+
+- **Tooling** — registry capacity bumped from 332 → 333.
+
+### Why this gap
+
+- HTTP is the foundational application-layer protocol of the
+  web — operators paste an HTTP message from a Wireshark Follow
+  Stream view, a mitmproxy / Burp / ZAP export, `curl -v`
+  output, a web-server access log replay, or any
+  HTTP-emitting tool and inspect every documented field.
+- Pure offline parser — no transport, no hardware, plain RFC
+  walker. Native-fit by every measure: a public IETF spec, a
+  plain-text wire format, zero state, deterministic output.
+- Complements the HTTPS stack already in place
+  (`tls_handshake_decode`, `x509_certificate_decode`,
+  `jwt_decode`): feed cleartext HTTP after the TLS layer is
+  decrypted, surface session-bearing artifacts (cookies,
+  tokens) for downstream JWT/Cookie analysis.
+
+### Out of scope (deferred to future iterations)
+
+- HTTP/2 binary framing (RFC 9113) and HTTP/3 (RFC 9114) —
+  separate Spec, HPACK header decompression needed.
+- HPACK / QPACK header compression (RFC 7541 / 9204) —
+  stateful, needs prior frames; warrants its own helper.
+- WebSocket frames (RFC 6455) — `Upgrade: websocket` header
+  is preserved verbatim; post-upgrade frames need a separate
+  Spec.
+- TLS layer — feed cleartext after decryption; that's
+  `tls_handshake_decode`'s job.
+- Trailer headers — surfaced as raw text in trailing body.
+- Multipart bodies (multipart/form-data, multipart/mixed) —
+  body is raw bytes; multipart parsing is a separate effort.
+
 ## [0.255.0] - 2026-05-19
 
 **Fiftieth native-fit gap: SIP message dissector per RFC 3261.
