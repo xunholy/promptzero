@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.241.0] - 2026-05-19
+
+**Thirty-sixth native-fit gap: TLS handshake dissector
+(ClientHello + ServerHello) per RFC 5246 + RFC 8446. SOC blue-
+team workhorse — plaintext SNI extraction, JA3 fingerprinting,
+ALPN inspection, cipher-suite weakness scanning. Pure offline
+parse with no key material required.**
+
+### Added
+
+- **`tls_handshake_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses the cleartext portion of a TLS handshake:
+
+  - **TLS record envelope** — ContentType (Handshake / CCS /
+    Alert / ApplicationData / Heartbeat), Version (with full
+    TLS 1.0..1.3 name lookup), Length. Multiple back-to-back
+    records in one buffer are supported.
+  - **Handshake message dispatch** — 13 message types named
+    (HelloRequest, ClientHello, ServerHello, NewSessionTicket,
+    EndOfEarlyData, EncryptedExtensions, Certificate,
+    ServerKeyExchange, CertificateRequest, ServerHelloDone,
+    CertificateVerify, ClientKeyExchange, Finished,
+    CertificateStatus, KeyUpdate, MessageHash). Bodies for
+    non-Hello messages surfaced as raw hex.
+  - **ClientHello body decode** — legacy_version, random
+    (32 bytes), legacy_session_id, cipher_suites with IANA
+    name lookup, compression_methods, extensions.
+  - **ServerHello body decode** — same field layout but with
+    single selected cipher suite + compression method.
+  - **Cipher suite name lookup** (~40 entries) — all current
+    TLS 1.3 suites (AES_128_GCM_SHA256, AES_256_GCM_SHA384,
+    CHACHA20_POLY1305_SHA256, AES_128_CCM_SHA256,
+    AES_128_CCM_8_SHA256) + the most-deployed TLS 1.2 ECDHE-
+    ECDSA / ECDHE-RSA / DHE-RSA / RSA suites + legacy 3DES /
+    CBC / RC4 suites operators still find in older captures.
+  - **Extension dispatch** with type-name lookup for ~30
+    IANA-registered extensions plus deep decode for the
+    operationally-important ones:
+    - `server_name` (type 0, SNI) — extracts the requested
+      host name. The single most-valuable plaintext field.
+    - `supported_groups` (type 10) — list of named curves /
+      DH groups (x25519, x448, secp256r1/P-256, secp384r1,
+      ffdhe2048-8192, post-quantum hybrids).
+    - `signature_algorithms` (type 13) — SignatureScheme
+      codes (rsa_pkcs1_sha256, ecdsa_secp256r1_sha256,
+      rsa_pss_rsae_sha256, ed25519, etc.).
+    - `application_layer_protocol_negotiation` (type 16,
+      ALPN) — list of protocol strings (h2, http/1.1, h3,
+      etc.).
+    - `supported_versions` (type 43) — canonical TLS 1.3
+      version-negotiation extension.
+    - `key_share` (type 51) — list of (group, key) pairs
+      with group name surfaced.
+  - **JA3 fingerprint** (per Salesforce / John Althouse spec)
+    — comma-separated `version,cipher_suites,extensions,
+    supported_groups,ec_point_formats` with hyphens between
+    list members, plus the MD5 hash. GREASE values (RFC 8701:
+    0x?A?A pattern) automatically stripped per spec. The
+    canonical input for SOC TLS-anomaly detection.
+
+### Why this matters
+
+TLS is the most-traffic-bearing application-layer protocol on
+the internet, and operators routinely end up with handshake
+hex blobs from Wireshark / tcpdump / tshark-extracted
+captures that need plaintext SNI extraction, JA3 client
+fingerprinting, or ALPN / version inspection. This decoder
+fills that gap natively: paste a hex blob, get back the
+ClientHello / ServerHello structure with cipher-suite names,
+SNI, ALPN, supported versions, key-share groups, and a
+ready-to-search JA3 hash. Pure offline parse, no key material
+required, no live network attach. Complements the existing
+network-protocol coverage (ieee80211_*, eapol, etc.) with the
+missing read-side primitive for the cleartext TLS handshake.
+
 ## [0.240.0] - 2026-05-19
 
 **Thirty-fifth native-fit gap: BACnet/IP (ASHRAE 135 Annex J)

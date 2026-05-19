@@ -341,6 +341,17 @@ var toolLevels = func() map[string]Level {
 		// lookup. Companion to modbus_decode for the full
 		// OT-pentest workflow.
 		"bacnet_ip_decode",
+		// v0.241 (NATIVE-fit gap in the network-protocol decode
+		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
+		// Pure offline parser for ClientHello / ServerHello: TLS
+		// record envelope + handshake message dispatch +
+		// ClientHello / ServerHello body fields + extensions
+		// (SNI, ALPN, supported_versions, supported_groups,
+		// signature_algorithms, key_share) + JA3 fingerprint
+		// computation with GREASE stripping. SOC blue-team
+		// primitive for plaintext SNI extraction + TLS-client
+		// fingerprinting.
+		"tls_handshake_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -239,7 +239,12 @@ func TestRegistrySize(t *testing.T) {
 	// with confirmed/unconfirmed service choice naming;
 	// reject/abort reason lookup. Companion to modbus_decode
 	// for the OT/building-automation pentest workflow).
-	const expected = 317
+	// v0.241.0 added tls_handshake_decode (TLS ClientHello /
+	// ServerHello dissector per RFC 5246/8446 — record
+	// envelope + handshake dispatch + cipher suite + extension
+	// lookup (SNI/ALPN/supported_versions/groups/sig_algs/
+	// key_share) + JA3 fingerprint with GREASE stripping).
+	const expected = 318
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
