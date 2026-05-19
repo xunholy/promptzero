@@ -644,6 +644,17 @@ var toolLevels = func() map[string]Level {
 		// protocol type table, 10-entry operation table.
 		// IPv4 + IPv6 protocol address formatting.
 		"arp_decode",
+		// v0.270 (NATIVE-fit gap — foundational L2 tag
+		// protocol): IEEE 802.1Q (C-tag) + 802.1ad (S-tag,
+		// QinQ) VLAN tag decoder. Tag walker with 5-entry
+		// TPID table (0x8100, 0x88A8, plus legacy QinQ
+		// TPIDs); TCI bit breakdown (3-bit PCP / 1-bit DEI
+		// / 12-bit VID); 8-entry 802.1p priority name table;
+		// VID special-value annotations (priority-tagged,
+		// native, reserved); double-tag (QinQ) detection;
+		// 10-entry inner EtherType table. Pairs with arp_decode
+		// / lldp_decode / cdp_decode for full L2 visibility.
+		"vlan_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -412,7 +412,13 @@ func TestRegistrySize(t *testing.T) {
 	// table, 10-entry operation table; gratuitous-ARP / ARP
 	// probe / ARP announcement detection). Foundational
 	// L2-to-L3 binding protocol.
-	const expected = 346
+	// v0.270.0 added vlan_decode (IEEE 802.1Q + 802.1ad VLAN
+	// tag walker — TPID + TCI breakdown (PCP / DEI / VID);
+	// 5-entry TPID table; 8-entry 802.1p priority table;
+	// VID special-value annotations; QinQ double-tag
+	// detection; 10-entry inner EtherType table).
+	// Foundational L2 tag protocol.
+	const expected = 347
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
