@@ -405,7 +405,14 @@ func TestRegistrySize(t *testing.T) {
 	// 4-entry version name table with GREASE pattern
 	// recognition). Foundational modern transport underpinning
 	// HTTP/3.
-	const expected = 345
+	// v0.269.0 added arp_decode (ARP RFC 826 + RARP RFC 903 +
+	// RFC 5227 IPv4 conflict-detection extensions — 8-byte
+	// fixed header + 4 length-parameterised address fields;
+	// 10-entry hardware type table, 4-entry protocol type
+	// table, 10-entry operation table; gratuitous-ARP / ARP
+	// probe / ARP announcement detection). Foundational
+	// L2-to-L3 binding protocol.
+	const expected = 346
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

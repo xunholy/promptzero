@@ -635,6 +635,15 @@ var toolLevels = func() map[string]Level {
 		// recognition. Connection-setup visibility without
 		// needing TLS handshake secrets.
 		"quic_long_header_decode",
+		// v0.269 (NATIVE-fit gap — foundational L2-to-L3
+		// binding protocol): ARP (RFC 826) + RARP (RFC 903) +
+		// RFC 5227 IPv4 conflict-detection extensions
+		// (gratuitous-ARP / ARP probe / ARP announcement).
+		// 8-byte fixed header + 4 length-parameterised address
+		// fields. 10-entry hardware type table, 4-entry
+		// protocol type table, 10-entry operation table.
+		// IPv4 + IPv6 protocol address formatting.
+		"arp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
