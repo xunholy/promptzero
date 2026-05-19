@@ -327,7 +327,15 @@ func TestRegistrySize(t *testing.T) {
 	// Authorization scheme breakout + Cookie/Set-Cookie
 	// attribute parsing + Content-Length / chunked body
 	// decoding).
-	const expected = 333
+	// v0.257.0 added rtp_packet_decode (RTP + RTCP packet
+	// dissector per RFC 3550 + 3551 + 4585 + 3611 — auto-
+	// detect RTP vs RTCP by PT byte, RTP header with optional
+	// CSRC + extension + padding, 23-entry static PT table
+	// plus dynamic-PT recognition, RTCP composite walker with
+	// SR / RR / SDES / BYE / APP / RTPFB / PSFB / XR per-type
+	// body parsing). Completes the VoIP/WebRTC decode stack
+	// alongside sip_message_decode + stun_packet_decode.
+	const expected = 334
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

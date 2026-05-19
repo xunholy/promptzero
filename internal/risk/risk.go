@@ -496,6 +496,18 @@ var toolLevels = func() map[string]Level {
 		// Cookie with attribute map) + Content-Length /
 		// chunked transfer-encoding body decoding.
 		"http_message_decode",
+		// v0.257 (NATIVE-fit gap — VoIP / WebRTC media decode):
+		// RTP and RTCP packet dissector per RFC 3550 + 3551
+		// + 4585 + 3611. Auto-detect RTP vs RTCP by PT byte;
+		// RTP header with optional CSRC + extension + padding;
+		// 23-entry static PT table (audio + video) plus
+		// dynamic-PT recognition (96-127); RTCP composite
+		// walker handling SR / RR / SDES / BYE / APP / RTPFB
+		// / PSFB / XR with per-type body parsing (reception
+		// reports, SDES item types, feedback FMT codes).
+		// Completes the VoIP/WebRTC decode stack alongside
+		// sip_message_decode + stun_packet_decode.
+		"rtp_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
