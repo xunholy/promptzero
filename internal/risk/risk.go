@@ -421,6 +421,14 @@ var toolLevels = func() map[string]Level {
 		// Workhorse blue-team primitive for log triage,
 		// SIEM correlation, alert generation.
 		"syslog_message_decode",
+		// v0.249 (NATIVE-fit gap — foundational network decode):
+		// IPv4/IPv6 + TCP/UDP/ICMP/ICMPv6 raw packet dissector
+		// per RFC 791/8200/9293/768/792/4443. Auto-detect IP
+		// version + full header decode + protocol dispatch +
+		// TCP flag breakout + TCP TLV options walker + ICMP/
+		// ICMPv6 type+code naming. Every other application-layer
+		// Spec sits on top of this.
+		"ip_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

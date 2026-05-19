@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.249.0] - 2026-05-19
+
+**Forty-fourth native-fit gap: raw IP packet dissector spanning
+IPv4 + IPv6 + TCP + UDP + ICMP + ICMPv6 — the foundational
+network-decode primitive every other application-layer Spec
+sits on top of. Operators routinely paste raw pcap bytes that
+include the IP + transport headers, and pulling those out
+manually is tedious.**
+
+### Added
+
+- **`ip_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a raw IP packet (IPv4 or IPv6) plus next-layer
+  headers per RFC 791 / 8200 / 9293 / 768 / 792 / 4443:
+
+  - **IPv4/IPv6 auto-detection** by the first nibble (4 or
+    6); anything else is rejected.
+  - **IPv4 header** — version + IHL + DSCP/ECN broken out of
+    the ToS byte + total length + identification + flags
+    (DF / MF) + fragment offset + TTL + protocol name (IANA
+    registry: ICMP / IGMP / TCP / UDP / GRE / ESP / AH /
+    ICMPv6 / OSPF / SCTP / etc.) + header checksum + source/
+    destination IPv4 + options hex when IHL > 5.
+  - **IPv6 header** — version + traffic class (DSCP + ECN
+    broken out) + flow label + payload length + next header
+    name + hop limit + source/destination IPv6. Walks the
+    extension-header chain (Hop-by-Hop 0, Routing 43,
+    Fragment 44, ESP 50, AH 51, Destination 60) and surfaces
+    them as a count + list with raw hex; the final inner-
+    next-header dispatches to the transport-layer decoder.
+  - **TCP header** — source/destination port + sequence + ack
+    + data offset + full 9-bit flag field broken out as named
+    bools (NS / CWR / ECE / URG / ACK / PSH / RST / SYN /
+    FIN) + Wireshark-style flags string + window size +
+    checksum + urgent pointer + TLV options walker with
+    named decode for EOL / NOP / MSS / Window Scale / SACK
+    Permitted / SACK blocks / Timestamps (TSval+TSecr) /
+    TCP Fast Open Cookie + remaining payload hex.
+  - **UDP header** — source/destination port + length +
+    checksum + payload hex.
+  - **ICMP** — type + code with name lookup for Echo Reply
+    (0) / Destination Unreachable (3, with 13 sub-codes
+    including Network / Host / Protocol / Port Unreachable /
+    Fragmentation Needed / Admin Prohibited) / Source Quench
+    (4) / Redirect (5) / Echo Request (8) / Router
+    Advertisement (9) / Router Solicitation (10) / Time
+    Exceeded (11, with sub-codes) / Parameter Problem (12) /
+    Timestamp Request/Reply (13/14). Echo Request/Reply
+    broken out into identifier + sequence + payload.
+  - **ICMPv6** — type + code with name lookup for Destination
+    Unreachable (1, with 7 sub-codes) / Packet Too Big (2) /
+    Time Exceeded (3) / Parameter Problem (4) / Echo Request
+    (128) / Echo Reply (129) / Multicast Listener Query/
+    Report/Done (130-132) / NDP types: Router Solicitation
+    (133) / Router Advertisement (134) / Neighbor
+    Solicitation (135) / Neighbor Advertisement (136) /
+    Redirect (137). Echo Request/Reply broken out into
+    identifier + sequence + payload.
+
+### Why this matters
+
+Every other network-protocol decoder in this codebase
+(`dns_packet_decode`, `dhcp_packet_decode`, `snmp_packet_decode`,
+`ntp_packet_decode`, `syslog_message_decode`, `tls_handshake_decode`)
+expects to receive the application-layer payload — but operators
+often have pcap-extracted hex that includes the IP + transport
+headers and need to strip those down first. This Spec fills that
+gap: paste a raw IP packet hex blob, get back a fully structured
+view with source/destination IPs, ports, TCP flags, ICMP types,
+and the inner payload ready to feed into the next-layer decoder.
+Pure offline parse — no live capture, no kernel involvement, no
+networking.
+
 ## [0.248.0] - 2026-05-19
 
 **Forty-third native-fit gap: syslog message dissector for

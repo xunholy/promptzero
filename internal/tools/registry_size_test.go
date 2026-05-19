@@ -283,7 +283,12 @@ func TestRegistrySize(t *testing.T) {
 	// post-PRI byte; PRI broken out into facility + severity
 	// name lookup; 5424 structured-data walker with escape
 	// handling; 3164 BSD timestamp + tag[PID] split).
-	const expected = 325
+	// v0.249.0 added ip_packet_decode (raw IPv4/IPv6 + TCP/
+	// UDP/ICMP/ICMPv6 dissector per RFC 791/8200/9293/768/
+	// 792/4443 — auto-detect IP version + protocol dispatch
+	// + TCP flag breakout + TLV options walker + ICMP/ICMPv6
+	// type+code naming. Foundational network primitive).
+	const expected = 326
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
