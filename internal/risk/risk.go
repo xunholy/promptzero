@@ -372,6 +372,14 @@ var toolLevels = func() map[string]Level {
 		// expired/not-yet-valid, hours_until_expiry. Pure decode,
 		// no signature verification.
 		"jwt_decode",
+		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
+		// protocol): DNS packet dissector per RFC 1035 + 6891.
+		// Header (txn + flags broken out + counts), question
+		// section with compression-pointer resolution, RR
+		// sections with type-specific decode (A/NS/CNAME/SOA/
+		// PTR/MX/TXT/AAAA/SRV/OPT-EDNS/DNSKEY/DS/CAA) + name
+		// decompression with pointer-loop DoS guard.
+		"dns_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

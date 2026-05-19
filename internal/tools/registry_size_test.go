@@ -254,7 +254,12 @@ func TestRegistrySize(t *testing.T) {
 	// 7515/7516 — JWS+JWE detection, header + registered
 	// claims + custom claims, alg=none + expired/nbf
 	// security flags. Pure decode; no signature verification).
-	const expected = 320
+	// v0.244.0 added dns_packet_decode (DNS message dissector
+	// per RFC 1035 + 6891 — header + flags + counts +
+	// question + RR sections with type-specific decode for
+	// A/NS/CNAME/SOA/PTR/MX/TXT/AAAA/SRV/OPT/DNSKEY/DS/CAA
+	// + compression-pointer resolution + DoS-loop guard).
+	const expected = 321
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

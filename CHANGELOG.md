@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.244.0] - 2026-05-19
+
+**Thirty-ninth native-fit gap: DNS packet dissector per RFC 1035
++ RFC 6891 (EDNS) — the most-traffic-bearing UDP/53 protocol on
+the internet. Workhorse blue-team + red-team + network-debugging
+primitive for inspecting DNS queries and responses extracted
+from any Wireshark / tshark / tcpdump / DoH-DoT-DoQ capture.**
+
+### Added
+
+- **`dns_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a DNS message into a structured 3-section view
+  (Questions + Answers + Authority + Additional):
+
+  - **DNS header** — transaction ID + 12-bit flag field
+    broken out as QR (query / response), Opcode (QUERY /
+    IQUERY / STATUS / NOTIFY / UPDATE / DSO), AA, TC, RD,
+    RA, AD (DNSSEC), CD (DNSSEC), and full RCODE name
+    lookup (NOERROR / FORMERR / SERVFAIL / NXDOMAIN /
+    NOTIMP / REFUSED / YXDOMAIN / YXRRSET / NXRRSET /
+    NOTAUTH / NOTZONE / BADVERS / BADKEY / BADTIME /
+    BADMODE / BADNAME / BADALG / BADTRUNC / BADCOOKIE).
+  - **Question section** — QNAME with full compression-
+    pointer resolution (RFC 1035 §4.1.4), QTYPE, QCLASS.
+  - **Resource record sections** with type-specific decode:
+    - **A** (1) → IPv4 in dotted-decimal.
+    - **NS** (2) → owner domain.
+    - **CNAME** (5) → canonical name.
+    - **SOA** (6) → primary NS + responsible-party email +
+      serial + refresh + retry + expire + minimum TTL.
+    - **PTR** (12) → reverse-DNS target.
+    - **MX** (15) → preference + exchange.
+    - **TXT** (16) → list of `<character-string>`s (SPF /
+      DMARC / arbitrary policy text).
+    - **AAAA** (28) → IPv6 in canonical colon form.
+    - **SRV** (33) → priority + weight + port + target.
+    - **OPT** (41, EDNS) → UDP-size from class field,
+      extended RCODE + EDNS version + DO flag (DNSSEC
+      requested) from TTL field, per-option `[code, name,
+      raw data]` (NSID / DAU / DHU / N3U / ECS Client
+      Subnet / EXPIRE / COOKIE / Padding / CHAIN /
+      edns-key-tag / EDE Extended DNS Error).
+    - **DNSKEY** (48) → flags (KSK / ZSK), protocol,
+      algorithm name (RSAMD5 / RSASHA1 / RSASHA256 /
+      RSASHA512 / ECDSAP256SHA256 / ECDSAP384SHA384 /
+      ED25519 / ED448), key-tag computed per RFC 4034
+      Appx B, public-key hex.
+    - **DS** (43) → key tag, algorithm name, digest type
+      (SHA-1 / SHA-256 / SHA-384 / GOST), digest hex.
+    - **CAA** (257, RFC 6844) → flags with critical bit +
+      tag (issue / issuewild / iodef / contactemail /
+      contactphone) + value.
+  - **Name decompression** — pointer-chain max-depth guard
+    (16 levels) defeats the classic pointer-loop denial-
+    of-service.
+  - **~40-entry RR type lookup table** + class lookup +
+    Opcode + RCODE name tables.
+
+### Why this matters
+
+DNS is the most-traffic-bearing UDP protocol on the internet
+and the single most-common decode target in any network-
+analysis workflow. Operators routinely end up with DNS hex
+blobs from a Wireshark frame, a `tshark -2 -V` dump, a
+tcpdump-of-port-53 capture, a DoH/DoT/DoQ inner-message
+extract, or a custom DNS-aware tool, and need them broken
+down by transaction, flags, question, and resource records
+with type-specific RDATA dispatch. This Spec brings the
+same primitive client-side: paste a hex frame, get back a
+fully structured view with name decompression, RR type
+classification, and operationally-important RDATA decode
+across the common types. Pairs with `tls_handshake_decode`
++ `x509_certificate_decode` + `jwt_decode` to complete the
+network + auth decode stack. Pure offline parse, no network
+attach required.
+
 ## [0.243.0] - 2026-05-19
 
 **Thirty-eighth native-fit gap: JSON Web Token (JWT) dissector
