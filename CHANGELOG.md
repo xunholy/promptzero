@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.273.0] - 2026-05-20
+
+**Sixty-eighth native-fit gap: Geneve (Generic Network
+Virtualization Encapsulation) packet dissector per RFC 8926.
+Geneve is the next-generation datacenter overlay protocol —
+VMware NSX-T defaults to it, OVN/OVS supports it natively
+and increasingly defaults to it, Kubernetes Antrea uses it,
+and it's the IETF-blessed successor to VXLAN with extensible
+TLV options for SDN-specific metadata (group policy,
+source-port hints, etc.). Rounds out the overlay-protocol
+trio with `vxlan_decode` (canonical L2 overlay) and
+`gre_decode` (classic IP-in-IP tunneling).**
+
+### Added
+
+- **`geneve_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a Geneve packet into a structured view:
+
+  - **8-byte fixed header** (RFC 8926 §3.4):
+    - byte 0: **Version** (2 bits, currently 0) + **Option
+      Length** (6 bits, in 4-byte words; up to 252 bytes of
+      options).
+    - byte 1: **O** (OAM packet, bit 7) + **C** (Critical
+      options present, bit 6) + 6 reserved bits.
+    - bytes 2-3: **Protocol Type** (EtherType). 7-entry
+      name table: 0x6558 Transparent Ethernet Bridging
+      (canonical for VMware NSX-T / OVN), 0x0800 IPv4,
+      0x86DD IPv6, 0x8847 MPLS unicast, 0x8848 MPLS
+      multicast, 0x894F NSH, 0x0806 ARP.
+    - bytes 4-6: **VNI** (24-bit Virtual Network Identifier
+      — like a 24-bit VLAN ID, 16M possible).
+    - byte 7: **Reserved** (must be 0).
+  - **TLV options walker** — each option is 4-byte aligned:
+    Option Class (16-bit BE, IANA assigned) + Type (8 bits
+    with C critical-option flag in bit 7) + Length-in-words
+    (5 bits, up to 124 bytes of option data) + Option Data.
+  - **Option Class name table** — 6 well-known entries plus
+    range rules:
+    - 0x0000 Reserved (IETF)
+    - 0x0001-0x00FF IETF standardised
+    - 0x0100 Linux / Open vSwitch / OVN
+    - 0x0101 VMware (NSX-T)
+    - 0x0102 Mellanox / NVIDIA
+    - 0x0103 Cisco Systems
+    - 0x0104 Oracle
+    - 0x0105-0xFEFF vendor (PEN-associated)
+    - 0xFF00+ experimental
+  - **Inner payload peek** — for Protocol Type 0x6558 (TEB),
+    surfaces the encapsulated dst MAC + src MAC + inner
+    EtherType with **13-entry name table** (IPv4 / ARP /
+    IPv6 / RARP / 802.1Q + 802.1ad / MPLS / PPPoE / EAPOL /
+    LLDP / MACsec). For other Protocol Types, surface raw
+    payload bytes.
+  - **Conformance check** — Version != 0 surfaces a Note
+    (RFC 8926 §5 requires dropping); non-zero reserved bits
+    surface a Note; C-flag set surfaces a Note explaining
+    that transit nodes MUST process the critical options or
+    drop the packet.
+
+- **Tooling** — registry capacity bumped from 349 → 350.
+
+### Why this gap
+
+- Geneve is the modern overlay protocol. Operators paste
+  UDP-payload bytes (standard outer UDP dest port 6081) from
+  a Wireshark Follow-UDP-Stream view, a
+  `tcpdump -X udp port 6081` line, an OVS / VMware NSX-T
+  debug capture, a Kubernetes Antrea / Open vSwitch traffic
+  dump, or any Geneve-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 8926 is fully public; wire format is
+  a tight 8-byte fixed header plus TLV options block plus
+  encapsulated payload; no crypto, no compression, no
+  varints.
+- Rounds out the overlay-protocol trio. Together with
+  `vxlan_decode` (canonical L2 overlay) and `gre_decode`
+  (classic IP-in-IP tunneling), operators have a complete
+  picture of modern overlay traffic.
+
+### Out of scope (deferred to future iterations)
+
+- UDP / IP framing — feed the UDP payload bytes after the
+  outer IP+UDP headers (standard outer UDP dest port 6081).
+- Inner payload decoding beyond the Ethernet peek — pipe
+  post-Ethernet bytes to `vlan_decode` / `ip_packet_decode`
+  / etc.
+- Vendor-specific option data dissection — only class +
+  type + length are surfaced; the option data body is hex.
+- VXLAN (RFC 7348) — handled by `vxlan_decode`. Geneve is
+  the more flexible / modern alternative but VXLAN remains
+  widely deployed.
+
 ## [0.272.0] - 2026-05-20
 
 **Sixty-seventh native-fit gap: Generic Routing Encapsulation
