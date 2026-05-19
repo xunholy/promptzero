@@ -7,6 +7,106 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.260.0] - 2026-05-19
+
+**Fifty-fifth native-fit gap — top-30 #8: Apple Continuity
+BLE advertisement dissector. The Manufacturer-Specific-Data
+blob Apple devices broadcast for Handoff, AirDrop, Nearby
+Info / Action, AirPods proximity pairing, iBeacon, Hey Siri,
+and the other ad-hoc connectivity primitives that make the
+Apple ecosystem feel 'magical' on a sniffer. Defensive
+primitive — identifies Apple devices in range without
+participating in their pairing flows. Pairs with the audit's
+`workflow_apple_continuity_audit`.**
+
+### Added
+
+- **`ble_continuity_classify`** (`Risk.Low`, `GroupHostTools`)
+  — parses an Apple Continuity advertisement into a
+  structured view:
+
+  - **Outer envelope tolerance** — accepts:
+    - (a) the full advertising-data record (length + 0xFF
+      Manufacturer Specific Data type + 0x4C00 Apple
+      Company ID + TLVs)
+    - (b) just the post-AdvType manufacturer data (0x4C00
+      + TLVs)
+    - (c) the raw TLV stream by itself
+    Auto-detects and reports `outer_format` accordingly.
+  - **TLV walker** — each message is (Type[1] + Length[1] +
+    Value[Length]); multiple messages per advertisement are
+    common (Nearby Info + Handoff frequently appear
+    together).
+  - **15-entry type table**: 0x02 iBeacon / 0x03 AirPrint /
+    0x04 AirDrop / 0x05 HomeKit / 0x06 Proximity Pairing /
+    0x07 Hey Siri / 0x08 AirPlay Source / 0x09 AirPlay
+    Target / 0x0A Magic Switch / 0x0B Watch Connection /
+    0x0C Handoff / 0x0D Wi-Fi Settings Target / 0x0E
+    Tethering Target / 0x0F Nearby Action / 0x10 Nearby
+    Info.
+  - **Per-type body decoding**:
+    - **iBeacon** (0x02, length 21): UUID (16-byte standard
+      formatted) + Major (uint16 BE) + Minor (uint16 BE) +
+      TX Power (int8 dBm).
+    - **Handoff** (0x0C, variable): Clipboard-state byte +
+      IV (2 bytes) + AuthTag (1 byte) + Encrypted Payload.
+    - **Nearby Info** (0x10, variable): StatusFlags high-
+      nibble decoded as PrimaryiCloud / AirDrop /
+      AutoUnlockActive / AutoUnlockEnabled bits, plus
+      ActionCode low-nibble with a 15-entry name table
+      covering iOS lock / home / FaceTime / driving / etc.
+    - **Nearby Action** (0x0F, variable): ActionFlags +
+      ActionType (15-entry table: Wi-Fi Password / Apple TV
+      Setup / Apple Pay / Watch Setup / Companion Link /
+      etc.) + AuthTag + optional ActionParameters.
+    - **AirDrop** (0x04, length 9): Status byte + 8-byte
+      identifier hash.
+    - **Hey Siri** (0x07, length 5): 5 hash bytes used to
+      wake Siri across devices.
+    - **Proximity Pairing** (0x06, variable): Device model
+      (2-byte BE — e.g. 0x0220 AirPods Pro) + status flags
+      + battery levels (left pod / right pod / case in 10%
+      steps per AppleJuice + apple_bleee research) + lid
+      state.
+  - **Other types** — surfaced with Type + TypeName + Length
+    + raw hex body. Operators who need full dissection of
+    AirPlay / HomeKit / Watch frames can read the bytes
+    directly.
+  - **Multi-TLV summary** — per-advertisement opcode-sequence
+    summary string (e.g. 'Nearby Info + Handoff') for triage.
+
+- **Tooling** — registry capacity bumped from 336 → 337.
+
+### Why this gap
+
+- Apple devices are everywhere in modern environments and
+  Continuity advertisements are the most reliable way to
+  identify them passively (and to flag potentially-suspicious
+  presence — AirDrop in a corporate facility, Handoff to
+  unknown devices, etc.). Operators paste the Manufacturer
+  Specific Data bytes from a Wireshark BLE capture, a
+  Sniffle / CatSniffer dump, an hcidump trace, an nRF Connect
+  advertisement export, or any BLE scanner.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: the protocol is fully reverse-engineered
+  by furiousMAC (Mertens et al. 2019), AppleJuice,
+  hexway/apple_bleee, the Wireshark BTBR/BLE dissectors, and
+  TU Darmstadt's Continuity research. Wire format is a tight
+  TLV walker with no crypto at this layer.
+- Pairs with `workflow_apple_continuity_audit` (already in
+  the v0.8 audit's §2d) for a complete defensive workflow.
+
+### Out of scope (deferred to future iterations)
+
+- BLE Link-Layer / Advertising PDU framing — handled by
+  `ble_classify` / `ble_findmy_*`.
+- AppleID / phone / email / OfflineFinding key reversal —
+  encrypted material is surfaced as hex; decryption belongs
+  in a separate Spec.
+- Handoff payload decryption — IV + AuthTag are surfaced
+  but cipher-text is opaque without the pairing key.
+- BLE GAP / GATT layer beyond the advertising data record.
+
 ## [0.259.0] - 2026-05-19
 
 **Fifty-fourth native-fit gap — top-30 #19: HID Prox / iCLASS
