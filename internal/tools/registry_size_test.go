@@ -229,7 +229,12 @@ func TestRegistrySize(t *testing.T) {
 	// dissector — maritime counterpart of ADS-B; ITU-R
 	// M.1371-5 envelope + 6-bit ASCII unpack + dispatch on
 	// Types 1/2/3, 4, 5 (multi-fragment), 18, 24).
-	const expected = 315
+	// v0.239.0 added modbus_decode (Modbus RTU + Modbus TCP
+	// dissector — most-deployed industrial control protocol;
+	// envelope auto-detection + RTU CRC-16 + function code
+	// dispatch covering read/write coils + registers +
+	// exception responses with named codes).
+	const expected = 316
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

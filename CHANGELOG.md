@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.239.0] - 2026-05-19
+
+**Thirty-fourth native-fit gap: Modbus RTU + Modbus TCP frame
+dissector — the most-deployed industrial control protocol used
+by PLCs, RTUs, SCADA gateways, building automation, smart-
+meters, solar inverters, EV chargers, and almost every legacy
+OT device since 1979. Pure host-side parse with no hardware
+dependency.**
+
+### Added
+
+- **`modbus_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  Modbus frames per Modbus Application Protocol v1.1b3 + the
+  Modbus Messaging Implementation Guide v1.0b:
+
+  - **Envelope auto-detection** — TCP MBAP header (Transaction
+    ID + ProtocolID 0x0000 + Length + UnitID) is recognised by
+    the all-zero ProtocolID and Length field covering the
+    remainder; everything else falls through to RTU
+    (`[addr:1][func:1][data:0..252][CRC-16:2]`).
+  - **RTU CRC-16/Modbus validation** — polynomial 0xA001
+    (reflected from 0x8005), init 0xFFFF, reflected, no
+    final XOR. Surfaces both captured CRC and computed
+    expected value in wire-byte order (low byte first) for
+    forensic diffing — matches how Wireshark / Modbus Doctor
+    present the trailing 2 bytes.
+  - **Function code dispatch** for the well-known operations:
+    - **0x01-0x04 Read Coils / Discrete Inputs / Holding
+      Registers / Input Registers** — request shape `[start:
+      2][qty:2]`; response shape `[byte_count:1][data:N]`
+      (bits LSB-first for coils, big-endian 16-bit words for
+      registers).
+    - **0x05 Write Single Coil** (0xFF00 = ON, 0x0000 = OFF)
+      / **0x06 Write Single Register** — identical request/
+      response shape.
+    - **0x0F Write Multiple Coils** / **0x10 Write Multiple
+      Registers** — request `[start:2][qty:2][byte_count:1]
+      [values:N]`; response `[start:2][qty:2]`.
+    - **0x16 Mask Write Register** (AND mask + OR mask).
+    - **0x07 / 0x08 / 0x0B / 0x0C / 0x11 / 0x14 / 0x15 /
+      0x17 / 0x18** — named, payload surfaced as raw hex.
+    - **0x2B Encapsulated Interface Transport (MEI)** —
+      sub-function (including 0x0E Read Device
+      Identification) surfaced.
+  - **Exception responses** (function code high bit set) —
+    exception code 0x01 Illegal Function, 0x02 Illegal Data
+    Address, 0x03 Illegal Data Value, 0x04 Server Device
+    Failure, 0x05 Acknowledge, 0x06 Server Device Busy, 0x07
+    Negative Acknowledge, 0x08 Memory Parity Error, 0x0A
+    Gateway Path Unavailable, 0x0B Gateway Target Device
+    Failed to Respond. FunctionName references the original
+    (non-exception) function so operators see what was being
+    attempted.
+  - **Request / response disambiguation by payload shape** —
+    for read functions (0x01-0x04) where the request is a
+    4-byte `[start][qty]` and the response starts with a
+    byte_count, both shapes are tried and whichever fits is
+    populated.
+
+### Why this matters
+
+Modbus is the foundational OT/ICS protocol — every SCADA /
+PLC pentest workflow needs to read it, and operators routinely
+end up with hex blobs from Wireshark / Modbus Doctor /
+tcpdump-of-port-502 / serial-trace captures that need to be
+broken down by unit ID, function, register address, and
+exception status. This decoder fills that gap natively: paste
+a hex frame (RTU or TCP), get back a structured view with
+function-name, request/response body, register values, and
+CRC validity (RTU). Pure offline parse, no network or serial
+attach required.
+
 ## [0.238.0] - 2026-05-19
 
 **Thirty-third native-fit gap: AIS NMEA marine vessel dissector

@@ -322,6 +322,15 @@ var toolLevels = func() map[string]Level {
 		// status + vessel name + IMO + ship type + dimensions
 		// + destination. Companion to adsb_mode_s_decode.
 		"ais_nmea_decode",
+		// v0.239 (NATIVE-fit gap in the OT / ICS decode space):
+		// Modbus RTU + Modbus TCP dissector — most-deployed
+		// industrial control protocol; per Modbus Application
+		// Protocol v1.1b3. Pure offline parser with envelope
+		// auto-detection, RTU CRC-16 validation, function code
+		// dispatch (read/write coils + registers, exception
+		// responses with named codes). Foundation for any SCADA
+		// / PLC pentest workflow.
+		"modbus_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
