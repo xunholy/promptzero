@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.261.0] - 2026-05-19
+
+**Fifty-sixth native-fit gap: WireGuard packet dissector per
+the official protocol specification at
+https://www.wireguard.com/protocol/. WireGuard is the modern
+VPN protocol of choice — shipped in the Linux kernel since
+5.6, used as the wire format for Tailscale / NetBird /
+Cloudflare WARP / Mullvad's protocol stack, and rapidly
+becoming the corporate / consumer VPN default.**
+
+### Added
+
+- **`wireguard_packet_decode`** (`Risk.Low`, `GroupHostTools`)
+  — parses a WireGuard UDP packet into a structured view:
+
+  - **Auto-detect** by leading message-type byte: 0x01
+    Handshake Initiation, 0x02 Handshake Response, 0x03
+    Cookie Reply, 0x04 Transport Data. The 3 reserved bytes
+    after the type are required to be zero per spec —
+    non-zero values are surfaced as a note (some middleboxes
+    and forks abuse the field).
+  - **Handshake Initiation** (148 bytes fixed): sender index
+    (u32 LE) + unencrypted ephemeral Curve25519 public key
+    (32 bytes) + encrypted static key (32+16 ChaCha20Poly1305
+    AEAD) + encrypted timestamp (12+16 TAI64N AEAD) + MAC1
+    (16-byte Blake2s cookie precommitment) + MAC2 (16 bytes,
+    zero until a Cookie Reply has been applied).
+  - **Handshake Response** (92 bytes fixed): sender index +
+    receiver index + unencrypted ephemeral key + encrypted
+    nothing (0+16 AEAD — proves the responder's static
+    keypair was used by encrypting an empty plaintext) +
+    MAC1 + MAC2.
+  - **Cookie Reply** (64 bytes fixed): receiver index +
+    nonce (24 bytes XChaCha20Poly1305) + encrypted cookie
+    (16+16 AEAD). Sent by the responder under load to
+    rate-limit specific initiators.
+  - **Transport Data** (variable, ≥ 32 bytes): receiver index
+    + counter (u64 LE — increments per direction; serves as
+    replay-protection nonce) + encrypted encapsulated packet
+    (≥ 0 bytes plaintext IP + 16-byte Poly1305 tag).
+    Surfaces the inner-plaintext length (total - 16 byte
+    AEAD tag).
+  - **Keep-alive detection** — a Transport Data packet with
+    an empty inner plaintext (just the 16-byte Poly1305 tag
+    remaining) is flagged as a keep-alive. WireGuard clients
+    send these every 25 seconds when idle to maintain
+    NAT-table state.
+  - **MAC2 zero detection** — handshake messages with all-zero
+    MAC2 are flagged as 'no cookie applied' (the operator
+    can correlate Cookie Reply messages with subsequent
+    re-initiations).
+
+- **Tooling** — registry capacity bumped from 337 → 338.
+
+### Why this gap
+
+- WireGuard is the modern VPN baseline. Operators paste UDP
+  payload bytes from a Wireshark `wg` dissector view, a
+  `tcpdump -X udp port 51820` line, an `iptables -j LOG`
+  capture, or any WireGuard wire-format dump and inspect
+  every documented field.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: the wire format is a tight fixed-layout
+  binary header with no variable-length integers, no version
+  negotiation, no extensions, no compression. The protocol
+  is fully documented at wireguard.com/protocol.
+- Useful for VPN-traffic forensics — replay-counter analysis,
+  cookie/MAC correlation, keep-alive cadence detection —
+  without needing the secret key material.
+
+### Out of scope (deferred to future iterations)
+
+- Decryption — operators need static + ephemeral keypair
+  material plus the Noise-IK handshake state; a separate
+  Spec would handle the symmetric layer.
+- Noise IK handshake state machine — we surface what's on
+  the wire; reconstructing the chain of derived keys is a
+  session-tracker's job.
+- UDP / IP framing — feed the UDP payload after the IP+UDP
+  headers (or after a Wireshark Follow UDP Stream
+  extraction).
+- MAC1 / MAC2 verification — requires the responder's static
+  public key. Values are surfaced so an operator with the
+  key can re-derive and verify.
+- Cookie reply re-derivation (Blake2s of source IP + port +
+  responder mac1_key) — same reason.
+
 ## [0.260.0] - 2026-05-19
 
 **Fifty-fifth native-fit gap — top-30 #8: Apple Continuity
