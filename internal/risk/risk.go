@@ -458,6 +458,16 @@ var toolLevels = func() map[string]Level {
 		// SGROUP/EGROUP deprecated, I32 + float32). Recursive
 		// nested-message detection.
 		"protobuf_decode",
+		// v0.253 (NATIVE-fit gap — enterprise AAA): RADIUS
+		// packet dissector per RFC 2865 (auth) + RFC 2866
+		// (accounting) + supporting RFCs. 20-byte header +
+		// 16-entry code name table + attribute TLV walker
+		// with ~80-entry IANA RADIUS Types name lookup +
+		// Vendor-Specific (26) deep decode with SMI PEN
+		// lookup + integer-attribute enum-name lookup (Service-
+		// Type, NAS-Port-Type, Acct-Status-Type, Tunnel-Type,
+		// etc.). High pentest value.
+		"radius_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

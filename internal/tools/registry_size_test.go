@@ -304,7 +304,13 @@ func TestRegistrySize(t *testing.T) {
 	// protoc --decode_raw. Walk field tags, dispatch 6 wire
 	// types with VARINT zigzag, I64 float64, LEN with
 	// nested-message heuristic, I32 float32. Recursive).
-	const expected = 329
+	// v0.253.0 added radius_packet_decode (RADIUS AAA
+	// protocol dissector per RFC 2865 + 2866 — 20-byte
+	// header + attribute TLV walker with ~80-entry IANA
+	// name lookup + Vendor-Specific deep decode with SMI
+	// PEN naming + enum-name lookup for Service-Type,
+	// NAS-Port-Type, Acct-Status-Type, Tunnel-Type, etc.).
+	const expected = 330
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

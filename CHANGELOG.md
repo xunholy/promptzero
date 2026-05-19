@@ -7,6 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.253.0] - 2026-05-19
+
+**Forty-eighth native-fit gap: RADIUS packet dissector per
+RFC 2865 (auth) + RFC 2866 (accounting) + supporting RFCs.
+The dominant AAA protocol on enterprise networks — every
+Wi-Fi 802.1X / WPA2-Enterprise auth, every VPN concentrator,
+every NAS / RADIUS-PAM / FreeRADIUS deployment speaks it.
+High pentest value: Wi-Fi Enterprise credential analysis,
+VPN auth-flow inspection, Vendor-Specific attribute mining.**
+
+### Added
+
+- **`radius_packet_decode`** (`Risk.Low`, `GroupHostTools`)
+  — parses a RADIUS packet into a structured view:
+
+  - **20-byte header** — Code (16-entry name table:
+    Access-Request / Access-Accept / Access-Reject /
+    Accounting-Request / Accounting-Response / Access-
+    Challenge / Status-Server / Status-Client / Disconnect-
+    Request / Disconnect-ACK / Disconnect-NAK / CoA-Request
+    / CoA-ACK / CoA-NAK), Identifier, Length (validated
+    against buffer + spec 20..4096), 16-byte Authenticator.
+  - **Attribute TLV walker** — type (1 byte) + length (1
+    byte including header) + value, walked over the
+    declared packet body per RFC 2865 §5.
+  - **~80-entry attribute name table** covering the IANA
+    RADIUS Types registry: User-Name, User-Password, CHAP-
+    Password, NAS-IP-Address, NAS-Port, Service-Type,
+    Framed-Protocol / IP-Address / IP-Netmask / Routing /
+    MTU / Compression, Login-IP-Host / Service / TCP-Port,
+    Reply-Message, Callback-Number / Id, Framed-Route,
+    State, Class, Vendor-Specific, Session-Timeout, Idle-
+    Timeout, Termination-Action, Called-Station-Id,
+    Calling-Station-Id, NAS-Identifier, Proxy-State, Acct-*
+    family (Status-Type, Delay-Time, Input/Output-Octets,
+    Session-Id, Authentic, Session-Time, Input/Output-
+    Packets, Terminate-Cause, Multi-Session-Id, Link-Count,
+    Input/Output-Gigawords, Interim-Interval), Event-
+    Timestamp, CHAP-Challenge, NAS-Port-Type, Port-Limit,
+    Tunnel-* family (Type / Medium-Type / Client-Endpoint /
+    Server-Endpoint / Private-Group-ID / Assignment-ID /
+    Preference), EAP-Message, Message-Authenticator, NAS-
+    Port-Id, Framed-Pool, NAS-IPv6-Address, Framed-
+    Interface-Id, Framed-IPv6-Prefix, Error-Cause.
+  - **Vendor-Specific (26) deep decode** — vendor-id (4
+    bytes) with SMI Network Management Private Enterprise
+    Codes lookup (~20 entries: Cisco, Microsoft, Juniper,
+    Aruba, MikroTik, Fortinet, Ruckus, H3C / HPE, Nokia /
+    Alcatel-Lucent, Extreme Networks, etc.) + vendor-
+    attribute sub-TLV walker.
+  - **Type-aware value rendering**:
+    - String attributes → UTF-8.
+    - Integer attributes → uint32 + enum-name lookup for
+      Service-Type (Login / Framed / Administrative / NAS-
+      Prompt / Authenticate-Only / Authorize-Only / etc.),
+      Framed-Protocol (PPP / SLIP / ARAP / GPRS PDP
+      Context), Login-Service (Telnet / Rlogin / TCP-Clear
+      / LAT / X25-PAD), Termination-Action, Acct-Status-Type
+      (Start / Stop / Interim-Update / Accounting-On / Off
+      / Tunnel-* / Failed), Acct-Authentic (RADIUS / Local
+      / Remote / Diameter), Acct-Terminate-Cause (18
+      reasons: User-Request / Lost-Carrier / Lost-Service
+      / Idle-Timeout / Session-Timeout / Admin-Reset /
+      Admin-Reboot / Port-Error / NAS-Error / NAS-Request /
+      NAS-Reboot / Port-Unneeded / Port-Preempted / Port-
+      Suspended / Service-Unavailable / Callback / User-
+      Error / Host-Request), NAS-Port-Type (20 entries
+      including Async / Sync / ISDN / Virtual / Ethernet /
+      xDSL / Cable / Wireless-802.11), Tunnel-Type (13
+      entries: PPTP / L2F / L2TP / ATMP / VTP / AH / IP-IP-
+      Encap / MIN-IP-IP / ESP / GRE / Bay-DVS / IP-in-IP /
+      VLAN), Tunnel-Medium-Type (IPv4 / IPv6 / NSAP / HDLC
+      / 802 / E.163 / E.164 / F.69 / X.121 / IPX /
+      AppleTalk), Error-Cause (RFC 5176 dynamic-
+      authorization codes: 201-202 / 401-406 / 501-507).
+    - IPv4 attributes → dotted-decimal.
+    - Time attributes (Event-Timestamp) → uint32 seconds +
+      RFC 3339 UTC string.
+
+### Why this matters
+
+RADIUS is the silent workhorse of enterprise authentication —
+every WPA2/WPA3-Enterprise Wi-Fi network, every VPN
+concentrator, every TACACS+/RADIUS-fronted firewall, every
+NAC product, every PAM-RADIUS bastion speaks it. Operators
+running enterprise-network pentests routinely end up with
+RADIUS hex blobs from Wireshark / tshark / tcpdump-of-1812-
+or-1813 / FreeRADIUS log lines / Aruba ClearPass traces /
+Cisco ACS captures, and need them broken down by code (auth
+vs accounting vs CoA / Disconnect), Identifier (for paired
+request/response matching), and the attribute list (with
+enum-name lookup for the integer enums + IPv4 / time / string
+rendering). This decoder fills that gap natively: paste a
+hex frame, get back a fully structured view with every
+documented attribute named, integer enums looked up, and
+Vendor-Specific bodies dissected with SMI PEN lookup. Pure
+offline parse — no AAA server attach, no shared secret
+required.
+
 ## [0.252.0] - 2026-05-19
 
 **Forty-seventh native-fit gap: Protobuf wire-format decoder
