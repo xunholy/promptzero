@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.281.0] - 2026-05-20
+
+**Seventy-sixth native-fit gap: VRRP (Virtual Router
+Redundancy Protocol) packet dissector per RFC 5798 (v3 —
+IPv4 + IPv6) and the older RFC 3768 (v2 — IPv4 only, still
+widely deployed). VRRP is the first-hop gateway redundancy
+protocol used in nearly every enterprise + datacenter to
+give end hosts a virtual default gateway that survives the
+failure of any single router. Pairs with
+`bfd_control_decode` + `bgp_message_decode` +
+`ospf_packet_decode` for the complete routing + redundancy
++ liveness picture.**
+
+### Added
+
+- **`vrrp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a VRRP packet into a structured view:
+
+  - **8-byte common header**:
+    - byte 0: Version (4 bits; 2 or 3) + Type (4 bits;
+      only 1 Advertisement is defined).
+    - byte 1: **Virtual Router Identifier (VRID)** — 1-255.
+    - byte 2: **Priority** — 0-255 with semantic notes:
+      - 0 = withdraw (router signalling 'remove me from
+        this VR / shutting down')
+      - 100 = default backup priority
+      - 255 = IP address owner (highest priority, always
+        Master)
+    - byte 3: Count IPvX Addresses.
+    - **bytes 4-5 (version-specific)**:
+      - **VRRPv2**: byte 4 = AuthType (**3-entry name
+        table**: 0 No Authentication, 1 Simple Text
+        Password — deprecated per RFC 5798 §9.3, 2 IP
+        Authentication Header — deprecated per RFC 2402);
+        byte 5 = AdverInt (seconds, default 1).
+      - **VRRPv3**: 4-bit Reserved + 12-bit **Max Adver
+        Interval** (in centiseconds; surfaced both as cs
+        and converted to ms; default 100 cs = 1 second).
+    - bytes 6-7: Checksum (uint16 BE, hex-formatted).
+  - **Virtual Address list** — N × 4 bytes (IPv4) or N ×
+    16 bytes (IPv6). Address family inferred by byte
+    arithmetic (remaining bytes ÷ Count); surfaced as
+    canonical IP strings.
+  - **VRRPv2 Authentication Data** (8 bytes, when AuthType
+    1 = Simple Text) — surfaced as decoded UTF-8 with
+    trailing nulls trimmed, plus raw hex for verification.
+  - **Conformance check** — Type != 1 surfaces a Note;
+    Version not in {2, 3} surfaces a Note.
+
+- **Tooling** — registry capacity bumped from 357 → 358.
+
+### Why this gap
+
+- VRRP is universal in enterprise + datacenter networks.
+  Operators paste VRRP bytes (IP protocol 112, multicast
+  to 224.0.0.18 for IPv4 or ff02::12 for IPv6) from a
+  `tcpdump -X proto 112` line, a Wireshark Follow-IP-Stream
+  view, or any VRRP-speaking router's tcpdump.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 5798 + RFC 3768 are fully public;
+  wire format is a tight 8-byte fixed header followed by a
+  list of 4-byte (IPv4) or 16-byte (IPv6) virtual addresses;
+  no crypto at the parse layer.
+- Adds the gateway-redundancy leg to the routing-control-
+  plane picture. Together with BGP (EGP), OSPF (IGP), BFD
+  (liveness), and now VRRP (HA), operators have full
+  visibility into the L3 routing + redundancy fabric.
+
+### Out of scope (deferred to future iterations)
+
+- IP framing — feed VRRP bytes after the IPv4/IPv6 header
+  strip (VRRP runs over IP protocol 112).
+- VRRPv2 IP Authentication Header (Auth Type 2) — auth
+  wrapped in the IP header per RFC 2402; the 8-byte VRRP
+  auth field surfaces but the IPsec layer is separate.
+- Master election simulation — Priority is surfaced;
+  multi-router HA election reasoning is higher-level.
+- VRRP cryptographic verification — RFC 3768 Auth Types
+  are all deprecated; if integrity is needed, run over
+  IPsec.
+
 ## [0.280.0] - 2026-05-20
 
 **Seventy-fifth native-fit gap: BFD (Bidirectional Forwarding
