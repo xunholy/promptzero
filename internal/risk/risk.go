@@ -782,6 +782,21 @@ var toolLevels = func() map[string]Level {
 		// semantic notes (0 = withdraw, 100 = default
 		// backup, 255 = IP owner).
 		"vrrp_decode",
+		// v0.282 (NATIVE-fit gap — foundational IPv4
+		// multicast group-management protocol): IGMPv2
+		// (RFC 2236) + IGMPv3 (RFC 3376). 8-byte v2 fixed
+		// header (Type + Max Resp Time + Checksum + Group
+		// Address); v3 Query body extension (S/QRV byte +
+		// QQIC + Number of Sources + N × Source Addresses);
+		// v3 Membership Report body (Number of Group
+		// Records + Group Records walker with 6-entry
+		// Record Type name table covering MODE_IS_INCLUDE /
+		// MODE_IS_EXCLUDE / CHANGE_TO_INCLUDE_MODE /
+		// CHANGE_TO_EXCLUDE_MODE / ALLOW_NEW_SOURCES /
+		// BLOCK_OLD_SOURCES); auto-detect version from
+		// Type + body length; Max Resp Code exp+mantissa
+		// decoding per §4.1.1.
+		"igmp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

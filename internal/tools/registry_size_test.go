@@ -483,7 +483,15 @@ func TestRegistrySize(t *testing.T) {
 	// parsing, IPv4/IPv6 virtual address list walker, VRRPv2
 	// Simple Text auth decoded, priority semantic notes for
 	// 0/100/255). Foundational gateway-redundancy protocol.
-	const expected = 358
+	// v0.282.0 added igmp_decode (IGMPv2 per RFC 2236 +
+	// IGMPv3 per RFC 3376 — auto-detect version from Type +
+	// body length; v2 8-byte fixed header + v3 Query body
+	// extension (S/QRV + QQIC + Source Addresses) + v3
+	// Membership Report Group Records walker with 6-entry
+	// Record Type name table; Max Resp Code exp+mantissa
+	// decoding per §4.1.1). Foundational IPv4 multicast
+	// group-management protocol.
+	const expected = 359
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

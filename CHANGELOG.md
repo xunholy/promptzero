@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.282.0] - 2026-05-20
+
+**Seventy-seventh native-fit gap: IGMP (Internet Group
+Management Protocol) packet dissector per RFC 3376 (IGMPv3)
+and RFC 2236 (IGMPv2). IGMP is the IPv4 multicast group-
+management protocol — every multicast-aware switch + router
+runs it and every IPv4 multicast app (IPTV, MDNS, OSPF,
+video conferencing, streaming, market-data feeds) emits or
+consumes it. Pairs with `icmp_packet_decode` (which already
+covers MLDv1/v2 as ICMPv6 type 130-132 + 143) for the
+complete IPv4 + IPv6 multicast signalling picture.**
+
+### Added
+
+- **`igmp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an IGMP packet into a structured view:
+
+  - **Version auto-detection** — Type 0x11 with body length
+    8 = IGMPv1/v2 General Query; Type 0x11 with body length
+    ≥ 12 = IGMPv3 Membership Query; Type 0x22 = IGMPv3
+    Membership Report; Type 0x16 = IGMPv2 Membership Report;
+    Type 0x17 = IGMPv2 Leave Group; Type 0x12 = IGMPv1
+    Membership Report (legacy).
+  - **IGMPv2 fixed 8-byte header** (RFC 2236 §2):
+    - byte 0: **Type** with **5-entry name table**: 0x11
+      Membership Query, 0x12 IGMPv1 Membership Report, 0x16
+      IGMPv2 Membership Report, 0x17 Leave Group, 0x22
+      IGMPv3 Membership Report (dispatched separately).
+    - byte 1: Max Resp Time (1/10 seconds for v2; encoded
+      Max Resp Code for v3 Query — exp+mantissa per RFC
+      3376 §4.1.1, surfaced both as the encoded byte and
+      the decoded centiseconds + milliseconds).
+    - bytes 2-3: Checksum (uint16 BE, hex-formatted).
+    - bytes 4-7: Group Address (4 bytes IPv4; 0.0.0.0 for
+      General Query).
+  - **IGMPv3 Query body extension** (RFC 3376 §4.1):
+    - byte 8: 4-bit Resv + 1-bit **S** (Suppress Router-Side
+      processing flag) + 3-bit **QRV** (Querier's Robustness
+      Variable; default 2).
+    - byte 9: **QQIC** (Querier's Query Interval Code — same
+      exp+mantissa encoding as Max Resp Code).
+    - bytes 10-11: Number of Sources + N × 4-byte Source
+      Addresses.
+  - **IGMPv3 Membership Report body** (RFC 3376 §4.2):
+    - bytes 4-5: Reserved + bytes 6-7: Number of Group
+      Records + Group Records walker (each is 8-byte fixed
+      header + N source addresses + Aux Data):
+      - byte 0: **Record Type** with **6-entry name table**:
+        1 MODE_IS_INCLUDE, 2 MODE_IS_EXCLUDE, 3
+        CHANGE_TO_INCLUDE_MODE, 4 CHANGE_TO_EXCLUDE_MODE, 5
+        ALLOW_NEW_SOURCES, 6 BLOCK_OLD_SOURCES.
+      - byte 1: Aux Data Len (in 4-byte words; should be 0
+        per RFC 3376).
+      - bytes 2-3: Number of Sources + bytes 4-7: Multicast
+        Address (IPv4) + N × 4-byte Source Addresses + Aux
+        Data Len × 4-byte Auxiliary Data (deprecated;
+        surfaced as raw hex).
+
+- **Tooling** — registry capacity bumped from 358 → 359.
+
+### Out of scope
+
+- IP framing (feed bytes after IPv4 header strip — IGMP
+  runs over IP protocol 2).
+- MLD (Multicast Listener Discovery, RFC 3810 — IPv6
+  equivalent; partially decoded by `icmp_packet_decode`).
+- IGMP Router-Side state machine (Query intervals,
+  Robustness Variable retries, group-membership timeouts —
+  higher-level analysis).
+- IP Router Alert option (RFC 2113 — checked at the IP
+  layer, not in IGMP).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational IPv4
+  multicast group-management protocol — universal in
+  switched + routed multicast networks).
+- Wrap-vs-native judgement: **native** — RFC 2236 + RFC
+  3376 are fully public; wire format is a tight 8-byte
+  fixed header (v2) or 12+-byte header (v3 Query) with a
+  per-record list (v3 Report); no crypto, no compression,
+  no varints apart from the exp+mantissa Max Resp Code
+  encoding.
+
 ## [0.281.0] - 2026-05-20
 
 **Seventy-sixth native-fit gap: VRRP (Virtual Router
