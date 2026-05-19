@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.246.0] - 2026-05-19
+
+**Forty-first native-fit gap: SNMP v1/v2c/v3 packet dissector
+per RFC 1157 + RFC 1905 + RFC 3416 + RFC 3411-3418 — the
+dominant network-management protocol on enterprise networks,
+found on every router / switch / firewall / printer / UPS / PDU
+/ managed AP / managed VM-host since the late '80s. High
+OT/IT pentest value (default community-string scanning).**
+
+### Added
+
+- **`snmp_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses SNMP v1, v2c, and v3 packets into a structured view:
+
+  - **Hand-rolled BER walker** for SNMP-specific types:
+    SEQUENCE (0x30), INTEGER (0x02), OCTET STRING (0x04),
+    NULL (0x05), OBJECT IDENTIFIER (0x06), IpAddress (0x40),
+    Counter32 (0x41), Gauge32 / Unsigned32 (0x42), TimeTicks
+    (0x43), Opaque (0x44), Counter64 (0x46), and the SNMP-
+    specific noSuchObject (0x80), noSuchInstance (0x81),
+    endOfMibView (0x82) value markers + PDU tags 0xA0..0xA8.
+  - **Version detection** — v1 (0), v2c (1), v2u historical
+    (2), v3 (3).
+  - **Community string** for v1/v2c (the long-standing
+    security weakness in plaintext SNMP — `public` /
+    `private` defaults are operationally important to flag).
+  - **v3 msgGlobalData header**: msgID, msgMaxSize, msgFlags
+    broken out (auth/priv/reportable bits), msgSecurityModel,
+    msgSecurityParameters raw. Encrypted scopedPDU body is
+    surfaced as raw hex (decryption requires USM auth/priv
+    keys — out of scope).
+  - **9-entry PDU type dispatch**:
+    - **0xA0 GetRequest** / **0xA1 GetNextRequest** /
+      **0xA2 Response** / **0xA3 SetRequest** / **0xA5
+      GetBulkRequest** (v2c+) / **0xA6 InformRequest** /
+      **0xA7 SNMPv2-Trap** / **0xA8 Report** — request-id +
+      error-status (or non-repeaters for GetBulkRequest) +
+      error-index (or max-repetitions) + VarBindList.
+    - **0xA4 Trap-PDU** (SNMPv1 only) — enterprise OID +
+      agent-addr (IPv4) + generic-trap (named: coldStart /
+      warmStart / linkDown / linkUp / authenticationFailure
+      / egpNeighborLoss / enterpriseSpecific) + specific-
+      trap + time-stamp + VarBindList.
+  - **19-entry error-status name table** (RFC 3416 §3):
+    noError / tooBig / noSuchName / badValue / readOnly /
+    genErr / noAccess / wrongType / wrongLength /
+    wrongEncoding / wrongValue / noCreation /
+    inconsistentValue / resourceUnavailable / commitFailed /
+    undoFailed / authorizationError / notWritable /
+    inconsistentName.
+  - **VarBindList walker** — each (OID, value) pair with
+    type-specific decode: INTEGER, OCTET STRING (with
+    printable-ASCII detection — falls back to hex for binary
+    data), OID, IpAddress, Counter32, Gauge32, TimeTicks
+    (with centisecond-to-pretty-duration rendering like
+    "1d 10h 17m 36.00s"), Counter64, and the v2 noSuchObject
+    / noSuchInstance / endOfMibView markers.
+  - **Well-known OID name lookup** (~25 entries covering
+    >90% of real-world traffic): sysDescr.0, sysObjectID.0,
+    sysUpTime.0, sysContact.0, sysName.0, sysLocation.0,
+    sysServices.0, ifNumber.0, ifIndex / ifDescr / ifType /
+    ifSpeed / ifPhysAddress / ifAdminStatus / ifOperStatus /
+    ifInOctets / ifOutOctets, snmpTrapOID.0, coldStart /
+    warmStart / linkDown / linkUp / authenticationFailure.
+  - **OID decoding** — first byte = 40 * arc1 + arc2 (X.690
+    §8.19 special case), subsequent arcs base-128 with
+    continuation bit.
+
+### Why this matters
+
+SNMP is the silent runtime monitoring + management protocol of
+every enterprise network — operators routinely end up with
+SNMP hex blobs from a Wireshark / tshark / tcpdump-of-161/162
+capture, a community-string scan (`onesixtyone`, `snmpwalk`,
+metasploit's `snmp_login`), or a Nagios/Zabbix poll trace,
+and need them broken down by version, community (or v3 USM
+flags), PDU type, request ID, and VarBindList. This decoder
+fills that gap natively: paste a hex frame, get back a fully
+structured view with envelope + PDU dispatch + VarBindList
+walk + well-known OID naming. Pure offline parse — no SNMP
+agent attach, no MIB compilation, no auth/priv keys required.
+Companion to `dns_packet_decode` + `dhcp_packet_decode` for
+the network-management decode stack: DNS for name resolution,
+DHCP for address assignment, SNMP for runtime monitoring +
+management.
+
 ## [0.245.0] - 2026-05-19
 
 **Fortieth native-fit gap: DHCPv4 packet dissector per RFC

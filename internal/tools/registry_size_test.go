@@ -265,7 +265,13 @@ func TestRegistrySize(t *testing.T) {
 	// documented options including 53 msg type, 55 parameter
 	// request list with named codes, 81 FQDN, 82 relay agent
 	// sub-options, 119 domain search, 121 classless routes).
-	const expected = 322
+	// v0.246.0 added snmp_packet_decode (SNMP v1/v2c/v3
+	// dissector per RFC 1157/1905/3416/3411-3418 — hand-rolled
+	// BER walker; envelope + community (v1/v2c) or v3
+	// msgGlobalData; PDU dispatch covering 9 types; VarBindList
+	// walker with type-specific value decode; well-known OID
+	// name lookup; named error-status + generic-trap).
+	const expected = 323
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -390,6 +390,16 @@ var toolLevels = func() map[string]Level {
 		// classless static routes, etc.). Companion to
 		// dns_packet_decode for the core network-bootstrap stack.
 		"dhcp_packet_decode",
+		// v0.246 (NATIVE-fit gap in the network-management decode
+		// space): SNMP v1/v2c/v3 packet dissector per RFC 1157
+		// + 1905 + 3416 + 3411-3418. Hand-rolled BER walker;
+		// envelope + community (v1/v2c) or v3 msgGlobalData +
+		// security parameters; PDU dispatch covering 9 documented
+		// types (Get/GetNext/Response/Set/Trap-v1/GetBulk/Inform/
+		// TrapV2/Report) with named error-status; VarBindList
+		// walker with type-specific value decode + well-known
+		// OID name lookup. High OT/IT pentest value.
+		"snmp_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
