@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.266.0] - 2026-05-20
+
+**Sixty-first native-fit gap: Cisco Discovery Protocol (CDP)
+packet dissector. CDP is the Cisco-proprietary equivalent of
+LLDP and remains the dominant link-layer discovery protocol
+on Cisco-heavy enterprise networks — every Catalyst switch /
+IOS router / NX-OS device / Meraki AP / Cisco IP phone emits
+CDP frames by default, often alongside LLDP. Natural sibling
+to `lldp_decode`.**
+
+### Added
+
+- **`cdp_decode`** (`Risk.Low`, `GroupHostTools`) — parses a
+  CDP packet into a structured view:
+
+  - **4-byte header** — Version (1 byte; usually 2) + TTL
+    (1 byte seconds, default 180) + Checksum (2 bytes BE).
+  - **TLV walker** — each TLV is Type (2 bytes BE) + Length
+    (2 bytes BE, includes the 4 header bytes) + Value
+    (Length-4 bytes).
+  - **~17 documented TLV types**:
+    - **0x0001 Device ID** — UTF-8 string (canonical
+      hostname equivalent).
+    - **0x0002 Addresses** — list of protocol-typed
+      addresses.
+    - **0x0003 Port ID** — UTF-8 string (e.g.
+      'GigabitEthernet0/1').
+    - **0x0004 Capabilities** — uint32 BE bitfield with
+      **10 documented bits**: Router / Transparent Bridge
+      / Source Route Bridge / Switch (Layer 2) / Host /
+      IGMP-capable / Repeater / VoIP Phone / Remotely
+      Managed Device / CVTA (Cast VLAN Trunking Aware).
+    - **0x0005 Software Version** — UTF-8 string (typically
+      multi-line IOS version banner).
+    - **0x0006 Platform** — UTF-8 string (e.g.
+      'cisco WS-C2960').
+    - **0x000A Native VLAN** — uint16 BE.
+    - **0x000B Duplex** — 1 byte (0 half-duplex / 1
+      full-duplex).
+    - **0x0010 Power Consumption** — uint16 BE milliwatts
+      (PoE).
+    - **0x0011 MTU** — uint32 BE bytes.
+    - **0x0012 Trust Bitmap** / **0x0013 Untrusted Port
+      CoS** — 1 byte each.
+    - **0x0014 System Name** — UTF-8 string.
+    - **0x0015 System Object ID** — ASN.1 OID bytes.
+    - **0x0016 Management Address** — list, same shape as
+      Addresses TLV.
+  - **Addresses TLV body** (used by both 0x0002 and 0x0016):
+    Number of addresses (uint32 BE) + per-entry (Protocol
+    Type byte + Protocol Length byte + Protocol bytes — e.g.
+    0xCC for IPv4 NLPID + Address Length uint16 BE +
+    Address bytes — 4 for IPv4, 16 for IPv6 via 802.2 SNAP).
+
+- **Tooling** — registry capacity bumped from 342 → 343.
+
+### Why this gap
+
+- CDP is universal in Cisco enterprises. Operators paste CDP
+  payload bytes (after the SNAP/LLC header strip, EtherType
+  0x2000 with OUI 00-00-0C and PID 0x2000) from a
+  `tcpdump -i ethX -X ether proto 0x2000` line, a Wireshark
+  Follow-Frame view, an `cdpr` / `cdptools` capture, or any
+  CDP-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: wire format reverse-engineered for
+  decades, agreed-upon by every Wireshark dissector and
+  cdpr/cdptools utility; no crypto, no compression.
+- Natural sibling to `lldp_decode` — CDP and LLDP often
+  coexist on the same wire because Cisco switches typically
+  run both. Operators get a complete L2 discovery picture
+  by feeding each protocol's frames through its respective
+  decoder.
+
+### Out of scope (deferred to future iterations)
+
+- SNAP/LLC framing — feed the CDP bytes after the 802.2 LLC
+  SNAP header (DSAP/SSAP 0xAA / Control 0x03 / OUI 00-00-0C
+  / PID 0x2000).
+- Checksum verification — the value is surfaced as hex for
+  visual sanity-check.
+- CDP version 1 (deprecated; v2 is a superset).
+- LLDP — handled by `lldp_decode`.
+
 ## [0.265.0] - 2026-05-20
 
 **Sixtieth native-fit gap: LLDP (Link Layer Discovery
