@@ -292,6 +292,15 @@ var toolLevels = func() map[string]Level {
 		// Complements subghz_* coverage by extending decode to
 		// 1090 MHz airborne / aerospace traffic.
 		"adsb_mode_s_decode",
+		// v0.236 (NATIVE-fit gap in the drone OSINT space):
+		// ASTM F3411-22 Remote ID payload dissector — the
+		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast
+		// beacon every drone since 2023 must transmit over BLE /
+		// WiFi. Pure offline parser covering Basic ID, Location,
+		// Self-ID, System, Operator ID, and Message Pack. Pairs
+		// with ble_* / ieee80211_* coverage of the transport
+		// framing.
+		"drone_remote_id_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

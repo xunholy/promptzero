@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.236.0] - 2026-05-19
+
+**Thirty-first native-fit gap: ASTM F3411-22 drone Remote ID
+payload dissector — the FAA-mandated (14 CFR Part 89) and
+EU-mandated broadcast beacon that every drone has been required
+to transmit since 2023, decoded host-side with no hardware
+dependency.**
+
+### Added
+
+- **`drone_remote_id_decode`** (`Risk.Low`, `GroupHostTools`)
+  — parses ASTM F3411-22 Remote ID messages per spec:
+
+  - **Message envelope** — 1-byte header
+    `(MessageType << 4) | ProtocolVersion`, six message types
+    plus the Message Pack container.
+  - **Type 0x0 Basic ID** — 20-character UAS ID + ID Type
+    lookup (None / Serial Number per ANSI CTA-2063-A / CAA
+    registration / UTM-assigned UUID / Specific Session ID) +
+    UA Type lookup (full 16-entry table: Aeroplane,
+    Helicopter/Multirotor, Gyroplane, Hybrid Lift,
+    Ornithopter, Glider, Kite, Free Balloon, Captive Balloon,
+    Airship, Free Fall / Parachute, Rocket, Tethered Powered
+    Aircraft, Ground Obstacle, Other).
+  - **Type 0x1 Location/Vector** — operational status
+    (Undeclared / Ground / Airborne / Emergency / Remote ID
+    System Failure), height type (AGL/takeoff vs Geodetic),
+    lat/lon (10⁻⁷ deg signed i32), pressure + geodetic + AGL
+    altitude (0.5 m resolution with -1000 m offset), ground
+    track with E/W direction segment, ground speed with
+    multiplier-encoded high-speed range (×0.25 m/s normal,
+    ×0.75 + 63.75 m/s high), vertical speed (signed 0.5 m/s),
+    per-field accuracy nibbles (horizontal / vertical /
+    barometric / speed), and 1/10-second timestamp within the
+    current hour.
+  - **Type 0x3 Self-ID** — 23-character free-text flight
+    description + Description Type code (Free text /
+    Emergency / Extended Status / Private).
+  - **Type 0x4 System** — operator lat/lon, operator altitude,
+    classification region (Undeclared / EU EASA), EU class
+    lookup (C0 ≤250 g / C1 <900 g / C2 <4 kg / C3 <25 kg / C4
+    model aircraft / C5 Specific / C6 Certified), swarm-flight
+    area count / radius / ceiling / floor for multi-aircraft
+    operations, and System Timestamp surfaced as Unix-epoch
+    seconds (automatically offset from the spec's 2019-01-01
+    00:00:00 UTC base).
+  - **Type 0x5 Operator ID** — 20-character regulatory
+    operator identifier + Operator ID Type.
+  - **Type 0xF Message Pack** — header + message size (must
+    be 25) + message count (1-9) + N × 25-byte child
+    messages, dispatched individually so a single decode
+    call returns the full bundle.
+  - **Type 0x2 Authentication** — recognised by name but body
+    decode deferred (variable-length signature pages up to
+    393 bytes; rare in practice).
+  - **Hex input tolerance** — `:`, `-`, `_`, whitespace
+    separators stripped; `0x` prefix tolerated.
+
+### Why this matters
+
+Every drone flying in the US since 2023 broadcasts ASTM F3411
+Remote ID over BLE 4 Legacy / BLE 5 Long Range / WiFi NAN /
+WiFi Beacon. OSINT operators routinely capture these beacons
+with off-the-shelf sniffers (Flipper Zero, ESP32 Marauder,
+RPi BLE adapters) and end up with 25-byte payload blobs that
+need to be unpacked into operator location, drone identity,
+flight status, and authorisation class. This decoder fills
+that gap natively: paste the 25-byte payload (or a full
+Message Pack), get back a structured view with operator
+position, drone serial / registration, real-time location,
+flight state, and EU regulatory class. Complements the
+existing `ble_*` and `ieee80211_*` Specs that handle the
+transport framing — this Spec handles the Remote ID
+payload itself.
+
 ## [0.235.0] - 2026-05-19
 
 **Thirtieth native-fit gap: Mode S / ADS-B 1090 MHz frame

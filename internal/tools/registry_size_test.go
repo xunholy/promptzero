@@ -216,7 +216,11 @@ func TestRegistrySize(t *testing.T) {
 	// CRC-24 validation, DF17 TC dispatch covering Aircraft
 	// Identification + Airborne Position + Airborne Velocity
 	// + Surface Position; raw CPR exposed for paired solve).
-	const expected = 312
+	// v0.236.0 added drone_remote_id_decode (ASTM F3411-22
+	// drone Remote ID payload dissector — FAA/EU-mandated
+	// broadcast beacon. Covers Basic ID, Location/Vector,
+	// Self-ID, System, Operator ID, Message Pack types).
+	const expected = 313
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
