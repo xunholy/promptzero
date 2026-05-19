@@ -446,7 +446,13 @@ func TestRegistrySize(t *testing.T) {
 	// dispatch; flags decoded; Bridge ID priority + System ID
 	// Extension + MAC split; timer formatting). Foundational
 	// L2 loop-prevention protocol.
-	const expected = 352
+	// v0.276.0 added gtp_u_decode (GTP-U per 3GPP TS 29.281
+	// — 8-byte mandatory header + optional 4-byte sequence/
+	// NPDU/ext block + typed extension chain with 9-entry
+	// name table + 6-entry message type table + inner IP
+	// heuristic). Foundational cellular telco protocol
+	// (S1-U / N3 / N9 user-plane wrapping).
+	const expected = 353
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

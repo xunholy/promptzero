@@ -708,6 +708,19 @@ var toolLevels = func() map[string]Level {
 		// ID Extension + MAC split; 1/256-sec timer
 		// formatting to ms.
 		"stp_bpdu_decode",
+		// v0.276 (NATIVE-fit gap — foundational cellular
+		// telco protocol): GTP-U per 3GPP TS 29.281. 8-byte
+		// mandatory header (Flags with V/PT/E/S/PN + Message
+		// Type + Length + TEID); optional 4-byte block when
+		// E|S|PN set (Seq + NPDU + NextType); typed extension
+		// header walker with 9-entry name table (MBMS / MS
+		// Info Change / Service Class / RAN Container / Long
+		// PDCP / Xw RAN / NR RAN / PDU Session Container);
+		// 6-entry Message Type name table (Echo Req/Rsp,
+		// Error Indication, Supported Ext Hdrs Notification,
+		// End Marker, G-PDU); inner IP heuristic. Used on
+		// every cellular S1-U / N3 / N9 interface.
+		"gtp_u_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
