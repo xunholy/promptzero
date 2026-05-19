@@ -7,6 +7,107 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.267.0] - 2026-05-20
+
+**Sixty-second native-fit gap: DTLS record + handshake
+dissector per RFC 6347 (DTLS 1.2) and RFC 9147 (DTLS 1.3
+legacy-form). DTLS is the UDP equivalent of TLS — used by
+WebRTC's DTLS-SRTP media key exchange (every video/voice call
+in Chrome / Safari / Firefox), OpenVPN UDP mode, CoAP-over-
+DTLS for IoT deployments, and many embedded-device protocols.
+Natural pair to `tls_handshake_decode`.**
+
+### Added
+
+- **`dtls_record_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses one or more concatenated DTLS records into a
+  structured view:
+
+  - **Record layer** (13 bytes fixed, RFC 6347 §4.1):
+    ContentType (1 byte) + Version (2 bytes) + Epoch (2
+    bytes BE — incremented on each cipher state change) +
+    Sequence Number (6 bytes BE — replay-protection nonce)
+    + Length (2 bytes BE) + Fragment.
+  - **5 Content Types**: 20 ChangeCipherSpec, 21 Alert,
+    22 Handshake, 23 ApplicationData, 24 Heartbeat (RFC
+    6520 — yes, that one).
+  - **3 Version values**: 0xFEFF DTLS 1.0, 0xFEFD DTLS 1.2,
+    0xFEFC DTLS 1.3.
+  - **Alert body**: Level (1 warning / 2 fatal) +
+    Description with **23-entry name table**: close_notify,
+    unexpected_message, bad_record_mac, decryption_failed,
+    record_overflow, decompression_failure,
+    handshake_failure, no_certificate, bad_certificate,
+    unsupported_certificate, certificate_revoked,
+    certificate_expired, certificate_unknown,
+    illegal_parameter, unknown_ca, access_denied,
+    decode_error, decrypt_error, export_restriction,
+    protocol_version, insufficient_security, internal_error,
+    user_canceled, no_renegotiation, unsupported_extension.
+  - **Handshake message header** (12 bytes fixed, RFC 6347
+    §4.2.2): MsgType + Length (3 bytes BE total reassembled
+    length) + MessageSeq + FragmentOffset + FragmentLength.
+    Marks `is_fragmented=true` when offset≠0 or
+    fragment_length≠total_length.
+  - **13 Handshake message types**: 0 HelloRequest, 1
+    ClientHello, 2 ServerHello, 3 HelloVerifyRequest
+    (DTLS-specific cookie exchange), 4 NewSessionTicket,
+    8 EncryptedExtensions (TLS 1.3), 11 Certificate, 12
+    ServerKeyExchange, 13 CertificateRequest, 14
+    ServerHelloDone, 15 CertificateVerify, 16
+    ClientKeyExchange, 20 Finished.
+  - **ClientHello body** dissected: legacy_version + 32-byte
+    random + session_id (length-prefixed) + cookie (length-
+    prefixed, DTLS-specific) + cipher_suites (count + raw
+    hex) + compression_methods + extensions.
+  - **ServerHello body** dissected: legacy_version + random
+    + session_id + selected cipher_suite (uint16 BE) +
+    selected compression_method + extensions.
+  - **HelloVerifyRequest body** dissected: server_version
+    + cookie. Hallmark of DTLS's stateless cookie exchange
+    that mitigates UDP amplification DoS.
+  - **Heartbeat body** (RFC 6520): MessageType (1 Request /
+    2 Response) + declared PayloadLength + actual remaining
+    bytes. **Heartbleed (CVE-2014-0160) detection** — when
+    declared payload_length exceeds the actual remaining
+    bytes, a `heartbleed_hint` field is emitted explaining
+    the information-disclosure pattern.
+  - **Multi-record walker** — one UDP datagram may carry
+    multiple concatenated records; walker iterates record-
+    by-record and emits a summary string
+    (e.g. 'ClientHello + HelloVerifyRequest').
+
+- **Tooling** — registry capacity bumped from 343 → 344.
+
+### Why this gap
+
+- DTLS is the modern UDP-secure-transport baseline. Operators
+  paste UDP payload bytes from a Wireshark Follow-UDP-Stream
+  view, a `tcpdump -X udp port 443` line, a WebRTC traffic
+  dump, or any DTLS-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: both DTLS RFCs are fully public; wire
+  format is a tight fixed-layout binary record header plus a
+  well-documented handshake-message catalogue.
+- Closes the security-layer pair: TLS for TCP / DTLS for UDP.
+  Operators with both decoders cover the full encrypted-
+  transport space (browser HTTPS, WebRTC media key exchange,
+  OpenVPN, CoAP, embedded IoT).
+
+### Out of scope (deferred to future iterations)
+
+- Decryption — operators need session keys exported from the
+  handshake; ciphertext is surfaced as hex.
+- DTLS 1.3 unified-header records (RFC 9147 §4) — the ultra-
+  compact 8-bit-tag variant; future Spec.
+- Full TLS extension dissection (SNI / ALPN / supported_groups
+  / signature_algorithms / key_share) — extension bodies are
+  surfaced as hex; the catalogue is in `tls_handshake_decode`.
+- X.509 certificate decoding inside Certificate handshake
+  messages — surfaced as hex; `x509_certificate_decode` can
+  be fed each ASN.1 cert blob.
+- UDP / IP framing.
+
 ## [0.266.0] - 2026-05-20
 
 **Sixty-first native-fit gap: Cisco Discovery Protocol (CDP)
