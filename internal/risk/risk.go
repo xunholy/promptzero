@@ -733,6 +733,21 @@ var toolLevels = func() map[string]Level {
 		// table (IPv4 / IPv6 / IPCP / IPv6CP / LCP / PAP /
 		// CHAP / EAP variants).
 		"pppoe_decode",
+		// v0.278 (NATIVE-fit gap — foundational Internet
+		// routing protocol): BGP-4 message dissector per RFC
+		// 4271 + RFC 4760 (MP-BGP) + RFC 5492 (Capabilities)
+		// + RFC 6793 (4-byte AS) + RFC 2918/7313 (Route
+		// Refresh). 19-byte fixed header with all-FFs Marker
+		// validation; 5-entry message type table (OPEN /
+		// UPDATE / NOTIFICATION / KEEPALIVE / ROUTE-REFRESH);
+		// OPEN body with Capability walker (7-entry name
+		// table); UPDATE body (Withdrawn Routes + Path
+		// Attributes with 13-entry type table + NLRI prefix
+		// walker with IPv4 formatting); NOTIFICATION error
+		// code + subcode tables; ROUTE-REFRESH AFI/SAFI
+		// tables. Runs every ISP backbone / CDN edge / cloud
+		// provider network.
+		"bgp_message_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

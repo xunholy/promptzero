@@ -458,7 +458,14 @@ func TestRegistrySize(t *testing.T) {
 	// protocol-ID dispatch with 9-entry name table).
 	// Foundational fixed-line broadband protocol; universal
 	// in DSL/FTTH BNG deployments.
-	const expected = 354
+	// v0.278.0 added bgp_message_decode (BGP-4 per RFC 4271
+	// + extensions — 19-byte header with all-FFs Marker
+	// validation, 5-entry message type table; OPEN body with
+	// Capability walker; UPDATE body with Path Attribute and
+	// NLRI walkers; NOTIFICATION error code+subcode tables;
+	// ROUTE-REFRESH AFI/SAFI tables). Foundational Internet
+	// inter-AS routing protocol.
+	const expected = 355
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
