@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.275.0] - 2026-05-20
+
+**Seventieth native-fit gap: STP/RSTP/MSTP BPDU dissector per
+IEEE 802.1D-2004 (STP / RSTP) and IEEE 802.1Q-2014 §13 (MSTP).
+STP is the foundational L2 loop-prevention protocol every
+managed switch runs by default — every datacenter, every
+enterprise floor switch, every Cisco VSS / Juniper Virtual
+Chassis / Arista MLAG deployment uses it. Pairs with
+`lldp_decode`, `cdp_decode`, `vlan_decode`, `arp_decode` for
+complete L2 topology + discovery visibility.**
+
+### Added
+
+- **`stp_bpdu_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a Spanning Tree BPDU into a structured view:
+
+  - **4-byte common header**:
+    - Protocol ID (2 bytes BE) — must be 0x0000.
+    - **Version** (1 byte) — 0 = STP (IEEE 802.1D), 2 =
+      RSTP (IEEE 802.1D-2004), 3 = MSTP (IEEE 802.1Q-2014
+      §13).
+    - **BPDU Type** (1 byte) — 0x00 Configuration, 0x80
+      Topology Change Notification (TCN), 0x02 RSTP/MSTP
+      BPDU (carries the extended flags).
+  - **Configuration BPDU body** (31 bytes):
+    - **Flags** (1 byte) with **8-bit name table**: TC
+      (Topology Change) / Proposal / Port Role (2 bits) /
+      Learning / Forwarding / Agreement / TC Ack.
+      **Port Role**: 0 Unknown/Master, 1 Alternate-or-
+      Backup, 2 Root, 3 Designated.
+    - **Root Bridge ID** (8 bytes) — 4-bit Priority
+      (multiple of 4096) + 12-bit System ID Extension
+      (typically VLAN ID for PVST+, 0 for classic STP per
+      IEEE 802.1t) + 6-byte MAC.
+    - **Root Path Cost** (4 bytes BE).
+    - **Bridge ID** (8 bytes) — same split as Root Bridge ID.
+    - **Port ID** (2 bytes BE) — 4-bit Port Priority +
+      12-bit Port Number.
+    - **Message Age / Max Age / Hello Time / Forward Delay**
+      (2 bytes BE each, in IEEE 1/256-second units;
+      surfaced as milliseconds for readability).
+  - **TCN BPDU body** — empty; the 4-byte common header is
+    the entire frame. Trailing bytes surface a
+    non-conformance Note.
+  - **MSTP trailer** (Version=3) — the Version 1 Length
+    byte + Version 3 Length + MSTI Configuration block is
+    surfaced as raw hex.
+
+- **Tooling** — registry capacity bumped from 351 → 352.
+
+### Why this gap
+
+- STP is universal in switched Ethernet networks. Operators
+  paste BPDU bytes (after the LLC header strip — DSAP/SSAP
+  0x42, Control 0x03, sent to the STP-bridge multicast MAC
+  01:80:C2:00:00:00) from a `tcpdump -X ether dst host
+  01:80:c2:00:00:00` line, a Wireshark Follow-Frame view,
+  or any STP-emitting switch.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: IEEE 802.1D is fully public; wire format
+  is a tight bit-packed binary header; no crypto, no
+  compression, no varints.
+- Closes the L2 visibility loop. Together with `arp_decode`,
+  `lldp_decode`, `cdp_decode`, `vlan_decode`, `icmp_packet_
+  decode`, operators have a complete L2-to-L7 decode stack
+  for Ethernet traffic.
+
+### Out of scope (deferred to future iterations)
+
+- LLC header (DSAP/SSAP/Control) — feed BPDU bytes starting
+  at the Protocol ID field.
+- PVST+ / per-VLAN STP SNAP-encapsulation wrapper — the
+  System ID Extension VLAN embedding is decoded but the
+  SNAP strip is the operator's responsibility.
+- Convergence-time simulation — timers are surfaced;
+  reasoning is higher-level.
+- MSTP MSTI configuration block deep dissection beyond the
+  raw-hex surface — IEEE 802.1Q §13 layout is documented but
+  a future Spec.
+
 ## [0.274.0] - 2026-05-20
 
 **Sixty-ninth native-fit gap: MPLS label stack dissector per
