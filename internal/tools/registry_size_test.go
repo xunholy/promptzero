@@ -398,7 +398,14 @@ func TestRegistrySize(t *testing.T) {
 	// / ServerHello / HelloVerifyRequest bodies, Heartbleed
 	// detection, multi-record walker). UDP equivalent of TLS;
 	// pairs with tls_handshake_decode.
-	const expected = 344
+	// v0.268.0 added quic_long_header_decode (QUIC long-header
+	// packet dissector per RFC 9000 — 4 long-header packet
+	// types: Initial / 0-RTT / Handshake / Retry; Variable-
+	// Length Integer decoder; Version Negotiation detection;
+	// 4-entry version name table with GREASE pattern
+	// recognition). Foundational modern transport underpinning
+	// HTTP/3.
+	const expected = 345
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

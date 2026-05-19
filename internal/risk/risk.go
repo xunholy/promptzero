@@ -624,6 +624,17 @@ var toolLevels = func() map[string]Level {
 		// detection; multi-record walker. Pairs with
 		// tls_handshake_decode.
 		"dtls_record_decode",
+		// v0.268 (NATIVE-fit gap — foundational modern
+		// transport protocol underpinning HTTP/3): QUIC long-
+		// header packet dissector per RFC 9000. First-byte
+		// dispatch (long vs short header) + 4 long-header
+		// packet types (Initial / 0-RTT / Handshake / Retry)
+		// + Variable-Length Integer decoder (4 prefix sizes)
+		// + Version Negotiation detection (Version=0) + 4-
+		// entry version name table with GREASE pattern
+		// recognition. Connection-setup visibility without
+		// needing TLS handshake secrets.
+		"quic_long_header_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
