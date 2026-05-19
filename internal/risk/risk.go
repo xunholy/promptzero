@@ -590,6 +590,16 @@ var toolLevels = func() map[string]Level {
 		// eviction. Explicitly closes the gap noted in v0.263
 		// http2_frame_decode.
 		"hpack_decode",
+		// v0.265 (NATIVE-fit gap — foundational datacenter
+		// L2 discovery protocol): LLDP per IEEE 802.1AB-2009.
+		// TLV walker over 9 documented types (Chassis ID +
+		// Port ID + TTL + Port/System Description + System
+		// Name + System Capabilities + Management Address +
+		// End of LLDPDU + Organizationally Specific). 7
+		// chassis/port ID subtypes; 11-bit System Capabilities
+		// flag table; 5 OUI name table for Org Specific TLVs;
+		// mandatory-TLV ordering check.
+		"lldp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -380,7 +380,14 @@ func TestRegistrySize(t *testing.T) {
 	// table, 61-entry static table, per-call dynamic table
 	// with eviction). Explicitly closes the gap noted in
 	// v0.263 http2_frame_decode.
-	const expected = 341
+	// v0.265.0 added lldp_decode (LLDP per IEEE 802.1AB-2009 —
+	// TLV walker over 9 documented types: Chassis ID, Port ID,
+	// TTL, Port/System Description, System Name, System
+	// Capabilities, Management Address, End of LLDPDU, Org
+	// Specific; 7 chassis/port ID subtypes; 11-bit capability
+	// flag table; 5 OUI name table). Foundational datacenter
+	// L2 discovery.
+	const expected = 342
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
