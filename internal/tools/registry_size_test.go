@@ -310,7 +310,12 @@ func TestRegistrySize(t *testing.T) {
 	// name lookup + Vendor-Specific deep decode with SMI
 	// PEN naming + enum-name lookup for Service-Type,
 	// NAS-Port-Type, Acct-Status-Type, Tunnel-Type, etc.).
-	const expected = 330
+	// v0.254.0 added stun_packet_decode (STUN/TURN dissector
+	// per RFC 5389 + 8489 + 5766 + 8656 — 20-byte header
+	// with method/class split + magic cookie validation +
+	// ~30-entry attribute name table + XOR address
+	// un-masking + ERROR-CODE with named codes).
+	const expected = 331
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

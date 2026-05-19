@@ -468,6 +468,15 @@ var toolLevels = func() map[string]Level {
 		// Type, NAS-Port-Type, Acct-Status-Type, Tunnel-Type,
 		// etc.). High pentest value.
 		"radius_packet_decode",
+		// v0.254 (NATIVE-fit gap — NAT traversal / WebRTC):
+		// STUN/TURN packet dissector per RFC 5389 + 8489 +
+		// 5766 + 8656. 20-byte header with method/class
+		// split + magic cookie validation + ~30-entry
+		// attribute name table covering STUN + TURN + ICE
+		// extensions + XOR address un-masking + ERROR-CODE
+		// with named codes. Companion to ip_packet_decode
+		// for VoIP / WebRTC flow analysis.
+		"stun_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

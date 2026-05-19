@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.254.0] - 2026-05-19
+
+**Forty-ninth native-fit gap: STUN/TURN packet dissector per
+RFC 5389/8489 (STUN) + RFC 5766/8656 (TURN extensions). The
+NAT-discovery and candidate-exchange protocol behind WebRTC,
+every browser peer-to-peer connection, video conferencing
+systems (Zoom/Teams/Meet/Webex), VoIP softphones, and SIP
+User-Agent NAT traversal.**
+
+### Added
+
+- **`stun_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a STUN or TURN packet into a structured view:
+
+  - **20-byte header** — Message Type with the bit-encoded
+    12-bit method + 2-bit class per RFC 5389 §6 broken out
+    into separate fields. Method dispatch: Binding (0x001),
+    Allocate (0x003, TURN), Refresh (0x004, TURN), Send
+    (0x006, TURN), Data (0x007, TURN), CreatePermission
+    (0x008, TURN), ChannelBind (0x009, TURN), Connect /
+    ConnectionBind / ConnectionAttempt (TURN-TCP per RFC
+    6062). Class dispatch: Request / Indication / Success
+    Response / Error Response.
+  - **Magic Cookie validation** — 0x2112A442 required;
+    anything else rejected as not-STUN (the unambiguous
+    distinguishing feature on UDP/3478).
+  - **Attribute TLV walker** with 4-byte boundary padding
+    handling (the length field excludes padding).
+  - **~30-entry attribute name table** covering STUN (RFC
+    5389 §15) + TURN (RFC 5766/8656 §14) + ICE (RFC 8445)
+    + dynamic-authorization (RFC 5176) attributes:
+    MAPPED-ADDRESS, RESPONSE/SOURCE/CHANGED-ADDRESS (RFC
+    3489 historical), USERNAME, PASSWORD, MESSAGE-INTEGRITY
+    (HMAC-SHA1), ERROR-CODE, UNKNOWN-ATTRIBUTES, REFLECTED-
+    FROM, CHANNEL-NUMBER / LIFETIME / XOR-PEER-ADDRESS /
+    DATA / XOR-RELAYED-ADDRESS / REQUESTED-ADDRESS-FAMILY /
+    EVEN-PORT / REQUESTED-TRANSPORT / DONT-FRAGMENT (TURN),
+    MESSAGE-INTEGRITY-SHA256 / PASSWORD-ALGORITHM / USERHASH
+    (RFC 8489), REALM, NONCE, XOR-MAPPED-ADDRESS,
+    RESERVATION-TOKEN, PRIORITY / USE-CANDIDATE (ICE),
+    PADDING, RESPONSE-PORT, SOFTWARE, ALTERNATE-SERVER,
+    CACHE-TIMEOUT, FINGERPRINT (CRC-32), ICE-CONTROLLED /
+    ICE-CONTROLLING, RESPONSE-ORIGIN, OTHER-ADDRESS,
+    ECN-CHECK, THIRD-PARTY-AUTHORIZATION, MOBILITY-TICKET.
+  - **XOR address un-masking** — XOR-MAPPED-ADDRESS /
+    XOR-PEER-ADDRESS / XOR-RELAYED-ADDRESS values are
+    automatically un-XOR'd against the magic cookie +
+    transaction ID per RFC 5389 §15.2. The operator sees
+    the real client IP + port, not the obfuscated wire form.
+    Both IPv4 (family=1) and IPv6 (family=2) supported.
+  - **ERROR-CODE decode** — class (3 bits, hundreds digit)
+    + number (8 bits, tens+units) + reason string with
+    documented-codes lookup (300 Try Alternate / 400 Bad
+    Request / 401 Unauthenticated / 403 Forbidden / 420
+    Unknown Attribute / 437 Allocation Mismatch / 438 Stale
+    Nonce / 440 Address Family not Supported / 441 Wrong
+    Credentials / 442 Unsupported Transport / 486
+    Allocation Quota / 487 Role Conflict / 500 Server Error
+    / 508 Insufficient Capacity).
+
+### Why this matters
+
+STUN is the silent backbone of every modern peer-to-peer
+connection. Every WebRTC call, every browser-based video
+chat, every Zoom/Teams/Meet session, every VoIP softphone,
+every SIP User-Agent behind NAT relies on STUN to discover
+its public IP + port and on TURN for relay fallback when
+direct connection fails. Operators routinely end up with
+STUN hex blobs from Wireshark / tshark / tcpdump-of-3478 /
+TURN-server logs / WebRTC ICE-trickle captures, and need
+them broken down by method (Binding vs Allocate vs Refresh
+vs ChannelBind), class (request vs response vs error), and
+attribute list (with XOR address un-masking — the single
+most-confusing wire-format detail in the protocol). This
+decoder fills that gap natively: paste a hex blob, get back
+a fully structured view with the magic cookie validated,
+addresses un-XOR'd, and error codes named. Pairs with
+`ip_packet_decode` for the complete VoIP/WebRTC decode
+stack.
+
 ## [0.253.0] - 2026-05-19
 
 **Forty-eighth native-fit gap: RADIUS packet dissector per
