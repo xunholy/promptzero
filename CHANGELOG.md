@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.269.0] - 2026-05-20
+
+**Sixty-fourth native-fit gap: ARP (RFC 826) + RARP (RFC
+903) + RFC 5227 IPv4 address-conflict-detection extensions.
+ARP is the L2-to-L3 binding protocol every IPv4 network
+relies on; every modern Ethernet network uses it to map IP
+addresses to MAC addresses; every operator deals with ARP
+cache poisoning / spoofing / announcement traffic in
+practice.**
+
+### Added
+
+- **`arp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an ARP or RARP packet into a structured view:
+
+  - **8-byte fixed header**:
+    - **Hardware Type** (2 bytes BE) — 10-entry IANA name
+      table (Ethernet, IEEE 802 Networks, ARCNET, Frame
+      Relay, ATM, HDLC, Fibre Channel, Serial Line,
+      InfiniBand).
+    - **Protocol Type** (2 bytes BE) — the EtherType of the
+      protocol address being resolved. 4 documented: 0x0800
+      IPv4, 0x86DD IPv6, 0x8035 RARP, 0x809B AppleTalk.
+    - **HLEN** (1 byte) — hardware address length, typically
+      6 for Ethernet.
+    - **PLEN** (1 byte) — protocol address length, typically
+      4 for IPv4 or 16 for IPv6.
+    - **Operation** (2 bytes BE) with **10-entry name table**:
+      1 Request, 2 Reply, 3 RARP Request, 4 RARP Reply, 5
+      DRARP-Request, 6 DRARP-Reply, 7 DRARP-Error, 8
+      InARP-Request, 9 InARP-Reply, 10 ARP-NAK.
+  - **4 address fields** (sized via HLEN / PLEN): Sender
+    Hardware Address (formatted as MAC for HLEN=6), Sender
+    Protocol Address (formatted as IPv4 for PLEN=4, IPv6 for
+    PLEN=16), Target Hardware Address, Target Protocol
+    Address.
+  - **RFC 5227 detection patterns** for IPv4 ARP — surface
+    a Note explaining the pattern when detected:
+    - **Gratuitous ARP** — opcode is Request or Reply AND
+      Sender Protocol Address == Target Protocol Address.
+      Used for unsolicited cache-update / address-takeover
+      announcements.
+    - **ARP Probe** (RFC 5227 §1.1) — opcode Request AND
+      Sender Protocol Address == 0.0.0.0 AND Target Protocol
+      Address is the address being probed. Host sends this
+      before claiming an address to detect conflicts (DHCP
+      mandates ≥1 probe).
+    - **ARP Announcement** (RFC 5227 §1.2) — opcode Request
+      AND Sender Protocol Address == Target Protocol
+      Address (the canonical post-probe announcement).
+
+- **Tooling** — registry capacity bumped from 345 → 346.
+
+### Why this gap
+
+- ARP is universal — every IPv4 network has it. Operators
+  paste ARP-payload bytes (after the Ethernet header strip,
+  EtherType 0x0806 for ARP or 0x8035 for RARP) from a
+  `tcpdump -i ethX -X ether proto arp` line, a Wireshark
+  Follow-Frame view, an `arping` capture, or any
+  ARP-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 826 is one of the oldest standards-
+  track RFCs (1982); wire format is a tight 8-byte fixed
+  header followed by 4 length-parameterised address fields.
+  No crypto, no compression, no varints.
+- Defensive primitive — operators use this to spot ARP cache
+  poisoning (unexpected gratuitous announcements), DHCP-class
+  duplicate-address detection (ARP probes), and address-
+  takeover events (gratuitous replies for an IP already in
+  cache).
+
+### Out of scope (deferred to future iterations)
+
+- Ethernet framing — feed the ARP payload after the dst MAC
+  + src MAC + EtherType bytes.
+- Neighbor Discovery Protocol (IPv6's ARP replacement) —
+  already handled by `icmp_packet_decode` (NDP Neighbor
+  Solicitation / Advertisement / Redirect).
+- 802.1Q VLAN tag stripping — feed the post-tag ARP payload.
+- ARP table state — we decode individual packets; ARP cache
+  reconstruction belongs in a session-tracker.
+
 ## [0.268.0] - 2026-05-20
 
 **Sixty-third native-fit gap: QUIC long-header packet
