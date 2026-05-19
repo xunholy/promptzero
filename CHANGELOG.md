@@ -7,6 +7,106 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.263.0] - 2026-05-20
+
+**Fifty-eighth native-fit gap: HTTP/2 frame dissector per RFC
+9113. HTTP/2 is the dominant request-multiplexing protocol on
+the modern web — every gRPC call, every modern browser-to-
+server HTTPS connection, every cloud-native API that
+ALPN-negotiates 'h2' rides on it. Natural companion to
+`http_message_decode` (HTTP/1.x) and `websocket_frame_decode`
+for the full HTTP stack.**
+
+### Added
+
+- **`http2_frame_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses one or more concatenated HTTP/2 frames into a
+  structured view:
+
+  - **Connection preface** — the literal 24-byte preface
+    `PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n` sent by the client
+    after the upgrade. Auto-detected and surfaced as a
+    synthetic 'preface' frame.
+  - **Frame header** (9 bytes fixed): Length (24-bit BE
+    payload-length) + Type (1 byte) + Flags (1 byte) +
+    R+Stream Identifier (32-bit; high bit reserved, 31-bit
+    stream ID). Stream ID 0 is the connection-level stream
+    (used for SETTINGS / PING / GOAWAY).
+  - **10 frame types** with per-type bodies:
+    - **DATA (0x0)** — optional pad-length + data +
+      padding; END_STREAM marks last frame of a body.
+    - **HEADERS (0x1)** — optional pad-length + optional
+      priority block + HPACK-compressed header block +
+      padding; END_HEADERS / END_STREAM flags.
+    - **PRIORITY (0x2)** (deprecated in RFC 9113) —
+      exclusive bit + stream dependency + weight.
+    - **RST_STREAM (0x3)** — error code with **14-entry
+      name table** (NO_ERROR / PROTOCOL_ERROR /
+      INTERNAL_ERROR / FLOW_CONTROL_ERROR /
+      SETTINGS_TIMEOUT / STREAM_CLOSED / FRAME_SIZE_ERROR
+      / REFUSED_STREAM / CANCEL / COMPRESSION_ERROR /
+      CONNECT_ERROR / ENHANCE_YOUR_CALM /
+      INADEQUATE_SECURITY / HTTP_1_1_REQUIRED).
+    - **SETTINGS (0x4)** — (Identifier+Value) pairs with
+      **7-entry parameter table** (HEADER_TABLE_SIZE /
+      ENABLE_PUSH / MAX_CONCURRENT_STREAMS /
+      INITIAL_WINDOW_SIZE / MAX_FRAME_SIZE /
+      MAX_HEADER_LIST_SIZE / ENABLE_CONNECT_PROTOCOL —
+      RFC 8441 for WebSockets over h2). ACK flag = empty
+      body acknowledgement.
+    - **PUSH_PROMISE (0x5)** (deprecated in RFC 9113) —
+      optional pad-length + promised stream ID + HPACK
+      header block.
+    - **PING (0x6)** — 8 bytes opaque; ACK flag = reply to
+      a peer's PING; used as keep-alive + RTT probe.
+    - **GOAWAY (0x7)** — last stream ID + error code +
+      opaque debug data.
+    - **WINDOW_UPDATE (0x8)** — 31-bit window size
+      increment (must be > 0).
+    - **CONTINUATION (0x9)** — HPACK header block fragment
+      (continuation of HEADERS or PUSH_PROMISE).
+  - **Multi-frame walker** — one buffer may carry multiple
+    concatenated frames; iterator walks frame-by-frame
+    until consumption and emits a summary string.
+  - **Flags decoding per frame type** — END_STREAM /
+    END_HEADERS / PADDED / PRIORITY / ACK flags surfaced
+    with their type-specific names.
+
+- **Tooling** — registry capacity bumped from 339 → 340.
+
+### Why this gap
+
+- HTTP/2 powers every modern HTTPS connection. Operators
+  paste TCP-stream bytes from a Wireshark Follow HTTP/2 view,
+  a `curl --http2 -v` trace, a Go httptrace dump, an h2load
+  benchmark capture, or any HTTP/2-emitting tool and inspect
+  every documented frame field.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 9113 is fully public; wire format is
+  a tight 9-byte frame header plus per-type fixed-field
+  bodies, no encryption at this layer.
+- Closes the HTTP-stack trio: HTTP/1.x (`http_message_decode`),
+  WebSocket (`websocket_frame_decode`), HTTP/2
+  (`http2_frame_decode`). Together they cover the full
+  modern HTTP wire format spectrum.
+
+### Out of scope (deferred to future iterations)
+
+- HPACK header decompression (RFC 7541) — the static-table
+  indexing + Huffman coding requires session state (the
+  dynamic table evolves across frames). Compressed bytes
+  are surfaced as hex; a sibling Spec would handle decoding.
+- TLS layer — operators feed cleartext HTTP/2 frame bytes
+  after TLS decryption (Wireshark's SSL/TLS dissector with
+  the appropriate key file).
+- HTTP/2 connection state machine — frames are decoded
+  individually; tracking which stream is in which state
+  belongs in a session-tracker.
+- HTTP/3 (RFC 9114) — wholly different wire format with
+  QPACK + QUIC; a separate Spec.
+- WebSocket-over-HTTP/2 (RFC 8441 :protocol pseudo-header) —
+  surfaced via the HPACK bytes when present.
+
 ## [0.262.0] - 2026-05-19
 
 **Fifty-seventh native-fit gap: ICMP (RFC 792) + ICMPv6 (RFC
