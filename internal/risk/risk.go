@@ -760,6 +760,18 @@ var toolLevels = func() map[string]Level {
 		// AuType 3-entry name table; OSPF Options bit
 		// decoding (E / MC / NP / EA / DC / O / DN).
 		"ospf_packet_decode",
+		// v0.280 (NATIVE-fit gap — foundational link-failure-
+		// detection protocol): BFD Control packet dissector
+		// per RFC 5880. 24-byte mandatory header (Version +
+		// Diagnostic + State + 6 flag bits + Detect Mult +
+		// Length + My/Your Discriminators + 3 timing
+		// intervals); optional Authentication Section (5
+		// entry Auth Type table with Simple Password / Keyed
+		// MD5 / Meticulous Keyed MD5 / Keyed SHA1 /
+		// Meticulous Keyed SHA1); 9-entry Diagnostic name
+		// table; 4-entry State name table; sub-second link
+		// failure detection paired with OSPF/BGP/static.
+		"bfd_control_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -471,7 +471,14 @@ func TestRegistrySize(t *testing.T) {
 	// entry LS Type name table, AuType+Options decoded).
 	// Foundational IGP routing protocol; pairs with
 	// bgp_message_decode for inside-plus-outside routing.
-	const expected = 356
+	// v0.280.0 added bfd_control_decode (BFD Control packet
+	// per RFC 5880 — 24-byte mandatory header with Version +
+	// Diagnostic + State + 6 flag bits + Detect Mult +
+	// Length + My/Your Discriminators + 3 timing intervals;
+	// optional Authentication Section with 5-entry Auth Type
+	// table; 9-entry Diagnostic name table; 4-entry State
+	// name table). Sub-second link-failure detection.
+	const expected = 357
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
