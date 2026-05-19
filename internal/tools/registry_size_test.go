@@ -335,7 +335,14 @@ func TestRegistrySize(t *testing.T) {
 	// SR / RR / SDES / BYE / APP / RTPFB / PSFB / XR per-type
 	// body parsing). Completes the VoIP/WebRTC decode stack
 	// alongside sip_message_decode + stun_packet_decode.
-	const expected = 334
+	// v0.258.0 added websocket_frame_decode (WebSocket frame
+	// dissector per RFC 6455 — header bit-pack + extended
+	// 16/64-bit length forms + 4-byte mask key with XOR
+	// demask + 7-entry opcode table + Close-body parsing
+	// with 14-entry status code table + RSV1 deflate flag
+	// + multi-frame walker + fragmentation detection).
+	// Natural follow-on to http_message_decode.
+	const expected = 335
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

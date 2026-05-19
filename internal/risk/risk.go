@@ -508,6 +508,18 @@ var toolLevels = func() map[string]Level {
 		// Completes the VoIP/WebRTC decode stack alongside
 		// sip_message_decode + stun_packet_decode.
 		"rtp_packet_decode",
+		// v0.258 (NATIVE-fit gap — explicitly deferred from
+		// http_message_decode iteration): WebSocket frame
+		// dissector per RFC 6455. Header bit-pack (FIN / RSV
+		// / opcode / MASK / payload-len) + extended 16-bit
+		// and 64-bit length escape hatches + 4-byte mask key
+		// + XOR demasking + 7-entry opcode table + Close-body
+		// parsing with 14-entry status code table + RSV1
+		// permessage-deflate flagging + multi-frame buffer
+		// walking + fragmentation detection. Natural follow-on
+		// to http_message_decode (which surfaces the Upgrade
+		// handshake but stops at the 101 response).
+		"websocket_frame_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
