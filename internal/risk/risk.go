@@ -283,6 +283,15 @@ var toolLevels = func() map[string]Level {
 		// CRC-8 validation (poly 0x31 reflected). Pure offline
 		// parser. Pairs with ibutton_read for live captures.
 		"ibutton_decode",
+		// v0.235 (NATIVE-fit gap in the aerospace decode space):
+		// Mode S / ADS-B 1090 MHz frame dissector. Pure offline
+		// parser — DF detection, ICAO 24-bit extraction, CRC-24
+		// validation, DF17 TC dispatch (aircraft ID + callsign,
+		// airborne position + altitude + raw CPR, airborne
+		// velocity + heading + vertical rate, surface position).
+		// Complements subghz_* coverage by extending decode to
+		// 1090 MHz airborne / aerospace traffic.
+		"adsb_mode_s_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

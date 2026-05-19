@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.235.0] - 2026-05-19
+
+**Thirtieth native-fit gap: Mode S / ADS-B 1090 MHz frame
+dissector — major aerospace decode primitive matching the SDR
+community's dump1090 / readsb workflow, fully host-side with
+no hardware dependency.**
+
+### Added
+
+- **`adsb_mode_s_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses Mode S downlink frames (both 56-bit short and 112-bit
+  long forms) per ICAO Annex 10 Vol IV + RTCA DO-260:
+
+  - **DF detection** for all 32 Downlink Format slots: DF0/4/5
+    (surveillance replies), DF11 (All-Call Reply), DF16/17/18
+    (Extended Squitter / ADS-B), DF19 (Military ES), DF20/21
+    (Comm-B), DF24+ (Comm-D ELM).
+  - **Frame length validation** — 7 bytes for DF0/4/5/11,
+    14 bytes for the rest, with a clear error on length
+    mismatch.
+  - **ICAO 24-bit aircraft address** extraction from DF11 /
+    DF17 / DF18 where the AA field is in the clear.
+  - **Mode S CRC-24 validation** — generator polynomial
+    G(x) = 0x1FFF409, init 0, no reflection. Surfaces both
+    the captured PI (parity interrogator) and the computed
+    expected value for forensic diffing of corrupted frames.
+    Validated against three published reference frames from
+    MIT 1090 MHz Riddle material.
+  - **DF17 Type Code dispatch** covering the operationally
+    important sub-types:
+    - **TC 1-4 Aircraft Identification** — 8-character
+      callsign decoded from the 6-bit AIS/IA-5 alphabet
+      (A-Z + 0-9 + space) plus emitter-category lookup
+      across all four DO-260B sets (Set A: light/small/
+      large/heavy/high-vortex/high-perf/rotorcraft; Set B:
+      glider/lighter-than-air/parachutist/ultralight/UAV/
+      space; Set C: surface vehicle/tower/cluster/line
+      obstacle; Set D reserved).
+    - **TC 5-8 Surface Position** — movement field decoded
+      to ground speed via the piecewise DO-260B table
+      (0-175 kts), ground track in degrees, raw CPR.
+    - **TC 9-18 / 20-22 Airborne Position** — altitude
+      decoded from the 12-bit field with Q-bit (25-ft
+      resolution); Gillham/Mode-C Q=0 frames flagged
+      invalid (not in scope). Altitude source labeled
+      barometric (TC 9-18) vs GNSS (TC 20-22). Raw CPR
+      latitude/longitude (17 bits each) plus odd/even
+      frame flag for paired global-CPR resolution.
+    - **TC 19 Airborne Velocity** — subtypes 1/2 (ground
+      speed): east-west + north-south velocity vectors
+      combined into ground speed (kts) and ground track
+      (deg). Subtypes 3/4 (airspeed): airspeed (IAS vs
+      TAS flag) plus optional magnetic heading. Vertical
+      rate decoded with source flag (barometric vs GNSS
+      per DO-260B convention).
+  - **CPR-resolution scope** — only raw CPR fields are
+    exposed; full lat/lon resolution requires pairing an
+    even + odd frame and is deferred to a higher-level
+    Spec so the receiver controls staleness of reference
+    positions.
+  - **Hex input tolerance** — `:`, `-`, `_`, whitespace
+    separators stripped; `0x` prefix tolerated; case-
+    insensitive.
+
+### Why this matters
+
+ADS-B / Mode S at 1090 MHz is the dominant aerospace decode
+target for the SDR community — every major receiver
+(dump1090, readsb, tar1090, etc.) speaks this protocol, and
+operators routinely end up with hex blobs that need to be
+inspected one frame at a time (debugging a sketchy capture,
+correlating an ICAO address against a flight database,
+verifying a callsign decode). This decoder fills that gap
+natively: paste 7 or 14 bytes of hex, get back a fully
+structured frame with DF type, ICAO address, CRC validity,
+and (for DF17) the appropriate ADS-B sub-message body. Pure
+offline parse — no SDR, no antenna, no live demodulation
+required.
+
 ## [0.234.0] - 2026-05-19
 
 **Twenty-ninth native-fit gap: Dallas 1-Wire ROM ID (iButton)

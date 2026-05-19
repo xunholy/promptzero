@@ -211,7 +211,12 @@ func TestRegistrySize(t *testing.T) {
 	// ROM ID dissector — 8-byte ROM layout + ~45-entry family
 	// code table + Dallas CRC-8 validation; complements the
 	// hardware-side ibutton_read/emulate/write tools).
-	const expected = 311
+	// v0.235.0 added adsb_mode_s_decode (Mode S / ADS-B 1090
+	// MHz frame dissector — DF detection, ICAO extraction,
+	// CRC-24 validation, DF17 TC dispatch covering Aircraft
+	// Identification + Airborne Position + Airborne Velocity
+	// + Surface Position; raw CPR exposed for paired solve).
+	const expected = 312
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
