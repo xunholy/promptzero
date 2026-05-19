@@ -299,7 +299,12 @@ func TestRegistrySize(t *testing.T) {
 	// indefinite-length containers + IEEE 754 half/single/
 	// double floats + ~30-entry tag table including COSE
 	// and CTAP/WebAuthn vendor tags).
-	const expected = 328
+	// v0.252.0 added protobuf_decode (Protocol Buffers
+	// wire-format dissector without .proto schema — mirrors
+	// protoc --decode_raw. Walk field tags, dispatch 6 wire
+	// types with VARINT zigzag, I64 float64, LEN with
+	// nested-message heuristic, I32 float32. Recursive).
+	const expected = 329
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

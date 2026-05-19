@@ -449,6 +449,15 @@ var toolLevels = func() map[string]Level {
 		// (RFC 8949 standard tags + COSE + CTAP/WebAuthn).
 		// Used by COSE, WebAuthn/CTAP, Bluetooth Mesh, CoAP.
 		"cbor_decode",
+		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
+		// microservices): Protobuf wire-format dissector
+		// without needing the .proto schema (mirrors protoc
+		// --decode_raw). Walk top-level field tags, dispatch
+		// 6 wire types (VARINT + zigzag, I64 + float64, LEN
+		// + nested-message heuristic + UTF-8/hex fallback,
+		// SGROUP/EGROUP deprecated, I32 + float32). Recursive
+		// nested-message detection.
+		"protobuf_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.252.0] - 2026-05-19
+
+**Forty-seventh native-fit gap: Protobuf wire-format decoder
+— the equivalent of `protoc --decode_raw` without needing the
+.proto schema. gRPC, Google APIs, mobile apps, modern
+microservices, and Faultier's own command framing all carry
+protobuf bytes; operators routinely have hex blobs of unknown
+messages and need the field-number / wire-type / value
+breakdown without hunting down the right .proto file.**
+
+### Added
+
+- **`protobuf_decode`** (`Risk.Low`, `GroupHostTools`) —
+  recursive walker for Protocol Buffers wire-format bytes:
+
+  - **Tag decoding** — `field_number = tag >> 3`, `wire_type
+    = tag & 7`, extracted from the leading varint of each
+    field. Field numbers validated against the 1..2²⁹-1
+    range.
+  - **6 wire types**:
+    - **0 VARINT** — surfaced as raw uint64, zigzag-decoded
+      int64 (for sint32 / sint64 schema fields), and bool
+      interpretation (0/1).
+    - **1 I64** — fixed 64-bit, surfaced as raw uint64 +
+      float64 interpretation (for double / fixed64 /
+      sfixed64).
+    - **2 LEN** — length-prefixed bytes with the operator-
+      friendly heuristic: try to decode as a nested message
+      first; if that succeeds and consumes all bytes, use
+      the nested view; otherwise fall back to UTF-8 string
+      (if all bytes are printable) or raw hex.
+    - **3 SGROUP** / **4 EGROUP** — deprecated; named but
+      no body decode.
+    - **5 I32** — fixed 32-bit, surfaced as raw uint32 +
+      float32 interpretation (for float / fixed32 /
+      sfixed32).
+  - **Varint reader** with continuation-bit handling and a
+    max-10-byte guard (uint64 max).
+  - **Recursive nested-message detection** — LEN fields
+    whose body parses as a valid protobuf message are
+    decoded depth-first; the entire field tree surfaces as
+    a nested JSON structure.
+  - **Trailing-bytes rejection** — any leftover bytes after
+    the last field surface as a clear error.
+
+### Why this matters
+
+Protobuf is the default binary wire format for gRPC, Google
+APIs, every modern microservice stack, mobile-app cloud
+backends, and the internal command frames of devices like
+Faultier. Operators routinely capture protobuf hex blobs from
+`grpcurl -d` output, Wireshark's gRPC dissector, Android app
+traffic captures, mitmproxy exports, or BLE/USB sniffers, and
+need the field-by-field breakdown without the matching .proto
+file. This decoder fills that gap natively: paste a hex blob,
+get back a fully recursive view with every field number, wire
+type, and best-effort value interpretation (varint with
+zigzag, fixed widths with float, length-delimited with nested-
+message / string / hex auto-detection). Pairs with `jwt_decode`
++ `cbor_decode` for the complete modern API-encoding decode
+stack: JSON for web APIs, JWT/JOSE for cleartext auth tokens,
+CBOR/COSE for binary IoT tokens, Protobuf/gRPC for binary RPC
+traffic.
+
 ## [0.251.0] - 2026-05-19
 
 **Forty-sixth native-fit gap: CBOR (Concise Binary Object
