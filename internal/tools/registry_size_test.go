@@ -259,7 +259,13 @@ func TestRegistrySize(t *testing.T) {
 	// question + RR sections with type-specific decode for
 	// A/NS/CNAME/SOA/PTR/MX/TXT/AAAA/SRV/OPT/DNSKEY/DS/CAA
 	// + compression-pointer resolution + DoS-loop guard).
-	const expected = 321
+	// v0.245.0 added dhcp_packet_decode (DHCPv4 dissector
+	// per RFC 2131 + 2132 — BOOTP envelope + magic cookie +
+	// options walker with type-specific decode for ~50
+	// documented options including 53 msg type, 55 parameter
+	// request list with named codes, 81 FQDN, 82 relay agent
+	// sub-options, 119 domain search, 121 classless routes).
+	const expected = 322
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

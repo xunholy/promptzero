@@ -380,6 +380,16 @@ var toolLevels = func() map[string]Level {
 		// PTR/MX/TXT/AAAA/SRV/OPT-EDNS/DNSKEY/DS/CAA) + name
 		// decompression with pointer-loop DoS guard.
 		"dns_packet_decode",
+		// v0.245 (NATIVE-fit gap — second most-captured wired-
+		// network protocol after DNS): DHCPv4 packet dissector
+		// per RFC 2131 + 2132. BOOTP envelope + magic cookie
+		// validation + options walker with type-specific decode
+		// for ~50 documented options (message type, subnet,
+		// router, DNS, NTP, lease time, parameter request list,
+		// client FQDN, relay agent sub-options, domain search,
+		// classless static routes, etc.). Companion to
+		// dns_packet_decode for the core network-bootstrap stack.
+		"dhcp_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

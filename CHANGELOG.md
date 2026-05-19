@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.245.0] - 2026-05-19
+
+**Fortieth native-fit gap: DHCPv4 packet dissector per RFC
+2131 + RFC 2132 — the second most-captured wired-network
+protocol after DNS, used by every device that joins a network.
+Companion to `dns_packet_decode` for the core network-bootstrap
+decode stack.**
+
+### Added
+
+- **`dhcp_packet_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a DHCPv4 packet into a structured view:
+
+  - **BOOTP envelope** (RFC 951 + RFC 2131 §2) — op
+    (BOOTREQUEST / BOOTREPLY), htype + hlen (Ethernet
+    supported with MAC addresses rendered as colon-hex),
+    hops, xid, secs, flags (broadcast bit + reserved),
+    ciaddr / yiaddr / siaddr / giaddr in dotted-decimal,
+    chaddr (first hlen bytes as MAC), null-trimmed sname +
+    file fields.
+  - **Magic cookie validation** — the 4-byte 0x63825363 at
+    offset 236 must be present; otherwise the packet is
+    rejected as vanilla BOOTP rather than DHCP.
+  - **DHCP options walker** with type-specific decode for the
+    operationally-important options:
+    - **53 DHCP Message Type** — DISCOVER / OFFER / REQUEST
+      / DECLINE / ACK / NAK / RELEASE / INFORM / FORCERENEW
+      / LEASEQUERY / LEASEUNASSIGNED / LEASEUNKNOWN /
+      LEASEACTIVE / BULKLEASEQUERY / LEASEQUERYDONE /
+      ACTIVELEASEQUERY / LEASEQUERYSTATUS / TLS — surfaced
+      at the top level for at-a-glance triage.
+    - **1 Subnet Mask** / **3 Router** / **6 DNS Server** /
+      **42 NTP Servers** / **44/45 NetBIOS NS/DDS** — single
+      IPv4 or list.
+    - **12 Host Name** / **15 Domain Name** / **17 Root
+      Path** / **40 NIS Domain** / **60 Vendor Class ID** /
+      **61 Client Identifier** / **66 TFTP Server Name** /
+      **67 Boot File Name** / **77 User Class** — ASCII
+      strings.
+    - **28 Broadcast** / **50 Requested IP** / **54 DHCP
+      Server ID** — single IPv4.
+    - **51 Lease Time** / **57 Max DHCP Message Size** /
+      **58/59 Renewal/Rebinding Time** — uint32 seconds /
+      bytes.
+    - **55 Parameter Request List** — list of option codes
+      the client is asking the server to include, rendered
+      with full option-name lookup so operators see
+      `['Subnet Mask', 'Router', 'DNS Server', ...]` rather
+      than raw integers.
+    - **81 Client FQDN** (RFC 4702) — flags + A-record
+      result + AAAA-record result + FQDN.
+    - **82 Relay Agent Information** (RFC 3046) — with
+      sub-option walk: Agent Circuit ID, Agent Remote ID,
+      DOCSIS Device Class, Link Selection, Subscriber ID,
+      RADIUS Attributes, Authentication, Vendor-Specific
+      Information, Relay Agent Flags, Server Identifier
+      Override.
+    - **119 Domain Search** (RFC 3397) — DNS-compressed list
+      of search-domain FQDNs (uses the same compression-
+      pointer encoding as DNS messages).
+    - **121 Classless Static Route** (RFC 3442) — list of
+      (destination, prefix-length, gateway) tuples with
+      compressed destination encoding.
+  - **~50-entry option name lookup table** covering every
+    option from RFC 2132 + supporting RFCs + IANA dhcpv4-
+    parameters registry. Every option that isn't deep-
+    decoded above is still surfaced with code + name +
+    length + raw hex.
+  - **End-of-options (255) and Pad (0)** markers handled
+    correctly per RFC 2132 §3.
+
+### Why this matters
+
+DHCP is the silent workhorse of every network — every laptop,
+phone, IoT device, server, and printer speaks it the moment
+they link up. Operators end up with DHCP hex blobs from any
+Wireshark / tshark / tcpdump-of-67/68 / dhcpdump / dnsmasq
+log capture and need them broken down by message type,
+transaction, addresses assigned, options requested, lease
+duration, relay-agent annotations (DHCP snooping / option-82
+forensics), and classless routes. This decoder fills that gap
+natively: paste a hex frame, get back a fully structured view
+with the BOOTP envelope, magic cookie validation, message
+type triage, and ~50 named option decodes. Pairs with
+`dns_packet_decode` for the complete network-bootstrap stack
+— DHCP for IP-address assignment + nameserver discovery, DNS
+for name-to-IP resolution. Pure offline parse.
+
 ## [0.244.0] - 2026-05-19
 
 **Thirty-ninth native-fit gap: DNS packet dissector per RFC 1035
