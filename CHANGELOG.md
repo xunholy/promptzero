@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.276.0] - 2026-05-20
+
+**Seventy-first native-fit gap: GPRS Tunneling Protocol User
+Plane (GTP-U) packet dissector per 3GPP TS 29.281. GTP-U is
+the encapsulation every cellular operator carries on its
+S1-U (4G EPC → eNB), N3 (5G UPF → gNB), and N9 (5G UPF → UPF)
+interfaces — it's the high-volume user-plane wrapping that
+surrounds the subscriber's IP traffic as it crosses the
+mobile backhaul. Pairs with `ip_packet_decode` for the inner
+subscriber IP packet.**
+
+### Added
+
+- **`gtp_u_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a GTP-U packet into a structured view:
+
+  - **8-byte mandatory header** (TS 29.281 §5.1):
+    - byte 0: **Flags** — Version (3 bits, GTP-U is version
+      1) + Protocol Type (1 bit, 1 = GTP, 0 = GTP') + Spare
+      + E (Extension Header) + S (Sequence Number) + PN
+      (N-PDU Number).
+    - byte 1: **Message Type** with **6-entry name table**:
+      0x01 Echo Request, 0x02 Echo Response, 0x1A Error
+      Indication, 0x1F Supported Extension Headers
+      Notification, 0xFE End Marker, 0xFF G-PDU (user-plane
+      data — the 99.99% case).
+    - bytes 2-3: **Length** (uint16 BE).
+    - bytes 4-7: **TEID** (uint32 BE) — Tunnel Endpoint
+      Identifier.
+  - **Optional 4-byte block** (present iff E|S|PN flag is
+    set): Sequence Number (uint16 BE) + N-PDU Number
+    (uint8) + Next Extension Header Type (uint8).
+  - **Extension header chain** (when E flag set): per-
+    extension layout Length (in 4-byte units) + Body +
+    Next Extension Header Type. **9-entry name table** (TS
+    29.281 §5.2.1):
+    - 0x00 No more extension headers
+    - 0x01 MBMS support indication
+    - 0x02 MS Info Change Reporting
+    - 0x40 Service Class Indicator
+    - 0x81 RAN Container
+    - 0x82 Long PDCP PDU Number
+    - 0x83 Xw RAN Container
+    - 0x84 NR RAN Container (5G NG-U)
+    - 0x85 PDU Session Container (5G N3 / N9)
+  - **Inner payload heuristic** — for G-PDU (0xFF), the
+    payload is a subscriber IP packet. First-nibble version
+    detection: 4 → IPv4, 6 → IPv6, 0 → padding / control
+    word / unknown. Operators pipe the bytes to
+    `ip_packet_decode` for the inner-IP breakdown.
+
+- **Tooling** — registry capacity bumped from 352 → 353.
+
+### Why this gap
+
+- GTP-U is universal in cellular telco networks. Operators
+  paste UDP-payload bytes (standard outer UDP dest port
+  2152) from a Wireshark Follow-UDP-Stream view, a
+  `tcpdump -X udp port 2152` line, an Open5GS / free5GC /
+  Magma debug capture, an Ericsson / Nokia / Huawei vendor
+  packet trace, or any GTP-U-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: 3GPP TS 29.281 is fully public; wire
+  format is a tight 8-byte mandatory header with flag-gated
+  optional fields plus a typed extension header chain; no
+  crypto, no compression, no varints.
+- Opens up cellular backhaul / 4G EPC / 5G core analysis.
+  Pairs with `ip_packet_decode` for the inner subscriber IP
+  packet and with the L4+ decoders for the full subscriber
+  traffic picture.
+
+### Out of scope (deferred to future iterations)
+
+- GTP-C (control plane, TS 29.274) — different message
+  catalogue (Create Session Request / Modify Bearer / etc.);
+  future Spec.
+- GTPv0 / GTPv1' (charging variant) — older / charging-
+  specific protocols.
+- PDU Session Container deep dissection (5G N3 / N9 QFI +
+  RQI bits) — the extension is recognised by name and
+  surfaced as raw hex.
+- Inner-IP payload decoding — operators pipe the bytes to
+  `ip_packet_decode` for IPv4/IPv6.
+- UDP / IP framing — feed the UDP payload bytes after the
+  outer IP + UDP headers (standard UDP dest port 2152).
+
 ## [0.275.0] - 2026-05-20
 
 **Seventieth native-fit gap: STP/RSTP/MSTP BPDU dissector per
