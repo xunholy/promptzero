@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.272.0] - 2026-05-20
+
+**Sixty-seventh native-fit gap: Generic Routing Encapsulation
+(GRE) packet dissector per RFC 2784 (base) + RFC 2890 (Key +
+Sequence Number) + RFC 2637 (PPTP Enhanced GRE, Version=1).
+GRE is the foundational IP-in-IP tunneling protocol — every
+site-to-site VPN, every MPLS-over-GRE deployment, every PPTP
+client (legacy Windows VPNs), every EoGRE (Ethernet-over-GRE)
+WiFi-controller-to-AP tunnel, every Cloudflare/Fastly anycast
+backbone uses it. Pairs with `vxlan_decode` as a sibling
+tunneling protocol.**
+
+### Added
+
+- **`gre_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a GRE packet into a structured view:
+
+  - **4-byte mandatory header** (RFC 2784 §2):
+    - **byte 0**: C (Checksum present, bit 7), R (Routing
+      present — deprecated, bit 6), K (Key present, bit 5),
+      S (Sequence Number present, bit 4), s (Strict Source
+      Route — deprecated, bit 3), Recur (Recursion Control
+      — deprecated, bits 0-2).
+    - **byte 1**: Flags (5 bits) + Version (3 bits).
+      Version 0 = standard GRE; Version 1 = PPTP Enhanced
+      GRE.
+    - **bytes 2-3**: Protocol Type (EtherType of the
+      encapsulated payload). **8-entry name table**:
+      0x0800 IPv4, 0x86DD IPv6, 0x6558 Transparent
+      Ethernet Bridging (EoGRE), 0x880B PPP (PPP-in-GRE),
+      0x8847 MPLS unicast, 0x8848 MPLS multicast, 0x6559
+      Raw Frame Relay, 0x0806 ARP.
+  - **Optional fields** (gated by flag bits, in this order):
+    - If C or R set: **Checksum + Offset** (4 bytes total).
+    - If K set (RFC 2890): **Key** (4 bytes — demultiplexes
+      multiple GRE tunnels between the same endpoints).
+    - If S set (RFC 2890): **Sequence Number** (4 bytes).
+  - **PPTP Enhanced GRE** (RFC 2637, Version=1) — Microsoft
+    PPTP overloads the Key field: 4 bytes split into
+    **PayloadLength** (uint16 BE) + **Call ID** (uint16
+    BE). PPTP additionally adds an **Acknowledgement
+    Number** (4 bytes) when the A bit (bit 7 of byte 1)
+    is set.
+  - **Variant classification**: 'standard GRE (RFC
+    2784/2890)' for V=0, 'PPTP Enhanced GRE (RFC 2637)'
+    for V=1.
+  - **Deprecation notes** — surfaces a Note when R (Routing
+    Present) or s (Strict Source Route) is set, flagging
+    the RFC 1701 deprecation.
+  - **Encapsulated payload bytes** are surfaced as hex with
+    a header-bytes hint for routing into a downstream
+    decoder.
+
+- **Tooling** — registry capacity bumped from 348 → 349.
+
+### Why this gap
+
+- GRE is universal in IP networks for tunneling. Operators
+  paste IP-payload bytes (IP protocol number 47 in the outer
+  IP header) from a `tcpdump -X proto 47` line, a Wireshark
+  Follow-IP-Stream view, a Cisco IOS `debug tunnel` trace,
+  an OpenStack Octavia HM-tunnel capture, or any
+  GRE-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 2784/2890/2637 are fully public;
+  wire format is a tight bit-packed header with optional
+  fields gated by flag bits; no crypto, no compression, no
+  varints.
+- Pairs with `vxlan_decode` for the modern tunneling /
+  overlay-protocol picture. GRE handles classic IP-in-IP
+  tunneling and PPTP; VXLAN handles datacenter overlay.
+
+### Out of scope (deferred to future iterations)
+
+- IP framing — feed the IP-payload bytes after the outer
+  IPv4 / IPv6 header strip (IP protocol number 47 for GRE).
+- Inner payload decoding — operators pipe the post-GRE bytes
+  to `ip_packet_decode` (for IPv4/IPv6 payloads), a future
+  Ethernet decoder (for TEB payloads), `arp_decode` (for
+  ARP), etc.
+- Routing field (R bit) body — the RFC 1701 routing entries
+  are deprecated and only the Checksum + Offset bytes are
+  surfaced.
+- PPP frame dissection inside PPTP — post-Ack PPP frame is
+  a separate Spec.
+
 ## [0.271.0] - 2026-05-20
 
 **Sixty-sixth native-fit gap: VXLAN (Virtual Extensible LAN)
