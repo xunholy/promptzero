@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.270.0] - 2026-05-20
+
+**Sixty-fifth native-fit gap: IEEE 802.1Q (C-tag) + 802.1ad
+(S-tag, QinQ) VLAN tag decoder per IEEE 802.1Q-2018. VLAN
+tags are inserted between the source MAC and the EtherType in
+every Ethernet frame on a tagged trunk port — every
+datacenter, every enterprise floor switch, every carrier
+service-provider Ethernet link uses them. Pairs naturally
+with `arp_decode`, `lldp_decode`, `cdp_decode`, and the IP-
+layer decoders for complete L2 visibility.**
+
+### Added
+
+- **`vlan_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a VLAN-tagged stack into a structured view:
+
+  - **Tag walker** — consumes 4-byte tags starting at offset
+    0 until a non-tag EtherType is encountered.
+  - **TPID table** (5 entries):
+    - 0x8100 IEEE 802.1Q C-tag (Customer VLAN)
+    - 0x88A8 IEEE 802.1ad S-tag (Service VLAN, QinQ)
+    - 0x9100 / 0x9200 / 0x9300 — Legacy QinQ TPIDs
+      (pre-standardisation)
+  - **TCI bit breakdown** (16 bits BE):
+    - **PCP** (Priority Code Point, 3 bits) — 802.1p
+      priority 0-7 with **8-entry name table**:
+      - 0 Background (Best Effort default)
+      - 1 Background (Lowest)
+      - 2 Excellent Effort
+      - 3 Critical Applications
+      - 4 Video (<100ms latency)
+      - 5 Voice (<10ms latency)
+      - 6 Internetwork Control
+      - 7 Network Control (Highest)
+    - **DEI** (Drop Eligible Indicator, 1 bit) — formerly
+      CFI (Canonical Format Indicator); when 1, the frame
+      may be dropped under congestion.
+    - **VID** (VLAN Identifier, 12 bits, 0-4095) with
+      special-value annotations: 0 priority-tagged frame,
+      1 default native VLAN, 4095 reserved.
+  - **Double-tag (QinQ) detection** — when the first tag's
+    TPID is 0x88A8 (or a legacy QinQ TPID) and the second
+    tag's TPID is 0x8100, the frame is service-provider
+    tagged; surfaces a Note explaining the S-tag/C-tag
+    mapping.
+  - **Triple+ tag flag** — unusual but valid stacks (3+
+    tags) surface a note flagging the depth.
+  - **Inner EtherType identification** — **10-entry name
+    table**: 0x0800 IPv4 / 0x0806 ARP / 0x86DD IPv6 /
+    0x8035 RARP / 0x8847 MPLS unicast / 0x8848 MPLS
+    multicast / 0x8863 PPPoE Discovery / 0x8864 PPPoE
+    Session / 0x888E EAPOL (802.1X) / 0x88CC LLDP /
+    0x88E5 MACsec (802.1AE). Length-field detection
+    (<0x0600) for 802.3 LLC frames.
+
+- **Tooling** — registry capacity bumped from 346 → 347.
+
+### Why this gap
+
+- VLAN tags are universal in modern enterprise + carrier
+  Ethernet. Operators paste the tag bytes from a
+  `tcpdump -i ethX -X` line, a Wireshark Follow-Frame view,
+  or any VLAN-emitting tool and get the documented PCP /
+  DEI / VID structure plus inner-EtherType identification.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: IEEE 802.1Q is fully public; each tag is
+  a tight 32-bit field; no crypto, no compression, no length
+  prefixes.
+- Closes the L2 visibility loop with `arp_decode`,
+  `lldp_decode`, `cdp_decode`, `icmp_packet_decode`. Operators
+  now have a full L2-to-L7 decode stack for Ethernet traffic.
+
+### Out of scope (deferred to future iterations)
+
+- Ethernet dst MAC + src MAC parsing — feed the bytes
+  starting at the first TPID.
+- VLAN translation / TPID rewriting — common in carrier
+  networks but a separate L2-config concern.
+- Inner payload dissection — the inner EtherType is surfaced;
+  operators pipe the post-tag bytes to the appropriate
+  decoder (`ip_packet_decode`, `arp_decode`, `lldp_decode`,
+  etc.).
+- MAC-in-MAC (IEEE 802.1ah, PBB) — different encapsulation
+  (24-byte header), a future Spec.
+
 ## [0.269.0] - 2026-05-20
 
 **Sixty-fourth native-fit gap: ARP (RFC 826) + RARP (RFC
