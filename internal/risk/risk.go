@@ -531,6 +531,19 @@ var toolLevels = func() map[string]Level {
 		// H10304 and H10302). Natural sibling to
 		// wiegand_decode.
 		"rfid_pacs_decode",
+		// v0.260 (NATIVE-fit gap — top-30 #8, BLE Apple
+		// Continuity classifier): pure-decode dissector for
+		// the Apple Continuity TLV stream advertised in BLE
+		// Manufacturer Specific Data (Apple Company ID
+		// 0x004C). Outer-envelope auto-detection (full AD
+		// record / manufacturer data / raw TLV). 15-entry
+		// type table with per-type body decoding for
+		// iBeacon, Handoff, Nearby Info, Nearby Action,
+		// AirDrop, Hey Siri, Proximity Pairing. Defensive
+		// primitive — identifies Apple devices in range
+		// without participating in their pairing flows.
+		// Pairs with workflow_apple_continuity_audit.
+		"ble_continuity_classify",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

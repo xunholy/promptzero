@@ -348,7 +348,14 @@ func TestRegistrySize(t *testing.T) {
 	// computation and validation per format; multi-candidate
 	// dispatch for ambiguous bit widths). Top-30 gap #19;
 	// natural sibling to wiegand_decode.
-	const expected = 336
+	// v0.260.0 added ble_continuity_classify (Apple Continuity
+	// BLE advertisement dissector — outer-envelope auto-detect,
+	// TLV walker, 15-entry type table with per-type body
+	// decoding for iBeacon / Handoff / Nearby Info / Nearby
+	// Action / AirDrop / Hey Siri / Proximity Pairing).
+	// Top-30 gap #8; defensive primitive sourced from
+	// furiousMAC + AppleJuice + apple_bleee research.
+	const expected = 337
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
