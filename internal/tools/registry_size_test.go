@@ -294,7 +294,12 @@ func TestRegistrySize(t *testing.T) {
 	// KEXINIT body decode with 10 name-lists + HASSH /
 	// HASSHServer fingerprint computation. SSH counterpart
 	// to TLS JA3).
-	const expected = 327
+	// v0.251.0 added cbor_decode (CBOR dissector per RFC
+	// 8949 — recursive walker for all 8 major types +
+	// indefinite-length containers + IEEE 754 half/single/
+	// double floats + ~30-entry tag table including COSE
+	// and CTAP/WebAuthn vendor tags).
+	const expected = 328
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

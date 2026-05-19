@@ -439,6 +439,16 @@ var toolLevels = func() map[string]Level {
 		// kex;enc;mac;compression). SSH counterpart to TLS
 		// JA3.
 		"ssh_handshake_decode",
+		// v0.251 (NATIVE-fit gap — binary JSON for IoT):
+		// CBOR (Concise Binary Object Representation)
+		// dissector per RFC 8949. Recursive walker handling
+		// all 8 major types (unsigned/negative int, byte/text
+		// string, array, map, tagged value, simple/float) +
+		// indefinite-length containers + IEEE 754 half/single/
+		// double floats + ~30-entry well-known tag table
+		// (RFC 8949 standard tags + COSE + CTAP/WebAuthn).
+		// Used by COSE, WebAuthn/CTAP, Bluetooth Mesh, CoAP.
+		"cbor_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

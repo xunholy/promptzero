@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.251.0] - 2026-05-19
+
+**Forty-sixth native-fit gap: CBOR (Concise Binary Object
+Representation) decoder per RFC 8949 — the binary JSON-like
+format used by COSE (signed/encrypted JWT alternative),
+WebAuthn / CTAP (FIDO2 hardware-token transport), Bluetooth
+Mesh, CoAP IoT payloads, and the self-describing binary of
+choice for any IoT / constrained-device flow since ~2014.**
+
+### Added
+
+- **`cbor_decode`** (`Risk.Low`, `GroupHostTools`) — recursive
+  walker decoding CBOR data items per RFC 8949:
+
+  - **8 major types** — 0 unsigned int / 1 negative int / 2
+    byte string (rendered as hex) / 3 text string (UTF-8) /
+    4 array (recursive) / 5 map (ordered key/value pairs
+    preserving duplicate keys + ordering) / 6 tagged value
+    (semantic tag + nested value) / 7 simple value or float.
+  - **Argument encoding** — direct values 0..23 in the low
+    5 bits of the initial byte; 1/2/4/8-byte arguments via
+    additional codes 24/25/26/27; indefinite-length markers
+    (additional 31).
+  - **Indefinite-length containers** — byte/text-string
+    chunks concatenated until 0xFF break code; arrays/maps
+    walk children until break.
+  - **~30-entry well-known tag table**:
+    - RFC 8949 §3.4 standard tags: 0 RFC 3339 date-time
+      string / 1 epoch-time / 2/3 unsigned/negative bignum /
+      4 decimal fraction / 5 bigfloat / 21/22/23 expected
+      base64url/base64/base16 / 24 encoded CBOR data / 32
+      URI / 33 base64url text / 34 base64 text / 35 regex /
+      36 MIME / 37 binary UUID / 55799 self-describe magic.
+    - COSE tags (RFC 9052): 16 COSE_Encrypt0 / 17 COSE_Mac0
+      / 18 COSE_Sign1 / 96 COSE_Encrypt / 97 COSE_Mac / 98
+      COSE_Sign.
+    - WebAuthn / CTAP tag 24 (encoded-CBOR-data-item).
+  - **Simple values** — 20 false / 21 true / 22 null / 23
+    undefined + general 1-byte simple values.
+  - **IEEE 754 floats** — 16-bit half / 32-bit single /
+    64-bit double with NaN + Inf detection and special-
+    value labeling (`+Inf` / `-Inf` / `NaN`).
+
+### Why this matters
+
+CBOR has become the binary-encoding default for IoT, constrained-
+device, and modern hardware-token flows. Operators routinely end
+up with CBOR hex blobs from a WebAuthn authenticator response, a
+CTAP/FIDO2 request, a CoAP body, a COSE token, or any IoT device
+that prefers binary over JSON, and need them broken down into
+nested arrays / maps / tagged values to inspect the contents.
+This decoder fills that gap natively: paste a hex blob, get back
+a fully recursive view with every nested element, tag-semantics
+naming, and float-special-value detection. Pairs with `jwt_decode`
+for the complete modern-auth-token decode stack: JWT/JOSE for
+JSON-based tokens, CBOR/COSE for binary IoT-friendly tokens.
+Pure offline parse — no library, no networking, no key material.
+
 ## [0.250.0] - 2026-05-19
 
 **Forty-fifth native-fit gap: SSH wire-protocol dissector per
