@@ -665,6 +665,16 @@ var toolLevels = func() map[string]Level {
 		// Dominant in VMware NSX, OpenStack, Kubernetes
 		// (Calico / Flannel / Cilium).
 		"vxlan_decode",
+		// v0.272 (NATIVE-fit gap — foundational tunneling
+		// protocol): GRE per RFC 2784 + RFC 2890 (Key + Seq)
+		// + RFC 2637 (PPTP Enhanced GRE V=1). 4-byte
+		// mandatory header (C/R/K/S/s/Recur/Version flags +
+		// Protocol Type); optional Checksum + Offset, Key,
+		// Sequence Number, PPTP Ack Number; 8-entry Protocol
+		// Type name table (IPv4 / IPv6 / TEB / PPP / MPLS /
+		// Frame Relay / ARP); PPTP Enhanced GRE Call ID +
+		// PayloadLength split.
+		"gre_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

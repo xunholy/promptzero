@@ -423,7 +423,14 @@ func TestRegistrySize(t *testing.T) {
 	// RFC 7348 conformance check, inner Ethernet peek with
 	// 13-entry EtherType table). Datacenter overlay protocol
 	// dominant in VMware NSX / OpenStack / Kubernetes CNIs.
-	const expected = 348
+	// v0.272.0 added gre_decode (GRE per RFC 2784 + RFC 2890
+	// + RFC 2637 PPTP Enhanced — 4-byte mandatory header with
+	// C/R/K/S/s/Recur/Version flags + 8-entry Protocol Type
+	// table; optional Checksum/Offset, Key, Sequence Number,
+	// PPTP Ack Number; PPTP Enhanced GRE Call ID + PayloadLen
+	// split). Foundational IP tunneling protocol; pairs with
+	// vxlan_decode.
+	const expected = 349
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
