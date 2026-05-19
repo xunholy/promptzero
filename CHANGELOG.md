@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.259.0] - 2026-05-19
+
+**Fifty-fourth native-fit gap — top-30 #19: HID Prox / iCLASS
+/ EM PACS payload dissector. PACS payloads are what every
+corporate badge system uses: HID H10301 (the canonical 26-bit,
+ubiquitous in office buildings worldwide), Corporate 1000
+(Fortune-500 deployments), and the wider-FC variants. Natural
+sibling to `wiegand_decode` (which extracts the raw bit-stream
+from the data-0 / data-1 lines).**
+
+### Added
+
+- **`rfid_pacs_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a PACS payload into a structured view:
+
+  - **Input** — accepts either a bit string (`'0'`/`'1'` only)
+    of one of the recognised widths, OR a hex string +
+    explicit `bit_length`. Hex is left-aligned into a bit
+    buffer of exactly the declared width, MSB first.
+  - **HID H10301 26-bit** (canonical) — `P + 8 FC + 16 CN +
+    P`. Bit 0 is even parity over bits 1-12; bit 25 is odd
+    parity over bits 13-24.
+  - **HID H10306 34-bit** (extended FC) — `P + 16 FC + 16
+    CN + P`. Bit 0 is even parity over bits 1-16; bit 33
+    is odd parity over bits 17-32.
+  - **HID H10304 37-bit** (wide CN) — `P + 16 FC + 19 CN +
+    P`. Bit 0 is even parity over bits 1-18; bit 36 is odd
+    parity over bits 18-35.
+  - **HID H10302 37-bit** (no facility code) — `P + 35 CN +
+    P`. Same parity layout as H10304 but the entire 35-bit
+    middle is one big card number.
+  - **HID Corporate 1000 35-bit** — `P + P + 12 FC + 20 CN
+    + P` with a three-parity-bit scheme per HID OEM spec.
+  - **HID Corporate 1000 48-bit** — `P + P + 22 FC + 23 CN
+    + P`.
+  - **Multi-format dispatch** — when the input length is
+    unambiguous (26, 34, 35, 48 bits), one candidate is
+    returned. When the length matches multiple formats
+    (37-bit could be H10304 OR H10302), both candidates are
+    returned and the caller picks by parity validity or by
+    facility-code sanity.
+  - **Parity computation and validation** — each candidate's
+    parity bits are computed and compared against the wire
+    values. The candidate is NOT suppressed on parity failure
+    (the FC/CN bit-pattern is still useful for debugging) but
+    `parity_valid` is flagged false with a per-bit
+    explanation.
+
+- **Tooling** — registry capacity bumped from 335 → 336.
+
+### Why this gap
+
+- HID Prox is the most widely deployed proximity-card format
+  in commercial physical access control globally. Operators
+  paste a bit string from `wiegand_decode`'s output, a
+  Proxmark3 `lf hid demod` line, a Flipper Zero LF RFID
+  saved-card hex dump, or any reader-side capture and inspect
+  every documented field.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: the HID format catalogue is fully public
+  via HID OEM spec sheets and the Proxmark3 Iceman codebase;
+  each format is a small fixed-width bit-field layout with
+  one or more parity bits.
+- Closes the read-loop with `wiegand_decode`: reader Data-0/
+  Data-1 lines → bit-stream → PACS payload → cardholder.
+
+### Out of scope (deferred to future iterations)
+
+- Reader-layer Wiegand bit-stream extraction — already in
+  `wiegand_decode`.
+- iCLASS Standard / Elite 3DES key diversification and MAC
+  validation — payload-level decryption is a separate Spec.
+- DESFire AID / EV1 application records — already in
+  `desfire_decode`.
+- LF baseband Manchester / biphase modulation — already in
+  `em4100_decode`.
+- Cardholder-database lookup (FC/CN → "who owns this badge")
+  — operator's job; PACS database is external.
+
 ## [0.258.0] - 2026-05-19
 
 **Fifty-third native-fit gap: WebSocket frame dissector per
