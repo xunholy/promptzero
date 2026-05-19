@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.277.0] - 2026-05-20
+
+**Seventy-second native-fit gap: Point-to-Point Protocol
+over Ethernet (PPPoE) dissector per RFC 2516. PPPoE is the
+encapsulation every DSL/FTTH BNG deployment uses to give
+residential subscribers a PPP session on top of an Ethernet
+access network — BT / Deutsche Telekom / Orange / AT&T /
+KPN / virtually every European + APAC fixed-line incumbent
+runs it. Pairs with `ip_packet_decode` for the inner IPv4 /
+IPv6 subscriber payload after the PPP Protocol ID strip.**
+
+### Added
+
+- **`pppoe_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a PPPoE packet into a structured view:
+
+  - **6-byte header**:
+    - byte 0: Version (4 bits) + Type (4 bits). Both MUST
+      be 1 per RFC 2516 (byte 0 = 0x11).
+    - byte 1: **Code** with **6-entry name table**: 0x00
+      Session (carries PPP frame), 0x09 PADI (Active
+      Discovery Initiation), 0x07 PADO (Active Discovery
+      Offer), 0x19 PADR (Active Discovery Request), 0x65
+      PADS (Active Discovery Session-confirmation), 0xA7
+      PADT (Active Discovery Terminate).
+    - bytes 2-3: **Session ID** (uint16 BE; 0x0000 during
+      Discovery, then assigned by the AC in PADS).
+    - bytes 4-5: **Length** (uint16 BE).
+  - **Discovery TLV walker** (Codes 0x09 / 0x07 / 0x19 /
+    0x65 / 0xA7): each TLV is Tag Type (2 bytes BE) + Tag
+    Length (2 bytes BE) + Tag Value. **10-entry Tag Type
+    name table** (RFC 2516 §4):
+    - 0x0000 End-Of-List
+    - 0x0101 Service-Name (UTF-8)
+    - 0x0102 AC-Name (Access Concentrator Name, UTF-8)
+    - 0x0103 Host-Uniq (client cookie)
+    - 0x0104 AC-Cookie (AC-chosen DoS-mitigation cookie)
+    - 0x0105 Vendor-Specific
+    - 0x0110 Relay-Session-ID
+    - 0x0201 Service-Name-Error
+    - 0x0202 AC-System-Error
+    - 0x0203 Generic-Error
+    Text tags surface decoded UTF-8 alongside raw hex.
+  - **Session-stage payload** (Code 0x00): the first 2 bytes
+    are the PPP Protocol Identifier. **9-entry PPP Protocol
+    name table**:
+    - 0x0021 IPv4
+    - 0x0057 IPv6
+    - 0x8021 IPCP (IP Control Protocol)
+    - 0x8057 IPv6CP
+    - 0xC021 LCP (Link Control Protocol)
+    - 0xC023 PAP (Password Authentication Protocol)
+    - 0xC223 CHAP (Challenge Handshake Auth Protocol)
+    - 0xC227 EAP-over-PPP (deprecated)
+    - 0xC229 EAP (Extensible Authentication Protocol)
+  - **Conformance checks**:
+    - Version != 1 or Type != 1 surfaces a Note.
+    - PADI / PADO / PADR with non-zero Session ID surface
+      a Note (only PADS can assign a Session ID).
+    - Length field mismatch surfaces a Note.
+
+- **Tooling** — registry capacity bumped from 353 → 354.
+
+### Why this gap
+
+- PPPoE is universal in residential fixed-line broadband.
+  Operators paste post-Ethernet bytes (EtherType 0x8863 for
+  Discovery or 0x8864 for Session) from a
+  `tcpdump -X ether proto 0x8863` line, a Wireshark
+  Follow-Frame view, or any PPPoE-emitting tool.
+- Pure offline parser — no transport, no hardware. Native-fit
+  by every measure: RFC 2516 is fully public; wire format
+  is a tight 6-byte header + TLV stream or PPP frame; no
+  crypto, no compression, no varints.
+- Closes the carrier-broadband leg of the encapsulation-
+  protocol picture. Paired with VLAN (L2 trunking), MPLS
+  (service-provider transport), VXLAN/Geneve (datacenter
+  overlay), GRE (IP tunneling), GTP-U (cellular), operators
+  now have visibility into every major access / aggregation
+  protocol.
+
+### Out of scope (deferred to future iterations)
+
+- Ethernet framing — feed bytes after the EtherType 0x8863
+  (Discovery) / 0x8864 (Session) strip.
+- PPP frame deep dissection — LCP CONFIG-REQ option TLVs,
+  PAP / CHAP / EAP exchanges, IPCP option TLVs — the
+  Protocol ID is recognised but the body is raw hex. Inner
+  IPv4 / IPv6 payloads can be piped to `ip_packet_decode`.
+- PPPoE Tag Value deep dissection beyond UTF-8 / hex —
+  Vendor-Specific body, Service-Name semantics, etc. belong
+  in operator analysis or a sibling helper.
+
 ## [0.276.0] - 2026-05-20
 
 **Seventy-first native-fit gap: GPRS Tunneling Protocol User
