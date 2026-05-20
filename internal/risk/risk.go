@@ -835,6 +835,24 @@ var toolLevels = func() map[string]Level {
 		// timers. Still extremely common in Cisco-heavy
 		// enterprise + datacenter cores.
 		"hsrp_decode",
+		// v0.285 (NATIVE-fit gap — universal link-
+		// aggregation control plane): LACP per IEEE
+		// 802.1AX-2020 (formerly 802.3ad). Subtype byte +
+		// 1-byte Version + TLV walker with 4-entry type
+		// table (Terminator / Actor Information / Partner
+		// Information / Collector Information); Actor +
+		// Partner 18-byte body (System Priority + 6-byte
+		// System ID MAC + Key + Port Priority + Port ID +
+		// State bitfield with 8 named flags
+		// LACP_Activity / LACP_Timeout / Aggregation /
+		// Synchronization / Collecting / Distributing /
+		// Defaulted / Expired + Reserved); Collector
+		// 14-byte body (Max Delay in 10 µs units +
+		// Reserved); Marker subtype 0x02 surfaced as a
+		// Note rather than parsed. Closes a key L2
+		// visibility gap alongside lldp_decode +
+		// cdp_decode + stp_bpdu_decode.
+		"lacp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.285.0] - 2026-05-20
+
+**Eightieth native-fit gap: LACP (Link Aggregation Control
+Protocol) PDU dissector per IEEE 802.1AX-2020 (formerly
+802.3ad). LACP is the universal link-aggregation control
+plane: every multi-NIC server with a bonded interface and
+every datacenter / enterprise switch with a LAG (Link
+Aggregation Group) speaks it to coordinate which physical
+links join an aggregate. Closes a key L2 visibility gap
+alongside the existing `lldp_decode` + `cdp_decode` +
+`stp_bpdu_decode` L2 control-plane coverage.**
+
+### Added
+
+- **`lacp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a LACPDU into a structured view:
+
+  - **Subtype byte** — Slow Protocols subtype. Value 0x01 =
+    LACP, 0x02 = Marker (rare; surfaced as a Note). A
+    non-1/2 subtype is rejected.
+  - **1-byte Version Number** — typically 1.
+  - **TLV walker** — repeated (Type uint8, Length uint8,
+    Value) records. **4-entry TLV type table**: 0
+    Terminator (Length 0), 1 Actor Information (Length 20),
+    2 Partner Information (Length 20), 3 Collector
+    Information (Length 16).
+  - **Actor / Partner Information** (Type 1/2, body 18
+    bytes):
+    - bytes 0-1: System Priority (uint16 BE — lower wins
+      Aggregator Master role).
+    - bytes 2-7: System ID (6-byte MAC).
+    - bytes 8-9: Key (uint16 BE — LAG identifier).
+    - bytes 10-11: Port Priority (uint16 BE).
+    - bytes 12-13: Port ID (uint16 BE).
+    - byte 14: **State** — 8-bit bitfield with **8 named
+      flags** (LSB first per 802.1AX §6.4.2.3):
+      - bit 0: LACP_Activity (1 Active / 0 Passive)
+      - bit 1: LACP_Timeout (1 Short=1s / 0 Long=30s)
+      - bit 2: Aggregation (1 Aggregatable / 0 Individual)
+      - bit 3: Synchronization (1 In Sync)
+      - bit 4: Collecting (RX path active)
+      - bit 5: Distributing (TX path active)
+      - bit 6: Defaulted (using admin defaults rather than
+        received LACPDU info)
+      - bit 7: Expired (current_while timer expired; partner
+        info stale)
+    - bytes 15-17: Reserved.
+  - **Collector Information** (Type 3, body 14 bytes): Max
+    Delay (uint16 BE; in 10 µs units) + Reserved (12B).
+  - **Terminator** (Type 0, Length 0; end of TLV chain).
+
+- **Tooling** — registry capacity bumped from 361 → 362.
+
+### Out of scope
+
+- Ethernet framing (feed LACPDU bytes starting at the Slow
+  Protocols subtype byte — after destination MAC + source
+  MAC + 0x8809 EtherType strip; destination is
+  01:80:C2:00:00:02).
+- 802.3 Marker Protocol (Subtype 0x02 — used during port-
+  removal flushing; same Slow Protocols envelope but
+  different body; surfaced as a Note rather than parsed).
+- LACP state-machine simulation (State bitfield decoded
+  with named flags; reasoning about Selection / Mux state
+  machine transitions is higher-level).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational L2 control-
+  plane protocol — universal in datacenter + enterprise
+  networks with bonded interfaces / port-channels /
+  EtherChannels / LAGs).
+- Wrap-vs-native judgement: **native** — IEEE 802.1AX-2020
+  wire format is fully public; LACP uses a tight TLV-based
+  PDU with well-defined body sizes for each TLV type; no
+  crypto, no compression.
+
 ## [0.284.0] - 2026-05-20
 
 **Seventy-ninth native-fit gap: HSRP (Hot Standby Router

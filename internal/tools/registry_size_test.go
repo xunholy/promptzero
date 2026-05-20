@@ -508,7 +508,14 @@ func TestRegistrySize(t *testing.T) {
 	// IPv6) / Text Auth 9B / MD5 Auth 28B). Cisco-
 	// proprietary sibling to vrrp_decode; still extremely
 	// common in Cisco-heavy enterprise + datacenter cores.
-	const expected = 361
+	// v0.285.0 added lacp_decode (LACP per IEEE 802.1AX-
+	// 2020 — Slow Protocols subtype + Version + TLV walker
+	// with 4-entry type table; Actor + Partner 18-byte body
+	// with 8-bit State bitfield decoded into 8 named flags;
+	// Collector 14-byte body). Closes a key L2 visibility
+	// gap alongside lldp_decode + cdp_decode + stp_bpdu_
+	// decode for the complete control-plane picture.
+	const expected = 362
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
