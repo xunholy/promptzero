@@ -1532,6 +1532,31 @@ var toolLevels = func() map[string]Level {
 		// NBNS poisoning attacks; common in DEF CON
 		// Recon Village + AD pentest engagements.
 		"nbns_decode",
+		// v0.320 native-fit gap: ndp_decode is a pure
+		// offline dissector for ICMPv6 NDP per RFC
+		// 4861 + 4191 + 8106. 4-byte ICMPv6 header +
+		// 5-entry NDP type name table
+		// (Router_Solicitation /
+		// Router_Advertisement /
+		// Neighbor_Solicitation /
+		// Neighbor_Advertisement / Redirect); per-
+		// type body decoders (RA: CurHopLimit + M/O/
+		// H/Prf/Proxy flags + RouterLifetime +
+		// ReachableTime + RetransTimer; NS/NA/
+		// Redirect: TargetAddress + (NA R/S/O flags
+		// + Redirect Destination Address)); NDP
+		// Options TLV walker with 9-entry name
+		// table (Source/Target_Link_Layer_Address /
+		// Prefix_Information / Redirected_Header /
+		// MTU / Nonce / Route_Information / RDNSS /
+		// DNSSL); per-option decoders for LLA (MAC),
+		// Prefix Info (prefix + L/A/R flags +
+		// lifetimes), MTU, RDNSS (DNS server list
+		// with lifetime), DNSSL (search-domain
+		// list), Route Information. Foundational
+		// IPv6 protocol; canonical mitm6 +
+		// suddensix + fake_router6 pentest target.
+		"ndp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

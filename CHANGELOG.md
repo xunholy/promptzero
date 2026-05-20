@@ -7,6 +7,134 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.320.0] - 2026-05-21
+
+**116th native-fit decoder: ICMPv6 NDP (Neighbor
+Discovery Protocol) message dissector per RFC 4861
+(base NDP) + RFC 4191 (Default Router Preferences +
+Route Information) + RFC 8106 (RDNSS / DNSSL for
+SLAAC-only IPv6 hosts). NDP is the foundational
+signalling layer of IPv6 — every IPv6 host speaks NDP
+for neighbor resolution (the IPv6 equivalent of ARP),
+router discovery, parameter discovery, redirect
+handling, and duplicate-address detection.
+Operationally interesting because NDP carries every
+step of how a fresh IPv6 host learns its environment:
+Router Solicitation "any routers out there?" to
+FF02::2; Router Advertisement (the canonical mitm6 /
+suddensix / fake_router6 attack target carrying SLAAC
+prefix + DNS servers + default-route lifetime);
+Neighbor Solicitation "who has this IPv6?"; Neighbor
+Advertisement with O=Override flag (the IPv6
+gratuitous ARP — abusable for ND-cache poisoning);
+Redirect (historically abusable for IPv6 redirect
+attacks). The NDP Options TLV stream carries the
+actual interesting data: Source/Target Link-Layer
+Addresses, Prefix Information, MTU, RDNSS (DNS
+server leak target for mitm6 + rogue RA attacks),
+DNSSL.**
+
+### Added
+
+- **`ndp_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an ICMPv6 NDP message into a structured view:
+
+  - **ICMPv6 header** (RFC 4443 §2, 4 bytes, big-
+    endian): Type + Code (always 0 for NDP) +
+    Checksum.
+
+  - **5-entry NDP type name table** (RFC 4861 §4):
+    133 `Router_Solicitation` / 134
+    `Router_Advertisement` / 135
+    `Neighbor_Solicitation` / 136
+    `Neighbor_Advertisement` / 137 `Redirect`.
+
+  - **Router Advertisement body** (RFC 4861 §4.2, 12
+    bytes): CurHopLimit + Flags (bit 7 `M` Managed
+    Address Configuration / bit 6 `O` Other
+    Configuration / bit 5 `H` Home Agent / bits 4-3
+    `Prf` Default Router Preference per RFC 4191 —
+    Medium/High/Reserved/Low / bit 2 `P` Proxy) +
+    Router Lifetime + Reachable Time + Retrans
+    Timer.
+
+  - **Neighbor Solicitation body** (RFC 4861 §4.3,
+    20 bytes): Target Address (IPv6).
+
+  - **Neighbor Advertisement body** (RFC 4861 §4.4,
+    20 bytes): Flags (`R` Router / `S` Solicited /
+    `O` Override) + Target Address.
+
+  - **Redirect body** (RFC 4861 §4.5, 36 bytes):
+    Target Address (better next-hop) + Destination
+    Address (original destination).
+
+  - **NDP Options TLV walker** (RFC 4861 §4.6):
+    each option is byte 0 Type + byte 1 Length-in-
+    8-byte-units + payload.
+
+  - **9-entry NDP Option type name table**: 1
+    `Source_Link_Layer_Address` / 2
+    `Target_Link_Layer_Address` / 3
+    `Prefix_Information` / 4 `Redirected_Header` /
+    5 `MTU` / 13 `Nonce` (RFC 3971 SeND) / 24
+    `Route_Information` (RFC 4191) / 25 `RDNSS`
+    (RFC 8106 Recursive DNS Server) / 31 `DNSSL`
+    (RFC 8106 DNS Search List).
+
+  - **Per-option decoders**: SLLA/TLLA → 6-byte MAC
+    address (assuming Ethernet); Prefix Information
+    → Prefix Length + L/A/R flags + Valid +
+    Preferred lifetimes + IPv6 prefix; MTU → 32-bit
+    MTU override; RDNSS → lifetime + IPv6 DNS-server
+    list (the leak target for mitm6 + rogue RA
+    attacks); DNSSL → lifetime + DNS search-domain
+    list (length-prefixed labels with 0x00 root
+    terminator per RFC 1035 §3.1); Route Information
+    → Prefix Length + Preference + Route Lifetime +
+    Prefix.
+
+  Pure offline parser — operators paste NDP bytes
+  (starting at the ICMPv6 Type byte; after the IPv6
+  header strip — Next Header = 58) from a
+  `tcpdump -X icmp6` line or a Wireshark ICMPv6/NDP
+  dissector view and get the documented per-type
+  body + Options TLV breakdown.
+
+  Out of scope (deferred): IPv6 framing (feed bytes
+  after the IPv6 header strip; standard L3
+  destination is FF02::1 all-nodes / FF02::2 all-
+  routers / FF02::1:FFxx:xxxx solicited-node); non-
+  NDP ICMPv6 messages (Types 1-4 errors / 128-129
+  Echo / 130-132 MLD / 143 MLDv2 — covered by the
+  existing `icmp_packet_decode` Spec or out of
+  scope); checksum verification (ICMPv6 checksum
+  computed over IPv6 pseudo-header + ICMPv6 message
+  — out of scope unless we have the L3 pseudo-
+  header); SeND Secure Neighbor Discovery (RFC 3971
+  CGA + RSA Signature options — `Nonce` option name
+  surfaces but CGA + RSA Signature options are not
+  decoded); DAD Duplicate Address Detection state-
+  machine reasoning.
+
+  Source: docs/catalog/gap-analysis.md (IPv6
+  reconnaissance + mitm6 pentest dissector — pairs
+  with the existing `dhcpv6_decode` for full IPv6
+  address-acquisition coverage; targets DEF CON
+  Recon Village + IPv6 pentest engagements;
+  canonical decode for SLAAC poisoning + RA-guard
+  bypass research). Wrap-vs-native: native — RFC
+  4861 + 4191 + 8106 are publicly available; NDP
+  uses a tight 4-byte ICMPv6 header + per-type
+  fixed fields + a TLV Options stream; no crypto at
+  the parse layer.
+
+### Changed
+
+- Registry capacity is now **398** Specs (was 397). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.319.0] - 2026-05-21
 
 **115th native-fit decoder: NBNS (NetBIOS Name

@@ -1042,7 +1042,32 @@ func TestRegistrySize(t *testing.T) {
 	// AD pentest engagements; pairs with future
 	// llmnr_decode + mdns_decode for the
 	// Windows/Bonjour name-resolution trio.
-	const expected = 397
+	// v0.320.0 added ndp_decode (ICMPv6 NDP per
+	// RFC 4861 + 4191 + 8106). 4-byte ICMPv6
+	// header (Type/Code/Checksum); 5-entry NDP
+	// type name table (Router_Solicitation /
+	// Router_Advertisement / Neighbor_Solicitation
+	// / Neighbor_Advertisement / Redirect); per-
+	// type fixed-field decoders (RA: CurHopLimit
+	// + M/O/H/Prf flags + RouterLifetime +
+	// ReachableTime + RetransTimer; NS/NA: Target
+	// Address; NA additionally R/S/O flags;
+	// Redirect: Target + Destination Address);
+	// NDP Options TLV walker; 9-entry option
+	// type name table (Source/Target
+	// Link-Layer Address / Prefix Information /
+	// Redirected Header / MTU / Nonce / Route
+	// Information / RDNSS / DNSSL); per-option
+	// decoders for LLA → MAC, Prefix Info →
+	// prefix + L/A/R flags + lifetimes, MTU,
+	// RDNSS → IPv6 DNS server list + lifetime,
+	// DNSSL → length-prefixed search-domain
+	// list, Route Information → prefix + Prf +
+	// route lifetime. Foundational IPv6
+	// signalling layer; canonical mitm6 /
+	// suddensix / fake_router6 SLAAC-poisoning
+	// pentest target.
+	const expected = 398
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
