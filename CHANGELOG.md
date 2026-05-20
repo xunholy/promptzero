@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.296.0] - 2026-05-20
+
+**Ninety-first native-fit gap: sFlow v5 datagram dissector
+per the InMon publicly-published sFlow v5 specification
+(sflow.org). sFlow is the packet-sampling counterpart to
+NetFlow (covered by `netflow_v5_decode`): instead of
+summarising per-flow state, sFlow exports a configurable
+1-in-N sample of the packets transiting a device, plus
+periodic interface counters. Operationally, sFlow is the
+dominant monitoring telemetry on every modern datacenter
+switch — Arista, Cisco Nexus, HP, Juniper QFX, Mellanox,
+Cumulus — because it scales linearly with link speed
+regardless of flow churn. DDoS-detection, capacity
+planning, and security-NDR platforms all consume sFlow.**
+
+### Added
+
+- **`sflow_v5_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an sFlow v5 datagram into a structured view:
+
+  - **Datagram common header**: Version (must be 5) +
+    Agent Address Type (1 IPv4 / 2 IPv6) + Agent Address
+    + Sub-Agent ID + Sequence Number + System Uptime ms +
+    Sample Count.
+  - **Sample walker** — 8-byte header (Sample Type uint32
+    BE split into top 12 bits Enterprise + bottom 20 bits
+    Format + Sample Length uint32 BE) + per-format body.
+    **4-entry standard sample format table**: 1 Flow
+    Sample, 2 Counter Sample, 3 Expanded Flow Sample, 4
+    Expanded Counter Sample.
+  - **Flow Sample body** (Format 1): Sequence + Source ID
+    (8-bit Source Class + 24-bit Source Index — Class
+    names: ifIndex / smonVlanDataSource /
+    entPhysicalEntry) + **Sampling Rate** (1-in-N) +
+    Sample Pool + Drops + Input/Output ifIndex (high 2
+    bits of Output encode special semantics — Discarded /
+    Multiple destinations / Unknown — surfaced as a Note)
+    + flow_records walker.
+  - **Flow Record types** (most common):
+    - **1 Raw Packet Header** — Header Protocol (with
+      **17-entry name table**: Ethernet / 802.11 MAC /
+      IPv4 / IPv6 / MPLS / PPP / Token Ring / FDDI /
+      Frame Relay / X.25 / SMDS / AAL5 / POS / 802.11
+      AMPDU / 802.11 AMSDU subframe) + Frame Length on
+      wire + Stripped octets + Sampled Header Length +
+      Header Bytes hex preview.
+    - **2 Ethernet Frame Data** — Length + src/dst MAC +
+      EtherType.
+    - **3 IPv4 Data** — Length + IP protocol + src/dst +
+      src/dst port + TCP flags + ToS.
+    - **4 IPv6 Data** — same shape with IPv6 addresses.
+  - **Counter Sample body** (Format 2): Sequence + Source
+    ID + counter_records walker.
+  - **Counter Record type 1 (Generic Interface Counters)**
+    — full 88-byte body with all 19 ifEntry-equivalent
+    fields: ifIndex / ifType / ifSpeed (uint64) /
+    ifDirection / ifStatus / ifInOctets (uint64) /
+    ifInUcastPkts / ifInMulticastPkts /
+    ifInBroadcastPkts / ifInDiscards / ifInErrors /
+    ifInUnknownProtos / ifOutOctets (uint64) /
+    ifOutUcastPkts / ifOutMulticastPkts /
+    ifOutBroadcastPkts / ifOutDiscards / ifOutErrors /
+    ifPromiscuousMode.
+
+- **Tooling** — registry capacity bumped from 372 → 373.
+
+### Out of scope
+
+- UDP framing (feed sFlow bytes after the UDP header
+  strip — sFlow runs on UDP destination port 6343).
+- sFlow v4 and earlier (wire format changed
+  significantly; v5 has been the standard since 2003).
+- Per-Counter-Record dissection beyond Generic Interface
+  Counters (Ethernet / Token Ring / 802.11 / VG / VLAN /
+  Processor / Radio counters — surfaced as raw hex; a
+  future iteration could add them).
+- Raw Packet Header inner dissection (the captured header
+  bytes are surfaced as hex; the operator feeds them into
+  the appropriate `*_decode` Spec based on the Header
+  Protocol).
+- sFlow agent state-machine reasoning (sampling-rate
+  drift, polling-interval skew — higher-level analysis).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (packet-sampling
+  counterpart to NetFlow; dominant on datacenter
+  switches; consumed by every modern DDoS-detection +
+  capacity-planning + security-NDR platform).
+- Wrap-vs-native judgement: **native** — the sFlow v5
+  spec is fully public; XDR-encoded wire format with a
+  32-byte header + uniform (sample type + length + body)
+  records; no crypto, no compression.
+
 ## [0.295.0] - 2026-05-20
 
 **Ninetieth native-fit gap: MSDP (Multicast Source Discovery

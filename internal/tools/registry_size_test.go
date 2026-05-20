@@ -615,7 +615,19 @@ func TestRegistrySize(t *testing.T) {
 	// Inter-domain multicast protocol completing the
 	// IGMP + PIM + MSDP trio; runs over TCP port 639
 	// between Rendezvous Points across PIM-SM domains.
-	const expected = 372
+	// v0.296.0 added sflow_v5_decode (sFlow v5 per InMon
+	// spec — datagram common header + sample walker with
+	// 4-entry standard format table; Flow Sample body
+	// with Source Class+Index + Sampling Rate + In/Out
+	// ifIndex + flow records walker (Raw Packet Header
+	// with 17-entry header protocol table; Ethernet
+	// Frame Data; IPv4/IPv6 Data); Counter Sample body
+	// with Generic Interface Counters 19-field decode).
+	// Packet-sampling counterpart to netflow_v5_decode;
+	// dominant monitoring telemetry on datacenter
+	// switches; consumed by DDoS-detection / capacity
+	// planning / security-NDR platforms.
+	const expected = 373
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

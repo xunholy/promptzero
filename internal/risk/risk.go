@@ -1058,6 +1058,26 @@ var toolLevels = func() map[string]Level {
 		// FSM Error / Notification / Cease + Subcode +
 		// opaque data); Keepalive (empty body).
 		"msdp_decode",
+		// v0.296 (NATIVE-fit gap — packet-sampling
+		// counterpart to NetFlow): sFlow v5 per the InMon
+		// publicly-published spec (sflow.org). Dominant
+		// monitoring telemetry on every modern datacenter
+		// switch (Arista / Cisco Nexus / HP / Juniper QFX
+		// / Mellanox / Cumulus); scales linearly with link
+		// speed regardless of flow churn. Common datagram
+		// header (Version=5 + IPv4/IPv6 agent + sub-agent
+		// + sequence + uptime + sample count); sample
+		// walker with 4-entry standard format table (Flow
+		// Sample / Counter Sample / Expanded variants).
+		// Flow Sample body with Sampling Rate (1-in-N) +
+		// Source Class+Index + In/Out ifIndex + flow
+		// records (Raw Packet Header with 17-entry header
+		// protocol table; Ethernet Frame Data; IPv4/IPv6
+		// Data). Counter Sample body with Generic
+		// Interface Counters (full 19-field ifEntry-
+		// equivalent body). Consumed by DDoS-detection +
+		// capacity-planning + security-NDR platforms.
+		"sflow_v5_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
