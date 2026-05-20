@@ -7,6 +7,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.319.0] - 2026-05-21
+
+**115th native-fit decoder: NBNS (NetBIOS Name
+Service) message dissector per RFC 1001 + RFC 1002
+(NetBIOS over TCP/UDP). NBNS is the legacy Windows
+name-resolution protocol that runs over UDP/137 and
+predates DNS in the Microsoft ecosystem.
+Operationally interesting because (i) NBNS is the
+canonical target of Responder.py poisoning attacks
+— when a Windows host looks up an unqualified short
+name and DNS fails, it broadcasts a UDP/137 NBNS
+QUERY to the local subnet and an attacker can reply
+with their own IP to capture inbound NTLMv2
+challenge/response for offline cracking; (ii)
+observing NBNS QUERY traffic reveals every short
+hostname / file-server / printer users are searching
+for, leaking the entire NetBIOS namespace; (iii)
+NBNS REGISTRATION / REFRESH traffic from domain
+controllers (suffix 0x1C) leaks the AD domain name
++ every DC's NetBIOS name.**
+
+### Added
+
+- **`nbns_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an NBNS message into a structured view:
+
+  - **DNS-style header** (RFC 1002 §4.2, 12 bytes,
+    big-endian): TransactionID + Flags + QD/AN/NS/AR
+    counts.
+
+  - **Flags field** (16 bits BE): bit 15 `QR`
+    (response indicator) + bits 11-14 `Opcode` + bit
+    10 `AA` (Authoritative Answer) + bit 9 `TC`
+    (Truncated) + bit 8 `RD` (Recursion Desired) +
+    bit 7 `RA` (Recursion Available) + bit 5 `B`
+    (Broadcast) + bits 0-3 `RCODE`.
+
+  - **5-entry Opcode name table** (§4.2.1.1): 0
+    `QUERY` / 5 `REGISTRATION` / 6 `RELEASE` / 7
+    `WACK` (Wait for Acknowledgement — sent by NBNS
+    server when it needs more time to resolve a
+    name) / 8 `REFRESH`.
+
+  - **8-entry RCODE name table** (§4.2.6): 0
+    `No_Error` / 1 `Format_Error` / 2
+    `Server_Failure` / 3 `Name_Error` (name not
+    found) / 4 `Not_Implemented` / 5 `Refused_Error`
+    (administratively refused) / 6 `Active_Error`
+    (the canonical NetBIOS name-conflict response —
+    name already in use) / 7 `Conflict_Error`.
+
+  - **NetBIOS name decoder** (§4.2.1.2): a NetBIOS
+    name is 15 bytes of name (right-padded with
+    spaces) + 1 byte of name-service suffix; encoded
+    by splitting each name byte into two nibbles,
+    each offset by 0x41 ('A'), to produce a 32-byte
+    sequence of letters A-P. The decoder de-encodes
+    the wire format back to the original 15-byte
+    name + 1-byte suffix byte. Handles RFC 1035
+    §4.1.4 compression pointers (bits 11 in the
+    first name byte → bottom 14 bits = offset from
+    message start) up to 5 hops deep.
+
+  - **20+ entry NetBIOS suffix name table**
+    (Microsoft KB 163409 + Samba documentation):
+    `0x00 Workstation` / `0x01 Master_Browser` /
+    `0x03 Messenger` / `0x06 RAS_Server` / `0x1B
+    Domain_Master_Browser` (the PDC emulator FSMO
+    role) / `0x1C Domain_Controllers` (every DC
+    registers this for the domain name; canonical
+    AD-enumeration fingerprint) / `0x1D
+    Master_Browser_per_Subnet` / `0x1E
+    Browser_Election` / `0x1F NetDDE` / `0x20
+    File_Server` / `0x21 RAS_Client` / `0x22-0x24`
+    MS Exchange Interchange/Store/Directory / `0x2B
+    Lotus_Notes` / `0x30-0x31` Modem Sharing /
+    `0x43-0x46` SMS Client/Admin Remote Control / `0x6A
+    MS_Exchange_IMC` / `0x87 MS_Exchange_MTA` /
+    `0xBE Network_Monitor_Agent` / `0xBF
+    Network_Monitor_Application`.
+
+  - **Question + Answer records** (§4.2.1.3 +
+    §4.2.13): encoded NetBIOS name + Type (`0x0020
+    NB` / `0x0021 NBSTAT`) + Class (`0x0001 IN`).
+    Type-NB RDATA carries one or more (2-byte Flags
+    + 4-byte IPv4 address) tuples — the decoder
+    surfaces every IP claimed by the responding
+    node.
+
+  Pure offline parser — operators paste NBNS bytes
+  (the UDP payload as hex) from a `tcpdump -X port
+  137` line or a Wireshark NBNS dissector view and
+  get the documented header + per-record breakdown.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the UDP-datagram header strip; default
+  UDP port 137 for NBNS); NetBIOS Datagram Service
+  NBDS (UDP/138 — used for SMB browser elections +
+  workgroup announcements; separate decoder);
+  NetBIOS Session Service NBSS (TCP/139 — TCP
+  framing layer underneath classic SMB1 file-share
+  traffic; separate decoder); NBSTAT response
+  decoder (Type 0x0021 NBSTAT answers carry a
+  NetBIOS-name table + per-name flags + 6-byte unit
+  ID MAC address; per-name walker surfaced as
+  `rdata_hex` for future decoders); WINS replication
+  (NBNS-over-WINS adds replication PDUs to the base
+  spec — higher-level analysis).
+
+  Source: docs/catalog/gap-analysis.md (Windows AD
+  reconnaissance dissector — pairs with future
+  `llmnr_decode` + `mdns_decode` for the Windows /
+  Bonjour name-resolution trio; canonical target of
+  Responder.py poisoning; common in DEF CON Recon
+  Village + AD pentest engagements). Wrap-vs-
+  native: native — RFC 1002 is publicly available;
+  the wire format is a tight 12-byte DNS-style
+  header + per-record encoding with NetBIOS-
+  specific name encoding; no crypto at the parse
+  layer.
+
+### Changed
+
+- Registry capacity is now **397** Specs (was 396). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.318.0] - 2026-05-21
 
 **114th native-fit decoder: SSDP (Simple Service

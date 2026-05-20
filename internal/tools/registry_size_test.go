@@ -1012,7 +1012,37 @@ func TestRegistrySize(t *testing.T) {
 	// in DEF CON Wireless / Recon Village CTFs +
 	// home-network pentests + UPnP-IGD WAN-port-
 	// forwarding attack chains.
-	const expected = 396
+	// v0.319.0 added nbns_decode (NetBIOS Name
+	// Service per RFC 1001 + RFC 1002 — UDP/137).
+	// 12-byte DNS-style header (TxID + Flags +
+	// QD/AN/NS/AR counts); flags decode (QR +
+	// Opcode + AA + TC + RD + RA + Broadcast +
+	// RCODE); 5-entry Opcode name table (QUERY /
+	// REGISTRATION / RELEASE / WACK / REFRESH);
+	// 8-entry RCODE name table (No_Error /
+	// Format_Error / Server_Failure / Name_Error
+	// / Not_Implemented / Refused_Error /
+	// Active_Error / Conflict_Error); NetBIOS
+	// name decoder (32-byte wire encoding →
+	// 15-byte trimmed name + 1-byte suffix); 20+
+	// entry NetBIOS suffix name table
+	// (Workstation / Master_Browser / Messenger
+	// / RAS_Server / Domain_Master_Browser /
+	// Domain_Controllers / Master_Browser per
+	// subnet / Browser_Election / NetDDE /
+	// File_Server / RAS_Client / MS_Exchange
+	// family / Lotus_Notes / Modem_Sharing /
+	// SMS_Client / MS_Exchange_MTA/IMC /
+	// Network_Monitor_Agent/App); NB-type
+	// resource record decoder with IPv4 list
+	// extraction; RFC 1035 compression pointer
+	// traversal up to 5 hops deep. Canonical
+	// target of Responder.py NBNS poisoning
+	// attacks; common in DEF CON Recon Village +
+	// AD pentest engagements; pairs with future
+	// llmnr_decode + mdns_decode for the
+	// Windows/Bonjour name-resolution trio.
+	const expected = 397
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

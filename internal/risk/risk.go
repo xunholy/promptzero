@@ -1508,6 +1508,30 @@ var toolLevels = func() map[string]Level {
 		// common in CTF + home-network pentest + UPnP-
 		// IGD attack chains.
 		"ssdp_decode",
+		// v0.319 native-fit gap: nbns_decode is a pure
+		// offline dissector for NBNS (NetBIOS Name
+		// Service) per RFC 1001 + RFC 1002 — UDP/137.
+		// 12-byte DNS-style header (TxID + Flags +
+		// QD/AN/NS/AR counts); flags decode (QR +
+		// Opcode + AA + TC + RD + RA + Broadcast +
+		// RCODE); 5-entry Opcode name table (QUERY /
+		// REGISTRATION / RELEASE / WACK / REFRESH);
+		// 8-entry RCODE name table (No_Error /
+		// Format_Error / Server_Failure / Name_Error /
+		// Not_Implemented / Refused_Error /
+		// Active_Error / Conflict_Error); NetBIOS
+		// name decoder (32-byte wire encoding → 15-
+		// byte trimmed name + 1-byte suffix); 20+
+		// entry NetBIOS suffix name table
+		// (Workstation / Master_Browser / Messenger /
+		// Domain_Master_Browser / Domain_Controllers
+		// / File_Server / RAS_Server etc.); NB-type
+		// resource record decoder with IPv4 list
+		// extraction; RFC 1035 compression pointer
+		// traversal. Canonical target of Responder.py
+		// NBNS poisoning attacks; common in DEF CON
+		// Recon Village + AD pentest engagements.
+		"nbns_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
