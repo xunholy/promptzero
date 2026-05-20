@@ -7,6 +7,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.317.0] - 2026-05-21
+
+**113th native-fit decoder: MQTT-SN (MQTT for Sensor
+Networks) v1.2 dissector per the OASIS MQTT-SN
+specification. MQTT-SN is the UDP variant of MQTT
+designed for constrained IoT devices (battery-powered
+sensors, 6LoWPAN endpoints, sub-GHz mesh leaves) that
+cannot afford the overhead of MQTT's TCP + CONNECT/
+CONNACK + TLS stack. Runs over UDP/1883 between a
+sensor and an MQTT-SN Gateway (the gateway translates
+SN messages back into native MQTT for upstream
+brokers). Interesting to a pentester / IoT researcher
+because many LoRaWAN / Zigbee / 6LoWPAN gateways
+speak MQTT-SN over the IP backhaul (sniffing the
+uplink reveals device telemetry without breaking the
+sub-GHz crypto), industrial sensor vendors ship MQTT-
+SN-capable firmware for plant-floor telemetry, and
+default-credential exposure is common (the CONNECT
+ClientId often contains hostname + MAC + serial for
+asset enumeration).**
+
+### Added
+
+- **`mqtt_sn_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an MQTT-SN v1.2 message into a structured
+  view:
+
+  - **Variable-length header** (OASIS MQTT-SN v1.2
+    §5.2.1): 1-byte `Length` (1-255 short form; 0x01
+    = long-form indicator, then bytes 1-2 = uint16
+    BE length) + 1-byte `MsgType`.
+
+  - **28-entry MsgType name table** (§5.2.3): `0x00
+    ADVERTISE` (gateway broadcasts itself) / `0x01
+    SEARCHGW` / `0x02 GWINFO` / `0x04 CONNECT` /
+    `0x05 CONNACK` / `0x06 WILLTOPICREQ` / `0x07
+    WILLTOPIC` / `0x08 WILLMSGREQ` / `0x09 WILLMSG` /
+    `0x0A REGISTER` (assign 2-byte TopicId to a topic
+    name to save bandwidth) / `0x0B REGACK` / `0x0C
+    PUBLISH` (the actual telemetry message — uses
+    TopicId not topic string) / `0x0D PUBACK` / `0x0E
+    PUBCOMP` / `0x0F PUBREC` / `0x10 PUBREL` / `0x12
+    SUBSCRIBE` / `0x13 SUBACK` / `0x14 UNSUBSCRIBE` /
+    `0x15 UNSUBACK` / `0x16 PINGREQ` / `0x17
+    PINGRESP` / `0x18 DISCONNECT` / `0x1A
+    WILLTOPICUPD` / `0x1B WILLTOPICRESP` / `0x1C
+    WILLMSGUPD` / `0x1D WILLMSGRESP`.
+
+  - **Flags byte decode** (CONNECT / PUBLISH /
+    SUBSCRIBE / WILL messages, §5.3.2): bit 7 `DUP`
+    (duplicate retransmission) / bits 6-5 `QoS`
+    (00→0, 01→1, 10→2, 11→-1 — MQTT-SN-specific
+    fire-and-forget) / bit 4 `Retain` / bit 3 `Will`
+    / bit 2 `CleanSession` / bits 1-0 `TopicIdType`
+    (0 normal / 1 predefined / 2 short_name / 3
+    reserved).
+
+  - **Per-MsgType body decoders**: CONNECT (Flags +
+    ProtocolId + Duration + ClientId), CONNACK
+    (ReturnCode), WILLTOPIC (Flags + TopicName),
+    WILLMSG (Data), REGISTER (TopicId + MsgId +
+    TopicName), REGACK (TopicId + MsgId +
+    ReturnCode), PUBLISH (Flags + TopicId + MsgId +
+    Data), PUBACK / PUBCOMP / PUBREC / PUBREL
+    (TopicId + MsgId + ReturnCode for PUBACK; MsgId
+    only for the others), SUBSCRIBE (Flags + MsgId
+    + TopicId or TopicName depending on
+    TopicIdType), SUBACK (Flags + TopicId + MsgId +
+    ReturnCode), UNSUBSCRIBE / UNSUBACK,
+    DISCONNECT (optional sleep Duration —
+    indicating client going to sleep mode for that
+    many seconds), ADVERTISE (GwId + Duration),
+    GWINFO (GwId + optional GwAdd).
+
+  - **4-entry ReturnCode name table** (§5.3.4):
+    `0x00 Accepted` / `0x01 Rejected_congestion` /
+    `0x02 Rejected_invalid_topic_ID` / `0x03
+    Rejected_not_supported`.
+
+  Pure offline parser — operators paste MQTT-SN
+  bytes (starting at the Length byte) from a
+  `tcpdump -X port 1883 and udp` line or a
+  Wireshark MQTT-SN dissector view and get the
+  documented per-MsgType breakdown.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the UDP-datagram header strip;
+  default UDP port 1883); MQTT-SN over DTLS (v1.3
+  and some v1.2 gateways wrap the protocol in DTLS
+  for transport authentication + confidentiality —
+  handle the DTLS strip first); MQTT-SN-Gateway
+  state-machine (per-client SubscriptionTable +
+  RegisteredTopics state + buffer-during-sleep
+  semantics for low-power clients — higher-level
+  analysis); per-Data payload decoding (PUBLISH
+  Data bytes surfaced as raw hex since per-device
+  telemetry encoding — CBOR / MessagePack / Sigfox-
+  RC / vendor binary — is dataset-specific); topic-
+  name resolution (TopicId-to-TopicName mapping
+  established by REGISTER/REGACK pairs at session-
+  start and held in per-client state — surfaces
+  raw TopicId uint16 but does not resolve it
+  without state).
+
+  Source: docs/catalog/gap-analysis.md (UDP IoT
+  messaging dissector — complements the existing
+  `mqtt_packet_decode` for full MQTT-family
+  coverage; targets LoRaWAN / Zigbee / 6LoWPAN
+  gateway backhaul, industrial sensor telemetry,
+  and IoT pentest engagements). Wrap-vs-native:
+  native — the OASIS MQTT-SN v1.2 specification
+  is publicly available and the wire format is
+  tight (1-byte or 3-byte length header + 1-byte
+  MsgType + per-MsgType body); no crypto at the
+  parse layer.
+
+### Changed
+
+- Registry capacity is now **395** Specs (was 394). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.316.0] - 2026-05-21
 
 **112th native-fit decoder: OPC UA Binary message

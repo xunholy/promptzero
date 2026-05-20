@@ -1468,6 +1468,27 @@ var toolLevels = func() map[string]Level {
 		// the field-protocol family; default TCP port
 		// 4840.
 		"opcua_decode",
+		// v0.317 native-fit gap: mqtt_sn_decode is a
+		// pure offline dissector for MQTT-SN (MQTT for
+		// Sensor Networks) v1.2 per OASIS spec — UDP
+		// variant of MQTT for constrained IoT devices.
+		// Variable-length header (1-byte short form
+		// 1-255; 0x01 long-form indicator + uint16 BE
+		// length); 28-entry MsgType name table
+		// (ADVERTISE / SEARCHGW / GWINFO / CONNECT /
+		// CONNACK / WILLTOPIC* / REGISTER / REGACK /
+		// PUBLISH / PUBACK / SUBSCRIBE / SUBACK /
+		// PINGREQ / PINGRESP / DISCONNECT ...); Flags
+		// byte decode (DUP / QoS including MQTT-SN-
+		// specific QoS=-1 fire-and-forget / Retain /
+		// Will / CleanSession / TopicIdType); per-
+		// MsgType body decoders for CONNECT, REGISTER,
+		// PUBLISH, SUBSCRIBE, etc.; 4-entry ReturnCode
+		// name table; topic-id-type name table.
+		// Default UDP port 1883; common in LoRaWAN/
+		// Zigbee/6LoWPAN gateway backhaul + industrial
+		// sensor telemetry.
+		"mqtt_sn_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

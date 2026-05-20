@@ -954,7 +954,41 @@ func TestRegistrySize(t *testing.T) {
 	// ABOVE the field-protocol family already
 	// covered by modbus/dnp3/iec104/s7comm/enip/
 	// profinet_dcp; default TCP port 4840.
-	const expected = 394
+	// v0.317.0 added mqtt_sn_decode (MQTT-SN
+	// v1.2 per OASIS spec — UDP variant of MQTT
+	// for constrained IoT devices). Variable-
+	// length header (1-byte short form 1-255;
+	// 0x01 long-form indicator + uint16 BE length
+	// for ≥256 byte messages); 28-entry MsgType
+	// name table (ADVERTISE / SEARCHGW / GWINFO /
+	// CONNECT / CONNACK / WILLTOPICREQ /
+	// WILLTOPIC / WILLMSGREQ / WILLMSG /
+	// REGISTER / REGACK / PUBLISH / PUBACK /
+	// PUBCOMP / PUBREC / PUBREL / SUBSCRIBE /
+	// SUBACK / UNSUBSCRIBE / UNSUBACK / PINGREQ /
+	// PINGRESP / DISCONNECT / WILLTOPICUPD /
+	// WILLTOPICRESP / WILLMSGUPD / WILLMSGRESP);
+	// Flags byte decode (DUP + 2-bit QoS with
+	// MQTT-SN-specific QoS=-1 fire-and-forget +
+	// Retain + Will + CleanSession + 2-bit
+	// TopicIdType: normal / predefined /
+	// short_name / reserved); per-MsgType body
+	// decoders for CONNECT (Flags + ProtocolId +
+	// Duration + ClientId), CONNACK (ReturnCode),
+	// REGISTER (TopicId + MsgId + TopicName),
+	// PUBLISH (Flags + TopicId + MsgId + Data),
+	// SUBSCRIBE (Flags + MsgId + TopicId or
+	// TopicName), SUBACK (Flags + TopicId + MsgId
+	// + ReturnCode), DISCONNECT (optional sleep
+	// Duration), ADVERTISE / GWINFO; 4-entry
+	// ReturnCode name table (Accepted /
+	// Rejected_congestion / Rejected_invalid_topic_ID
+	// / Rejected_not_supported). UDP/1883;
+	// complements mqtt_packet_decode for full
+	// MQTT-family coverage; common in
+	// LoRaWAN/Zigbee/6LoWPAN gateway backhaul +
+	// industrial sensor telemetry.
+	const expected = 395
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
