@@ -1625,6 +1625,28 @@ var toolLevels = func() map[string]Level {
 		// datacenter SDN research + OpenFlow-
 		// controller fuzzing engagements.
 		"openflow_decode",
+		// v0.324 native-fit gap: gsmtap_decode is a
+		// pure offline dissector for GSMTAP cellular
+		// protocol tap encapsulation per Osmocom —
+		// UDP/4729. 16-byte fixed pseudo-header
+		// (Version + HeaderLen + PayloadType +
+		// Timeslot + ARFCN with band/uplink bits +
+		// Signal level signed dBm + SNR signed +
+		// Frame Number + SubType + Antenna + SubSlot
+		// + Reserved); 15+ entry PayloadType name
+		// table (UM_L2 / ABIS / UM_BURST / SIM /
+		// UMTS_RLC_MAC / LTE_RRC / LTE_MAC /
+		// OSMOCORE_LOG / QC_DIAG / etc.); 17-entry
+		// GSM Um L2 channel name table (BCCH / CCCH
+		// / RACH / AGCH / PCH / SDCCH variants /
+		// TCH_F/H / PACCH / CBCH / PDCH / PTCCH /
+		// VOICE_F/H); LTE RRC channel direction
+		// decode (even=DL, odd=UL); ARFCN band +
+		// uplink/downlink bit extraction. Common in
+		// DEF CON / Black Hat / HITB cellular CTFs
+		// + SDR research + 5G IMSI-catcher
+		// forensics.
+		"gsmtap_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

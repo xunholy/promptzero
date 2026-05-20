@@ -7,6 +7,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.324.0] - 2026-05-21
+
+**120th native-fit decoder: GSMTAP cellular protocol
+tap encapsulation per the Osmocom GSMTAP specification
+(osmo-bts / osmo-pcap-server / gsmtap.h reference).
+GSMTAP is the canonical encapsulation for cellular
+protocol captures — every Osmocom tool (osmo-bts,
+osmo-bsc, osmo-pcu, osmo-msc, osmo-sgsn, osmo-hnbgw,
+OpenBTS, srsRAN, YateBTS) prepends a 16-byte GSMTAP
+header to captured layer-2 / layer-3 cellular frames
+and ships them via UDP/4729 (default) for Wireshark
+to dissect with the right dissector per payload type.
+Operationally appears in DEF CON / Black Hat / HITB
+cellular CTF challenges (the canonical "decode the
+GSM/UMTS/LTE air-interface trace" format); SDR
+cellular research (RTL-SDR + grgsm_livemon +
+Wireshark live-decode of nearby base stations;
+airprobe + Kraken A5/1 cracking; LimeSDR + srsUE
+fronthaul captures); Osmocom development (gsmtap.h
+streams of internal protocol state across BTS → BSC
+→ MSC → HLR → VLR); 5G research (SUCI/SUPI extraction
+from LTE / 5G NR RRC captures, IMSI catcher
+forensics, gNB/eNB fingerprinting).**
+
+### Added
+
+- **`gsmtap_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a GSMTAP message into a structured view:
+
+  - **16-byte fixed pseudo-header** (multi-byte
+    fields big-endian): Version (0x02 current; 0x01
+    legacy) + HeaderLen (in 32-bit words, usually 4
+    → 16 bytes total) + PayloadType (1-byte
+    discriminator) + Timeslot (TDMA slot 0-7) +
+    ARFCN (16-bit field: bottom 14 bits = Absolute
+    Radio Frequency Channel Number; bit 14 = PCS
+    band; bit 15 = uplink — surfaced as separate
+    `arfcn` / `arfcn_pcs_band` / `arfcn_uplink`
+    fields) + Signal level (int8 dBm) + SNR (int8
+    dB) + Frame Number (uint32 BE; GSM TDMA frame
+    counter — 0 to 2,715,647; wraps every ~3.5
+    hours) + SubType (1 byte; payload-type-
+    specific) + Antenna + SubSlot + Reserved.
+
+  - **15+ entry PayloadType name table**: `0x00 UM`
+    (legacy alias) / `0x01 UM_L2` (GSM L2 frame on
+    Um air interface — the most common GSMTAP-
+    wrapped traffic) / `0x02 ABIS` (BTS↔BSC LAPD)
+    / `0x03 UM_BURST` (raw GSM burst bits) / `0x04
+    SIM` (SIM APDU exchange) / `0x05 TETRA_I1` /
+    `0x06 TETRA_I1_BURST` / `0x07 WMX_BURST` (WiMAX)
+    / `0x08 GB_LLC` (GPRS Gb LLC) / `0x09 GB_SNDCP`
+    / `0x0A GMR1_UM` (Geo-Mobile Radio 1) / `0x0D
+    UMTS_RLC_MAC` / `0x0E LTE_RRC` / `0x0F LTE_MAC`
+    / `0x10 LTE_MAC_FRAMED` / `0x11 OSMOCORE_LOG`
+    (text log lines) / `0x12 QC_DIAG` (Qualcomm
+    DIAG passthrough).
+
+  - **17-entry GSM Um L2 channel name table** (used
+    when PayloadType = `UM_L2`): `0x01 BCCH`
+    (Broadcast Control Channel) / `0x02 CCCH`
+    (Common Control Channel) / `0x03 RACH` (Random
+    Access) / `0x04 AGCH` (Access Grant) / `0x05
+    PCH` (Paging) / `0x06 SDCCH` (Standalone
+    Dedicated Control) / `0x07 SDCCH4` / `0x08
+    SDCCH8` / `0x09 TCH_F` (Traffic Full-rate) /
+    `0x0A TCH_H` (Traffic Half-rate) / `0x0B PACCH`
+    / `0x0C CBCH52` / `0x0D PDCH` (Packet Data) /
+    `0x0E PTCCH` / `0x0F CBCH51` / `0x10 VOICE_F`
+    / `0x11 VOICE_H` (voice TRAU frames).
+
+  - **LTE RRC channel direction** (used when
+    PayloadType = `LTE_RRC`): even sub-type =
+    `Downlink`, odd = `Uplink` (Osmocom
+    convention).
+
+  - **Encapsulated cellular payload** — bytes after
+    the 16-byte header are the raw cellular L2/L3
+    frame; surfaced as `payload_hex` for downstream
+    cellular-protocol decoders (LAPDm / RR / MM /
+    CM / RANAP / RRC / NAS).
+
+  Pure offline parser — operators paste GSMTAP
+  bytes (starting at the Version byte 0x02; default
+  UDP port 4729) from a `tcpdump -X port 4729`
+  line, an Osmocom grgsm_livemon stream capture,
+  or a Wireshark GSMTAP dissector view and get the
+  documented header + per-PayloadType SubType
+  breakdown.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the UDP-datagram header strip;
+  default UDP port 4729); encapsulated cellular
+  protocol bodies (per-protocol decoders are
+  dataset-specific — surfaced as `payload_hex`
+  for follow-on walkers); GSMTAPv1 (the obsolete
+  v1 header is rare in modern captures — reports
+  version byte but only walks v2 fields); burst
+  data decoding (raw GSM burst bits surfaced as
+  hex but GMSK demodulation is out of scope);
+  Osmocore log text decoding (UTF-8 decoding is a
+  follow-on step); TETRA / WiMAX / GMR-1 payload-
+  type-specific decoders (non-3GPP cellular
+  sidebands surfaced as opaque payload_hex).
+
+  Source: docs/catalog/gap-analysis.md (cellular
+  protocol tap dissector — the canonical wrapper
+  format for cellular research captures; common
+  in DEF CON / Black Hat / HITB cellular CTFs +
+  SDR cellular research + Osmocom development +
+  5G IMSI-catcher forensics). Wrap-vs-native:
+  native — the Osmocom gsmtap.h header is
+  publicly documented; 16-byte fixed pseudo-
+  header with deterministic field layout; no
+  crypto at the parse layer.
+
+### Changed
+
+- Registry capacity is now **402** Specs (was 401). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.323.0] - 2026-05-21
 
 **119th native-fit decoder: OpenFlow control-channel

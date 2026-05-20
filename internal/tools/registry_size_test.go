@@ -1149,7 +1149,32 @@ func TestRegistrySize(t *testing.T) {
 	// control protocol; common in datacenter
 	// SDN research + OpenFlow-controller
 	// fuzzing engagements.
-	const expected = 401
+	// v0.324.0 added gsmtap_decode (GSMTAP
+	// cellular protocol tap per Osmocom —
+	// UDP/4729). 16-byte fixed pseudo-header
+	// (Version + HeaderLen + PayloadType +
+	// Timeslot + ARFCN with band/uplink bits +
+	// Signal level signed dBm + SNR signed +
+	// Frame Number BE + SubType + Antenna +
+	// SubSlot + Reserved); 15+ entry PayloadType
+	// name table (UM / UM_L2 / ABIS / UM_BURST
+	// / SIM / TETRA / WMX_BURST / GB_LLC /
+	// GB_SNDCP / GMR1_UM / UMTS_RLC_MAC /
+	// LTE_RRC / LTE_MAC / LTE_MAC_FRAMED /
+	// OSMOCORE_LOG / QC_DIAG); 17-entry GSM Um
+	// L2 channel name table (BCCH / CCCH /
+	// RACH / AGCH / PCH / SDCCH / SDCCH4 /
+	// SDCCH8 / TCH_F / TCH_H / PACCH / CBCH52
+	// / PDCH / PTCCH / CBCH51 / VOICE_F /
+	// VOICE_H); LTE RRC channel direction
+	// (even=DL, odd=UL Osmocom convention);
+	// ARFCN band + uplink/downlink bit
+	// extraction. The canonical encapsulation
+	// for cellular protocol captures; common
+	// in DEF CON / Black Hat / HITB cellular
+	// CTFs + SDR research + 5G IMSI-catcher
+	// forensics.
+	const expected = 402
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
