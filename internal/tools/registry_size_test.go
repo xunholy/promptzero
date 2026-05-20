@@ -627,7 +627,19 @@ func TestRegistrySize(t *testing.T) {
 	// dominant monitoring telemetry on datacenter
 	// switches; consumed by DDoS-detection / capacity
 	// planning / security-NDR platforms.
-	const expected = 373
+	// v0.297.0 added netflow_v9_decode (NetFlow v9 per
+	// RFC 3954 — 20-byte header + FlowSet walker with
+	// 3-kind table (Template / Options Template / Data);
+	// Template FlowSet with field-spec walker using ~40-
+	// entry IANA Information Element name table; per-
+	// template record_size_bytes derivation; Data
+	// FlowSet surfaced as raw hex annotated with
+	// referencing Template ID). Template-based flow-
+	// export format superseding v5 and bridging to
+	// IPFIX; dominant on post-2010 Cisco/Juniper/Arista
+	// enterprise + carrier gear; completes the netflow
+	// _v5 + netflow_v9 + sflow_v5 telemetry trio.
+	const expected = 374
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

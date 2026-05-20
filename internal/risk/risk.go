@@ -1078,6 +1078,27 @@ var toolLevels = func() map[string]Level {
 		// equivalent body). Consumed by DDoS-detection +
 		// capacity-planning + security-NDR platforms.
 		"sflow_v5_decode",
+		// v0.297 (NATIVE-fit gap — template-based flow
+		// export): NetFlow v9 per RFC 3954. Template-
+		// based flow-export format that superseded
+		// NetFlow v5 (1996) and bridged to IPFIX (RFC
+		// 7011); dominant NetFlow version on modern
+		// (post-2010) Cisco / Juniper / Arista
+		// enterprise + carrier gear. 20-byte header
+		// (Version=9 + Count + SysUptime + UnixSecs +
+		// Sequence Number + Source ID); FlowSet walker
+		// with 3-kind table (Template / Options Template
+		// / Data); Template FlowSet with field-spec
+		// walker using ~40-entry IANA Information
+		// Element name table covering IN_BYTES /
+		// IN_PKTS / PROTOCOL / TCP_FLAGS / L4_*_PORT /
+		// IPV4_*_ADDR / IPV6_*_ADDR / SRC/DST_AS /
+		// FIRST/LAST_SWITCHED / ICMP_TYPE / SAMPLING_
+		// INTERVAL / DIRECTION / FLOW_END_REASON + more;
+		// Options Template; Data FlowSet (surfaced as
+		// raw hex annotated with referencing Template ID
+		// pending stateful template cache).
+		"netflow_v9_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
