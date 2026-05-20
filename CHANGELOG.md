@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.290.0] - 2026-05-20
+
+**Eighty-fifth native-fit gap: OSPFv3 (RFC 5340) packet
+dissector. OSPFv3 is the IPv6 sibling of OSPFv2 (RFC 2328,
+covered by the existing `ospf_packet_decode`); the two
+protocols share the same Hello / DBD / LSR / LSU / LSAck
+packet-type ladder but OSPFv3 uses a slimmer 16-byte common
+header (drops OSPFv2's AuType + 8-byte Auth field — IPv6
+expects integrity to come from IP AH/ESP) and a richer LS
+Type encoding split into Flooding Scope (U/S2/S1 bits) +
+13-bit Function Code. Used in every IPv6-routed network —
+service-provider cores, enterprise IPv6 deployments, dual-
+stack data centres. Pairs with `ospf_packet_decode` for the
+complete IPv4 + IPv6 OSPF picture.**
+
+### Added
+
+- **`ospfv3_packet_decode`** (`Risk.Low`, `GroupHostTools`)
+  — parses an OSPFv3 packet into a structured view:
+
+  - **16-byte common header** (RFC 5340 §A.3.1):
+    - byte 0: Version (must be 3).
+    - byte 1: **Type** with **5-entry name table**: 1
+      Hello, 2 Database Description, 3 Link State Request,
+      4 Link State Update, 5 Link State Acknowledgment.
+    - bytes 2-3: Length (uint16 BE).
+    - bytes 4-7: Router ID (uint32 BE; canonical dotted-
+      quad).
+    - bytes 8-11: Area ID (uint32 BE; dotted-quad).
+    - bytes 12-13: Checksum (uint16 BE, hex).
+    - byte 14: **Instance ID** (uint8; multi-instance per
+      interface — RFC 5838 extends this for AF support).
+    - byte 15: Reserved.
+  - **Hello body** (Type 1) — Interface ID + Router
+    Priority + 24-bit Options decoded into **6 named bits**
+    (V6 / E / MC / N / R / DC) + HelloInterval +
+    RouterDeadInterval + DR + BDR + Neighbor list.
+  - **Database Description body** (Type 2) — Options +
+    Interface MTU + I/M/MS flags + DD Sequence Number +
+    LSA Headers.
+  - **Link State Request body** (Type 3) — array of 12-byte
+    records (LS Type + Link State ID + Advertising Router).
+  - **Link State Update body** (Type 4) — Number of LSAs +
+    N LSAs (walked by Length field to skip body).
+  - **Link State Acknowledgment body** (Type 5) — array of
+    20-byte LSA Headers.
+  - **20-byte LSA Header** (RFC 5340 §A.4.2) — LS Age +
+    16-bit LS Type split into 3-bit Flooding Scope (3-entry
+    name table: Link-Local / Area / AS) + 13-bit Function
+    Code (**9-entry name table**: Router-LSA / Network-LSA
+    / Inter-Area-Prefix-LSA / Inter-Area-Router-LSA / AS-
+    External-LSA / Group-Membership-LSA / Type-7-LSA NSSA /
+    Link-LSA / Intra-Area-Prefix-LSA) + Link State ID +
+    Advertising Router + LS Sequence Number (int32) +
+    Checksum + Length.
+
+- **Tooling** — registry capacity bumped from 366 → 367.
+
+### Out of scope
+
+- IPv6 framing (feed bytes after IPv6 header strip —
+  OSPFv3 runs over IP protocol 89).
+- OSPFv2 (use the existing `ospf_packet_decode`).
+- Per-LSA body parsing (Router-LSA Link records, Network-
+  LSA attached routers, Inter-Area-Prefix prefix records,
+  AS-External-LSA forwarding address + tag, Link-LSA link-
+  local address + prefix options, Intra-Area-Prefix prefix
+  list — LSA Header decoded with Function Code naming +
+  Length; per-Function-Code body walker is a separate
+  dissector).
+- OSPFv3 IP-AH/IP-ESP integrity verification (deliberately
+  relies on IPv6 security layer).
+- OSPFv3 routing-table reasoning (adjacency state machine,
+  SPF run, route summarisation — higher-level analysis).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational IPv6 IGP
+  routing protocol — every IPv6 routed network runs OSPFv3
+  or IS-IS; natural IPv6 sibling to `ospf_packet_decode`).
+- Wrap-vs-native judgement: **native** — RFC 5340 is fully
+  public; OSPFv3 has a tight 16-byte common header with
+  per-type body layouts documented in §A.3; no crypto at
+  the parse layer.
+
 ## [0.289.0] - 2026-05-20
 
 **Eighty-fourth native-fit gap: DHCPv6 packet dissector per

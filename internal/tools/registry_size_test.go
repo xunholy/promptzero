@@ -554,7 +554,14 @@ func TestRegistrySize(t *testing.T) {
 	// decode; every dual-stack network runs DHCPv6
 	// alongside SLAAC for stateful address assignment +
 	// prefix delegation + DNS / NTP configuration.
-	const expected = 366
+	// v0.290.0 added ospfv3_packet_decode (OSPFv3 per RFC
+	// 5340 — 16-byte common header (drops OSPFv2's AuType
+	// + Auth); 5-entry packet type table with per-type
+	// bodies; 6-named-bit Options decode; 20-byte LSA
+	// Header with 3-bit Flooding Scope + 13-bit Function
+	// Code (9-entry name table). IPv6 sibling to ospf_
+	// packet_decode; used in every IPv6-routed network.
+	const expected = 367
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

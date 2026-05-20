@@ -931,6 +931,26 @@ var toolLevels = func() map[string]Level {
 		// DNS Servers + NTP Servers as IPv6 lists. Every
 		// dual-stack network runs DHCPv6 alongside SLAAC.
 		"dhcpv6_decode",
+		// v0.290 (NATIVE-fit gap — IPv6 sibling to the
+		// existing ospf_packet_decode): OSPFv3 per RFC
+		// 5340. 16-byte common header (Version + Type +
+		// Length + Router ID + Area ID + Checksum +
+		// Instance ID + Reserved); drops OSPFv2's AuType
+		// + Auth (IPv6 relies on IP AH/ESP). 5-entry
+		// packet type table (Hello / DBD / LSR / LSU /
+		// LSAck) with per-type body dispatch — Hello with
+		// Interface ID + Priority + 6-named-bit Options
+		// (V6 / E / MC / N / R / DC) + timers + DR/BDR +
+		// Neighbor list; DBD with Options + MTU + I/M/MS
+		// flags + DD seq; LSR/LSU/LSAck with 20-byte LSA
+		// Header decoding (LS Type split into 3-bit
+		// flooding scope + 13-bit function code with
+		// 9-entry name table: Router / Network / Inter-
+		// Area-Prefix / Inter-Area-Router / AS-External
+		// / Group-Membership / NSSA / Link / Intra-Area-
+		// Prefix). Pairs with ospf_packet_decode for the
+		// complete IPv4 + IPv6 OSPF picture.
+		"ospfv3_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
