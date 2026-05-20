@@ -900,7 +900,35 @@ func TestRegistrySize(t *testing.T) {
 	// defensive sibling of the badusb_* generation
 	// family; incident-response forensics on
 	// suspected BadUSB attacks from a usbmon pcap.
-	const expected = 392
+	// v0.315.0 added zwave_decode (classic Z-Wave
+	// MAC-layer frames per Sigma Designs SDS-12852
+	// — 9-byte fixed header (4-byte HomeID + 1-byte
+	// SourceNodeID + 2-byte Frame Control with
+	// Header Type + Routed/AckReq/LowPower/
+	// SpeedModified/Beam flags + 4-bit Sequence
+	// Number + 1-byte Length + 1-byte
+	// DestinationNodeID) + payload (Command Class +
+	// Command + parameters) + 1-byte XOR checksum;
+	// 4-entry Header Type name table (Singlecast /
+	// Multicast / Ack / Explore); 30+ entry
+	// Command Class name table covering BASIC /
+	// SWITCH_BINARY/MULTILEVEL/ALL/TOGGLE / SCENE /
+	// SENSOR_BINARY/MULTILEVEL / METER /
+	// THERMOSTAT_MODE/OPERATING/SETPOINT/FAN /
+	// MULTI_CHANNEL / DOOR_LOCK / USER_CODE /
+	// CONFIGURATION / ALARM / MANUFACTURER /
+	// POWERLEVEL / PROTECTION / NODE_NAMING /
+	// BATTERY / CLOCK / HAIL / WAKE_UP /
+	// ASSOCIATION / VERSION / INDICATOR /
+	// TIME_PARAMETERS / SECURITY S0 / SECURITY_2
+	// S2). Sub-GHz IoT mesh protocol (868/908/920
+	// MHz on ITU-T G.9959 FSK PHY); the dominant
+	// "smart home" controller protocol; pairs with
+	// Flipper Zero RF capture for Yale / Kwikset /
+	// Schlage Z-Wave lock attacks + SmartThings hub
+	// enumeration + battery-drain DoS targeting
+	// WAKE_UP-frame-flooded sensors.
+	const expected = 393
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

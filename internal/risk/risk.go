@@ -1422,6 +1422,27 @@ var toolLevels = func() map[string]Level {
 		// F-keys). Forensic primitive for incident
 		// response on suspected BadUSB attacks.
 		"usb_badusb_classify",
+		// v0.315 native-fit gap: zwave_decode is a pure
+		// offline dissector for classic Z-Wave MAC-layer
+		// frames per Sigma Designs SDS-12852 — 9-byte
+		// fixed header (4-byte HomeID + 1-byte SourceNode
+		// + 2-byte Frame Control with Header Type +
+		// Routed/AckReq/LowPower/SpeedModified/Beam +
+		// 4-bit Sequence + 1-byte Length + 1-byte
+		// DestNode) + payload (Command Class + Command +
+		// parameters) + 1-byte XOR checksum. 4-entry
+		// Header Type name table (Singlecast / Multicast
+		// / Ack / Explore); 30+ entry Command Class
+		// name table (BASIC / SWITCH_BINARY /
+		// SWITCH_MULTILEVEL / SENSOR_* / THERMOSTAT_* /
+		// DOOR_LOCK / USER_CODE / CONFIGURATION /
+		// ALARM / BATTERY / WAKE_UP / SECURITY S0 /
+		// SECURITY_2 S2 ...). Sub-GHz IoT mesh
+		// protocol (868/908/920 MHz on ITU-T G.9959
+		// FSK PHY); pairs with Flipper Zero RF capture
+		// for Yale / Kwikset / Schlage Z-Wave lock
+		// attacks.
+		"zwave_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
