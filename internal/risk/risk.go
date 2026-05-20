@@ -1157,6 +1157,26 @@ var toolLevels = func() map[string]Level {
 		// deployment.
 		"esp_decode",
 		"ah_decode",
+		// v0.301 (NATIVE-fit gap — IPsec control-plane
+		// companion to ESP+AH): IKEv2 per RFC 7296.
+		// Universal on every site-to-site VPN + IPsec
+		// remote-access deployment. UDP port 500 (or 4500
+		// with NAT-T marker stripped). 28-byte fixed
+		// header (Initiator SPI + Responder SPI + Next
+		// Payload + Version + Exchange Type + Flags +
+		// Message ID + Length); 4-entry exchange type
+		// table (IKE_SA_INIT / IKE_AUTH / CREATE_CHILD_SA
+		// / INFORMATIONAL); 3-bit flag decode (R / V /
+		// I). Chained payload walker via Next Payload +
+		// 4-byte payload header; ~15-entry payload type
+		// table (SA / KE / IDi / IDr / CERT / CERTREQ /
+		// AUTH / Nonce / Notify / Delete / Vendor ID /
+		// TSi / TSr / SK encrypted / CP / EAP). Notify
+		// payload body decoded with ~30-entry message
+		// type name table + Error/Status class. SK
+		// payload surfaced as opaque hex with key-state
+		// note.
+		"ike_v2_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -673,7 +673,18 @@ func TestRegistrySize(t *testing.T) {
 	// table; SPI semantic notes. Universal IPsec data-
 	// plane protocols on every site-to-site VPN + IPsec
 	// remote-access deployment.
-	const expected = 378
+	// v0.301.0 added ike_v2_decode (IKEv2 per RFC 7296
+	// — control-plane companion to esp_decode + ah_
+	// decode. 28-byte fixed header with 4-entry exchange
+	// type table (IKE_SA_INIT / IKE_AUTH / CREATE_CHILD_
+	// SA / INFORMATIONAL) + 3-bit flag decode; chained
+	// payload walker with ~15-entry payload type table;
+	// Notify body decoded with ~30-entry message type
+	// name table + Error/Status class; SK encrypted
+	// payload surfaced as opaque hex with key-state
+	// note). Universal on every site-to-site VPN +
+	// IPsec remote-access deployment.
+	const expected = 379
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
