@@ -1328,6 +1328,23 @@ var toolLevels = func() map[string]Level {
 		// centre boundary in European + Asian power-grid
 		// operators.
 		"iec104_decode",
+		// v0.310 native-fit gap: s7comm_decode is a pure
+		// offline dissector for classic S7Comm PDUs over
+		// ISO-on-TCP (RFC 1006, port 102) — 4-byte TPKT
+		// header + variable COTP header + 10/12-byte S7
+		// header (protoID 0x32 + ROSCTR + reserved + PDU
+		// reference + parameter length + data length +
+		// optional error class/code for Ack/Ack-Data); 9-
+		// entry COTP PDU type name table; 4-entry ROSCTR
+		// name table (Job_Request / Ack / Ack_Data /
+		// Userdata); 15-entry function-code name table
+		// (Read_Var / Write_Var / Setup_Communication /
+		// PLC_Control / Start_Upload / Request_Download
+		// ...); 9-entry Error Class name table.
+		// Siemens S7-300/400/1200/1500 PLC protocol;
+		// canonical Stuxnet target; dominant in
+		// EU/Asian factory automation.
+		"s7comm_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

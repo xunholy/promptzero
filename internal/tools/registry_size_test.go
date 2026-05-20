@@ -795,7 +795,31 @@ func TestRegistrySize(t *testing.T) {
 	// European/Asian utility-SCADA counterpart to
 	// DNP3; dominant on substation/control-centre
 	// boundary in EU + Asia power-grid operators.
-	const expected = 387
+	// v0.310.0 added s7comm_decode (classic S7Comm
+	// PDUs over ISO-on-TCP per RFC 1006, port 102 —
+	// 4-byte TPKT header + variable COTP header
+	// (Length Indicator + PDU Type + optional TPDU
+	// number with EOT bit) + 10-or-12-byte S7 header
+	// (Protocol ID 0x32 + ROSCTR + 2-byte Reserved
+	// + 2-byte PDU Reference + 2-byte Parameter
+	// Length + 2-byte Data Length + optional Error
+	// Class + Code); 9-entry COTP PDU type name
+	// table (CR/CC/DT/DR/DC/ED/EA/RJ/ER); 4-entry
+	// ROSCTR name table (Job_Request / Ack /
+	// Ack_Data / Userdata); 15-entry function-code
+	// name table (CPU_services / Read_Var / Write_Var
+	// / Request_Download / Download_Block /
+	// Download_Ended / Start_Upload / Upload /
+	// End_Upload / PLC_Control / PLC_Stop /
+	// Setup_Communication); 9-entry Error Class
+	// name table (No_Error / Application_Relationship
+	// / Object_Definition / No_Resources_Available
+	// / Error_On_Service_Processing /
+	// Error_On_Supplies / Access_Error). The Siemens
+	// S7-300/400/1200/1500 PLC protocol; canonical
+	// Stuxnet target; dominant on the factory floor
+	// in EU/Asian manufacturing.
+	const expected = 388
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
