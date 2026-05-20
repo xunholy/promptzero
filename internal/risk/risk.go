@@ -1692,6 +1692,25 @@ var toolLevels = func() map[string]Level {
 		// with sdp_decode + rtp_decode for full
 		// streaming-stack coverage.
 		"rtsp_decode",
+		// v0.327 native-fit gap: smtp_decode is a pure
+		// offline dissector for SMTP per RFC 5321 —
+		// TCP/25 (MTA) / 587 (submission STARTTLS) /
+		// 465 (implicit-TLS SMTPS). Two message kinds
+		// discriminated by first character: Server
+		// Response (3-digit status code + - or space
+		// continuation + text, multi-line aggregation
+		// per §4.2.1); Client Command (verb + optional
+		// argument). 14+ entry Verb name table (HELO /
+		// EHLO / AUTH / MAIL / RCPT / DATA / RSET /
+		// VRFY user-enum target / EXPN / QUIT /
+		// STARTTLS / HELP / NOOP / BDAT); HTTP-style
+		// status categorisation (Success /
+		// Intermediate / Transient_Error /
+		// Permanent_Error); EHLO multi-line extension
+		// aggregation. Canonical decode for Exim /
+		// Postfix / Sendmail / Exchange / O365 / Google
+		// Workspace MTAs.
+		"smtp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

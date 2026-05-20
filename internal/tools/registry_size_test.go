@@ -1229,7 +1229,31 @@ func TestRegistrySize(t *testing.T) {
 	// / VLC); pairs with the existing
 	// sdp_decode + rtp_decode Specs for full
 	// streaming-stack coverage.
-	const expected = 404
+	// v0.327.0 added smtp_decode (SMTP per RFC
+	// 5321 — TCP/25 MTA, 587 submission
+	// STARTTLS, 465 implicit-TLS SMTPS). Two
+	// message kinds: Server Response (3-digit
+	// status code + - continuation or space +
+	// text, multi-line aggregation per §4.2.1);
+	// Client Command (verb + optional
+	// argument). 14+ entry Verb name table
+	// (HELO / EHLO / AUTH / MAIL / RCPT / DATA
+	// / RSET / VRFY / EXPN / QUIT / STARTTLS /
+	// HELP / NOOP / BDAT); HTTP-style status
+	// categorisation (Success / Intermediate /
+	// Transient_Error / Permanent_Error);
+	// multi-line response aggregation with
+	// final_line_text extraction; EHLO
+	// extension list aggregation (STARTTLS /
+	// AUTH / SIZE / 8BITMIME /
+	// ENHANCEDSTATUSCODES). Foundational mail-
+	// server pentest tool — open-relay testing,
+	// user enumeration via VRFY/EXPN/RCPT,
+	// STARTTLS downgrade audit, SASL mechanism
+	// enumeration; canonical decode for Exim /
+	// Postfix / Sendmail / Exchange / Office
+	// 365 / Google Workspace / Mailcow MTAs.
+	const expected = 405
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

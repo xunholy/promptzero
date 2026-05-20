@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.327.0] - 2026-05-21
+
+**123rd native-fit decoder: SMTP (Simple Mail Transfer
+Protocol) message dissector per RFC 5321. The 40-year-
+old text-based protocol every mail server speaks.
+Default ports: TCP/25 (mail exchange between MTAs),
+TCP/587 (mail submission with STARTTLS), TCP/465
+(implicit-TLS submission "SMTPS"). The canonical text
+protocol on the boundary between MTAs (Exim, Postfix,
+Sendmail, Exchange, Office 365 Exchange Online, Google
+Workspace, Mailcow, Mailgun, SendGrid). Interesting
+to a mail-server pentester for open-relay testing
+(`MAIL FROM`/`RCPT TO` sequence detects non-local
+recipient acceptance), user enumeration (`VRFY` /
+`EXPN` / `RCPT TO` fallback all enumerate valid
+usernames), STARTTLS downgrade audit (EHLO response
+lists STARTTLS extension), authentication enumeration
+(AUTH listing in EHLO reveals supported SASL
+mechanisms), banner fingerprinting (220 banner leaks
+MTA software + version).**
+
+### Added
+
+- **`smtp_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an SMTP message into a structured view:
+
+  - **Two message kinds** discriminated by the first
+    character of the first line: **Server Response**
+    (first line starts with a 3-digit ASCII status
+    code) with multi-line support per RFC 5321
+    §4.2.1 (`<code>-<text>` intermediate,
+    `<code> <text>` final); **Client Command** (first
+    line starts with an ASCII letter) — verb +
+    optional argument.
+
+  - **14+ entry Verb name table** (RFC 5321 §4.1.1 +
+    RFC 1869 EHLO + RFC 1652 8BITMIME + RFC 3030
+    BDAT + RFC 4954 AUTH + RFC 3207 STARTTLS):
+    `HELO` / `EHLO` / `AUTH` / `MAIL` / `RCPT` /
+    `DATA` / `RSET` / `VRFY` (user-enumeration
+    target) / `EXPN` / `QUIT` / `STARTTLS` (TLS
+    upgrade trigger) / `HELP` / `NOOP` / `BDAT`.
+
+  - **HTTP-style status code categorisation**: 2xx
+    `Success` (220 banner / 221 closing / 250 OK /
+    251 forward) / 3xx `Intermediate` (354 start
+    mail input — only DATA gets this) / 4xx
+    `Transient_Error` (421 service unavailable / 450
+    mailbox busy / 451 local processing / 452
+    storage) / 5xx `Permanent_Error` (500 syntax /
+    501 parameters / 502 not implemented / 503 bad
+    sequence / 504 unrecognised parameter / 535 auth
+    failed / 550 mailbox unavailable / 553 mailbox
+    not allowed / 554 transaction failed). Surfaced
+    as `status_category`.
+
+  - **Multi-line response aggregation** — server
+    replies to EHLO frequently span 5+ lines (one
+    per extension); decoder walks the entire input
+    collecting every line that shares the same
+    status code, exposes the full list as `lines`,
+    and identifies the final line (space-after-code)
+    as `final_line_text` for caller convenience.
+
+  - **EHLO extension list** — when the server
+    responds to EHLO with a multi-line 250 reply,
+    every line after the first contains a supported
+    extension keyword (`SIZE 35882577` / `8BITMIME`
+    / `STARTTLS` / `AUTH LOGIN PLAIN` /
+    `ENHANCEDSTATUSCODES` / etc.); surfaced as
+    `ehlo_extensions`.
+
+  Pure offline parser — operators paste SMTP bytes
+  (the TCP-segment payload as hex; default TCP port
+  25/587/465) from a `tcpdump -X port 25` line or a
+  Wireshark SMTP dissector view and get the
+  documented command/response breakdown.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the TCP-segment header strip; default
+  TCP port 25/587/465); STARTTLS / SMTPS transport
+  (after STARTTLS the connection upgrades to TLS —
+  handle the TLS strip first); MIME / mail body
+  parsing (bytes between 354 server reply and
+  `\r\n.\r\n` terminator are the RFC 5322 mail body
+  with optional MIME structure per RFC 2045 —
+  separate decoder); SASL mechanism decoding (AUTH
+  arguments are SASL mechanism + optional initial
+  response base64-encoded; per-mechanism decoding
+  PLAIN/CRAM-MD5/SCRAM-SHA-1 is out of scope);
+  DKIM/DMARC/SPF (DNS-side anti-spam machinery);
+  submission queue + bounce handling.
+
+  Source: docs/catalog/gap-analysis.md (email-server
+  dissector — canonical decode for Exim / Postfix /
+  Sendmail / Exchange / Office 365 / Google
+  Workspace / Mailcow MTAs; common in DEF CON +
+  HITB + CTF open-relay + UCEPROTECT-list +
+  DKIM/DMARC alignment puzzles; foundational mail-
+  server pentest tool for user enumeration via
+  VRFY/EXPN/RCPT, STARTTLS downgrade audit, SASL
+  mechanism enumeration). Wrap-vs-native: native —
+  RFC 5321 is publicly available; SMTP is a tiny
+  text-based protocol with two message kinds +
+  CRLF-terminated lines + a fixed verb registry +
+  a 3-digit status code scheme; no crypto at the
+  parse layer.
+
+### Changed
+
+- Registry capacity is now **405** Specs (was 404). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.326.0] - 2026-05-21
 
 **122nd native-fit decoder: RTSP (Real-Time Streaming
