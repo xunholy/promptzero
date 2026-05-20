@@ -1088,7 +1088,36 @@ func TestRegistrySize(t *testing.T) {
 	// nbns_decode for the Windows name-
 	// resolution duo and future mdns_decode for
 	// the consumer-IoT/Bonjour case.
-	const expected = 399
+	// v0.322.0 added mdns_decode (Multicast DNS
+	// per RFC 6762 + DNS-SD per RFC 6763 —
+	// UDP/5353 multicast 224.0.0.251 / FF02::FB).
+	// 12-byte DNS-style header with mDNS-specific
+	// Flags interpretation; DNS label-encoded
+	// name walker WITH full RFC 1035 §4.1.4
+	// compression-pointer support (unlike LLMNR
+	// which forbids them); question records with
+	// QU bit (top bit of QCLASS — Question
+	// Unicast response preferred); answer
+	// records with Cache-Flush bit (top bit of
+	// CLASS); 9+ entry RR-type name table (A /
+	// NS / CNAME / SOA / PTR / MX / TXT / AAAA /
+	// SRV / OPT / NSEC); per-RR-type RDATA
+	// decoders for A → IPv4, AAAA → IPv6,
+	// PTR/CNAME → name (with compression
+	// traversal), SRV → priority + weight +
+	// port + target (DNS-SD instance →
+	// host:port), TXT → list of length-prefixed
+	// strings split on '=' into key=value pairs
+	// per DNS-SD §6 canonical metadata format.
+	// Completes the Windows + Bonjour name-
+	// resolution trio with nbns_decode +
+	// llmnr_decode + mdns_decode; canonical
+	// decode for AirDrop / AirPrint / AirPlay /
+	// Chromecast / HomeKit / Spotify Connect /
+	// Sonos / Plex enumeration; common in DEF
+	// CON Recon Village + home-network pentests
+	// + IoT enumeration workflows.
+	const expected = 400
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

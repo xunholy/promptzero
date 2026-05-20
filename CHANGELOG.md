@@ -7,6 +7,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.322.0] - 2026-05-21
+
+**118th native-fit decoder + the 400-Spec milestone.
+mDNS (Multicast DNS) message dissector per RFC 6762
++ DNS-SD (DNS-Based Service Discovery) per RFC 6763.
+mDNS runs over UDP/5353 multicast 224.0.0.251 (IPv4)
+or FF02::FB (IPv6 link-local) and is the discovery
+layer of every Bonjour / Avahi / macOS / iOS device
+stack + the consumer IoT ecosystem. Completes the
+Windows + Bonjour name-resolution trio
+(`nbns_decode` for legacy Windows + `llmnr_decode`
+for modern Windows + `mdns_decode` for Bonjour/IoT).
+Operationally the canonical signal for enumerating
+consumer IoT on a LAN: Apple ecosystem (AirDrop /
+AirPrint / AirPlay / HomeKit / Apple TV); streaming
+(Chromecast / Spotify Connect / Sonos / Roku); smart
+home (Philips Hue / HomeKit accessories / Plex);
+Linux/Unix LAN discovery (Avahi `_workstation` /
+`_sftp-ssh` / `_ssh` / `_http`).**
+
+### Added
+
+- **`mdns_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an mDNS message into a structured view:
+
+  - **DNS-style header** (RFC 1035 §4.1.1 / RFC 6762
+    §18, 12 bytes, big-endian): TransactionID +
+    Flags + QD/AN/NS/AR counts. mDNS senders
+    typically set TransactionID = 0.
+
+  - **Flags field** (16 bits BE): bit 15 `QR`
+    (response indicator) + bits 11-14 `Opcode` (0 =
+    QUERY, only value used in mDNS) + bit 10 `AA`
+    (Authoritative Answer — set in mDNS responses)
+    + bit 9 `TC` (Truncated) + bits 0-3 `RCODE`
+    (must be 0 in mDNS).
+
+  - **DNS label-encoded name walker** with full RFC
+    1035 §4.1.4 compression-pointer support (up to
+    5 hops deep). Note: unlike LLMNR which forbids
+    compression pointers, mDNS allows them.
+
+  - **Question record** with **QU bit** (RFC 6762
+    §5.4): encoded name + Type + QCLASS where top
+    bit `0x8000` is the QU flag (Question Unicast
+    response preferred) and bottom 15 bits are the
+    normal class (typically 1 = IN). Surfaces
+    `qu_unicast` as a derived field.
+
+  - **Answer record** with **Cache-Flush bit** (RFC
+    6762 §10.2): encoded name + Type + CLASS (top
+    bit `0x8000` = Cache-Flush; bottom 15 bits =
+    normal class) + TTL + RDLength + RDATA.
+    Surfaces `cache_flush` as a derived field.
+
+  - **9+ entry resource-record Type name table**: 1
+    `A` (IPv4 host address) / 2 `NS` / 5 `CNAME`
+    (Canonical Name) / 6 `SOA` / 12 `PTR` (Pointer
+    — DNS-SD service-type → instance-name mapping)
+    / 15 `MX` / 16 `TXT` (Text — DNS-SD key=value
+    capability metadata) / 28 `AAAA` (IPv6 host
+    address) / 33 `SRV` (Service — DNS-SD instance
+    → host:port + priority + weight) / 41 `OPT`
+    (EDNS0) / 47 `NSEC` (Next Secure — re-purposed
+    in mDNS to mean "I have these record types for
+    this name and only these").
+
+  - **Per-RR-type RDATA decoders**: `A` → 4-byte
+    IPv4 address; `AAAA` → 16-byte IPv6 address;
+    `PTR` / `CNAME` → DNS-encoded name (with
+    compression-pointer traversal); `SRV` → 2-byte
+    Priority + 2-byte Weight + 2-byte Port + DNS-
+    encoded Target (reveals listening port +
+    target hostname for the
+    `_<service>._<proto>.local` entry); `TXT` →
+    list of length-prefixed strings split on first
+    `=` into key/value pairs (DNS-SD §6 canonical
+    metadata format); other types → opaque hex.
+
+  Pure offline parser — operators paste mDNS bytes
+  (the UDP payload as hex; default UDP port 5353)
+  from a `tcpdump -X port 5353` line or a
+  Wireshark mDNS dissector view and get the
+  documented header + per-record breakdown + DNS-
+  SD QU/cache-flush bit decode.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the UDP-datagram header strip;
+  default UDP port 5353); NBNS / LLMNR (parallel
+  Windows name-resolution protocols on UDP/137 and
+  UDP/5355 — covered by `nbns_decode` +
+  `llmnr_decode` Specs); generic DNS (UDP/53
+  traffic re-uses the same RFC 1035 wire format —
+  covered by the existing `dns_packet_decode`
+  Spec); DNS-SD service-type semantics beyond
+  name detection (the per-service-type schema for
+  `_homekit` / `_airplay` / `_googlecast` TXT keys
+  is vendor-specific and out of scope — surfaces
+  TXT key=value pairs but does not interpret
+  them); NSEC bitmap decode (NSEC RDATA carries a
+  compressed type-bitmap — surfaces next-name
+  portion but leaves type-bitmap as opaque hex);
+  DNSSEC validation; multi-fragment reassembly
+  (TC flag surfaces but reassembly out of scope).
+
+  Source: docs/catalog/gap-analysis.md (Bonjour /
+  consumer-IoT discovery dissector — completes the
+  Windows + Bonjour name-resolution trio with
+  `nbns_decode` + `llmnr_decode` + `mdns_decode`;
+  canonical decode for AirDrop / AirPrint /
+  Chromecast / HomeKit / Spotify Connect / Sonos
+  enumeration; common in DEF CON Recon Village +
+  home-network pentests + IoT enumeration
+  workflows). Wrap-vs-native: native — RFC 6762 +
+  6763 are publicly available; mDNS re-uses the
+  RFC 1035 wire format with two crucial bit-flag
+  extensions (QU on QCLASS, Cache-Flush on CLASS);
+  no crypto at the parse layer.
+
+### Changed
+
+- Registry capacity reaches the **400-Spec milestone**
+  (399 → 400). The capacity invariant in
+  `internal/tools/registry_size_test.go` tracks the
+  latest count.
+
 ## [0.321.0] - 2026-05-21
 
 **117th native-fit decoder: LLMNR (Link-Local

@@ -1577,6 +1577,28 @@ var toolLevels = func() map[string]Level {
 		// CON Recon Village + AD pentest
 		// engagements.
 		"llmnr_decode",
+		// v0.322 native-fit gap: mdns_decode is a pure
+		// offline dissector for Multicast DNS per RFC
+		// 6762 + DNS-SD per RFC 6763 — UDP/5353
+		// multicast 224.0.0.251 / FF02::FB. 12-byte
+		// DNS-style header with mDNS-specific Flags
+		// interpretation; DNS label walker with full
+		// compression-pointer support; question
+		// records with QU bit (top bit of QCLASS —
+		// Question Unicast response preferred); answer
+		// records with Cache-Flush bit (top bit of
+		// CLASS); 9+ entry RR-type name table (A / NS
+		// / CNAME / SOA / PTR / MX / TXT / AAAA / SRV
+		// / OPT / NSEC); per-RR-type RDATA decoders
+		// for A → IPv4, AAAA → IPv6, PTR/CNAME →
+		// name, SRV → priority + weight + port +
+		// target, TXT → list of key=value pairs (DNS-
+		// SD §6). Completes the Windows + Bonjour
+		// name-resolution trio (nbns + llmnr + mdns);
+		// canonical decode for AirDrop / AirPrint /
+		// Chromecast / HomeKit / Spotify Connect /
+		// Sonos enumeration.
+		"mdns_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
