@@ -797,6 +797,27 @@ var toolLevels = func() map[string]Level {
 		// Type + body length; Max Resp Code exp+mantissa
 		// decoding per §4.1.1.
 		"igmp_decode",
+		// v0.283 (NATIVE-fit gap — foundational IPv4
+		// multicast routing protocol): PIM-SM v2 per RFC
+		// 7761. 4-byte common header (Version + Type +
+		// Reserved + Checksum); 11-entry Type name table
+		// (Hello / Register / Register-Stop / Join-Prune /
+		// Bootstrap / Assert / Graft / Graft-Ack /
+		// Candidate-RP / State Refresh / DF Election);
+		// per-type body dispatch — Hello with TLV options
+		// walker (5-entry option table: Holdtime / LAN
+		// Prune Delay / DR Priority / Generation ID /
+		// Address List); Register flags (B-bit + N-bit) +
+		// encap IP version heuristic; Register-Stop with
+		// Encoded Group + Source; Join/Prune with Encoded
+		// Unicast Upstream Neighbor + per-group Encoded
+		// Group + Joined/Pruned Encoded Source lists;
+		// Bootstrap with Fragment Tag + Hash Mask Len +
+		// BSR Priority + Encoded Unicast BSR Address;
+		// Assert with Encoded Group + Source + RPT bit +
+		// metric preference + metric. Pairs with
+		// igmp_decode for the host-side multicast picture.
+		"pim_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

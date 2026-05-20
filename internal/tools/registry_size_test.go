@@ -491,7 +491,16 @@ func TestRegistrySize(t *testing.T) {
 	// Record Type name table; Max Resp Code exp+mantissa
 	// decoding per §4.1.1). Foundational IPv4 multicast
 	// group-management protocol.
-	const expected = 359
+	// v0.283.0 added pim_decode (PIM-SM v2 per RFC 7761 —
+	// 4-byte common header with 11-entry Type name table;
+	// Hello body TLV walker with 5-entry option table;
+	// Register/Register-Stop/Join-Prune/Bootstrap/Assert
+	// per-type bodies; RFC 7761 §4.9.1 Encoded Unicast /
+	// Group / Source address parsing with IPv4 + IPv6
+	// support). Foundational router↔router multicast
+	// routing protocol; pairs with igmp_decode (host
+	// ↔router) for the complete IPv4 multicast picture.
+	const expected = 360
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

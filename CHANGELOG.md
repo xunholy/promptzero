@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.283.0] - 2026-05-20
+
+**Seventy-eighth native-fit gap: PIM (Protocol Independent
+Multicast) version 2 packet dissector per RFC 7761 (PIM-SM
+v2; the dominant multicast routing protocol). PIM Sparse-
+Mode is the de-facto router↔router multicast routing
+protocol in every enterprise + ISP + cloud fabric that
+carries multicast traffic. Pairs with `igmp_decode` (which
+decodes host↔router multicast group-management on the same
+networks) for the complete IPv4 multicast signalling
+picture.**
+
+### Added
+
+- **`pim_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a PIMv2 packet into a structured view:
+
+  - **4-byte common header**: Version (4 bits; always 2) +
+    Type (4 bits) + Reserved + Checksum (uint16 BE, hex).
+  - **11-entry Type name table**: 0 Hello, 1 Register, 2
+    Register-Stop, 3 Join/Prune, 4 Bootstrap, 5 Assert, 6
+    Graft (PIM-DM), 7 Graft-Ack (PIM-DM), 8 Candidate-RP-
+    Advertisement, 9 State Refresh (PIM-DM), 10 DF Election
+    (PIM-BIDIR).
+  - **Hello body** (Type 0): TLV option walker over (Type
+    uint16 BE, Length uint16 BE, Value) records.
+    **5-entry option type table**: 1 Holdtime (uint16
+    seconds; 0xFFFF = never timeout), 2 LAN Prune Delay
+    (propagation_delay + T-bit + override_interval), 19 DR
+    Priority (uint32 — higher wins), 20 Generation ID
+    (uint32 — change = neighbor reboot detection), 24
+    Address List (encoded-address list).
+  - **Register body** (Type 1): 4-byte flags (B = Border-
+    bit, N = Null-Register-bit) + encapsulated multicast IP
+    datagram (raw hex; first-nibble heuristic for inner
+    IPv4 vs IPv6).
+  - **Register-Stop body** (Type 2): Encoded Group Address
+    + Encoded Unicast Source Address.
+  - **Join/Prune body** (Type 3): Encoded Unicast Upstream
+    Neighbor + Reserved + Num Groups + Hold Time + N ×
+    Group records (Encoded Group + Num Joined Sources + Num
+    Pruned Sources + Joined Source list + Pruned Source
+    list).
+  - **Bootstrap body** (Type 4): Fragment Tag + Hash Mask
+    Len + BSR Priority + Encoded Unicast BSR Address + per-
+    group RP-Set remainder (hex).
+  - **Assert body** (Type 5): Encoded Group + Encoded
+    Unicast Source + 1-bit R (RPT bit) + 31-bit Metric
+    Preference + 32-bit Metric.
+  - **Encoded Address parsing** (RFC 7761 §4.9.1): Encoded
+    Unicast (AF + Encoding Type + Address); Encoded Group
+    (+ B-bit + Z-bit + Mask Len); Encoded Source (+ S/W/R
+    bits + Mask Len). IPv4 (AF=1, 4 bytes) + IPv6 (AF=2,
+    16 bytes) supported.
+  - **Conformance check** — Version != 2 surfaces a Note;
+    Reserved byte != 0 surfaces a Note (some PIM extensions
+    overload it as a subtype).
+
+- **Tooling** — registry capacity bumped from 359 → 360.
+
+### Out of scope
+
+- IP framing (feed bytes after IPv4/IPv6 header strip — PIM
+  runs over IP protocol 103).
+- PIMv1 (the pre-RFC 2117 'DVMRP-like' form is obsolete —
+  no production deployments since the late 1990s).
+- Multicast routing-table reasoning (RPF check, (*,G) and
+  (S,G) tree state — higher-level analysis).
+- PIM checksum verification (the IPv4 pseudo-header
+  dependency would require the operator to provide the IP
+  src/dst).
+- Detailed Bootstrap per-group RP-Set walk (the BSR address
+  is decoded; per-group RP records are surfaced as a hex
+  remainder).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational IPv4
+  multicast routing protocol — universal in switched +
+  routed multicast fabrics; natural router-side pair to
+  `igmp_decode`'s host-side coverage).
+- Wrap-vs-native judgement: **native** — RFC 7761 is fully
+  public; wire format is a tight 4-byte common header with
+  per-type bodies built from well-defined Encoded Address
+  formats; no crypto, no compression.
+
 ## [0.282.0] - 2026-05-20
 
 **Seventy-seventh native-fit gap: IGMP (Internet Group
