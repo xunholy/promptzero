@@ -725,7 +725,23 @@ func TestRegistrySize(t *testing.T) {
 	// alongside TCP/UDP/SCTP; niche but well-defined;
 	// used in WebRTC fallbacks + embedded game-server
 	// protocols.
-	const expected = 383
+	// v0.306.0 added ptpv2_decode (PTPv2 per IEEE
+	// 1588-2008 — 34-byte common header with 4-bit
+	// messageType field + 10-entry messageType name
+	// table; per-type body decoders for Sync /
+	// Delay_Req / Pdelay_Req / Pdelay_Resp / Follow_Up
+	// / Delay_Resp / Pdelay_Resp_Follow_Up; 30-byte
+	// Announce body with BMCA inputs (priority1/2,
+	// grandmaster clockClass + clockAccuracy +
+	// offsetScaledLogVariance + grandmasterIdentity +
+	// stepsRemoved + timeSource); timeSource +
+	// clockAccuracy name tables; flagField bit decode
+	// set including Announce-only timeProperties bits).
+	// The wire-time-sync companion to NTP decoders for
+	// 5G/telecom fronthaul, finance HFT timestamping,
+	// industrial TSN (IEEE 802.1AS gPTP), power-grid
+	// IEC 61850, and SMPTE ST 2110 broadcast media.
+	const expected = 384
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

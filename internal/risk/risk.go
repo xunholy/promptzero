@@ -1248,6 +1248,25 @@ var toolLevels = func() map[string]Level {
 		// + 12-entry Reset Code name table); IP protocol
 		// 33.
 		"dccp_packet_decode",
+		// v0.306 native-fit gap: ptpv2_decode is a pure
+		// offline dissector for PTPv2 (IEEE 1588-2008)
+		// Precision Time Protocol packets — 34-byte common
+		// header (transportSpecific + messageType + version
+		// + length + domain + flagField + 64-bit
+		// correctionField + 10-byte sourcePortIdentity +
+		// sequenceId + controlField + logMessageInterval);
+		// 10-entry messageType name table (Sync /
+		// Delay_Req / Pdelay_Req / Pdelay_Resp / Follow_Up
+		// / Delay_Resp / Pdelay_Resp_Follow_Up / Announce /
+		// Signaling / Management); per-type body decoders
+		// for timestamp-bearing event/general messages, the
+		// 30-byte Announce body (with BMCA inputs:
+		// priority1, clockQuality, grandmasterIdentity,
+		// stepsRemoved, timeSource); timeSource +
+		// clockAccuracy name tables; flagField decoded set.
+		// UDP/319 (event) + UDP/320 (general) or EtherType
+		// 0x88F7.
+		"ptpv2_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
