@@ -838,7 +838,30 @@ func TestRegistrySize(t *testing.T) {
 	// relay trip signals in modern digital
 	// substations; completes the substation trio
 	// PTPv2 + IEC 104 + GOOSE.
-	const expected = 389
+	// v0.312.0 added enip_decode (EtherNet/IP +
+	// CIP per ODVA CIP Vol 1+2 — 24-byte LE
+	// encapsulation header (Command + Length +
+	// Session Handle + Status + Sender Context +
+	// Options); 9-entry Command name table (NOP /
+	// ListServices / ListIdentity / ListInterfaces
+	// / RegisterSession / UnRegisterSession /
+	// SendRRData / SendUnitData / IndicateStatus /
+	// Cancel); 7-entry Status name table; Common
+	// Packet Format walker for SendRRData /
+	// SendUnitData with 8-entry item type name
+	// table (Null / ListIdentity_item /
+	// Connected_Address / Connected_Data /
+	// Unconnected_Data / ListServices_response /
+	// Sockaddr_O2T/T2O); CIP message decoder for
+	// Unconnected_Data items with 30+ entry
+	// service code name table (Get_Attribute_Single
+	// / Read_Tag / Write_Tag / Forward_Open ...)
+	// + 20+ entry general status name table. The
+	// dominant North American factory-floor PLC
+	// protocol; Allen-Bradley/Rockwell ControlLogix
+	// / CompactLogix / MicroLogix; completes the
+	// factory PLC trifecta with modbus + s7comm.
+	const expected = 390
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
