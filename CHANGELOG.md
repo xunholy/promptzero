@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.284.0] - 2026-05-20
+
+**Seventy-ninth native-fit gap: HSRP (Hot Standby Router
+Protocol) packet dissector per RFC 2281 (HSRPv1) and the
+Cisco HSRPv2 TLV extensions. HSRP is Cisco's proprietary
+first-hop gateway redundancy protocol — the sibling of VRRP
+(RFC 5798) that predates the IETF standard and is still
+extremely common in Cisco-heavy enterprise + datacenter
+cores. Pairs with `vrrp_decode` for the complete gateway-
+redundancy decode coverage.**
+
+### Added
+
+- **`hsrp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an HSRP packet into a structured view:
+
+  - **Version auto-detection** — byte 0 = 0 implies HSRPv1
+    (1-byte version, 19 more bytes); bytes 0-1 forming a
+    plausible (Type, Length) TLV pair (Type ∈ {1, 2, 3},
+    Length ∈ {40, 9, 28}) implies HSRPv2.
+  - **HSRPv1 fixed 20-byte packet** (RFC 2281 §5):
+    - byte 0: Version (0 for v1).
+    - byte 1: **Op Code** with **3-entry name table**: 0
+      Hello, 1 Coup, 2 Resign.
+    - byte 2: **State** with **6-entry name table**: 0
+      Initial, 1 Learn, 2 Listen, 4 Speak, 8 Standby, 16
+      Active (sparse 0/1/2/4/8/16 ladder so that bit-OR
+      comparisons can express transitions).
+    - byte 3: Hellotime (uint8 seconds; default 3).
+    - byte 4: Holdtime (uint8 seconds; default 10).
+    - byte 5: **Priority** — 0-255 with semantic notes:
+      - 0 = withdraw (router signalling shutdown)
+      - 100 = default Cisco priority
+      - 255 = maximum (always wins election)
+    - byte 6: Group (uint8 — HSRP group number; 0-255).
+    - byte 7: Reserved.
+    - bytes 8-15: **Authentication Data** — 8 bytes ASCII;
+      default 'cisco\\0\\0\\0' (deprecated cleartext auth
+      per RFC 2281 §3.5; surfaced as both decoded UTF-8
+      and raw hex).
+    - bytes 16-19: **Virtual IPv4 Address**.
+  - **HSRPv2 TLV envelope** — repeated (Type uint8, Length
+    uint8, Value) records. **3-entry TLV type table**:
+    - Type **1 Group State** (40-byte body) — Version + Op
+      Code + State + IP Version + uint16 Group + 6-byte MAC
+      identifier + uint32 Priority + uint32 Hello Time ms +
+      uint32 Hold Time ms + 16-byte Virtual IP slot
+      supporting both IPv4 (padded) and IPv6 (full).
+    - Type **2 Text Authentication** (9-byte body) — Auth
+      Type + 8-byte ASCII password.
+    - Type **3 MD5 Authentication** (28-byte body) —
+      Algorithm + Padding + Flags + IP + Key ID + 16-byte
+      digest (hex).
+
+- **Tooling** — registry capacity bumped from 360 → 361.
+
+### Out of scope
+
+- UDP framing (feed bytes after the UDP header strip —
+  HSRP runs over UDP port 1985 for v1 + v2 IPv4 or 2029
+  for v2 IPv6).
+- HSRP Authentication verification (text passwords are
+  surfaced as ASCII; MD5 digests as hex — verifying the
+  digest requires the receiver to know the shared key +
+  reconstruct the exact byte sequence the sender hashed
+  per RFC 2281 §3.5).
+- HSRP Master/Backup election simulation (Priority,
+  Hellotime, Holdtime are surfaced; the multi-router state
+  machine reasoning is higher-level).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational gateway-
+  redundancy protocol — Cisco-proprietary sibling to
+  `vrrp_decode`; still extremely common in enterprise +
+  datacenter cores where Cisco gear dominates).
+- Wrap-vs-native judgement: **native** — RFC 2281 is fully
+  public; v1 is a tight 20-byte fixed structure; HSRPv2
+  uses an explicit TLV envelope with well-defined body
+  sizes for each TLV type; no crypto at the parse layer.
+
 ## [0.283.0] - 2026-05-20
 
 **Seventy-eighth native-fit gap: PIM (Protocol Independent

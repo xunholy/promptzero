@@ -818,6 +818,23 @@ var toolLevels = func() map[string]Level {
 		// metric preference + metric. Pairs with
 		// igmp_decode for the host-side multicast picture.
 		"pim_decode",
+		// v0.284 (NATIVE-fit gap — Cisco-proprietary
+		// sibling to vrrp_decode): HSRPv1 per RFC 2281 +
+		// HSRPv2 TLV extensions. v1 = 20-byte fixed
+		// packet (Version + Op Code + State + Hellotime +
+		// Holdtime + Priority + Group + Reserved + 8-byte
+		// ASCII Auth Data + 4-byte Virtual IPv4); 3-entry
+		// Op Code table (Hello / Coup / Resign); 6-entry
+		// State name table (Initial / Learn / Listen /
+		// Speak / Standby / Active); priority semantic
+		// notes (0 = withdraw, 100 = default Cisco, 255 =
+		// maximum). v2 = TLV envelope (3-entry type table:
+		// Group State 40B / Text Auth 9B / MD5 Auth 28B)
+		// with v2 Group State adding IPv6 support + 6-byte
+		// router MAC ID + uint32 priority + sub-second
+		// timers. Still extremely common in Cisco-heavy
+		// enterprise + datacenter cores.
+		"hsrp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

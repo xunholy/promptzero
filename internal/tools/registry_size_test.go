@@ -500,7 +500,15 @@ func TestRegistrySize(t *testing.T) {
 	// support). Foundational router↔router multicast
 	// routing protocol; pairs with igmp_decode (host
 	// ↔router) for the complete IPv4 multicast picture.
-	const expected = 360
+	// v0.284.0 added hsrp_decode (HSRPv1 per RFC 2281 +
+	// Cisco HSRPv2 TLV extensions — 20-byte v1 fixed packet
+	// with 3-entry Op Code table + 6-entry State name table
+	// + priority semantic notes; v2 TLV envelope with
+	// 3-entry type table covering Group State 40B (IPv4 +
+	// IPv6) / Text Auth 9B / MD5 Auth 28B). Cisco-
+	// proprietary sibling to vrrp_decode; still extremely
+	// common in Cisco-heavy enterprise + datacenter cores.
+	const expected = 361
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
