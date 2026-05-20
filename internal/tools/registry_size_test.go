@@ -662,7 +662,18 @@ func TestRegistrySize(t *testing.T) {
 	// Hidden AVP detection). Pseudowire encapsulation
 	// pairing with pppoe_decode for ISP broadband
 	// subscriber backhaul + LI + L2 VPN services.
-	const expected = 376
+	// v0.300.0 (milestone) added esp_decode + ah_decode
+	// (IPsec ESP per RFC 4303 + AH per RFC 4302 in one
+	// internal/ipsec package; two Specs — +2 registry).
+	// ESP: 8-byte SPI+Sequence header + opaque encrypted
+	// payload preview. AH: 12-byte fixed header (Next
+	// Header + PayloadLength + Reserved + SPI +
+	// Sequence) + variable-length ICV (size derived
+	// from PL); 13-entry Next Header IP-protocol name
+	// table; SPI semantic notes. Universal IPsec data-
+	// plane protocols on every site-to-site VPN + IPsec
+	// remote-access deployment.
+	const expected = 378
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

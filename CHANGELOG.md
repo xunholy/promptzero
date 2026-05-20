@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.300.0] - 2026-05-20
+
+**v0.300 milestone — Ninety-fifth + Ninety-sixth native-fit
+gaps: IPsec ESP (RFC 4303) + AH (RFC 4302) data-plane
+decoders. ESP is the dominant IPsec protocol — every site-
+to-site VPN (between branch offices, between cloud VPCs,
+between on-prem and cloud) and every IPsec-based remote-
+access VPN (StrongSwan, OpenSwan, Cisco AnyConnect IPsec
+mode, Windows IPsec) wraps its payload in ESP. AH provides
+authentication without confidentiality and is less common
+today but remains in use for compliance + lawful-intercept
+scenarios where payload encryption is forbidden but
+integrity is required.**
+
+### Added
+
+- **`esp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an ESP packet (RFC 4303) into a structured view:
+
+  - **8-byte plaintext header**: 4-byte **SPI** (Security
+    Parameters Index — identifies the Security
+    Association) + 4-byte **Sequence Number** (per-SA
+    monotonic anti-replay counter).
+  - **SPI semantic notes**: SPI 0 is reserved for local
+    use, 1-255 are IANA-reserved for future allocation,
+    and ≥ 256 are negotiated by peer IKE agents.
+  - **Encrypted payload + trailer + ICV** (remainder
+    after the 8-byte header): surfaced as opaque hex
+    preview (default 256-byte cap). The encrypted blob
+    contains Padding + Pad Length + Next Header + ICV
+    (size determined by the negotiated integrity
+    algorithm: HMAC-SHA1-96 = 12 bytes, HMAC-SHA-256-128
+    = 16 bytes, AES-GMAC = 16 bytes).
+
+- **`ah_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an AH packet (RFC 4302) into a structured view:
+
+  - **12-byte fixed header** (RFC 4302 §2.1): 1-byte
+    **Next Header** (IP protocol number of the next
+    header) + 1-byte **Payload Length** (AH header length
+    in 32-bit words minus 2, so total header bytes = (PL
+    + 2) × 4) + 2-byte Reserved (RFC 4302 §2.2 requires
+    0; non-zero surfaces a Note) + 4-byte **SPI** + 4-byte
+    **Sequence Number**.
+  - **SPI semantic notes**: same as ESP — SPI 0 reserved
+    for local use, 1-255 IANA-reserved, ≥ 256 negotiated
+    by IKE peers.
+  - **Variable-length ICV** (Integrity Check Value): size
+    derived from Payload Length as (PL - 1) × 4 bytes.
+    For HMAC-SHA1-96 PL=4 → ICV=12 bytes; for HMAC-SHA-
+    256-128 PL=5 → ICV=16 bytes.
+  - **Next Header name table** — 13-entry table covering
+    the most common IP protocol numbers: 0 HOPOPT / 1
+    ICMP / 2 IGMP / 4 IPv4 (tunnel mode inner header) / 6
+    TCP / 17 UDP / 41 IPv6 (tunnel mode inner header) /
+    47 GRE / 50 ESP (chained IPsec) / 51 AH (chained
+    IPsec) / 58 ICMPv6 / 59 IPv6 No Next Header / 89
+    OSPF / 103 PIM / 112 VRRP / 132 SCTP.
+
+- **Tooling** — registry capacity bumped from 376 → 378
+  (two new Specs from one package).
+
+### Out of scope
+
+- IP framing (feed ESP / AH bytes after IPv4/IPv6 header
+  strip — ESP runs as IP protocol 50, AH as IP protocol
+  51).
+- Cryptographic decryption + integrity verification
+  (without the SA's IKE-negotiated key + algorithm, the
+  ESP payload is opaque ciphertext and AH ICV cannot be
+  verified; both surfaced as hex; full crypto is a future
+  IKE-state-aware iteration).
+- IKE (Internet Key Exchange, RFC 7296) — the control-
+  plane protocol that negotiates IPsec SAs (would warrant
+  its own Spec).
+- ESP-in-UDP / NAT-T encapsulation (RFC 3948) — UDP port
+  4500 with a 4-byte all-zeros marker distinguishes
+  ESP-NAT-T from IKE-NAT-T; feed the ESP bytes after
+  stripping the UDP + marker.
+- Tunnel-mode inner-IP-header dissection (once decrypted,
+  would feed into `ip_packet_decode`).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational IPsec
+  data-plane protocols; universal on every site-to-site
+  VPN + IPsec remote-access deployment).
+- Wrap-vs-native judgement: **native** — RFCs 4302 + 4303
+  are fully public; both protocols have tight fixed-
+  position headers; no crypto at the parse layer.
+
 ## [0.299.0] - 2026-05-20
 
 **Ninety-fourth native-fit gap: L2TPv3 packet dissector per

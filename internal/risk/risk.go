@@ -1138,6 +1138,25 @@ var toolLevels = func() map[string]Level {
 		// OCCN/ICRQ/ICRP/ICCN/CDN/WEN/SLI/ACK); Hidden
 		// (encrypted) AVP detection.
 		"l2tp_v3_decode",
+		// v0.300 (NATIVE-fit gap — IPsec data-plane
+		// protocols, milestone release): ESP per RFC
+		// 4303 + AH per RFC 4302 in one internal/ipsec
+		// package, two Specs. ESP: 8-byte plaintext
+		// header (SPI + Sequence) + opaque encrypted
+		// payload + trailer + ICV (surfaced as hex
+		// preview). AH: 12-byte fixed header (Next
+		// Header + Payload Length + Reserved + SPI +
+		// Sequence) + variable-length ICV (size derived
+		// from PL field). 13-entry Next Header IP-
+		// protocol name table for AH (TCP/UDP/ICMP/
+		// IPv4/IPv6 tunnel-mode/GRE/ESP/AH chained/
+		// ICMPv6/OSPF/PIM/SCTP). SPI semantic notes (0
+		// reserved, 1-255 IANA-reserved, ≥256
+		// negotiated). Universal IPsec data-plane on
+		// every site-to-site VPN + IPsec remote-access
+		// deployment.
+		"esp_decode",
+		"ah_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
