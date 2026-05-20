@@ -1267,6 +1267,24 @@ var toolLevels = func() map[string]Level {
 		// UDP/319 (event) + UDP/320 (general) or EtherType
 		// 0x88F7.
 		"ptpv2_decode",
+		// v0.307 native-fit gap: someip_decode is a pure
+		// offline dissector for SOME/IP per AUTOSAR R23-11
+		// — 16-byte header (Service ID + Method ID with
+		// high-bit event marker + Length + Client ID +
+		// Session ID + Protocol/Interface Version +
+		// Message Type with TP-bit + Return Code); 8-entry
+		// messageType name table (REQUEST /
+		// REQUEST_NO_RETURN / NOTIFICATION / *_ACK /
+		// RESPONSE / ERROR); 12-entry returnCode name
+		// table (E_OK through E_E2E_REPEATED, plus
+		// application-specific 0x20-0x5E); SOME/IP-SD body
+		// decoder (Service 0xFFFF + Method 0x8100) with
+		// Reboot/Unicast flags + Entries[] (Service +
+		// Eventgroup variants with TTL=0 stop-semantics)
+		// + Options[] (IPv4/IPv6 endpoint with L4 + port).
+		// The automotive Ethernet RPC companion to
+		// canbus_*.
+		"someip_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

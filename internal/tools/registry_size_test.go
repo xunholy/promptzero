@@ -741,7 +741,26 @@ func TestRegistrySize(t *testing.T) {
 	// 5G/telecom fronthaul, finance HFT timestamping,
 	// industrial TSN (IEEE 802.1AS gPTP), power-grid
 	// IEC 61850, and SMPTE ST 2110 broadcast media.
-	const expected = 384
+	// v0.307.0 added someip_decode (SOME/IP per AUTOSAR
+	// R23-11 — 16-byte header with Service ID + Method
+	// ID + Length + Client/Session ID + Protocol/
+	// Interface Version + Message Type with TP-bit +
+	// Return Code; 8-entry messageType name table
+	// REQUEST through ERROR including *_ACK variants;
+	// 12-entry returnCode name table E_OK through
+	// E_E2E_REPEATED; SOME/IP-SD body decoder for
+	// Service Discovery on UDP/30490 with Reboot/
+	// Unicast flags, Entries[] (Service + Eventgroup
+	// variants with TTL=0 stop-semantics), Options[]
+	// (IPv4/IPv6 endpoint family decoded into IP + L4
+	// + port); 8-entry SD entry type name table; 8-
+	// entry SD option type name table). The automotive
+	// Ethernet RPC + pub/sub bus alongside CAN/CAN-FD;
+	// drives ADAS sensor feeds, IVI/cluster signalling,
+	// inter-domain controller traffic in zonal
+	// architectures (Tesla, Rivian, VW MEB+, BMW Neue
+	// Klasse).
+	const expected = 385
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
