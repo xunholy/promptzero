@@ -878,7 +878,29 @@ func TestRegistrySize(t *testing.T) {
 	// Siemens Profinet networks; EtherType 0x8892
 	// L2-only; pairs with s7comm_decode for full
 	// Siemens-shop ICS pentest coverage.
-	const expected = 391
+	// v0.314.0 added usb_badusb_classify
+	// (top-30 #10 from docs/catalog/gap-analysis.md
+	// — sole forensic-side native-fit primitive on
+	// the list). Reconstructs keystrokes + a
+	// DuckyScript-style transcript from a stream of
+	// USB HID Keyboard Boot Protocol reports (8-byte
+	// reports: modifier bitmap + reserved + 6 HID
+	// Usage codes). 80+ entry HID Usage code name +
+	// Shift-variant table covering a..z / 1..9 0 /
+	// Enter / Escape / Backspace / Tab / Space /
+	// punctuation row / Caps Lock / F1..F12 / Home
+	// / PageUp / Delete / End / PageDown / arrow
+	// keys; key-down event detection by report-to-
+	// report diffing; Caps Lock state tracking;
+	// reconstructed text + DuckyScript v1-style
+	// transcript with STRING folding for consecutive
+	// printable characters + non-printable keyword
+	// mapping (ENTER / ESC / TAB / GUI / CTRL +
+	// arrow + F-keys) + modifier+key combos. The
+	// defensive sibling of the badusb_* generation
+	// family; incident-response forensics on
+	// suspected BadUSB attacks from a usbmon pcap.
+	const expected = 392
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -1405,6 +1405,23 @@ var toolLevels = func() map[string]Level {
 		// bootstrap discovery protocol for Siemens
 		// Profinet networks; pairs with s7comm_decode.
 		"profinet_dcp_decode",
+		// v0.314 native-fit gap (top-30 #10):
+		// usb_badusb_classify is the defensive sibling
+		// of the badusb_* family — reconstructs
+		// keystrokes + a DuckyScript-style transcript
+		// from a stream of USB HID Keyboard Boot
+		// Protocol reports (8-byte reports: modifier
+		// bitmap + 6 active HID Usage codes). 80+ entry
+		// HID Usage code name + Shift-variant table;
+		// key-down event detection by report-to-report
+		// diffing; Caps Lock state tracking;
+		// reconstructed text + DuckyScript v1-style
+		// transcript with STRING folding + modifier/key
+		// combinations + non-printable keyword mapping
+		// (ENTER / ESC / GUI / CTRL / arrow keys /
+		// F-keys). Forensic primitive for incident
+		// response on suspected BadUSB attacks.
+		"usb_badusb_classify",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
