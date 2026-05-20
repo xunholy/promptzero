@@ -1198,6 +1198,23 @@ var toolLevels = func() map[string]Level {
 		// Type 2 + Type 3 messages feed directly into
 		// hashcat for offline password recovery.
 		"ntlm_decode",
+		// v0.303 (NATIVE-fit gap — modern NAT/firewall
+		// config protocol): PCP per RFC 6887. Supersedes
+		// NAT-PMP (RFC 6886); adds IPv6 + peer-mapping +
+		// TLV options. Universal in residential broadband
+		// CPE + CGNAT enforcement; used by uTorrent /
+		// Tailscale's libpcp / libnatpmp / miniupnpd.
+		// UDP port 5351. 24-byte common header with R-bit
+		// dispatch; 3-entry opcode table (ANNOUNCE / MAP
+		// / PEER); request/response header decoders; MAP
+		// body (Nonce + Protocol + Internal Port +
+		// Suggested External Port + IPv6-mapped External
+		// IP); PEER body (MAP + Remote Peer Port +
+		// Address); 14-entry Result Code name table;
+		// 5-entry option code name table (THIRD_PARTY /
+		// PREFER_FAILURE / FILTER / NAT64_PREFIX /
+		// PORT_SET); 10-entry IP-protocol name table.
+		"pcp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -696,7 +696,18 @@ func TestRegistrySize(t *testing.T) {
 	// DCERPC; high pentest + DFIR value as Type 2 + 3
 	// messages feed directly into hashcat for offline
 	// password recovery.
-	const expected = 380
+	// v0.303.0 added pcp_decode (PCP per RFC 6887 — 24-
+	// byte common header with R-bit + 3-entry opcode
+	// table (ANNOUNCE / MAP / PEER); request/response
+	// header decoders; MAP/PEER opcode bodies with
+	// IPv6-mapped addresses; 14-entry Result Code name
+	// table; 5-entry option code name table; 10-entry
+	// IP-protocol name table). Modern NAT/firewall
+	// config protocol on UDP port 5351 — supersedes
+	// NAT-PMP; universal in residential broadband CPE +
+	// CGNAT enforcement; consumed by uTorrent /
+	// Tailscale / libpcp / libnatpmp / miniupnpd.
+	const expected = 381
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
