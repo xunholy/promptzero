@@ -7,6 +7,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.286.0] - 2026-05-20
+
+**Eighty-first native-fit gap: libpcap classic `.pcap` file
+inspector — the universal packet-capture container behind
+every tcpdump capture, every Wireshark save, every aircrack-
+ng dump, every PMKID capture from a Marauder, every Sub-GHz
+RTL-SDR recording converted to pcap. Operators routinely get
+handed a `.pcap` and need to extract the link type + time
+window + record count *before* pulling individual frames out
+for one of the 80+ existing protocol decoders. This is the
+meta-tool that surfaces the container so the existing
+decoder catalog can consume its frames.**
+
+### Added
+
+- **`pcap_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a classic libpcap file into a structured metadata view:
+
+  - **Global header (24 bytes)**:
+    - 4-byte **magic** dispatching on endianness +
+      timestamp resolution: 0xA1B2C3D4 LE-µs / 0xD4C3B2A1
+      BE-µs / 0xA1B23C4D LE-ns / 0x4D3CB2A1 BE-ns.
+    - 2-byte **Version Major** + 2-byte **Version Minor**
+      (expected 2.4 for classic libpcap; mismatch surfaces a
+      Note).
+    - 4-byte this_zone (GMT-to-local offset; always 0).
+    - 4-byte sig_figs (timestamp accuracy; always 0).
+    - 4-byte **Snap Length** (max captured bytes per
+      record).
+    - 4-byte **Network** (LINKTYPE_*).
+  - **~35-entry LINKTYPE name table** — NULL (BSD loopback)
+    / ETHERNET / IEEE802_5 (Token Ring) / ARCNET_BSD /
+    SLIP / PPP / FDDI / PPP_HDLC / PPP_ETHER / ATM /
+    RAW (raw IPv4/v6) / C_HDLC / IEEE802_11 / FRELAY /
+    LOOP (OpenBSD loopback) / LINUX_SLL (cooked v1) /
+    LTALK / PRISM_HEADER / IEEE802_11_RADIOTAP /
+    APPLE_IP_OVER_IEEE1394 / MTP2 / MTP3 / SCCP / DOCSIS /
+    IEEE802_15_4_WITHFCS / BLUETOOTH_HCI_H4 / USB_LINUX /
+    PPI / SITA / LAPD / IEEE802_15_4_NOFCS / IPV4 / IPV6 /
+    NFLOG / NETANALYZER / DBUS / USBPCAP / INFINIBAND /
+    ZIGBEE_PSI / IEEE802_15_4_TAP / LINUX_SLL2 (cooked
+    v2) / ZWAVE_TAP. Uncatalogued values surface as
+    `LINKTYPE_<n> (uncatalogued)` with the raw number
+    preserved.
+  - **Per-record header (16 bytes)** repeated: 4-byte
+    ts_sec + 4-byte ts_frac (µs or ns per magic) + 4-byte
+    **captured length** + 4-byte **original length**.
+  - **Record summary view** — per-record timestamp decoded
+    to RFC 3339 nanosecond ISO form, captured + original
+    lengths, configurable hex preview of the first N bytes
+    of payload (default 32 bytes).
+  - **Aggregate fields** — RecordCount + TotalRecordBytes +
+    first/last timestamp + DurationSeconds (computed across
+    the full file walk, even when the per-record summary
+    list is capped for output size).
+  - **Truncation detection** — a record whose declared
+    captured_length runs off the end of the file is flagged
+    via `truncated: true` plus a Note; trailing bytes after
+    the last complete record header are also flagged.
+  - **Configurable caps** — `max_records` (default 50) and
+    `max_payload_bytes` (default 32) keep output bounded
+    for large captures.
+
+- **Tooling** — registry capacity bumped from 362 → 363.
+
+### Out of scope
+
+- PCAPng (newer block-based format used by Wireshark since
+  2018 — different envelope, different block-walker; would
+  warrant its own Spec).
+- Per-record dissection (the operator pulls individual
+  frames out of the hex preview and feeds them into the
+  existing 80+ protocol-specific decoders chosen by the
+  LINKTYPE: `ip_packet_decode`, `wifi_80211_decode`,
+  `bluetooth_cod_decode`, `ieee802154_decode`, etc.).
+- pcap capture (this is a *file* reader, not a live-capture
+  interface).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (universal packet-capture
+  container — every other decoder in the catalog ultimately
+  consumes bytes that came out of a pcap file).
+- Wrap-vs-native judgement: **native** — the libpcap
+  classic file format is fully public; uses a 24-byte
+  global header with a 4-magic endianness/resolution
+  dispatch and a 16-byte per-record header followed by raw
+  payload bytes; no crypto, no compression.
+
 ## [0.285.0] - 2026-05-20
 
 **Eightieth native-fit gap: LACP (Link Aggregation Control

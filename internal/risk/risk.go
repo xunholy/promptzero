@@ -853,6 +853,26 @@ var toolLevels = func() map[string]Level {
 		// visibility gap alongside lldp_decode +
 		// cdp_decode + stp_bpdu_decode.
 		"lacp_decode",
+		// v0.286 (NATIVE-fit gap — universal packet-
+		// capture container): libpcap classic '.pcap'
+		// file inspector. 24-byte global header with
+		// 4-magic dispatch on endianness × timestamp
+		// resolution (0xA1B2C3D4 LE-µs / 0xD4C3B2A1 BE-µs
+		// / 0xA1B23C4D LE-ns / 0x4D3CB2A1 BE-ns) +
+		// version 2.4 check + ~35-entry LINKTYPE_* name
+		// table (NULL / ETHERNET / RAW / IEEE802_11 /
+		// LINUX_SLL / RADIOTAP / BLUETOOTH_HCI_H4 /
+		// IEEE802_15_4 / IPV4 / IPV6 / USBPCAP / NFLOG /
+		// LINUX_SLL2 / ZWAVE_TAP and 20+ more); 16-byte
+		// per-record header (ts_sec + ts_frac + caplen +
+		// origlen) + N-byte payload preview;
+		// configurable per-record + per-payload caps;
+		// first/last timestamp + duration computed across
+		// full file; truncation detection. Every other
+		// decoder in the catalog ultimately consumes
+		// bytes that came out of a pcap file — this is
+		// the meta-tool that surfaces the container.
+		"pcap_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

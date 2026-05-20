@@ -515,7 +515,17 @@ func TestRegistrySize(t *testing.T) {
 	// Collector 14-byte body). Closes a key L2 visibility
 	// gap alongside lldp_decode + cdp_decode + stp_bpdu_
 	// decode for the complete control-plane picture.
-	const expected = 362
+	// v0.286.0 added pcap_decode (libpcap classic '.pcap'
+	// file inspector — 24-byte global header with 4-magic
+	// dispatch + ~35-entry LINKTYPE_* name table + 16-byte
+	// per-record header walker + N-byte payload preview;
+	// configurable record + payload caps; first/last
+	// timestamp + duration). Universal packet-capture
+	// container behind every tcpdump / Wireshark file;
+	// meta-tool that surfaces the container so operators
+	// can extract metadata + frames to feed into the 80+
+	// existing protocol-specific decoders.
+	const expected = 363
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
