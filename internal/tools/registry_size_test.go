@@ -684,7 +684,19 @@ func TestRegistrySize(t *testing.T) {
 	// payload surfaced as opaque hex with key-state
 	// note). Universal on every site-to-site VPN +
 	// IPsec remote-access deployment.
-	const expected = 379
+	// v0.302.0 added ntlm_decode (NTLM / MS-NLMP message
+	// dissector — auto-detect by NTLMSSP\0 signature +
+	// MessageType; 3-entry message type table NEGOTIATE
+	// / CHALLENGE / AUTHENTICATE; per-type body decoders
+	// with Field triple resolution; ~22-entry
+	// NegotiateFlags named-bit set; 10-entry AV pair
+	// AvId name table; Version structure decode).
+	// Universal Windows authentication on every AD-
+	// joined network; embedded in SMB / HTTP / LDAP /
+	// DCERPC; high pentest + DFIR value as Type 2 + 3
+	// messages feed directly into hashcat for offline
+	// password recovery.
+	const expected = 380
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

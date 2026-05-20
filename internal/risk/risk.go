@@ -1177,6 +1177,27 @@ var toolLevels = func() map[string]Level {
 		// payload surfaced as opaque hex with key-state
 		// note.
 		"ike_v2_decode",
+		// v0.302 (NATIVE-fit gap — Windows auth on every
+		// AD-joined network): NTLM (MS-NLMP) message
+		// dissector. Auto-detect via 8-byte "NTLMSSP\0"
+		// signature + 4-byte little-endian MessageType.
+		// 3-entry message type table (NEGOTIATE / CHALLENGE
+		// / AUTHENTICATE). Per-type body decoders: Type 1
+		// with NegotiateFlags + Domain + Workstation
+		// fields + optional Version; Type 2 with
+		// TargetName + 8-byte ServerChallenge +
+		// TargetInfo AV pair walker; Type 3 with
+		// LmChallengeResponse + NtChallengeResponse (the
+		// hashcat-crackable response) + DomainName +
+		// UserName + Workstation + EncryptedSessionKey.
+		// ~22-entry NegotiateFlags named-bit set; 10-
+		// entry AvId name table; 8-byte Version structure
+		// decode. Universal in SMB / HTTP / LDAP /
+		// DCERPC on Windows-heavy enterprise + AD-joined
+		// infrastructure. High pentest + DFIR value as
+		// Type 2 + Type 3 messages feed directly into
+		// hashcat for offline password recovery.
+		"ntlm_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

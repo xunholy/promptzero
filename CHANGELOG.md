@@ -7,6 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.302.0] - 2026-05-20
+
+**Ninety-eighth native-fit gap: NTLM (NT LAN Manager)
+message dissector per Microsoft Open Protocol Specifications
+MS-NLMP. NTLM is the challenge-response authentication
+protocol used pervasively on Windows networks — SMB/CIFS
+sessions (in SESSION_SETUP_ANDX), HTTP IIS/Exchange/
+SharePoint (`Authorization: NTLM <base64>`), LDAP/LDAPS
+binds (as a SASL mechanism when Kerberos is unavailable),
+legacy MS-RPC/DCERPC over named pipes (in DCE bind PDUs).
+Universally observed in Windows-heavy enterprise + AD-
+joined infrastructure even in Kerberos-preferring
+deployments (NTLM remains a fallback for non-domain
+access, legacy applications, and stale device caches).
+High pentest + DFIR value — Type 2 ServerChallenge + Type
+3 NtChallengeResponse feed directly into hashcat modes
+5500 / 5600 for offline password recovery.**
+
+### Added
+
+- **`ntlm_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an NTLM message into a structured view:
+
+  - **12-byte common header**: 8-byte ASCII signature
+    `NTLMSSP\x00` (validated; mismatches return error) +
+    4-byte **MessageType** (little-endian uint32) with
+    **3-entry name table**: 1 NEGOTIATE_MESSAGE / 2
+    CHALLENGE_MESSAGE / 3 AUTHENTICATE_MESSAGE.
+  - **NEGOTIATE_MESSAGE (Type 1)** body: NegotiateFlags +
+    Domain fields (Len/MaxLen/Offset) + Workstation fields
+    + optional Version + payload strings (encoded per
+    OEM/UNICODE flag).
+  - **CHALLENGE_MESSAGE (Type 2)** body: TargetName fields
+    + NegotiateFlags + **8-byte ServerChallenge** + Reserved
+    + TargetInfo fields + optional Version + payload.
+  - **AV Pair walker** (inside CHALLENGE TargetInfo):
+    (AvId uint16 LE + AvLen uint16 LE + Value) records
+    ending at AvId 0 (MsvAvEOL). **10-entry AvId name
+    table**: MsvAvNbComputerName / MsvAvNbDomainName /
+    MsvAvDnsComputerName / MsvAvDnsDomainName /
+    MsvAvDnsTreeName / MsvAvFlags / MsvAvTimestamp /
+    MsvAvSingleHost / MsvAvTargetName /
+    MsvAvChannelBindings. Values 1-5 surfaced as decoded
+    UTF-16LE text.
+  - **AUTHENTICATE_MESSAGE (Type 3)** body:
+    LmChallengeResponse fields + **NtChallengeResponse
+    fields** + DomainName + UserName + Workstation +
+    EncryptedRandomSessionKey + NegotiateFlags + optional
+    Version + optional MIC.
+  - **NegotiateFlags decode** (MS-NLMP §2.2.2.5) — **~22-
+    entry named-bit set**: NEGOTIATE_UNICODE / NEGOTIATE_
+    OEM / REQUEST_TARGET / NEGOTIATE_SIGN / NEGOTIATE_SEAL
+    / NEGOTIATE_DATAGRAM / NEGOTIATE_LM_KEY / NEGOTIATE_
+    NTLM / ANONYMOUS_CONNECTION / NEGOTIATE_OEM_DOMAIN_
+    SUPPLIED / NEGOTIATE_OEM_WORKSTATION_SUPPLIED /
+    NEGOTIATE_ALWAYS_SIGN / TARGET_TYPE_DOMAIN / TARGET_
+    TYPE_SERVER / NEGOTIATE_EXTENDED_SESSIONSECURITY /
+    NEGOTIATE_TARGET_INFO / NEGOTIATE_IDENTIFY / REQUEST_
+    NON_NT_SESSION_KEY / NEGOTIATE_TARGET_INFO_AV_PAIRS /
+    NEGOTIATE_VERSION / NEGOTIATE_128 / NEGOTIATE_KEY_EXCH
+    / NEGOTIATE_56.
+  - **Version structure** — when NEGOTIATE_VERSION flag
+    set: Major + Minor + Build + Reserved +
+    NTLMRevisionCurrent (rendered as canonical
+    `X.Y build N (NTLM revision R)` string).
+
+- **Tooling** — registry capacity bumped from 379 → 380.
+
+### Out of scope
+
+- Transport framing (NTLM is embedded inside SMB / HTTP /
+  LDAP / DCERPC — caller extracts the raw NTLMSSP blob
+  before feeding into this Spec; base64 decoding is
+  caller's job for HTTP).
+- Cryptographic verification of NT/LM responses (surfaced
+  as hex; verifying an NTLMv1 / NTLMv2 response requires
+  the user's NT hash and the matching Type 2 server
+  challenge — operators use hashcat mode 5500 / 5600
+  against the surfaced challenge + response).
+- MIC verification (requires the session key derived from
+  KXKEY + SIGNKEY material that's not in the wire
+  payload).
+- SPNEGO wrapper (when NTLM is the inner mechanism in a
+  GSS-API negotiation, strip the outer SPNEGO ASN.1
+  first; this Spec expects an NTLMSSP blob not wrapped
+  in SPNEGO).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational Windows
+  authentication protocol; universal in SMB / HTTP / LDAP
+  / DCERPC on every AD-joined Windows network; high
+  pentest + DFIR value).
+- Wrap-vs-native judgement: **native** — MS-NLMP is
+  publicly documented; the wire format is straightforward
+  (signature + type + fixed-position header + (Len,
+  MaxLen, Offset) field triples + payload strings); no
+  crypto at the parse layer.
+
 ## [0.301.0] - 2026-05-20
 
 **Ninety-seventh native-fit gap: IKEv2 (Internet Key
