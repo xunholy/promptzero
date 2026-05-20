@@ -777,7 +777,25 @@ func TestRegistrySize(t *testing.T) {
 	// telemetry; pairs with modbus_decode for full
 	// industrial coverage; complements PTPv2's IEC
 	// 61850 substation positioning.
-	const expected = 386
+	// v0.309.0 added iec104_decode (IEC 60870-5-104
+	// per IEC TC57 — 6-byte APCI (0x68 sync + Length
+	// + 4-byte Control field) with I/S/U-format
+	// dispatch on the low 2 bits of control byte 0;
+	// I-format 15-bit Send/Receive sequence numbers;
+	// U-format STARTDT/STOPDT/TESTFR act+con function
+	// bit name set; 6-byte ASDU header (Type ID +
+	// Variable Structure Qualifier with SQ +
+	// numElements + 2-byte Cause of Transmission with
+	// P/N + T bits + originator address + 2-byte
+	// Common Address LE); 40+ entry Type Identification
+	// name table (M_SP/DP/ME/IT_*/C_SC/DC/SE/IC/CS_*/
+	// F_FR/SR/SC/LS/AF/SG/DR_*); 20-entry Cause of
+	// Transmission name table (per/cyc / spont / act /
+	// actcon / inrogen / reqcogen / unknown_*). The
+	// European/Asian utility-SCADA counterpart to
+	// DNP3; dominant on substation/control-centre
+	// boundary in EU + Asia power-grid operators.
+	const expected = 387
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

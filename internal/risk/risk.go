@@ -1312,6 +1312,22 @@ var toolLevels = func() map[string]Level {
 		// grid, water, and oil-and-gas telemetry. Default
 		// TCP port 20000.
 		"dnp3_decode",
+		// v0.309 native-fit gap: iec104_decode is a pure
+		// offline dissector for IEC 60870-5-104 APDUs —
+		// 6-byte APCI (0x68 sync + Length + 4-byte
+		// Control field) + three frame formats (I/S/U
+		// dispatched on low 2 bits of control byte 0);
+		// U-format function bits (STARTDT/STOPDT/TESTFR
+		// act+con); I-format 6-byte ASDU header (Type ID
+		// + Variable Structure Qualifier + Cause of
+		// Transmission with P/N + T bits + originator
+		// address + Common Address); 40+ entry Type ID
+		// name table; 20-entry Cause name table. The
+		// EU/Asia counterpart to dnp3_decode; default TCP
+		// port 2404; dominant on substation/control-
+		// centre boundary in European + Asian power-grid
+		// operators.
+		"iec104_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
