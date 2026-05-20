@@ -1489,6 +1489,25 @@ var toolLevels = func() map[string]Level {
 		// Zigbee/6LoWPAN gateway backhaul + industrial
 		// sensor telemetry.
 		"mqtt_sn_decode",
+		// v0.318 native-fit gap: ssdp_decode is a pure
+		// offline dissector for SSDP (Simple Service
+		// Discovery Protocol) per UPnP Device
+		// Architecture 1.1 — HTTP-over-UDP on multicast
+		// 239.255.255.250:1900. Three message kinds
+		// (M-SEARCH request / NOTIFY announcement /
+		// HTTP/1.1 search response); case-insensitive
+		// header parser surfacing canonical UPnP
+		// fields (Host / Cache-Control with max-age
+		// extraction / Location / Server / ST / USN
+		// with usn_uuid + usn_nt deconstruction / NT /
+		// NTS / MAN / MX / BOOTID.UPNP.ORG /
+		// CONFIGID.UPNP.ORG / SEARCHPORT.UPNP.ORG);
+		// vendor headers surfaced as generic
+		// other_headers map. Foundational IoT/
+		// consumer-network reconnaissance protocol;
+		// common in CTF + home-network pentest + UPnP-
+		// IGD attack chains.
+		"ssdp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

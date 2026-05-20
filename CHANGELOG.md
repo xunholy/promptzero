@@ -7,6 +7,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.318.0] - 2026-05-21
+
+**114th native-fit decoder: SSDP (Simple Service
+Discovery Protocol) message dissector per the UPnP
+Device Architecture 1.1 (UPnP Forum, 2008). SSDP is
+the foundational discovery layer for UPnP + DLNA + a
+broad swath of consumer IoT devices — smart TVs,
+streaming receivers, media servers, NAS units,
+network printers, routers (UPnP-IGD), smart-home
+hubs, and any device that wants to advertise its
+presence on a LAN without prior configuration. Runs
+over multicast UDP to 239.255.255.250:1900 (IPv4) or
+[FF02::C]:1900 (IPv6 link-local). HTTP-over-UDP:
+every SSDP packet is a complete HTTP/1.1 request or
+response line followed by Key: Value headers and a
+blank line; no body. Operationally interesting to an
+attacker tapping into a consumer / SMB network
+because (i) every UPnP device sends NOTIFY
+announcements at ~30-minute intervals plus on every
+reboot; (ii) USN/LOCATION/SERVER/ST/NT headers leak
+device UUID + vendor description URL + OS + UPnP
+version + product name + device type URN; (iii) UPnP-
+IGD reachability has historically been the entry
+point for unauthenticated NAT-traversal attacks
+(CVE-2020-12695 CallStranger).**
+
+### Added
+
+- **`ssdp_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an SSDP message into a structured view:
+
+  - **Three message kinds** discriminated by the
+    first whitespace-delimited token of the first
+    line: `M-SEARCH * HTTP/1.1` (search request
+    with `ST` Search Target + `MAN` = `"ssdp:discover"`
+    + `MX` Maximum response delay + `HOST`),
+    `NOTIFY * HTTP/1.1` (periodic device
+    advertisement with `NT` Notification Type + `NTS`
+    Notification Subtype: `ssdp:alive` /
+    `ssdp:byebye` / `ssdp:update` + `USN` Unique
+    Service Name + `LOCATION` + `SERVER` +
+    `CACHE-CONTROL`), `HTTP/1.1 200 OK` (unicast
+    search response with `ST` + `USN` + `LOCATION`
+    + `SERVER` + `CACHE-CONTROL`).
+
+  - **Header parser** with case-insensitive key
+    matching (RFC 7230). Surfaces canonical UPnP
+    fields as dedicated typed fields: `Host`,
+    `Cache-Control` (with `max-age=N` extraction as
+    `cache_max_age_seconds`), `Location`, `Server`,
+    `ST` (Search Target), `USN` (Unique Service
+    Name — with deconstruction into `usn_uuid` +
+    `usn_nt` when of form `uuid:<UUID>::<NT>`),
+    `NT` (Notification Type), `NTS` (Notification
+    Subtype), `MAN`, `MX`, `BOOTID.UPNP.ORG`,
+    `CONFIGID.UPNP.ORG`, `SEARCHPORT.UPNP.ORG`.
+
+  - **Vendor / non-standard headers** surfaced as
+    a generic `other_headers` map (vendor-specific
+    headers like `01-NLS:` for AXIS IP cameras or
+    `X-RINCON-HOUSEHOLD:` for Sonos groups are
+    common).
+
+  Pure offline parser — operators paste SSDP bytes
+  (the UDP payload as hex) from a `tcpdump -X port
+  1900` line or a Wireshark SSDP dissector view
+  and get the documented start-line + header
+  breakdown + canonical UPnP fields.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the UDP-datagram header strip; UDP
+  port 1900 multicast + occasional UDP/1900
+  unicast for search responses); UPnP Description
+  XML fetch (the `LOCATION` header points at a
+  per-device `rootDesc.xml` — fetching + parsing
+  that XML is a follow-on step); UPnP Control /
+  Eventing SOAP (the `controlURL` + `eventSubURL`
+  from the description XML are SOAP endpoints with
+  per-action shapes); SSDP-over-IPv6 (same wire
+  format runs to [FF02::C]:1900 link-local,
+  [FF05::C]:1900 site-local, [FF08::C]:1900
+  organisation-local — this decoder treats the
+  bytes identically regardless of transport); DLNA
+  / OCF extensions (additional headers surfaced
+  via the generic `other_headers` map); mDNS /
+  DNS-SD discovery (parallel discovery protocol on
+  UDP/5353 with DNS-style wire format — separate
+  decoder).
+
+  Source: docs/catalog/gap-analysis.md (UPnP /
+  consumer-IoT discovery dissector — foundational
+  IoT/consumer-network reconnaissance protocol;
+  common in DEF CON Wireless / Recon Village CTFs +
+  home-network pentests + UPnP-IGD WAN-port-
+  forwarding attack chains). Wrap-vs-native: native
+  — SSDP is a tiny text-based protocol with three
+  message kinds + CRLF-terminated lines + a flat
+  header set; the UPnP Device Architecture 1.1
+  spec is publicly available; no crypto at the
+  parse layer.
+
+### Changed
+
+- Registry capacity is now **396** Specs (was 395). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.317.0] - 2026-05-21
 
 **113th native-fit decoder: MQTT-SN (MQTT for Sensor

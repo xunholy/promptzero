@@ -988,7 +988,31 @@ func TestRegistrySize(t *testing.T) {
 	// MQTT-family coverage; common in
 	// LoRaWAN/Zigbee/6LoWPAN gateway backhaul +
 	// industrial sensor telemetry.
-	const expected = 395
+	// v0.318.0 added ssdp_decode (Simple Service
+	// Discovery Protocol per UPnP Device
+	// Architecture 1.1 — HTTP-over-UDP on
+	// multicast 239.255.255.250:1900). Three
+	// message kinds (M-SEARCH / NOTIFY /
+	// HTTP/1.1 response); case-insensitive header
+	// parser surfacing canonical UPnP fields
+	// (Host / Cache-Control with max-age
+	// extraction / Location / Server / ST
+	// (Search Target) / USN with usn_uuid +
+	// usn_nt deconstruction / NT (Notification
+	// Type) / NTS (Notification Subtype:
+	// ssdp:alive / ssdp:byebye / ssdp:update) /
+	// MAN / MX / BOOTID.UPNP.ORG /
+	// CONFIGID.UPNP.ORG / SEARCHPORT.UPNP.ORG);
+	// vendor / non-standard headers surfaced as a
+	// generic other_headers map. Foundational
+	// UPnP / consumer-IoT discovery layer used by
+	// smart TVs, streaming receivers, media
+	// servers, NAS units, network printers,
+	// routers (UPnP-IGD), smart-home hubs; common
+	// in DEF CON Wireless / Recon Village CTFs +
+	// home-network pentests + UPnP-IGD WAN-port-
+	// forwarding attack chains.
+	const expected = 396
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
