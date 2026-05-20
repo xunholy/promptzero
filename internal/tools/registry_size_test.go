@@ -639,7 +639,19 @@ func TestRegistrySize(t *testing.T) {
 	// IPFIX; dominant on post-2010 Cisco/Juniper/Arista
 	// enterprise + carrier gear; completes the netflow
 	// _v5 + netflow_v9 + sflow_v5 telemetry trio.
-	const expected = 374
+	// v0.298.0 added ipfix_decode (IPFIX per RFC 7011 —
+	// IETF standardization of NetFlow v9; 16-byte
+	// header + Set walker with 3-kind table; Template
+	// Set with enterprise-bit-extended field specifiers
+	// + ~45-entry IPFIX IE camelCase name table; Options
+	// Template Set with scope/option field split; Data
+	// Set surfaced as raw hex annotated with referencing
+	// Template ID). Used by Linux iptables/nftables flow
+	// exporters, Cisco ASR/NCS, ntopng, akvorado,
+	// GoFlow2, pmacct, every modern flow collector;
+	// completes the v5 + v9 + IPFIX + sFlow flow-
+	// telemetry quartet.
+	const expected = 375
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

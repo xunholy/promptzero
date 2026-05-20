@@ -1099,6 +1099,26 @@ var toolLevels = func() map[string]Level {
 		// raw hex annotated with referencing Template ID
 		// pending stateful template cache).
 		"netflow_v9_decode",
+		// v0.298 (NATIVE-fit gap — IETF standardization
+		// of NetFlow v9): IPFIX per RFC 7011. Differs
+		// from v9 in: 16-byte header (drops Source ID,
+		// adds explicit Length, renames per-exporter ID
+		// to Observation Domain ID); Enterprise-bit-
+		// extended Field Specifiers (high bit of Field
+		// Type signals 4-byte Enterprise Number after the
+		// (15-bit Field Type, Length) pair); Set IDs
+		// reserved 0-3 (2 Template, 3 Options Template,
+		// 256+ Data). Used by Linux iptables/nftables
+		// flow exporters, Cisco ASR/NCS, Juniper modern
+		// routers, ntopng, akvorado, GoFlow2, pmacct,
+		// every modern flow collector. ~45-entry IPFIX
+		// IE name table (camelCase per IANA: octetDelta
+		// Count / packetDeltaCount / sourceIPv4Address /
+		// destinationIPv6Address / flowEndReason / etc.).
+		// Options Template with scope/option field split.
+		// Completes the v5 + v9 + IPFIX + sFlow flow-
+		// telemetry quartet.
+		"ipfix_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
