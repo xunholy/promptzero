@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.287.0] - 2026-05-20
+
+**Eighty-second native-fit gap: PCAPng (next-generation
+packet capture) file inspector. PCAPng has been Wireshark's
+default capture format since 2018 and the emitted format of
+most modern tcpdump builds; operators increasingly get
+`.pcapng` files instead of classic `.pcap`. Pair to
+`pcap_decode` for the complete packet-capture container
+coverage — same operator workflow, different envelope.**
+
+### Added
+
+- **`pcapng_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a PCAPng file into a structured per-section +
+  per-block summary:
+
+  - **Block framing** — every block has a tight 4-byte
+    Block Type + 4-byte Block Total Length + body +
+    trailing repeated 4-byte Block Total Length (back-
+    pointer for reverse navigation). Endianness is detected
+    once per section via the SHB Byte-Order Magic and held
+    for every subsequent block in that section.
+  - **9-entry block type table**: 0x0A0D0D0A Section Header
+    Block (palindrome — endianness-detection token);
+    0x00000001 Interface Description Block; 0x00000003
+    Simple Packet Block (obsolete); 0x00000004 Name
+    Resolution Block; 0x00000005 Interface Statistics
+    Block; 0x00000006 Enhanced Packet Block (canonical
+    packet record); 0x00000007 IRIG Timestamp Block;
+    0x00000009 Decryption Secrets Block; 0x0BAD0001 Custom
+    Block.
+  - **SHB body**: 4-byte Byte-Order Magic + 2-byte Major
+    Version + 2-byte Minor Version + 8-byte Section Length
+    (int64; -1 = not specified) + options.
+  - **IDB body**: 2-byte LinkType (resolved via the
+    existing libpcap LINKTYPE_* name table — same one
+    `pcap_decode` uses) + 2-byte Reserved + 4-byte SnapLen
+    + options (if_name / if_description / if_IPv4addr /
+    if_MACaddr / if_speed / if_tsresol / if_os / etc.).
+  - **EPB body**: 4-byte Interface ID + 4-byte Timestamp
+    High + 4-byte Timestamp Low (joined to a 64-bit count;
+    resolution depends on the referenced IDB's if_tsresol
+    option, default 10⁻⁶ s) + 4-byte Captured Length +
+    4-byte Original Length + Packet Data (padded to 4-byte
+    boundary) + options.
+  - **Options walker** — (Code uint16, Length uint16, Value
+    padded to 4-byte boundary), ending at the opt_endofopt
+    sentinel. Plausible-text values surfaced as decoded
+    UTF-8 alongside raw hex.
+  - **Per-section aggregate** — BlockSummary (counts of
+    each block type), Interfaces list (every IDB), Records
+    list (up to MaxRecords EPBs with hex preview).
+  - **Configurable caps** — `max_records` (default 50) and
+    `max_payload_bytes` (default 32) keep output bounded
+    for large captures.
+
+- **Tooling** — registry capacity bumped from 363 → 364.
+
+### Out of scope
+
+- Classic libpcap `.pcap` (use `pcap_decode`).
+- Per-record protocol dissection (operator pulls individual
+  frames out of the EPB hex preview and feeds them into the
+  existing 80+ protocol-specific decoders chosen by the IDB
+  LinkType).
+- PCAPng capture (this is a *file* reader, not a live-
+  capture interface).
+- DSB payload parsing (TLS / SSH key-log materials inside
+  Decryption Secrets Blocks deserve their own dissector —
+  surfaced as block-type counts only).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (universal packet-capture
+  container — every modern Wireshark save and most tcpdump
+  captures are PCAPng; classic libpcap is increasingly the
+  legacy format).
+- Wrap-vs-native judgement: **native** — the PCAPng spec
+  is fully public; uses a block-based envelope with a
+  4-byte Type + 4-byte Length + body + 4-byte trailing
+  Length validating back-navigation; no crypto, no
+  compression.
+
 ## [0.286.0] - 2026-05-20
 
 **Eighty-first native-fit gap: libpcap classic `.pcap` file

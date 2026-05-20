@@ -873,6 +873,27 @@ var toolLevels = func() map[string]Level {
 		// bytes that came out of a pcap file — this is
 		// the meta-tool that surfaces the container.
 		"pcap_decode",
+		// v0.287 (NATIVE-fit gap — pair to pcap_decode):
+		// PCAPng (next-generation packet capture) file
+		// inspector. Wireshark's default capture format
+		// since 2018 and the emitted format of most
+		// modern tcpdump builds. Block-based envelope
+		// (4-byte Type + 4-byte Length + body + 4-byte
+		// trailing Length back-pointer); per-section
+		// endianness dispatch via SHB Byte-Order Magic
+		// 0x1A2B3C4D; 9-entry block type table (SHB /
+		// IDB / SPB obsolete / NRB / ISB / EPB / IRIG /
+		// DSB / Custom); SHB body (BOM + version +
+		// section length + options); IDB body (LinkType
+		// resolved via the existing libpcap LINKTYPE_*
+		// name table + SnapLen + options); EPB body
+		// (Interface ID + 64-bit timestamp + caplen +
+		// origlen + padded packet data + options);
+		// options walker with plausible-text UTF-8
+		// surfacing for SHB hardware/os/userappl + IDB
+		// if_name/if_description; per-section block
+		// summary + configurable record + payload caps.
+		"pcapng_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

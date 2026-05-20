@@ -525,7 +525,16 @@ func TestRegistrySize(t *testing.T) {
 	// meta-tool that surfaces the container so operators
 	// can extract metadata + frames to feed into the 80+
 	// existing protocol-specific decoders.
-	const expected = 363
+	// v0.287.0 added pcapng_decode (PCAPng next-generation
+	// packet capture file inspector — block-based envelope
+	// with per-section endianness dispatch via SHB BOM;
+	// 9-entry block type table; SHB / IDB / EPB body
+	// decoders; options walker with text surfacing;
+	// per-section block summary + record + payload caps).
+	// Pair to pcap_decode for the complete packet-capture
+	// container coverage; PCAPng is Wireshark's default
+	// since 2018.
+	const expected = 364
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
