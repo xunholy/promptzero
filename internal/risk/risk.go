@@ -894,6 +894,25 @@ var toolLevels = func() map[string]Level {
 		// if_name/if_description; per-section block
 		// summary + configurable record + payload caps.
 		"pcapng_decode",
+		// v0.288 (NATIVE-fit gap — universal flow-export
+		// protocol): NetFlow v5 export packet dissector
+		// per Cisco's public NetFlow v5 specification
+		// (1996; still emitted by every Cisco / Juniper
+		// / Arista router that runs classic NetFlow).
+		// 24-byte header (Version + Count + SysUptime +
+		// Unix Secs/Nsecs + Flow Sequence + Engine
+		// Type/ID + Sampling Interval with 2-bit mode +
+		// 14-bit interval) + N × 48-byte flow records
+		// (SrcAddr/DstAddr/NextHop IPv4 + Input/Output
+		// SNMP ifIndex + dPkts/dOctets + First/Last
+		// SysUptime ms with duration derived + Src/DstPort
+		// + 8-bit TCP Flags decoded into 8 named bits
+		// FIN/SYN/RST/PSH/ACK/URG/ECE/CWR + Protocol with
+		// 13-entry IANA name table + ToS + Src/DstAS
+		// + Src/DstMask with derived CIDR prefixes).
+		// High SIEM + capacity-planning + anomaly-
+		// detection value; every NOC sees flows.
+		"netflow_v5_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

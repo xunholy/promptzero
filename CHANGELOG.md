@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.288.0] - 2026-05-20
+
+**Eighty-third native-fit gap: NetFlow v5 export packet
+dissector per Cisco's public NetFlow v5 specification
+(1996). NetFlow v5 is the dominant flow-export format on
+enterprise + ISP networks for two decades, still emitted
+by every Cisco / Juniper / Arista router that runs classic
+NetFlow. Records summarise unidirectional IP flows — every
+(SrcIP, DstIP, SrcPort, DstPort, Proto) tuple seen by a
+routing-plane sampler is exported to a collector for
+traffic accounting, capacity planning, anomaly detection,
+and SIEM correlation.**
+
+### Added
+
+- **`netflow_v5_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a NetFlow v5 packet into a structured view:
+
+  - **24-byte header**:
+    - bytes 0-1: Version (uint16 BE; must be 5).
+    - bytes 2-3: Count (uint16 BE; number of flow records
+      1-30; bounded by MTU — 30 × 48 + 24 = 1464 < 1500).
+    - bytes 4-7: SysUptime (uint32 BE; ms since exporter
+      boot).
+    - bytes 8-11: Unix Secs (uint32 BE; epoch seconds of
+      current export — surfaced as RFC 3339 ISO).
+    - bytes 12-15: Unix Nsecs (uint32 BE).
+    - bytes 16-19: **Flow Sequence** (uint32 BE; per-source
+      monotonic counter — gaps signal collector data loss).
+    - byte 20: Engine Type (typically 0 RP, 1 LC).
+    - byte 21: Engine ID (slot/engine ID).
+    - bytes 22-23: **Sampling Interval** — top 2 bits =
+      **sampling mode** (0 unsampled, 1 1-in-N
+      deterministic, 2 1-in-N random); bottom 14 bits =
+      interval N.
+  - **48-byte flow record** (repeated Count times):
+    - SrcAddr / DstAddr / NextHop (IPv4).
+    - Input / Output (SNMP ifIndex).
+    - dPkts (packets in flow) + dOctets (bytes in flow).
+    - First / Last (SysUptime ms at flow start / end;
+      duration_ms derived as Last - First).
+    - SrcPort / DstPort.
+    - **TCP Flags** — cumulative OR of all TCP flags seen
+      during the flow, decoded into 8 named bits per RFC
+      793 + RFC 3168: FIN / SYN / RST / PSH / ACK / URG /
+      ECE / CWR.
+    - **Protocol** — IP protocol number resolved via
+      13-entry IANA name table: HOPOPT / ICMP / IGMP / TCP
+      / UDP / IPv4 / IPv6 / GRE / ESP / AH / ICMPv6 / OSPF
+      / PIM / VRRP / SCTP. Uncatalogued values surfaced
+      with raw number.
+    - ToS (IP type-of-service byte).
+    - SrcAS / DstAS (ASN — populated when exporter has
+      BGP-table awareness).
+    - SrcMask / DstMask (prefix lengths; surfaced as
+      canonical CIDR prefixes alongside the host
+      addresses).
+
+- **Tooling** — registry capacity bumped from 364 → 365.
+
+### Out of scope
+
+- UDP framing (feed bytes after the UDP header strip —
+  NetFlow v5 ships on UDP, conventionally to ports 2055 /
+  9555 / 9995).
+- NetFlow v9 (RFC 3954 — template-based; different
+  envelope, warrants its own Spec).
+- IPFIX (RFC 7011 — IETF standardisation of v9; also
+  warrants its own Spec).
+- sFlow (InMon packet-sampling protocol — different model
+  entirely, per-packet sample not per-flow summary).
+- Flow-record aggregation / windowing (collector-side
+  work; this Spec just decodes the wire).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (universal flow-export
+  protocol — every NOC sees flows; high SIEM + capacity-
+  planning + anomaly-detection value).
+- Wrap-vs-native judgement: **native** — NetFlow v5 wire
+  format is fully public; 24-byte header + uniform 48-byte
+  record array; no crypto, no compression, no variable-
+  length fields.
+
 ## [0.287.0] - 2026-05-20
 
 **Eighty-second native-fit gap: PCAPng (next-generation

@@ -534,7 +534,17 @@ func TestRegistrySize(t *testing.T) {
 	// Pair to pcap_decode for the complete packet-capture
 	// container coverage; PCAPng is Wireshark's default
 	// since 2018.
-	const expected = 364
+	// v0.288.0 added netflow_v5_decode (NetFlow v5 export
+	// packet dissector — 24-byte header + N × 48-byte
+	// flow records with TCP flag bitfield decoded into 8
+	// named flags + 13-entry IP protocol name table +
+	// duration derivation from First/Last SysUptime +
+	// CIDR prefix derivation from addr+mask + sampling
+	// mode breakdown). Universal flow-export protocol;
+	// every NOC sees flows from every Cisco / Juniper /
+	// Arista router for traffic accounting + anomaly
+	// detection + SIEM correlation.
+	const expected = 365
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
