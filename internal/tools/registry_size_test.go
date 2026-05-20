@@ -760,7 +760,24 @@ func TestRegistrySize(t *testing.T) {
 	// inter-domain controller traffic in zonal
 	// architectures (Tesla, Rivian, VW MEB+, BMW Neue
 	// Klasse).
-	const expected = 385
+	// v0.308.0 added dnp3_decode (DNP3 per IEEE
+	// 1815-2012 — 10-byte data-link header with
+	// 0x0564 sync + Length + Control field
+	// (DIR/PRM/FCB/FCV/code) + Dest + Src + header
+	// CRC; 5-entry primary + 4-entry secondary link
+	// function-code name tables; user-data block
+	// walker stripping per-16-byte-block CRCs;
+	// transport function byte FIN/FIR/seq;
+	// application header with Application Control
+	// (FIR/FIN/CON/UNS/seq) + Function Code + IIN for
+	// responses; 20+ entry application function code
+	// name table; 16-entry IIN-bit decoded set). The
+	// dominant utility-SCADA protocol in North
+	// American power-grid, water, and oil-and-gas
+	// telemetry; pairs with modbus_decode for full
+	// industrial coverage; complements PTPv2's IEC
+	// 61850 substation positioning.
+	const expected = 386
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -1285,6 +1285,33 @@ var toolLevels = func() map[string]Level {
 		// The automotive Ethernet RPC companion to
 		// canbus_*.
 		"someip_decode",
+		// v0.308 native-fit gap: dnp3_decode is a pure
+		// offline dissector for DNP3 per IEEE 1815-2012 —
+		// 10-byte data-link header (Start sync + Length +
+		// Control with DIR/PRM/FCB/FCV + Destination +
+		// Source + Header CRC); 5-entry primary + 4-entry
+		// secondary link function-code name tables; user-
+		// data block walker that strips per-16-byte-block
+		// CRCs; transport function byte (FIN/FIR + 6-bit
+		// sequence); application header (Application
+		// Control with FIR/FIN/CON/UNS + sequence +
+		// Function Code + 16-bit IIN for responses); 20+
+		// entry application function code name table
+		// (CONFIRM / READ / WRITE / SELECT / OPERATE /
+		// DIRECT_OPERATE / FREEZE / RESTART / ENABLE/
+		// DISABLE_UNSOLICITED / DELAY_MEASURE /
+		// RECORD_CURRENT_TIME / AUTHENTICATE_REQ /
+		// RESPONSE / UNSOLICITED_RESPONSE /
+		// AUTHENTICATE_RESP); 16-entry IIN-bit decoded set
+		// (BROADCAST / CLASS_1-3_EVENTS / NEED_TIME /
+		// LOCAL_CONTROL / DEVICE_TROUBLE / DEVICE_RESTART
+		// + NO_FUNC_CODE_SUPPORT / OBJECT_UNKNOWN /
+		// PARAMETER_ERROR / EVENT_BUFFER_OVERFLOW /
+		// ALREADY_EXECUTING / CONFIG_CORRUPT). Dominant
+		// utility-SCADA protocol in North American power-
+		// grid, water, and oil-and-gas telemetry. Default
+		// TCP port 20000.
+		"dnp3_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
