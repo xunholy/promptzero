@@ -596,7 +596,17 @@ func TestRegistrySize(t *testing.T) {
 	// Diameter + TACACS+ trio; the dominant router CLI
 	// access protocol on Cisco-heavy networks; only AAA
 	// option that supports per-command authorization.
-	const expected = 370
+	// v0.294.0 added tftp_decode (TFTP per RFC 1350 +
+	// option extensions from RFC 2347 / 2348 / 2349 /
+	// 7440 — 2-byte opcode + 6-entry name table; per-
+	// opcode body decoders for RRQ/WRQ with Filename +
+	// Mode + 4-entry option name table; DATA with Block
+	// Number + payload preview; ACK; ERROR with 9-entry
+	// error code name table; OACK). Foundational
+	// minimal file-transfer protocol; universal in PXE /
+	// network boot, IoT firmware updates, and Cisco /
+	// Juniper / Arista config push.
+	const expected = 371
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

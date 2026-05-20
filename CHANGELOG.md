@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.294.0] - 2026-05-20
+
+**Eighty-ninth native-fit gap: TFTP (Trivial File Transfer
+Protocol) packet dissector per RFC 1350, with the Option
+Extension family from RFC 2347 (envelope) + RFC 2348
+(blksize) + RFC 2349 (timeout + tsize) + RFC 7440
+(windowsize). TFTP is the canonical minimal file-transfer
+protocol; despite its 1981 vintage it remains the dominant
+transport for PXE / network boot (every PXE-booting machine
+fetches its boot loader, kernel, and initrd over TFTP); IoT
+firmware updates (most embedded devices fetch firmware via
+TFTP because it fits in 2 KB of ROM); and network device
+config push (every Cisco / Juniper / Arista shop uses TFTP
+for `copy running-config tftp:` workflows). Often
+overlooked in security tooling despite its omnipresence.**
+
+### Added
+
+- **`tftp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  a TFTP packet into a structured view:
+
+  - **2-byte Opcode** (RFC 1350 §5) with **6-entry name
+    table**: 1 RRQ (Read Request), 2 WRQ (Write Request),
+    3 DATA, 4 ACK, 5 ERROR, 6 OACK (Option Acknowledgment;
+    RFC 2347).
+  - **RRQ / WRQ body** (Types 1 + 2): Filename + Mode
+    (`netascii`, `octet`, or the deprecated `mail`) + zero
+    or more null-terminated `(name, value)` option pairs.
+    **4-entry option name table**: `blksize` (RFC 2348),
+    `timeout` (RFC 2349), `tsize` (RFC 2349), `windowsize`
+    (RFC 7440).
+  - **DATA body** (Type 3): Block Number (uint16 BE;
+    starts at 1, wraps to 0 after 65535) + Payload (up to
+    the negotiated blksize). Payload is surfaced as hex
+    (capped) and, when plausibly text, as decoded UTF-8.
+  - **ACK body** (Type 4): Block Number being
+    acknowledged.
+  - **ERROR body** (Type 5): Error Code (uint16 BE) with
+    **9-entry name table** (Not defined / File not found /
+    Access violation / Disk full or allocation exceeded /
+    Illegal TFTP operation / Unknown transfer ID / File
+    already exists / No such user / Option negotiation
+    failure) + Error Message.
+  - **OACK body** (Type 6) — same option-list layout as
+    the options portion of RRQ/WRQ.
+
+- **Tooling** — registry capacity bumped from 370 → 371.
+
+### Out of scope
+
+- UDP framing (feed TFTP bytes after the UDP header strip
+  — TFTP runs on UDP destination port 69 server-side or
+  the ephemeral port the server picked for transfer-data
+  continuation).
+- TFTP state-machine reasoning (block-number windowing,
+  retransmit-after-timeout logic, lockstep ACK ordering
+  — higher-level analysis).
+- Reassembly of the file payload across DATA blocks (each
+  DATA block is decoded standalone; concatenating them is
+  collector-side work).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational minimal
+  file-transfer protocol — universal in PXE boot, IoT
+  firmware update, and Cisco / Juniper / Arista config-
+  push workflows; often overlooked in security tooling
+  despite its omnipresence).
+- Wrap-vs-native judgement: **native** — RFC 1350 + 2347
+  are fully public; TFTP packets have a tight 2-byte
+  opcode + per-opcode body, no crypto, no compression, no
+  fancy framing.
+
 ## [0.293.0] - 2026-05-20
 
 **Eighty-eighth native-fit gap: TACACS+ packet dissector

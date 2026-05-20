@@ -1023,6 +1023,22 @@ var toolLevels = func() map[string]Level {
 		// AAA trio (RADIUS + Diameter + TACACS+) for
 		// enterprise + telco + ISP coverage.
 		"tacacs_plus_decode",
+		// v0.294 (NATIVE-fit gap — foundational file-
+		// transfer protocol): TFTP per RFC 1350 + option
+		// extensions from RFC 2347 / 2348 / 2349 / 7440.
+		// Universal in PXE / network boot, IoT firmware
+		// updates, and Cisco / Juniper / Arista config
+		// push. 2-byte opcode + 6-entry name table (RRQ /
+		// WRQ / DATA / ACK / ERROR / OACK); per-opcode
+		// body decoders — RRQ/WRQ with Filename + Mode
+		// (netascii/octet/mail) + 4-entry option name
+		// table (blksize / timeout / tsize / windowsize);
+		// DATA with Block Number + payload (hex preview
+		// capped + UTF-8 text surfacing for textual
+		// content); ACK with Block Number; ERROR with
+		// 9-entry error code name table; OACK with same
+		// option layout as RRQ/WRQ.
+		"tftp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
