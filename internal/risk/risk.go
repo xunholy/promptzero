@@ -1599,6 +1599,32 @@ var toolLevels = func() map[string]Level {
 		// Chromecast / HomeKit / Spotify Connect /
 		// Sonos enumeration.
 		"mdns_decode",
+		// v0.323 native-fit gap: openflow_decode is a
+		// pure offline dissector for OpenFlow control-
+		// channel messages per ONF specs 1.0/1.3/1.5 —
+		// the canonical SDN control protocol over TCP/
+		// 6653 (modern) / TCP/6633 (legacy) between SDN
+		// controllers (ONOS / OpenDaylight / Ryu /
+		// Floodlight / Faucet) and OpenFlow-capable
+		// switches (Open vSwitch / Pica8 / Cisco
+		// Catalyst OpenFlow / Arista). 8-byte common
+		// header (Version + Type + Length + XID); 6-
+		// entry Version name table; 35-entry Type name
+		// table (HELLO / ERROR / ECHO_*/FEATURES_*/
+		// GET_CONFIG_*/SET_CONFIG/PACKET_IN/OUT/
+		// FLOW_MOD/FLOW_REMOVED/PORT_STATUS/GROUP_MOD/
+		// METER_MOD/TABLE_MOD/MULTIPART_*/BARRIER_*/
+		// ROLE_*/ASYNC_*/BUNDLE_*); per-Type body
+		// decoders for HELLO (version bitmap TLVs),
+		// ERROR (14-entry error-type name table),
+		// FEATURES_REPLY (datapath_id + n_buffers +
+		// n_tables + auxiliary_id + capabilities
+		// bitmap with 7-entry decoded set), ECHO
+		// (opaque payload); other types surfaced as
+		// body_hex for downstream walkers. Common in
+		// datacenter SDN research + OpenFlow-
+		// controller fuzzing engagements.
+		"openflow_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

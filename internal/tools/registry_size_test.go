@@ -1117,7 +1117,39 @@ func TestRegistrySize(t *testing.T) {
 	// Sonos / Plex enumeration; common in DEF
 	// CON Recon Village + home-network pentests
 	// + IoT enumeration workflows.
-	const expected = 400
+	// v0.323.0 added openflow_decode (OpenFlow
+	// per ONF spec 1.0/1.3/1.5 — TCP/6653
+	// modern / TCP/6633 legacy). 8-byte common
+	// header (Version + Type + Length + XID);
+	// 6-entry Version name table (OF 1.0
+	// through 1.5); 35-entry Type name table
+	// covering HELLO / ERROR / ECHO_*/
+	// FEATURES_*/GET_CONFIG_*/SET_CONFIG/
+	// PACKET_IN/OUT/FLOW_MOD/FLOW_REMOVED/
+	// PORT_STATUS/GROUP_MOD/METER_MOD/TABLE_MOD/
+	// MULTIPART_*/BARRIER_*/ROLE_*/ASYNC_*/
+	// BUNDLE_*; per-Type body decoders for
+	// HELLO (Version Bitmap TLV walker), ERROR
+	// (14-entry error-type name table —
+	// HELLO_FAILED / BAD_REQUEST / BAD_ACTION /
+	// BAD_INSTRUCTION / BAD_MATCH /
+	// FLOW_MOD_FAILED / GROUP_MOD_FAILED /
+	// PORT_MOD_FAILED / TABLE_MOD_FAILED /
+	// QUEUE_OP_FAILED / SWITCH_CONFIG_FAILED /
+	// ROLE_REQUEST_FAILED / METER_MOD_FAILED /
+	// TABLE_FEATURES_FAILED + EXPERIMENTER),
+	// FEATURES_REPLY (datapath_id + n_buffers
+	// + n_tables + auxiliary_id + capabilities
+	// bitmap with 7-entry decoded set:
+	// FLOW_STATS / TABLE_STATS / PORT_STATS /
+	// GROUP_STATS / IP_REASM / QUEUE_STATS /
+	// PORT_BLOCKED), ECHO (opaque payload);
+	// other types surfaced as body_hex for
+	// downstream walkers. The canonical SDN
+	// control protocol; common in datacenter
+	// SDN research + OpenFlow-controller
+	// fuzzing engagements.
+	const expected = 401
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

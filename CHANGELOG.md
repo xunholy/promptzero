@@ -7,6 +7,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.323.0] - 2026-05-21
+
+**119th native-fit decoder: OpenFlow control-channel
+message dissector per the Open Networking Foundation
+(ONF) specifications — versions 1.0 / 1.3 (the
+dominant deployed version) / 1.5. OpenFlow is the
+canonical Software-Defined Networking (SDN) control
+protocol running over TCP/6653 (modern) or TCP/6633
+(legacy) between an SDN controller (ONOS, OpenDaylight,
+Ryu, Floodlight, Faucet) and every OpenFlow-capable
+switch (Open vSwitch, Pica8 PicOS, Cisco Catalyst
+OpenFlow, Arista OpenFlow, hardware merchant-silicon
+switches built on Broadcom Trident / Tomahawk + Mellanox
+Spectrum).**
+
+### Added
+
+- **`openflow_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an OpenFlow message into a structured view:
+
+  - **Common header** (8 bytes, big-endian; identical
+    across all OpenFlow versions): Version (`0x01` =
+    OF 1.0, `0x04` = OF 1.3, `0x06` = OF 1.5) + Type
+    + Length (uint16 BE; total bytes INCLUDING this
+    8-byte header) + XID (uint32 BE; per-controller
+    transaction identifier).
+
+  - **6-entry Version name table**: `0x01 OF_1.0` /
+    `0x02 OF_1.1` / `0x03 OF_1.2` / `0x04 OF_1.3` /
+    `0x05 OF_1.4` / `0x06 OF_1.5`.
+
+  - **35-entry Type name table** (per OF 1.3
+    ofp_type): `HELLO` / `ERROR` / `ECHO_REQUEST/REPLY`
+    / `EXPERIMENTER` / `FEATURES_REQUEST/REPLY` /
+    `GET_CONFIG_REQUEST/REPLY` / `SET_CONFIG` /
+    `PACKET_IN` / `FLOW_REMOVED` / `PORT_STATUS` /
+    `PACKET_OUT` / `FLOW_MOD` / `GROUP_MOD` /
+    `PORT_MOD` / `TABLE_MOD` /
+    `MULTIPART_REQUEST/REPLY` / `BARRIER_REQUEST/REPLY`
+    / `QUEUE_GET_CONFIG_REQUEST/REPLY` /
+    `ROLE_REQUEST/REPLY` / `ASYNC_GET_REQUEST/REPLY` /
+    `ASYNC_SET` / `METER_MOD` / `ROLE_STATUS` /
+    `TABLE_STATUS` / `REQUESTFORWARD` /
+    `BUNDLE_CONTROL` / `BUNDLE_ADD_MESSAGE`.
+
+  - **HELLO body** (OF 1.3 §A.1): walks zero or more
+    4-byte HELLO element TLVs; `OFPHET_VERSIONBITMAP`
+    (type=1) is decoded into the
+    `hello_versions_supported` list (bit N = OF
+    version N supported).
+
+  - **ERROR body** (OF 1.3 §A.4): 2-byte Type +
+    2-byte Code + optional data (usually the first
+    64 bytes of the offending message). 14-entry
+    error-type name table: `HELLO_FAILED` /
+    `BAD_REQUEST` / `BAD_ACTION` / `BAD_INSTRUCTION`
+    / `BAD_MATCH` / `FLOW_MOD_FAILED` /
+    `GROUP_MOD_FAILED` / `PORT_MOD_FAILED` /
+    `TABLE_MOD_FAILED` / `QUEUE_OP_FAILED` /
+    `SWITCH_CONFIG_FAILED` / `ROLE_REQUEST_FAILED` /
+    `METER_MOD_FAILED` / `TABLE_FEATURES_FAILED` +
+    `EXPERIMENTER`.
+
+  - **FEATURES_REPLY body** (OF 1.3 §A.3.2, 24-byte
+    body after the 8-byte header): 8-byte
+    `datapath_id` (the switch's unique identifier —
+    typically low 6 bytes = MAC, high 2 = implementor-
+    defined) + 4-byte `n_buffers` (max in-flight
+    packets the switch can buffer) + 1-byte `n_tables`
+    (number of flow tables) + 1-byte `auxiliary_id`
+    (0 = main channel, non-zero = auxiliary
+    connection per RFC 6633 §6.3.7) + 4-byte
+    `capabilities` bitmap with 7-entry decoded set
+    (`FLOW_STATS` / `TABLE_STATS` / `PORT_STATS` /
+    `GROUP_STATS` / `IP_REASM` / `QUEUE_STATS` /
+    `PORT_BLOCKED`).
+
+  - **ECHO body** — opaque payload (controllers +
+    switches may use it for latency measurement or
+    proprietary keep-alive data); surfaced as
+    `payload_hex`.
+
+  - All other message types — body surfaced as
+    `body_hex` for downstream per-type walkers.
+
+  Pure offline parser — operators paste OpenFlow
+  bytes (starting at the Version byte) from a
+  `tcpdump -X port 6653` line or a Wireshark
+  OpenFlow dissector view and get the documented
+  header + per-type body breakdown.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the TCP-segment header strip; default
+  TCP port 6653 modern / 6633 legacy; OpenFlow-over-
+  TLS wraps the same bytes in TLS records — handle
+  the TLS strip first); per-type structured body
+  decoders beyond the bootstrap quartet (FLOW_MOD
+  instruction lists / GROUP_MOD buckets /
+  MULTIPART_REQUEST sub-types / PORT_STATUS port
+  descriptions / METER_MOD bands — surfaced as
+  `body_hex` for per-message-type follow-on
+  decoders); OXM (OpenFlow Extensible Match) TLV
+  walker (match conditions inside FLOW_MOD /
+  PACKET_IN are encoded as OXM TLVs — ~40 OXM field
+  types — out of scope); action / instruction
+  decoder (OF 1.3 instructions and the 18-entry
+  action type registry); per-version delta (OF 1.0
+  + 1.4 + 1.5 differ from 1.3 in match / instruction
+  / port-stats shapes — surfaces version byte but
+  does not branch per-version body decoders); TLS
+  transport.
+
+  Source: docs/catalog/gap-analysis.md (SDN
+  control-plane dissector — common in DEF CON
+  Wireless / Network Village CTFs + datacenter SDN
+  research + OpenFlow-controller fuzzing
+  engagements; complements the L2/L3 protocol
+  family already covered). Wrap-vs-native: native
+  — the ONF specs are publicly available; OpenFlow
+  has a uniform 8-byte common header across all
+  versions; per-type body shapes for the bootstrap
+  quartet (HELLO / ERROR / ECHO / FEATURES_REPLY)
+  are well-documented; no crypto at the parse
+  layer.
+
+### Changed
+
+- Registry capacity is now **401** Specs (was 400). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.322.0] - 2026-05-21
 
 **118th native-fit decoder + the 400-Spec milestone.
