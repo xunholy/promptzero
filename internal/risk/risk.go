@@ -974,6 +974,32 @@ var toolLevels = func() map[string]Level {
 		// signalling (SIGTRAN + 3GPP control plane) +
 		// WebRTC data channels + multi-homed HA pairs.
 		"sctp_packet_decode",
+		// v0.292 (NATIVE-fit gap — RADIUS-successor 3GPP
+		// AAA carried by SCTP): Diameter per RFC 6733.
+		// 20-byte header (Version + 24-bit Length + 8-bit
+		// Command Flags with 4 named bits R/P/E/T + 24-
+		// bit Command Code + 32-bit Application ID + Hop-
+		// by-Hop ID + End-to-End ID); ~20-entry Command
+		// Code name table covering Diameter base (CER/CEA
+		// / DWR/DWA / DPR/DPA / Re-Auth / Accounting /
+		// Credit-Control / Abort-Session / Session-
+		// Termination) + 3GPP S6a (Update-Location /
+		// Authentication-Information / Cancel-Location /
+		// Insert/Delete-Subscriber-Data / Purge-UE /
+		// Reset / Notify); ~15-entry Application ID name
+		// table (Diameter Base / NASREQ / Credit-Control
+		// / 3GPP Cx/Dx / Sh / Rx / Gx / S6a / S13 / S6t
+		// / T6a / EAP / SIP / Diameter Relay); AVP walker
+		// with V/M/P flags + optional Vendor-ID + 4-byte
+		// padding; ~35-entry AVP Code name table; type-
+		// aware AVP value decoding (UTF8String / Unsigned
+		// 32 / Address); Result-Code class mapping (1xxx
+		// Informational / 2xxx Success / 3xxx Protocol
+		// Error / 4xxx Transient Failure / 5xxx Permanent
+		// Failure). Pairs with radius_packet_decode for
+		// complete AAA coverage; carries signalling on
+		// every modern cellular network.
+		"diameter_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

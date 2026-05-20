@@ -572,7 +572,19 @@ func TestRegistrySize(t *testing.T) {
 	// entry name table). Third-pillar IP transport;
 	// foundational for telco signalling + WebRTC data
 	// channels + multi-homed HA pairs.
-	const expected = 368
+	// v0.292.0 added diameter_packet_decode (Diameter
+	// per RFC 6733 — 20-byte header with R/P/E/T command
+	// flags + ~20-entry Command Code name table (Base +
+	// 3GPP S6a) + ~15-entry Application ID name table;
+	// AVP walker with V/M/P flags + optional Vendor-ID;
+	// ~35-entry AVP Code name table; type-aware value
+	// decoding (UTF8String / Unsigned32 / Address);
+	// Result-Code class mapping). RADIUS-successor 3GPP
+	// AAA protocol carried by SCTP on every modern
+	// cellular network; pairs with radius_packet_decode
+	// + sctp_packet_decode for complete telco-AAA
+	// coverage.
+	const expected = 369
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
