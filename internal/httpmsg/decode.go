@@ -369,13 +369,17 @@ func decodeChunked(body string) ([]*Chunk, error) {
 			// End of chunks
 			break
 		}
-		if off+int(n) > len(body) {
+		// Bound n explicitly before casting to int — guards
+		// against silent truncation on 32-bit platforms and
+		// preserves the off+int(n) > len(body) check below.
+		if n < 0 || n > int64(len(body)-off) {
 			return nil, fmt.Errorf("chunked: chunk length %d exceeds remaining body", n)
 		}
-		data := body[off : off+int(n)]
+		nInt := int(n)
+		data := body[off : off+nInt]
 		ch := &Chunk{
 			LengthHex: lenLine,
-			Length:    int(n),
+			Length:    nInt,
 		}
 		if isPrintable(data) {
 			ch.DataText = data
@@ -383,7 +387,7 @@ func decodeChunked(body string) ([]*Chunk, error) {
 			ch.DataHex = strings.ToUpper(hex.EncodeToString([]byte(data)))
 		}
 		chunks = append(chunks, ch)
-		off += int(n) + 1 // skip data + trailing newline
+		off += nInt + 1 // skip data + trailing newline
 	}
 	return chunks, nil
 }

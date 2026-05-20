@@ -5,7 +5,25 @@
 // co-located with the Spec definitions rather than across package lines.
 package tools
 
-import "strconv"
+import (
+	"math"
+	"strconv"
+)
+
+// safeUint32 clamps n to the valid uint32 range [0, MaxUint32]
+// before converting. Defense-in-depth against operator-supplied
+// values that would otherwise silently truncate when cast from
+// int (which is int64 on 64-bit platforms) to uint32.
+// Negative inputs clamp to 0; > MaxUint32 clamp to MaxUint32.
+func safeUint32(n int) uint32 {
+	if n < 0 {
+		return 0
+	}
+	if n > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(n)
+}
 
 // str extracts a string from a map[string]any parameter bag.
 // Returns "" when the key is absent or the value is not a string.

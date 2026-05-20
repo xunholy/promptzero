@@ -35,7 +35,7 @@ func init() {
 		AgentOnly:   false,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.IRTxRaw(
-				uint32(intOr(p, "frequency", 38000)),
+				safeUint32(intOr(p, "frequency", 38000)),
 				floatOr(p, "duty_cycle", 0.33),
 				str(p, "data"),
 			)

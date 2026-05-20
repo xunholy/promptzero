@@ -198,7 +198,7 @@ func glitchSetPulseHandler(_ context.Context, d *Deps, args map[string]any) (str
 	if err := d.RequireFaultier(); err != nil {
 		return "", err
 	}
-	if err := d.Faultier.SetPulse(uint32(delayUS), uint32(pulseUS)); err != nil {
+	if err := d.Faultier.SetPulse(safeUint32(delayUS), safeUint32(pulseUS)); err != nil {
 		return "", fmt.Errorf("glitch_set_pulse: %w", err)
 	}
 	body, _ := json.Marshal(map[string]any{
@@ -235,7 +235,7 @@ func glitchSweepHandler(ctx context.Context, d *Deps, args map[string]any) (stri
 		return "", err
 	}
 	// ctx is forwarded so cancellation propagates into the sweep loop.
-	if err := d.Faultier.Sweep(ctx, uint32(startUS), uint32(endUS), uint32(stepUS)); err != nil {
+	if err := d.Faultier.Sweep(ctx, safeUint32(startUS), safeUint32(endUS), safeUint32(stepUS)); err != nil {
 		return "", fmt.Errorf("glitch_sweep: %w", err)
 	}
 	steps := (endUS-startUS)/stepUS + 1

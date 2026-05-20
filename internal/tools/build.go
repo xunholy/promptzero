@@ -54,7 +54,7 @@ func init() {
 			bitCount := intOr(p, "bit_count", 0)
 
 			raw, err := fileformat.BuildSubBruteforce(fileformat.SubBruteforceParams{
-				Frequency: uint32(intOr(p, "frequency", 0)),
+				Frequency: safeUint32(intOr(p, "frequency", 0)),
 				BitCount:  bitCount,
 				StartKey:  startKey,
 				EndKey:    endKey,
@@ -160,7 +160,7 @@ func init() {
 				return "", fmt.Errorf("path required")
 			}
 			raw, err := fileformat.BuildSub(fileformat.SubBuildParams{
-				Frequency: uint32(intOr(p, "frequency", 0)),
+				Frequency: safeUint32(intOr(p, "frequency", 0)),
 				Protocol:  str(p, "protocol"),
 				Preset:    str(p, "preset"),
 				Key:       str(p, "key_hex"),

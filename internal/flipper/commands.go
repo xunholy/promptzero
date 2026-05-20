@@ -1074,7 +1074,13 @@ func (f *Flipper) gpioSetViaRPC(ctx context.Context, pin string, value int) (str
 		if err := f.bleClient.GPIOSetPinMode(ctx, pinEnum, pb.GpioPinMode_OUTPUT); err != nil {
 			return "", fmt.Errorf("rpc gpio_set_pin_mode: %w", err)
 		}
-		if err := f.bleClient.GPIOWritePin(ctx, pinEnum, uint32(value)); err != nil {
+		// value is provably 0 or 1 here; explicit literal so the
+		// cast is range-checked by readers + static analysis.
+		var pinValue uint32
+		if value == 1 {
+			pinValue = 1
+		}
+		if err := f.bleClient.GPIOWritePin(ctx, pinEnum, pinValue); err != nil {
 			return "", fmt.Errorf("rpc gpio_write_pin: %w", err)
 		}
 	default:

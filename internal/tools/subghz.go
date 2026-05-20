@@ -48,7 +48,7 @@ func init() {
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			raw, err := d.Flipper.SubGHzRxCtx(
 				ctx,
-				uint32(intOr(p, "frequency", 0)),
+				safeUint32(intOr(p, "frequency", 0)),
 				time.Duration(intOr(p, "duration_seconds", 30))*time.Second,
 			)
 			if err != nil {
@@ -62,7 +62,7 @@ func init() {
 		},
 		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
 			defer sink.Close()
-			freq := uint32(intOr(p, "frequency", 0))
+			freq := safeUint32(intOr(p, "frequency", 0))
 			duration := time.Duration(intOr(p, "duration_seconds", 30)) * time.Second
 			raw, err := d.Flipper.SubGHzRxStream(ctx, freq, duration, func(line string) (stop bool) {
 				sink.Send([]byte(line))
@@ -126,8 +126,8 @@ func init() {
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.SubGHzTxKey(
 				str(p, "key_hex"),
-				uint32(intOr(p, "frequency", 0)),
-				uint32(intOr(p, "te", 0)),
+				safeUint32(intOr(p, "frequency", 0)),
+				safeUint32(intOr(p, "te", 0)),
 				intOr(p, "repeat", 0),
 			)
 		},
@@ -149,13 +149,13 @@ func init() {
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.SubGHzRxRawCtx(
 				ctx,
-				uint32(intOr(p, "frequency", 0)),
+				safeUint32(intOr(p, "frequency", 0)),
 				time.Duration(intOr(p, "duration_seconds", 30))*time.Second,
 			)
 		},
 		StreamHandler: func(ctx context.Context, d *Deps, p map[string]any, sink *streaming.Sink) (string, error) {
 			defer sink.Close()
-			freq := uint32(intOr(p, "frequency", 0))
+			freq := safeUint32(intOr(p, "frequency", 0))
 			duration := time.Duration(intOr(p, "duration_seconds", 30)) * time.Second
 			return d.Flipper.SubGHzRxRawStream(ctx, freq, duration, func(line string) (stop bool) {
 				sink.Send([]byte(line))
@@ -175,7 +175,7 @@ func init() {
 		Handler: func(ctx context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.SubGHzChatCtx(
 				ctx,
-				uint32(intOr(p, "frequency", 0)),
+				safeUint32(intOr(p, "frequency", 0)),
 				time.Duration(intOr(p, "duration_seconds", 60))*time.Second,
 			)
 		},

@@ -208,17 +208,25 @@ func BuildSubBruteforce(p SubBruteforceParams) ([]byte, error) {
 	if te == 0 {
 		te = 400
 	}
+	// Bound te so int32(-31*te) below cannot overflow.
+	// 31*te must fit in int32: te ≤ MaxInt32/31 ≈ 69M.
+	// Real-world TE is 100-1000 µs; cap defensively.
+	const maxTE = 1_000_000
+	if te < 1 || te > maxTE {
+		return nil, fmt.Errorf("subghz_bruteforce_generate: te %d µs out of range (1-%d)", te, maxTE)
+	}
 
 	// Rough upper bound: 2 samples per bit * bits + 2 samples for
 	// sync. Prealloc saves a handful of grows on 10k-key sweeps.
 	rawData := make([]int32, 0, int(count)*(p.BitCount*2+2))
 
-	hi := int32(3 * te)
-	lo := int32(-te)
-	loBit := int32(te)
-	hiBit := int32(-3 * te)
-	syncHi := int32(te)
-	syncLo := int32(-31 * te)
+	te32 := int32(te)
+	hi := 3 * te32
+	lo := -te32
+	loBit := te32
+	hiBit := -3 * te32
+	syncHi := te32
+	syncLo := -31 * te32
 
 	for k := p.StartKey; k <= p.EndKey; k++ {
 		// MSB-first
