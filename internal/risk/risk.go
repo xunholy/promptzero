@@ -1647,6 +1647,25 @@ var toolLevels = func() map[string]Level {
 		// + SDR research + 5G IMSI-catcher
 		// forensics.
 		"gsmtap_decode",
+		// v0.325 native-fit gap: hart_ip_decode is a
+		// pure offline dissector for HART-IP per HART
+		// Foundation HCF_SPEC-085 — UDP/TCP port
+		// 5094. 8-byte envelope header (Version +
+		// Message Type + Message ID + Status Code +
+		// Sequence Number + Byte Count); 4-entry
+		// Message Type name table (Request /
+		// Response / Publish / NAK); 6-entry Message
+		// ID name table (Session_Initiate /
+		// Session_Close / Keep_Alive / HART_PDU /
+		// Direct_PDU / Publish_Burst_Notify);
+		// encapsulated HART payload surfaced as
+		// hart_payload_hex for downstream HART
+		// command walkers. The process-automation
+		// dissector for oil/gas/chemical/water
+		// plants; pairs with the industrial protocol
+		// family for full coverage from field
+		// instruments through DCS/SCADA to MES.
+		"hart_ip_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

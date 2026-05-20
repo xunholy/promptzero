@@ -1174,7 +1174,34 @@ func TestRegistrySize(t *testing.T) {
 	// in DEF CON / Black Hat / HITB cellular
 	// CTFs + SDR research + 5G IMSI-catcher
 	// forensics.
-	const expected = 402
+	// v0.325.0 added hart_ip_decode (HART-IP
+	// per HART Foundation HCF_SPEC-085 —
+	// UDP/TCP port 5094). 8-byte envelope
+	// header (Version + Message Type + Message
+	// ID + Status Code + Sequence Number +
+	// Byte Count); 4-entry Message Type name
+	// table (Request / Response / Publish /
+	// NAK); 6-entry Message ID name table
+	// (Session_Initiate / Session_Close /
+	// Keep_Alive / HART_PDU / Direct_PDU /
+	// Publish_Burst_Notify); encapsulated HART
+	// payload surfaced as hart_payload_hex
+	// for downstream HART command walkers
+	// (Cmd 0 Read Unique Identifier /
+	// Cmd 13/18 Read Tag/Descriptor /
+	// Cmd 42 Device Reset / Cmd 48 Read
+	// Additional Device Status etc.). The
+	// process-automation dissector for
+	// oil/gas/chemical/water plants — Emerson
+	// DeltaV / Honeywell Experion / ABB
+	// Ability / Yokogawa CENTUM / Schneider
+	// Foxboro Evo on the DCS/SCADA side;
+	// Rosemount / Endress+Hauser / Yokogawa
+	// EJX / ABB / Honeywell SmartLine field
+	// instruments. Targets DEF CON ICS Village
+	// CTFs + S4 Symposium + process-pentest
+	// engagements.
+	const expected = 403
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
