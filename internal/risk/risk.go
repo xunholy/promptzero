@@ -1000,6 +1000,29 @@ var toolLevels = func() map[string]Level {
 		// complete AAA coverage; carries signalling on
 		// every modern cellular network.
 		"diameter_packet_decode",
+		// v0.293 (NATIVE-fit gap — third pillar AAA):
+		// TACACS+ per RFC 8907. Cisco-proprietary AAA, the
+		// most common router CLI access protocol on Cisco-
+		// heavy networks. 12-byte header (Version major+
+		// minor + Packet Type + Sequence Number + Flags +
+		// Session ID + Length); 3-entry packet type table
+		// (Authentication / Authorization / Accounting);
+		// 2-bit flags (UNENCRYPTED, SINGLE_CONNECT). Body
+		// dispatched by Type + Seq: AUTH START with Action
+		// (LOGIN/CHPASS/SENDPASS/SENDAUTH) + Authen-Type
+		// (ASCII/PAP/CHAP/MS-CHAP/ARAP) + Service (LOGIN/
+		// ENABLE/PPP/...) + User/Port/RemAddr/Data; AUTH
+		// REPLY with Status (PASS/FAIL/GETDATA/GETUSER/
+		// GETPASS/RESTART/ERROR/FOLLOW) + Server-Msg; AUTH
+		// CONTINUE with User-Msg + ABORT flag; AUTHOR
+		// REQUEST/RESPONSE with Authen-Method + named arg
+		// list; ACCT REQUEST/REPLY with START/STOP/
+		// WATCHDOG flags + named arg list. Optional body
+		// decryption per RFC 8907 §4.5 via MD5-derived XOR
+		// pad when shared key is supplied. Completes the
+		// AAA trio (RADIUS + Diameter + TACACS+) for
+		// enterprise + telco + ISP coverage.
+		"tacacs_plus_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

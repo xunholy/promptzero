@@ -584,7 +584,19 @@ func TestRegistrySize(t *testing.T) {
 	// cellular network; pairs with radius_packet_decode
 	// + sctp_packet_decode for complete telco-AAA
 	// coverage.
-	const expected = 369
+	// v0.293.0 added tacacs_plus_decode (TACACS+ per RFC
+	// 8907 — 12-byte header + 3-entry packet type table +
+	// per-type body decoders for AUTH START/REPLY/CONTINUE
+	// / AUTHOR REQUEST/RESPONSE / ACCT REQUEST/REPLY with
+	// 6-entry Authen-Type / 10-entry Service / 8-entry
+	// AUTH REPLY status name tables; named arg list
+	// surfacing for AUTHOR + ACCT; optional MD5-derived
+	// XOR body decryption when shared key supplied).
+	// Third pillar AAA protocol completing the RADIUS +
+	// Diameter + TACACS+ trio; the dominant router CLI
+	// access protocol on Cisco-heavy networks; only AAA
+	// option that supports per-command authorization.
+	const expected = 370
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

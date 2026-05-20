@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.293.0] - 2026-05-20
+
+**Eighty-eighth native-fit gap: TACACS+ packet dissector
+per RFC 8907 (which finally documented the Cisco-proprietary
+protocol after decades of use in production). TACACS+ is the
+third pillar AAA protocol alongside RADIUS (covered by
+`radius_packet_decode`) and Diameter (covered by
+`diameter_packet_decode`); it remains the dominant device-
+admin AAA on Cisco-heavy enterprise + ISP networks because
+it separates Authentication / Authorization / Accounting
+into independent transactions and supports per-command
+authorization — the killer feature for router CLI access.
+Completes the RADIUS + Diameter + TACACS+ AAA trio.**
+
+### Added
+
+- **`tacacs_plus_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a TACACS+ packet into a structured view:
+
+  - **12-byte header** (RFC 8907 §4.1): Version (4-bit
+    Major + 4-bit Minor) + **Packet Type** with **3-entry
+    name table** (Authentication / Authorization /
+    Accounting) + Sequence Number (odd from client, even
+    from server) + **Flags** decoded into **2 named bits**
+    (0x01 TAC_PLUS_UNENCRYPTED_FLAG / 0x04
+    TAC_PLUS_SINGLE_CONNECT_FLAG) + Session ID + Length.
+  - **Body decryption** (RFC 8907 §4.5) — when the body is
+    encrypted (UNENCRYPTED_FLAG = 0) and a `key` is
+    supplied, generate the pseudo-pad by hashing
+    concatenations of (session_id || key || version ||
+    seq_no || previous_hash) with MD5, then XOR with the
+    ciphertext. When no key is supplied, the body is
+    surfaced as opaque hex with a Note about the
+    encryption.
+  - **Authentication body** (Type 1) — dispatched by
+    Sequence:
+    - Seq 1 (client→server): **START** — Action (1 LOGIN
+      / 2 CHPASS / 3 SENDPASS / 4 SENDAUTH) + Priv-Lvl +
+      **Authen-Type** (1 ASCII / 2 PAP / 3 CHAP / 4 MS-CHAP
+      / 5 ARAP / 6 MS-CHAPv2) + **Service** (NONE / LOGIN /
+      ENABLE / PPP / ARAP / PT / RCMD / X25 / NASI /
+      FWPROXY) + User + Port + Remote-Address + Data.
+    - Even seq (server→client): **REPLY** — Status (1 PASS
+      / 2 FAIL / 3 GETDATA / 4 GETUSER / 5 GETPASS / 6
+      RESTART / 7 ERROR / 0x21 FOLLOW) + NOECHO flag +
+      Server-Msg + Data.
+    - Odd seq > 1 (client→server): **CONTINUE** — User-Msg
+      + Data + ABORT flag.
+  - **Authorization body** (Type 2):
+    - Odd seq: **REQUEST** — Authen-Method + Priv-Lvl +
+      Authen-Type + Service + User + Port + Rem-Addr +
+      Args (named arg list).
+    - Even seq: **RESPONSE** — Status (1 PASS_ADD / 2
+      PASS_REPL / 16 FAIL / 17 ERROR / 0x21 FOLLOW) +
+      Server-Msg + Data + Args.
+  - **Accounting body** (Type 3):
+    - Odd seq: **REQUEST** — Flags (0x02 START / 0x04
+      STOP / 0x08 WATCHDOG) + Authen-Method + Priv-Lvl +
+      Authen-Type + Service + User + Port + Rem-Addr +
+      Args.
+    - Even seq: **REPLY** — Server-Msg + Data + Status
+      (1 SUCCESS / 2 ERROR / 0x21 FOLLOW).
+
+- **Tooling** — registry capacity bumped from 369 → 370.
+
+### Out of scope
+
+- TCP framing (feed TACACS+ bytes after the TCP payload
+  extraction — TACACS+ runs on TCP port 49).
+- TACACS (the original, pre-TACACS+ protocol — long
+  deprecated; not part of any active deployment).
+- State-machine reasoning (mapping REPLY/CONTINUE chains
+  to a coherent session, multi-arg authorization
+  evaluation, per-command authorization decisions —
+  higher-level analysis).
+- Cryptographic verification (TACACS+ has no integrity
+  check at the protocol layer; the obfuscation pad is
+  reversible with the shared key but doesn't authenticate
+  the bytes).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (the third pillar AAA
+  protocol; completes the RADIUS + Diameter + TACACS+ trio
+  for full enterprise + telco + ISP AAA coverage; still
+  extremely common in Cisco-heavy environments and the
+  only AAA option that supports per-command authorization).
+- Wrap-vs-native judgement: **native** — RFC 8907 is fully
+  public; TACACS+ has a tight 12-byte header followed by
+  variable-length per-type bodies; the MD5-derived XOR
+  obfuscation pad is implemented in 30 lines of stdlib
+  `crypto/md5`.
+
 ## [0.292.0] - 2026-05-20
 
 **Eighty-seventh native-fit gap: Diameter packet dissector
