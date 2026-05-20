@@ -1388,6 +1388,23 @@ var toolLevels = func() map[string]Level {
 		// Cognex; TCP/44818 explicit + UDP/2222
 		// implicit (class 1).
 		"enip_decode",
+		// v0.313 native-fit gap: profinet_dcp_decode is
+		// a pure offline dissector for Profinet DCP per
+		// IEC 61158-6-10 — 2-byte FrameID with name
+		// table (Hello / Get_Set / Identify_Request /
+		// Identify_Response) + 10-byte fixed DCP header
+		// (ServiceID + ServiceType + Xid +
+		// ResponseDelay + DataLength) + TLV block
+		// walker with Option/Suboption name tables (IP
+		// / DeviceProperties / DHCP / LLDP /
+		// ControlBlock / DeviceInitiative /
+		// AllSelector); per-suboption decoders
+		// surfacing MAC + IP/Mask/GW + Vendor +
+		// NameOfStation + VendorID/DeviceID +
+		// DeviceRole bitmask. EtherType 0x8892 L2-only;
+		// bootstrap discovery protocol for Siemens
+		// Profinet networks; pairs with s7comm_decode.
+		"profinet_dcp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -861,7 +861,24 @@ func TestRegistrySize(t *testing.T) {
 	// protocol; Allen-Bradley/Rockwell ControlLogix
 	// / CompactLogix / MicroLogix; completes the
 	// factory PLC trifecta with modbus + s7comm.
-	const expected = 390
+	// v0.313.0 added profinet_dcp_decode (Profinet
+	// DCP per IEC 61158-6-10 — 2-byte FrameID with
+	// 4-entry name table (Hello / Get_Set /
+	// Identify_Request / Identify_Response); 10-byte
+	// DCP header (ServiceID + ServiceType + Xid +
+	// ResponseDelay + DataLength); 7-entry Option
+	// name table (IP / DeviceProperties / DHCP /
+	// LLDP / ControlBlock / DeviceInitiative /
+	// AllSelector); TLV block walker with 16-bit
+	// alignment padding; per-suboption decoders for
+	// MAC + IP_Parameter + NameOfStation + Vendor +
+	// VendorID/DeviceID + DeviceRole bitmask (IO-
+	// Device / IO-Controller / IO-Multidevice / PN-
+	// Supervisor)). Bootstrap discovery protocol for
+	// Siemens Profinet networks; EtherType 0x8892
+	// L2-only; pairs with s7comm_decode for full
+	// Siemens-shop ICS pentest coverage.
+	const expected = 391
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
