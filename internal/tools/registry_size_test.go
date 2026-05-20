@@ -651,7 +651,18 @@ func TestRegistrySize(t *testing.T) {
 	// GoFlow2, pmacct, every modern flow collector;
 	// completes the v5 + v9 + IPFIX + sFlow flow-
 	// telemetry quartet.
-	const expected = 375
+	// v0.299.0 added l2tp_v3_decode (L2TPv3 per RFC 3931
+	// UDP mode — 16-bit bit-packed common header with
+	// T/L/S/Version dispatch; Control Message with
+	// Length + Connection ID + Ns + Nr + AVP walker;
+	// Data Message with Session ID + payload preview;
+	// ~20-entry IETF AVP name table; 15-entry Message
+	// Type name table covering SCCRQ/SCCRP/SCCCN/
+	// StopCCN/HELLO/ICRQ/ICRP/ICCN/CDN/WEN/SLI/ACK;
+	// Hidden AVP detection). Pseudowire encapsulation
+	// pairing with pppoe_decode for ISP broadband
+	// subscriber backhaul + LI + L2 VPN services.
+	const expected = 376
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

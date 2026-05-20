@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.299.0] - 2026-05-20
+
+**Ninety-fourth native-fit gap: L2TPv3 packet dissector per
+RFC 3931 (UDP-encapsulated mode, port 1701). L2TPv3 is the
+pseudowire encapsulation that pairs with PPPoE (covered by
+`pppoe_decode`) to complete the broadband subscriber-
+management story: PPPoE handles the access-side session
+from the customer modem to the BNG; L2TPv3 handles the
+backhaul/aggregation tunnel from the BNG (LAC) to a
+Layer-2 VPN concentrator (LNS). L2TPv3 is also the
+dominant transport for lawful intercept (LI) at every ISP,
+L2 VPN services (Ethernet / ATM / Frame Relay / PPP / HDLC
+pseudowires), and wholesale subscriber backhaul.**
+
+### Added
+
+- **`l2tp_v3_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an L2TPv3 packet into a structured view:
+
+  - **16-bit common header** (RFC 3931 §3.2.1): bit 0 =
+    **T** (0 Data / 1 Control); bit 1 = L (Length
+    present); bit 4 = S (Ns/Nr present); bits 12-15 =
+    **Version** (must be 3 for L2TPv3).
+  - **Control Message** (T=1; RFC 3931 §3.2.2): Length
+    + Control Connection ID (peer-end's connection
+    identifier) + Ns (send sequence) + Nr (expected
+    receive sequence) + AVP list.
+  - **AVP walker** (RFC 3931 §5.2): each AVP = 2-byte
+    (Mandatory/Hidden/Reserved/Length bit-pack) + 2-byte
+    Vendor ID (0 = IETF) + 2-byte Attribute Type +
+    (Length-6) byte Value. **~20-entry IETF AVP name
+    table** (when Vendor ID = 0): Message Type / Result
+    Code / Protocol Version / Framing Capabilities /
+    Bearer Capabilities / Tie Breaker / Firmware
+    Revision / Host Name / Vendor Name / Assigned Tunnel
+    ID / Receive Window Size / Challenge / Challenge
+    Response / Cause Code / Q.931 Cause Code / Local
+    Session ID / Remote Session ID / Assigned Cookie /
+    Random Vector / Proxy Authen Type/Name/Challenge/
+    ID/Response + Initial/Last LCP CONFREQs.
+  - **Message Type AVP** (Attribute 0) — first AVP in
+    every Control Message; its 2-byte value names the
+    control message kind via a **15-entry name table**
+    (RFC 3931 §5.4): 1 SCCRQ (Start-Control-Connection-
+    Request) / 2 SCCRP / 3 SCCCN / 4 StopCCN (Stop-
+    Control-Connection-Notification) / 6 HELLO
+    (Keepalive) / 7 OCRQ (Outgoing-Call-Request) / 8 OCRP
+    / 9 OCCN / 10 ICRQ (Incoming-Call-Request) / 11 ICRP
+    / 12 ICCN / 14 CDN (Call-Disconnect-Notify) / 15 WEN
+    (WAN-Error-Notify) / 16 SLI (Set-Link-Info) / 20 ACK
+    (Acknowledgement).
+  - **Data Message** (T=0): Session ID (peer-end's
+    session identifier) + L2-Specific Sublayer (varies
+    by encap; default empty) + L2 Frame (opaque;
+    surfaced as hex preview).
+  - **AVP flags decoded** — M (Mandatory; receiver must
+    understand) + H (Hidden; AVP value is encrypted per
+    RFC 3931 §4.3). Hidden AVPs surface the ciphertext
+    as hex without UTF-8 surfacing.
+
+- **Tooling** — registry capacity bumped from 375 → 376.
+
+### Out of scope
+
+- UDP framing (feed L2TPv3 bytes after the UDP header
+  strip — UDP-mode L2TPv3 runs on destination port 1701;
+  IP-mode runs as IP protocol 115).
+- IP-mode L2TPv3 (different envelope, no UDP header,
+  Session ID 0 indicates a Control Message; could share
+  most decoder logic, deferred).
+- Per-AVP value type-aware decoding beyond Message Type
+  and a few well-known integer/string AVPs (values
+  surfaced as hex with plausibly-text UTF-8 surfacing for
+  Host Name / Vendor Name).
+- Hidden (encrypted) AVPs (H bit surfaced but decryption
+  requires the shared secret + RFC 3931 §4.3 procedure;
+  deferred).
+- PPP / HDLC / Ethernet / ATM / FR frame dissection
+  inside Data Message payload (operator pulls bytes out
+  of the payload preview and feeds into the appropriate
+  L2 decoder).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational pseudowire
+  encapsulation; pairs with `pppoe_decode` for the
+  complete broadband BNG + L2 VPN story; dominant LI /
+  backhaul transport at every ISP).
+- Wrap-vs-native judgement: **native** — RFC 3931 is
+  fully public; L2TPv3 has a tight bit-packed common
+  header that dispatches between Control and Data
+  messages; Control Messages carry an AVP list with well-
+  defined Attribute Types; no crypto at the parse layer.
+
 ## [0.298.0] - 2026-05-20
 
 **Ninety-third native-fit gap: IPFIX (IP Flow Information

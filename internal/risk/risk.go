@@ -1119,6 +1119,25 @@ var toolLevels = func() map[string]Level {
 		// Completes the v5 + v9 + IPFIX + sFlow flow-
 		// telemetry quartet.
 		"ipfix_decode",
+		// v0.299 (NATIVE-fit gap — foundational
+		// pseudowire encapsulation): L2TPv3 per RFC 3931
+		// (UDP-encapsulated mode, port 1701). Pairs with
+		// pppoe_decode for the complete broadband
+		// subscriber-management story (PPPoE = access
+		// side, L2TPv3 = backhaul tunnel to LNS).
+		// Dominant transport for ISP lawful intercept
+		// (LI), L2 VPN services (Ethernet / ATM / Frame
+		// Relay / PPP / HDLC pseudowires), and wholesale
+		// subscriber backhaul. 16-bit bit-packed common
+		// header (T/L/x/S/x/Version=3); Control Message
+		// (T=1) with Length + Connection ID + Ns + Nr +
+		// AVP walker; Data Message (T=0) with Session ID
+		// + opaque payload preview. ~20-entry IETF AVP
+		// name table; 15-entry Message Type name table
+		// (SCCRQ/SCCRP/SCCCN/StopCCN/HELLO/OCRQ/OCRP/
+		// OCCN/ICRQ/ICRP/ICCN/CDN/WEN/SLI/ACK); Hidden
+		// (encrypted) AVP detection.
+		"l2tp_v3_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
