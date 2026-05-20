@@ -1215,6 +1215,22 @@ var toolLevels = func() map[string]Level {
 		// PREFER_FAILURE / FILTER / NAT64_PREFIX /
 		// PORT_SET); 10-entry IP-protocol name table.
 		"pcp_decode",
+		// v0.304 (NATIVE-fit gap — predecessor to PCP):
+		// NAT-PMP per RFC 6886. Apple's 2008 design that
+		// PCP superseded in 2013 but which remains widely
+		// deployed in older residential broadband CPE
+		// (Apple Airport / Time Capsule / early Asus /
+		// Belkin / Linksys before ~2014). Modern P2P
+		// applications try NAT-PMP first then fall back
+		// to UPnP IGD. Tight 2/12/16-byte fixed-position
+		// messages; 6-entry opcode name table covering
+		// requests + responses for Public Address / Map
+		// UDP / Map TCP; 6-entry Result Code name table
+		// (SUCCESS / UNSUPP_VERSION / NOT_AUTHORIZED /
+		// NETWORK_FAILURE / OUT_OF_RESOURCES /
+		// UNSUPPORTED_OPCODE). Version=2 detection
+		// (signals PCP, surfaces a pcp_decode pointer).
+		"natpmp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

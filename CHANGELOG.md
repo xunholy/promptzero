@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.304.0] - 2026-05-20
+
+**One-hundredth native-fit decoder! NAT-PMP (NAT Port
+Mapping Protocol) message dissector per RFC 6886, the
+predecessor to PCP (covered by `pcp_decode`). NAT-PMP is
+Apple's 2008 design that PCP superseded in 2013 but which
+remains widely deployed in older residential broadband CPE
+(every Apple Airport / Time Capsule / early Asus / Belkin
+/ Linksys router shipped before ~2014 speaks NAT-PMP
+rather than PCP). Modern peer-to-peer applications
+(BitTorrent clients, Tailscale, libnatpmp) try NAT-PMP
+first and fall back to UPnP IGD when neither NAT-PMP nor
+PCP works.**
+
+### Added
+
+- **`natpmp_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a NAT-PMP message into a structured view:
+
+  - **Common header**: byte 0 = Version (must be 0 for
+    NAT-PMP; version 2 indicates PCP — surfaces a Note
+    pointing at `pcp_decode`); byte 1 = **Opcode** with
+    the high bit signalling direction (Request when
+    clear, Response when set). **6-entry opcode name
+    table**: 0 Public Address Request / 1 Map UDP Request
+    / 2 Map TCP Request / 128 Public Address Response /
+    129 Map UDP Response / 130 Map TCP Response.
+  - **Public Address Request** (Opcode 0, 2 bytes total)
+    — Version + Opcode only; client asks the gateway for
+    its WAN-facing IP.
+  - **Public Address Response** (Opcode 128, 12 bytes) —
+    Result Code + Seconds Since Epoch (server-anchor
+    counter for mapping-validity comparisons) + Public
+    IP (IPv4 — NAT-PMP is IPv4-only).
+  - **Map Request** (Opcode 1 UDP / 2 TCP, 12 bytes) —
+    Reserved + Internal Port + Suggested External Port +
+    Requested Lifetime (0 = delete mapping).
+  - **Map Response** (Opcode 129 UDP / 130 TCP, 16
+    bytes) — Result Code + Seconds Since Epoch +
+    Internal Port + Mapped External Port (granted) +
+    Granted Lifetime.
+  - **6-entry Result Code name table** (RFC 6886 §3.5):
+    0 SUCCESS / 1 UNSUPP_VERSION / 2 NOT_AUTHORIZED
+    (gateway refused — common when administratively
+    disabled) / 3 NETWORK_FAILURE (no upstream
+    connectivity) / 4 OUT_OF_RESOURCES (port range
+    exhausted; client should retry) / 5
+    UNSUPPORTED_OPCODE.
+
+- **Tooling** — registry capacity bumped from 381 → 382.
+
+### Out of scope
+
+- UDP framing (feed NAT-PMP bytes after UDP header strip
+  — NAT-PMP runs on UDP destination port 5351; clients
+  listen on UDP 5350 for unsolicited Public Address
+  change announcements).
+- PCP (RFC 6887 — successor protocol with IPv6 + peer-
+  mapping + TLV options; use `pcp_decode`).
+- UPnP IGD (different protocol family — HTTP/XML over
+  SSDP discovery; not related to NAT-PMP).
+- NAT-PMP unsolicited announcements (Version=0 Opcode=128
+  sent to clients on UDP 5350 when the gateway WAN IP
+  changes; decoded with the standard Public Address
+  Response layout — the operator's framing context tells
+  them whether it's a unicast reply or a multicast
+  announcement).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational NAT/
+  firewall configuration protocol; predecessor to PCP;
+  still widely deployed in older residential broadband
+  CPE; consumed by every modern peer-to-peer application
+  that needs inbound connectivity).
+- Wrap-vs-native judgement: **native** — RFC 6886 is
+  fully public; NAT-PMP has tight fixed-position 2/12/16-
+  byte messages with no crypto, no variable-length
+  fields.
+
 ## [0.303.0] - 2026-05-20
 
 **Ninety-ninth native-fit gap: PCP (Port Control Protocol)

@@ -707,7 +707,16 @@ func TestRegistrySize(t *testing.T) {
 	// NAT-PMP; universal in residential broadband CPE +
 	// CGNAT enforcement; consumed by uTorrent /
 	// Tailscale / libpcp / libnatpmp / miniupnpd.
-	const expected = 381
+	// v0.304.0 added natpmp_decode (NAT-PMP per RFC
+	// 6886, predecessor to PCP — tight 2/12/16-byte
+	// fixed-position messages; 6-entry opcode name
+	// table covering requests + responses for Public
+	// Address / Map UDP / Map TCP; 6-entry Result Code
+	// name table; PCP version-2 detection note).
+	// Apple's 2008 design still deployed in older
+	// residential broadband CPE; tried first by modern
+	// P2P clients before falling back to UPnP IGD.
+	const expected = 382
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
