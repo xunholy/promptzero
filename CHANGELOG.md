@@ -7,6 +7,122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.321.0] - 2026-05-21
+
+**117th native-fit decoder: LLMNR (Link-Local
+Multicast Name Resolution) message dissector per RFC
+4795. LLMNR is the modern Windows multicast name-
+resolution protocol that runs over UDP/5355 to
+multicast 224.0.0.252 (IPv4) or FF02::1:3 (IPv6
+link-local). LLMNR exists in the Windows lookup
+chain as the second fallback when DNS fails to
+resolve a short, unqualified name (Windows tries
+DNS, then LLMNR, then — on older configurations —
+NBNS). Interesting because it is the canonical
+target of Responder.py poisoning alongside NBNS:
+when a Windows host types `\\fileserv1` and the
+corporate DNS doesn't know the name, the host
+broadcasts an LLMNR QUERY to the local subnet; an
+attacker running Responder.py replies with their
+own IP and captures the inbound NTLMv2 challenge/
+response for offline cracking with hashcat mode
+5600.**
+
+### Added
+
+- **`llmnr_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an LLMNR message into a structured view:
+
+  - **DNS-style header** (RFC 4795 §2.1.1, 12 bytes,
+    big-endian): TransactionID + Flags + QD/AN/NS/AR
+    counts.
+
+  - **Flags field** (16 bits BE) with LLMNR-specific
+    interpretation: bit 15 `QR` (response indicator)
+    + bits 11-14 `Opcode` (always 0 = LLMNR_QUERY) +
+    bit 10 `C` (Conflict — set in a response to
+    indicate the queried name is in active use by
+    multiple hosts; canonical LLMNR-poisoning
+    detection signal) + bit 9 `TC` (Truncated) + bit
+    8 `T` (Tentative — set during name registration
+    before the name has been successfully defended
+    on the link) + bits 0-3 `RCODE`.
+
+  - **DNS label-encoded name walker** (RFC 4795
+    §2.1.7): standard RFC 1035 length-prefixed
+    labels terminated by a 0x00 root label. **LLMNR
+    explicitly forbids compression pointers**, so
+    the walker rejects any length byte with the
+    high bits 11 (0xC0+) as malformed.
+
+  - **Question + Answer records**: encoded name +
+    Type + Class + (Answer only) TTL + RDLength +
+    RDATA.
+
+  - **6+ entry resource-record Type name table**: 1
+    `A` (IPv4 host address) / 2 `NS` / 5 `CNAME`
+    (Canonical Name) / 6 `SOA` / 12 `PTR` (Pointer
+    — reverse lookup) / 15 `MX` (Mail Exchange) /
+    16 `TXT` (Text) / 28 `AAAA` (IPv6 host address)
+    / 33 `SRV`.
+
+  - **Per-RR-type RDATA decoders**: `A` → 4-byte
+    IPv4 address; `AAAA` → 16-byte IPv6 address;
+    `PTR` / `CNAME` → DNS-encoded name (label
+    walker; no compression pointers); other types →
+    RDATA bytes surfaced as raw hex.
+
+  - **RCODE name table** (RFC 1035 §4.1.1): 0
+    `No_Error` / 1 `Format_Error` / 2
+    `Server_Failure` / 3 `Name_Error` (the standard
+    "no such name" response) / 4 `Not_Implemented`
+    / 5 `Refused`.
+
+  Pure offline parser — operators paste LLMNR bytes
+  (the UDP payload as hex; default UDP port 5355)
+  from a `tcpdump -X port 5355` line or a Wireshark
+  LLMNR dissector view and get the documented
+  header + per-record breakdown.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the UDP-datagram header strip;
+  default UDP port 5355); NBNS / mDNS (parallel
+  Windows / Bonjour name-resolution protocols on
+  UDP/137 and UDP/5353 — covered by `nbns_decode` +
+  future `mdns_decode` Specs); generic DNS (UDP/53
+  traffic uses the same RFC 1035 wire format but
+  supports compression pointers + the full RR-type
+  registry — covered by the existing
+  `dns_packet_decode` Spec); per-RR-type decoders
+  beyond A/AAAA/PTR/CNAME (TXT key-value parsing,
+  SRV target+port extraction, MX preference +
+  exchange decoding — out of scope since LLMNR
+  deployments overwhelmingly carry A + AAAA
+  queries); multi-fragment reassembly (per-message
+  TC flag surfaced but reassembly out of scope);
+  name-conflict resolution state-machine.
+
+  Source: docs/catalog/gap-analysis.md (Windows AD
+  reconnaissance dissector — pairs with
+  `nbns_decode` for the Windows name-resolution
+  duo + future `mdns_decode` for the consumer-IoT
+  discovery layer; canonical target of Responder.py
+  poisoning; common in DEF CON Recon Village + AD
+  pentest engagements; the NTLMv2-hash-capture
+  entry point on Windows networks where DNS is
+  locked down). Wrap-vs-native: native — RFC 4795
+  is publicly available; the wire format is a tight
+  12-byte DNS-style header + per-record DNS-style
+  encoding with the critical LLMNR-specific
+  constraint that compression pointers are
+  forbidden; no crypto at the parse layer.
+
+### Changed
+
+- Registry capacity is now **399** Specs (was 398). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.320.0] - 2026-05-21
 
 **116th native-fit decoder: ICMPv6 NDP (Neighbor

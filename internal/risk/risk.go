@@ -1557,6 +1557,26 @@ var toolLevels = func() map[string]Level {
 		// IPv6 protocol; canonical mitm6 +
 		// suddensix + fake_router6 pentest target.
 		"ndp_decode",
+		// v0.321 native-fit gap: llmnr_decode is a
+		// pure offline dissector for LLMNR (Link-
+		// Local Multicast Name Resolution) per RFC
+		// 4795 — UDP/5355 multicast 224.0.0.252 /
+		// FF02::1:3. 12-byte DNS-style header with
+		// LLMNR-specific Flags interpretation (QR +
+		// Opcode=0 LLMNR_QUERY + bit 10 C Conflict
+		// + TC + bit 8 T Tentative + RCODE); DNS
+		// label-encoded name walker per RFC 4795
+		// §2.1.7 (explicitly forbids compression
+		// pointers — rejects 0xC0+ prefix as
+		// malformed); per-RR-type RDATA decoders for
+		// A (IPv4) / AAAA (IPv6) / PTR / CNAME +
+		// other types surfaced as opaque hex. The
+		// canonical Responder.py poisoning target
+		// alongside NBNS for capturing NTLMv2
+		// challenge-response hashes; common in DEF
+		// CON Recon Village + AD pentest
+		// engagements.
+		"llmnr_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

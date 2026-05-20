@@ -1067,7 +1067,28 @@ func TestRegistrySize(t *testing.T) {
 	// signalling layer; canonical mitm6 /
 	// suddensix / fake_router6 SLAAC-poisoning
 	// pentest target.
-	const expected = 398
+	// v0.321.0 added llmnr_decode (Link-Local
+	// Multicast Name Resolution per RFC 4795 —
+	// UDP/5355). 12-byte DNS-style header with
+	// LLMNR-specific Flags interpretation (QR +
+	// Opcode=0 LLMNR_QUERY + bit 10 C Conflict +
+	// TC + bit 8 T Tentative + RCODE); 6-entry
+	// RCODE name table; 9+ entry RR-type name
+	// table (A / NS / CNAME / SOA / PTR / MX /
+	// TXT / AAAA / SRV); DNS label-encoded name
+	// walker per RFC 4795 §2.1.7 (explicitly
+	// forbids compression pointers — rejects
+	// 0xC0+ prefix as malformed); per-RR-type
+	// RDATA decoders for A → IPv4, AAAA → IPv6,
+	// PTR / CNAME → name, other types → opaque
+	// hex. The canonical Responder.py poisoning
+	// target alongside NBNS — NTLMv2-hash-
+	// capture entry point on Windows networks
+	// where DNS is locked down; pairs with
+	// nbns_decode for the Windows name-
+	// resolution duo and future mdns_decode for
+	// the consumer-IoT/Bonjour case.
+	const expected = 399
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
