@@ -1201,7 +1201,35 @@ func TestRegistrySize(t *testing.T) {
 	// instruments. Targets DEF CON ICS Village
 	// CTFs + S4 Symposium + process-pentest
 	// engagements.
-	const expected = 403
+	// v0.326.0 added rtsp_decode (RTSP per RFC
+	// 7826 RTSP 2.0 + RFC 2326 RTSP 1.0 —
+	// TCP/554). Three message kinds: Request
+	// (METHOD URL RTSP/version), Response
+	// (RTSP/version code reason), Interleaved
+	// RTP (binary `$` + channel + length +
+	// payload). 11-entry Method name table
+	// (OPTIONS / DESCRIBE / ANNOUNCE / SETUP /
+	// PLAY / PAUSE / TEARDOWN / GET_PARAMETER
+	// / SET_PARAMETER / REDIRECT / RECORD);
+	// HTTP-style status code categorisation
+	// (Informational / Success / Redirection /
+	// Client_Error / Server_Error /
+	// Vendor_Error); case-insensitive header
+	// parser surfacing canonical RTSP fields
+	// (CSeq / Session / Transport / Range /
+	// Scale / Speed / Public / Allow /
+	// RTP-Info / Content-Type/Length /
+	// User-Agent / Server / Date /
+	// WWW-Authenticate / Authorization); body
+	// surfacing per Content-Length. The
+	// canonical IP-camera pentest entry point
+	// (Hikvision / Axis / Dahua / Bosch /
+	// Vivotek / Pelco) + streaming-server
+	// fingerprint (Wowza / GStreamer / Live555
+	// / VLC); pairs with the existing
+	// sdp_decode + rtp_decode Specs for full
+	// streaming-stack coverage.
+	const expected = 404
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

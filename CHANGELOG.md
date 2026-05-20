@@ -7,6 +7,142 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.326.0] - 2026-05-21
+
+**122nd native-fit decoder: RTSP (Real-Time Streaming
+Protocol) message dissector per RFC 7826 (RTSP 2.0) +
+RFC 2326 (RTSP 1.0). RTSP is the canonical streaming-
+session control protocol for IP cameras + streaming-
+server fronts — the wire format an operator sees when
+interrogating Hikvision / Axis / Dahua / Bosch /
+Vivotek / Pelco IP cameras (which all expose an RTSP
+server on TCP/554) or talking to a streaming-server
+product (Wowza, RTSP Simple Server, GStreamer
+rtspserver, Live555 testOnDemandRTSPServer, VLC). The
+first protocol an IP-camera pentester touches —
+default-credential brute force (canonical `DESCRIBE
+rtsp://admin:admin@target/Streaming/Channels/101`
+probe), path enumeration (vendor-specific URL paths
+reveal vendor + model), authentication harvesting
+(WWW-Authenticate Digest realm + nonce leak for
+offline crack), CVE-2017-7921/7923 Hikvision backdoor
+recon.**
+
+### Added
+
+- **`rtsp_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an RTSP message into a structured view:
+
+  - **Three message kinds** discriminated by the
+    first byte: **Request** (first whitespace-
+    delimited token is one of 11 methods) format
+    `<METHOD> <URL> RTSP/<version>\r\n`; **Response**
+    (first token is `RTSP/<version>`) format
+    `RTSP/<version> <status-code> <reason-phrase>\r\n`;
+    **Interleaved RTP** (first byte = `$` / 0x24
+    per RFC 7826 §14.4) followed by 1-byte channel
+    + 2-byte BE length + length-many bytes of RTP/
+    RTCP payload.
+
+  - **11-entry Method name table** (RFC 7826 §13):
+    `OPTIONS` (discover server capabilities —
+    canonical first probe) / `DESCRIBE` (request
+    SDP description of stream — canonical
+    enumeration step revealing stream tracks +
+    codec parameters) / `ANNOUNCE` (push SDP to
+    server — used in record-mode ffmpeg upload) /
+    `SETUP` (negotiate transport parameters per
+    track) / `PLAY` (start media delivery) /
+    `PAUSE` / `TEARDOWN` (close session) /
+    `GET_PARAMETER` (keep-alive + per-server
+    parameter query) / `SET_PARAMETER` / `REDIRECT`
+    (server informs client of new location) /
+    `RECORD`.
+
+  - **HTTP-style status code categories**: 1xx
+    `Informational` / 2xx `Success` / 3xx
+    `Redirection` / 4xx `Client_Error` (401
+    Unauthorized triggers Digest auth) / 5xx
+    `Server_Error` / 6xx `Vendor_Error` (some
+    Hikvision firmwares).
+
+  - **Case-insensitive header parser** (RFC 7826
+    borrows the HTTP/1.1 header model). Surfaces
+    canonical RTSP fields as dedicated typed
+    fields: `CSeq` (per-session monotonic sequence
+    number that pairs requests to responses) /
+    `Session` (opaque session id server assigns on
+    SETUP) / `Transport` (RTP/AVP transport spec
+    — `RTP/AVP/UDP;unicast;client_port=8000-8001`
+    or `RTP/AVP/TCP;unicast;interleaved=0-1` for
+    the Interleaved tunnel mode) / `Range`
+    (playback range: `npt=0-`, `npt=10.0-20.5`,
+    `clock=...`) / `Scale` + `Speed` (playback
+    rate) / `Public` + `Allow` (server-advertised
+    method lists) / `RTP-Info` (per-track RTP sync
+    info: sequence + RTP timestamp at PLAY start) /
+    `Content-Type` (usually `application/sdp` on
+    DESCRIBE) / `Content-Length` / `User-Agent` +
+    `Server` (canonical fingerprinting fields) /
+    `Date` / `WWW-Authenticate` (Basic realm or
+    Digest realm + nonce — the Digest realm +
+    nonce are what an attacker cracks offline) /
+    `Authorization` (Basic <base64> or Digest).
+
+  - **Other headers** — surfaced as a generic
+    `other_headers` map.
+
+  - **Body bytes** — when `Content-Length: N` is
+    set and N bytes follow the blank line, the
+    body is surfaced as `body_string` (if UTF-8)
+    or `body_hex` (otherwise).
+
+  Pure offline parser — operators paste RTSP
+  bytes (the TCP-segment payload as hex; default
+  TCP port 554) from a `tcpdump -X port 554` line
+  or a Wireshark RTSP dissector view and get the
+  documented start-line + header breakdown +
+  canonical RTSP fields + optional body.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the TCP-segment header strip;
+  default TCP port 554; RTSPS over TLS on TCP/322
+  wraps the same bytes in TLS records — handle
+  TLS strip first); SDP body decoding (DESCRIBE
+  responses carry an SDP body covered by the
+  existing `sdp_decode` Spec); encapsulated RTP/
+  RTCP (Interleaved RTP frames carry RTP/RTCP
+  packets covered by the existing `rtp_decode`
+  Spec); authentication evaluation (Digest nonce
+  validation, Basic credential extraction, MD5/
+  SHA-256 response verification — higher-level);
+  RTSP-over-HTTP tunnelling
+  (`application/x-rtsp-tunnelled`); WebRTC / WHIP
+  / WHEP (modern streaming signalling
+  alternatives — separate decoders).
+
+  Source: docs/catalog/gap-analysis.md (IP camera
+  + streaming-server dissector — pairs with the
+  existing `sdp_decode` + `rtp_decode` Specs for
+  full streaming-stack coverage; canonical decode
+  for Hikvision / Axis / Dahua / Bosch / Vivotek
+  / Pelco IP camera enumeration + Wowza /
+  GStreamer / Live555 server fingerprinting;
+  common in DEF CON IoT Village CTFs + home-
+  network surveillance pentests + corporate IP-
+  camera audit engagements). Wrap-vs-native:
+  native — RTSP is a tiny text-based protocol
+  with three message kinds + CRLF-terminated
+  lines + a flat header set borrowed largely
+  from HTTP/1.1; the RFCs are publicly available;
+  no crypto at the parse layer.
+
+### Changed
+
+- Registry capacity is now **404** Specs (was 403). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.325.0] - 2026-05-21
 
 **121st native-fit decoder: HART-IP (Highway

@@ -1666,6 +1666,32 @@ var toolLevels = func() map[string]Level {
 		// family for full coverage from field
 		// instruments through DCS/SCADA to MES.
 		"hart_ip_decode",
+		// v0.326 native-fit gap: rtsp_decode is a
+		// pure offline dissector for RTSP per RFC
+		// 7826 (RTSP 2.0) + RFC 2326 (RTSP 1.0) —
+		// TCP/554. Three message kinds: Request
+		// (METHOD URL RTSP/version), Response
+		// (RTSP/version code reason), Interleaved
+		// RTP (binary $ + channel + length +
+		// payload). 11-entry Method name table
+		// (OPTIONS / DESCRIBE / ANNOUNCE / SETUP /
+		// PLAY / PAUSE / TEARDOWN / GET_PARAMETER /
+		// SET_PARAMETER / REDIRECT / RECORD); HTTP-
+		// style status code categorisation
+		// (Informational / Success / Redirection /
+		// Client_Error / Server_Error /
+		// Vendor_Error); case-insensitive header
+		// parser surfacing canonical RTSP fields
+		// (CSeq / Session / Transport / Range /
+		// Scale / Speed / Public / Allow / RTP-
+		// Info / Content-Type/Length / User-Agent /
+		// Server / Date / WWW-Authenticate /
+		// Authorization). The canonical IP-camera
+		// pentest entry point — Hikvision / Axis /
+		// Dahua / Bosch / Vivotek / Pelco; pairs
+		// with sdp_decode + rtp_decode for full
+		// streaming-stack coverage.
+		"rtsp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
