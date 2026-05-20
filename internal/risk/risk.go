@@ -1231,6 +1231,23 @@ var toolLevels = func() map[string]Level {
 		// UNSUPPORTED_OPCODE). Version=2 detection
 		// (signals PCP, surfaces a pcp_decode pointer).
 		"natpmp_decode",
+		// v0.305 (NATIVE-fit gap — fourth-pillar IP
+		// transport): DCCP per RFC 4340. Niche transport
+		// alongside TCP/UDP/SCTP designed for real-time
+		// media + interactive games that want UDP-style
+		// unreliable delivery plus TCP-style congestion
+		// control. Generic header (Source/Dest Port +
+		// Data Offset + CCVal/CsCov + Checksum + Type/X
+		// bits); 10-entry packet type name table (Request
+		// / Response / Data / Ack / DataAck / CloseReq /
+		// Close / Reset / Sync / SyncAck); short (X=0
+		// 24-bit seq) vs extended (X=1 48-bit seq)
+		// header dispatch; per-type body decoders for
+		// Request/Response (Service Code), Ack-family
+		// (8-byte Ack subheader), Reset (Ack subheader
+		// + 12-entry Reset Code name table); IP protocol
+		// 33.
+		"dccp_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

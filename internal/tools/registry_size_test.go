@@ -716,7 +716,16 @@ func TestRegistrySize(t *testing.T) {
 	// Apple's 2008 design still deployed in older
 	// residential broadband CPE; tried first by modern
 	// P2P clients before falling back to UPnP IGD.
-	const expected = 382
+	// v0.305.0 added dccp_packet_decode (DCCP per RFC
+	// 4340 — generic header + 10-entry packet type name
+	// table; short vs extended sequence-number header
+	// dispatch via X bit; per-type body decoders for
+	// Request/Response/Ack-family/Reset with 12-entry
+	// Reset Code name table). Fourth-pillar IP transport
+	// alongside TCP/UDP/SCTP; niche but well-defined;
+	// used in WebRTC fallbacks + embedded game-server
+	// protocols.
+	const expected = 383
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
