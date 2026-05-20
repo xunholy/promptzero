@@ -819,7 +819,26 @@ func TestRegistrySize(t *testing.T) {
 	// S7-300/400/1200/1500 PLC protocol; canonical
 	// Stuxnet target; dominant on the factory floor
 	// in EU/Asian manufacturing.
-	const expected = 388
+	// v0.311.0 added goose_decode (IEC 61850-8-1
+	// GOOSE messages — 8-byte fixed header (APPID +
+	// Length + Reserved1 + Reserved2) + ASN.1 BER-
+	// encoded IECGoosePdu with outer tag 0x61 and
+	// 12 context-class IMPLICIT fields tagged 0x80-
+	// 0xAB: gocbRef VISIBLE-STRING / timeAllowedToLive
+	// INTEGER / datSet / goID / UtcTime (8-byte split
+	// into 4-byte secondsSinceEpoch + 3-byte
+	// fractionOfSecond + 1-byte quality) / stNum /
+	// sqNum / test BOOLEAN / confRev / ndsCom /
+	// numDatSetEntries / allData SEQUENCE OF Data;
+	// BER length walker for short and long form;
+	// IEC 62351-6 trailing security bytes surfaced).
+	// The time-critical multicast Ethernet protocol
+	// (EtherType 0x88B8, 4 ms latency budget per
+	// IEC 61850-5 Type 1A) carrying protective-
+	// relay trip signals in modern digital
+	// substations; completes the substation trio
+	// PTPv2 + IEC 104 + GOOSE.
+	const expected = 389
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -1345,6 +1345,24 @@ var toolLevels = func() map[string]Level {
 		// canonical Stuxnet target; dominant in
 		// EU/Asian factory automation.
 		"s7comm_decode",
+		// v0.311 native-fit gap: goose_decode is a pure
+		// offline dissector for IEC 61850-8-1 GOOSE
+		// messages — 8-byte fixed header (APPID + Length
+		// + Reserved1 + Reserved2) + ASN.1 BER-encoded
+		// IECGoosePdu with context-class implicit tags
+		// 0x80-0xAB (gocbRef / timeAllowedToLive /
+		// datSet / goID / UtcTime / stNum / sqNum /
+		// test / confRev / ndsCom / numDatSetEntries /
+		// allData); BER length walker for short and
+		// long form; signed BER INTEGER decode; UtcTime
+		// 8-byte breakdown (4-byte secondsSinceEpoch +
+		// 3-byte fractionOfSecond + 1-byte quality);
+		// IEC 62351-6 security_trailer_hex surfacing.
+		// Time-critical multicast Ethernet protocol
+		// (EtherType 0x88B8) for protective-relay trip
+		// signalling in modern digital substations;
+		// 4 ms latency budget per IEC 61850-5 Type 1A.
+		"goose_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
