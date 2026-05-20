@@ -1443,6 +1443,31 @@ var toolLevels = func() map[string]Level {
 		// for Yale / Kwikset / Schlage Z-Wave lock
 		// attacks.
 		"zwave_decode",
+		// v0.316 native-fit gap: opcua_decode is a pure
+		// offline dissector for OPC UA Binary messages
+		// per IEC 62541-6 — 8-byte message header (3-
+		// byte ASCII MessageType + 1-byte ChunkType +
+		// 4-byte MessageSize LE); 7-entry MessageType
+		// name table (HEL Hello / ACK Acknowledge /
+		// ERR Error / MSG Message / OPN
+		// OpenSecureChannel / CLO CloseSecureChannel /
+		// RHE ReverseHello); 3-entry ChunkType name
+		// table (Final / Intermediate / Abort); per-
+		// MessageType body decoders for HEL (buffer
+		// sizes + EndpointURL), ACK (mirrors HEL minus
+		// URL), ERR (StatusCode + Reason), OPN
+		// (asymmetric security header with
+		// SecureChannelId + SecurityPolicyUri +
+		// SenderCertificate + ReceiverThumbprint +
+		// SequenceNumber + RequestId), MSG / CLO
+		// (symmetric security header with
+		// SecureChannelId + TokenId + SequenceNumber
+		// + RequestId); UA String + UA ByteString
+		// helpers with null-string handling. Modern
+		// industrial-messaging protocol; sits ABOVE
+		// the field-protocol family; default TCP port
+		// 4840.
+		"opcua_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

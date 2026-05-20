@@ -928,7 +928,33 @@ func TestRegistrySize(t *testing.T) {
 	// Schlage Z-Wave lock attacks + SmartThings hub
 	// enumeration + battery-drain DoS targeting
 	// WAKE_UP-frame-flooded sensors.
-	const expected = 393
+	// v0.316.0 added opcua_decode (OPC UA Binary
+	// per IEC 62541-6 — 8-byte message header (3-
+	// byte ASCII MessageType + 1-byte ChunkType +
+	// 4-byte MessageSize LE); 7-entry MessageType
+	// name table (HEL Hello / ACK Acknowledge /
+	// ERR Error / MSG Message / OPN
+	// OpenSecureChannel / CLO CloseSecureChannel /
+	// RHE ReverseHello); 3-entry ChunkType name
+	// table (Final / Intermediate / Abort); per-
+	// MessageType body decoders for HEL (buffer
+	// sizes + EndpointURL), ACK (mirrors HEL minus
+	// URL), ERR (StatusCode + Reason), OPN
+	// (asymmetric security header with
+	// SecureChannelId + SecurityPolicyUri +
+	// SenderCertificate + ReceiverThumbprint +
+	// SequenceNumber + RequestId), MSG / CLO
+	// (symmetric security header with
+	// SecureChannelId + TokenId + SequenceNumber +
+	// RequestId); UA String + UA ByteString
+	// helpers). Modern industrial-messaging
+	// protocol that supersedes OPC Classic; the
+	// vendor-neutral lingua franca of MES + SCADA
+	// + historian + IIoT gateway stacks; sits
+	// ABOVE the field-protocol family already
+	// covered by modbus/dnp3/iec104/s7comm/enip/
+	// profinet_dcp; default TCP port 4840.
+	const expected = 394
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
