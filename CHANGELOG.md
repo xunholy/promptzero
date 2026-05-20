@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.289.0] - 2026-05-20
+
+**Eighty-fourth native-fit gap: DHCPv6 packet dissector per
+RFC 8415 (which consolidates RFC 3315 + RFC 3633 prefix
+delegation + RFC 3646 DNS configuration + RFC 4242 info
+refresh time + RFC 7083 rapid-commit / unicast updates into
+one current spec). DHCPv6 is the stateful IPv6 address-
+assignment + configuration protocol used alongside SLAAC on
+every dual-stack network; every consumer IPv6 router
+(M-bit set in RA), every cellular IPv6 carrier, every
+enterprise IPv6 deployment runs DHCPv6 for at least DNS /
+NTP / Prefix Delegation. IPv6 sibling to the existing
+`dhcp_packet_decode`.**
+
+### Added
+
+- **`dhcpv6_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a DHCPv6 packet into a structured view:
+
+  - **4-byte fixed header** (RFC 8415 §8): byte 0 =
+    **Message Type** with **13-entry name table** (SOLICIT
+    / ADVERTISE / REQUEST / CONFIRM / RENEW / REBIND /
+    REPLY / RELEASE / DECLINE / RECONFIGURE / INFORMATION-
+    REQUEST / RELAY-FORW / RELAY-REPL); bytes 1-3 =
+    **Transaction ID** (24-bit BE).
+  - **Relay-Forward / Relay-Reply 34-byte header** (msg
+    types 12 + 13, RFC 8415 §9): Hop Count + 16-byte
+    Link-Address + 16-byte Peer-Address + options
+    (typically OPTION_RELAY_MSG carrying the encapsulated
+    packet).
+  - **TLV option walker** — **~25-entry code name table**:
+    OPTION_CLIENTID (1) / OPTION_SERVERID (2) /
+    OPTION_IA_NA (3) / OPTION_IA_TA (4) / OPTION_IAADDR
+    (5) / OPTION_ORO (6) / OPTION_PREFERENCE (7) /
+    OPTION_ELAPSED_TIME (8) / OPTION_RELAY_MSG (9) /
+    OPTION_AUTH (11) / OPTION_UNICAST (12) /
+    OPTION_STATUS_CODE (13) / OPTION_RAPID_COMMIT (14) /
+    OPTION_USER_CLASS (15) / OPTION_VENDOR_CLASS (16) /
+    OPTION_VENDOR_OPTS (17) / OPTION_INTERFACE_ID (18) /
+    OPTION_RECONF_MSG (19) / OPTION_RECONF_ACCEPT (20) /
+    OPTION_DNS_SERVERS (23) / OPTION_DOMAIN_LIST (24) /
+    OPTION_IA_PD (25) / OPTION_IAPREFIX (26) /
+    OPTION_CLIENT_FQDN (39) / OPTION_NTP_SERVER (56).
+  - **DUID parsing** (RFC 8415 §11) — inside ClientID +
+    ServerID: uint16 BE DUID Type with **4-entry table**:
+    1 DUID-LLT (Hardware type + Time since 2000-01-01 UTC
+    surfaced as RFC 3339 + Link-Layer Address), 2 DUID-EN
+    (Enterprise Number + opaque identifier), 3 DUID-LL
+    (Hardware type + Link-Layer Address), 4 DUID-UUID
+    (16-byte UUID).
+  - **IA_NA / IA_PD body** — first 12 bytes are IAID + T1
+    + T2 (uint32 BE each); remainder is a nested TLV list
+    (typically IAADDR for IA_NA or IAPREFIX for IA_PD;
+    walked recursively).
+  - **IAADDR body** — 16-byte IPv6 + Preferred Lifetime +
+    Valid Lifetime + nested options.
+  - **IAPREFIX body** — Preferred Lifetime + Valid
+    Lifetime + Prefix Length + 16-byte IPv6 Prefix +
+    nested options.
+  - **Status Code body** — uint16 BE status code with
+    **7-entry name table** (Success / UnspecFail /
+    NoAddrsAvail / NoBinding / NotOnLink / UseMulticast /
+    NoPrefixAvail) + UTF-8 message string.
+
+- **Tooling** — registry capacity bumped from 365 → 366.
+
+### Out of scope
+
+- UDP / IPv6 framing (feed bytes after the UDP header
+  strip — DHCPv6 ships on UDP, destination port 547
+  server-side / 546 client-side).
+- DHCPv4 (use the existing `dhcp_packet_decode`).
+- OPTION_AUTH integrity verification (auth payload
+  surfaced as hex; verifying the digest would require the
+  receiver to know the shared key).
+- DHCPv6 multi-message state machine reasoning (higher-
+  level).
+- RFC 1035 label-pointer decompression inside
+  OPTION_DOMAIN_LIST (would duplicate `dns_packet_decode`
+  logic).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational IPv6
+  configuration protocol — every dual-stack network runs
+  DHCPv6 alongside SLAAC; natural IPv6 sibling to
+  `dhcp_packet_decode`).
+- Wrap-vs-native judgement: **native** — RFC 8415 is
+  fully public; DHCPv6 has a tight 4-byte fixed header
+  (or 34-byte for Relay messages) followed by a uniform
+  TLV option list; no crypto, no compression.
+
 ## [0.288.0] - 2026-05-20
 
 **Eighty-third native-fit gap: NetFlow v5 export packet

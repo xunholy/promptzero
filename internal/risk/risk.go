@@ -913,6 +913,24 @@ var toolLevels = func() map[string]Level {
 		// High SIEM + capacity-planning + anomaly-
 		// detection value; every NOC sees flows.
 		"netflow_v5_decode",
+		// v0.289 (NATIVE-fit gap — IPv6 sibling to the
+		// existing dhcp_packet_decode): DHCPv6 per RFC
+		// 8415. 4-byte fixed header (1-byte msg type +
+		// 24-bit transaction ID) or 34-byte Relay-Forward
+		// / Relay-Reply header (hop + IPv6 link-addr +
+		// IPv6 peer-addr); 13-entry message type table
+		// (SOLICIT / ADVERTISE / REQUEST / CONFIRM /
+		// RENEW / REBIND / REPLY / RELEASE / DECLINE /
+		// RECONFIGURE / INFORMATION-REQUEST / RELAY-FORW
+		// / RELAY-REPL); TLV option walker with ~25-entry
+		// code name table; DUID parsing (4-entry type
+		// table: LLT / EN / LL / UUID) inside ClientID +
+		// ServerID; IA_NA / IA_TA / IA_PD body parsing
+		// with recursive sub-option walking for IAADDR +
+		// IAPREFIX; Status Code with 7-entry name table;
+		// DNS Servers + NTP Servers as IPv6 lists. Every
+		// dual-stack network runs DHCPv6 alongside SLAAC.
+		"dhcpv6_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

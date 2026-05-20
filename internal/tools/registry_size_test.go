@@ -544,7 +544,17 @@ func TestRegistrySize(t *testing.T) {
 	// every NOC sees flows from every Cisco / Juniper /
 	// Arista router for traffic accounting + anomaly
 	// detection + SIEM correlation.
-	const expected = 365
+	// v0.289.0 added dhcpv6_decode (DHCPv6 per RFC 8415 —
+	// 4-byte header or 34-byte Relay header; 13-entry
+	// message type table; TLV option walker with ~25-
+	// entry code name table; DUID parsing with 4-entry
+	// type table; IA_NA / IA_PD recursive sub-option
+	// walking; Status Code 7-entry name table; DNS / NTP
+	// server IPv6 lists). IPv6 sibling to dhcp_packet_
+	// decode; every dual-stack network runs DHCPv6
+	// alongside SLAAC for stateful address assignment +
+	// prefix delegation + DNS / NTP configuration.
+	const expected = 366
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
