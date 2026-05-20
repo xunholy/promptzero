@@ -606,7 +606,16 @@ func TestRegistrySize(t *testing.T) {
 	// minimal file-transfer protocol; universal in PXE /
 	// network boot, IoT firmware updates, and Cisco /
 	// Juniper / Arista config push.
-	const expected = 371
+	// v0.295.0 added msdp_decode (MSDP per RFC 3618 —
+	// 3-byte TLV header + 6-entry message type table;
+	// per-type body decoders for SA / SA Request / SA
+	// Response (with N × (S, G) entries + optional
+	// encapsulated bootstrap datagram) / Keepalive /
+	// Notification with 7-entry error code name table).
+	// Inter-domain multicast protocol completing the
+	// IGMP + PIM + MSDP trio; runs over TCP port 639
+	// between Rendezvous Points across PIM-SM domains.
+	const expected = 372
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

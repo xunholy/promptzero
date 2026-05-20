@@ -1039,6 +1039,25 @@ var toolLevels = func() map[string]Level {
 		// 9-entry error code name table; OACK with same
 		// option layout as RRQ/WRQ.
 		"tftp_decode",
+		// v0.295 (NATIVE-fit gap — inter-domain
+		// multicast): MSDP per RFC 3618. Completes the
+		// multicast trio with igmp_decode (host↔router)
+		// + pim_decode (intra-domain) + MSDP (inter-
+		// domain across PIM-SM domains). 3-byte TLV
+		// header (Type + Length); 6-entry message type
+		// table (SA / SA Request / SA Response /
+		// Keepalive / Notification / 7-8 deprecated
+		// traceroute pair); per-type body decoders for
+		// SA / SA Response (Entry Count + RP Address +
+		// N × 12-byte (S, G) entries + optional
+		// encapsulated bootstrap datagram); SA Request
+		// (Group Address); Notification (O bit + 7-bit
+		// Error Code with 7-entry name table covering
+		// Message Header Error / SA-Request Error / SA-
+		// Message/Response Error / Hold Timer Expired /
+		// FSM Error / Notification / Cease + Subcode +
+		// opaque data); Keepalive (empty body).
+		"msdp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.295.0] - 2026-05-20
+
+**Ninetieth native-fit gap: MSDP (Multicast Source Discovery
+Protocol) packet dissector per RFC 3618. MSDP is the inter-
+domain multicast protocol that completes the multicast trio
+alongside IGMP (host↔router, covered by `igmp_decode`) and
+PIM (router↔router intra-domain, covered by `pim_decode`).
+Each PIM-SM domain has its own Rendezvous Points (RPs);
+MSDP connects RPs across domains so that a receiver in one
+domain can join a multicast group whose source is in
+another. Operationally, every major Internet exchange +
+carrier core that carries multicast traffic (financial-
+market data feeds, IPTV peering, content distribution) runs
+MSDP between RPs over TCP port 639.**
+
+### Added
+
+- **`msdp_decode`** (`Risk.Low`, `GroupHostTools`) — parses
+  an MSDP packet (one or more back-to-back TLVs) into a
+  structured view:
+
+  - **3-byte TLV header** (RFC 3618 §3): byte 0 = **Type**
+    with **6-entry name table** (1 IPv4 Source-Active / 2
+    IPv4 SA Request / 3 IPv4 SA Response / 4 Keepalive / 6
+    Notification / 7-8 deprecated traceroute pair); bytes
+    1-2 = Length (uint16 BE; total including this header).
+  - **IPv4 Source-Active body** (Type 1; RFC 3618 §4.1):
+    Entry Count + RP Address (originating Rendezvous
+    Point) + N × 12-byte entry (3-byte Reserved + 1-byte
+    Sprefix Length + 4-byte Group Address + 4-byte Source
+    Address) + optional encapsulated multicast datagram
+    (typically the first packet from a new source, sent to
+    bootstrap MSDP peers that haven't yet built (S, G)
+    state).
+  - **IPv4 SA Request body** (Type 2; RFC 3618 §4.2):
+    Reserved + Group Address.
+  - **IPv4 SA Response body** (Type 3) — same layout as
+    Source-Active.
+  - **Keepalive body** (Type 4) — empty.
+  - **Notification body** (Type 6; RFC 3618 §6.1): high-
+    bit **O (Open)** flag + 7-bit **Error Code** with
+    **7-entry name table** (1 Message Header Error / 2
+    SA-Request Error / 3 SA-Message/SA-Response Error / 4
+    Hold Timer Expired / 5 Finite State Machine Error / 6
+    Notification / 7 Cease) + Error Subcode + opaque data.
+
+- **Tooling** — registry capacity bumped from 371 → 372.
+
+### Out of scope
+
+- TCP framing (feed MSDP bytes after the TCP payload
+  extraction — MSDP runs on TCP port 639).
+- MSDP state-machine reasoning (peer setup, SA cache,
+  hold-timer expiry, mesh-group RPF check — higher-level
+  analysis).
+- Encapsulated multicast datagram dissection (when SA
+  carries a bootstrap data packet, it's surfaced as opaque
+  hex; operators can feed it into `ip_packet_decode` to
+  walk the inner IP frame).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (foundational inter-
+  domain multicast protocol; completes the IGMP + PIM +
+  MSDP multicast trio for every Internet exchange +
+  carrier core that carries multicast traffic).
+- Wrap-vs-native judgement: **native** — RFC 3618 is
+  fully public; MSDP messages are plain TLVs with a
+  3-byte common header + per-type body; no crypto, no
+  compression.
+
 ## [0.294.0] - 2026-05-20
 
 **Eighty-ninth native-fit gap: TFTP (Trivial File Transfer
