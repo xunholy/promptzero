@@ -1253,7 +1253,28 @@ func TestRegistrySize(t *testing.T) {
 	// enumeration; canonical decode for Exim /
 	// Postfix / Sendmail / Exchange / Office
 	// 365 / Google Workspace / Mailcow MTAs.
-	const expected = 405
+	// v0.328.0 added pop3_decode (POP3 per RFC
+	// 1939 + RFC 2449 CAPA + RFC 2595 STLS +
+	// RFC 5034 AUTH SASL — TCP/110 cleartext,
+	// 995 implicit-TLS POP3S). Two message
+	// kinds: Server Response (+OK / -ERR + text;
+	// multi-line for LIST/RETR/TOP/UIDL/CAPA
+	// with '.' terminator and byte-stuffing
+	// removal per §3); Client Command (verb +
+	// optional argument). 15+ entry Verb name
+	// table (USER / PASS / APOP / STAT / LIST /
+	// RETR / DELE / NOOP / RSET / QUIT / TOP /
+	// UIDL / STLS / CAPA / AUTH); status
+	// indicator categorisation (Success /
+	// Error); multi-line data aggregation with
+	// byte-stuffing removal. The mail-retrieval
+	// counterpart to SMTP; canonical decode for
+	// Dovecot / Courier / qmail-pop3d / Exchange
+	// POP3 / O365 POP3 servers; common in
+	// credential-spray + APOP timestamp-leakage
+	// + STLS-downgrade pentests + USER/PASS
+	// error-divergence username enumeration.
+	const expected = 406
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

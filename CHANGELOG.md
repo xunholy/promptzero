@@ -7,6 +7,129 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.328.0] - 2026-05-21
+
+**124th native-fit decoder: POP3 (Post Office Protocol
+v3) message dissector per RFC 1939, plus the RFC 2449
+(CAPA), RFC 2595 (STLS), and RFC 5034 (AUTH SASL)
+extensions. POP3 is the mail-retrieval counterpart
+to SMTP — TCP/110 (cleartext) or TCP/995 (implicit-
+TLS, "POP3S"). Pairs with the `smtp_decode` Spec
+shipped in v0.327.0 for the complete email-protocol
+pair. Operationally interesting to a mail-server
+pentester for credential brute-force (USER/PASS
+canonical pattern; -ERR feedback differs between
+unknown user and bad password on older Dovecot /
+Courier configurations — classic username-enumeration
+vector), STLS downgrade audit (CAPA returns STLS
+when the server supports opportunistic TLS upgrade),
+SASL mechanism enumeration (AUTH with no args lists
+supported mechanisms), banner fingerprinting (+OK
+greeting leaks MTA software + version), APOP
+timestamp leakage (legacy +OK <timestamp> banner
+used by MD5-challenge auth leaks server hostname +
+timestamp; combined with known plaintext PASS the
+APOP MD5 digest is trivially crackable offline).**
+
+### Added
+
+- **`pop3_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a POP3 message into a structured view:
+
+  - **Two message kinds** discriminated by the first
+    character of the first line: **Server Response**
+    (first line starts with `+OK` positive or `-ERR`
+    negative; for multi-line responses to `LIST` /
+    `RETR` / `TOP` / `UIDL` / `CAPA` the server
+    emits the first `+OK <text>\r\n` line then a
+    sequence of data lines terminating with a line
+    containing a single `.` per RFC 1939 §3 with
+    byte-stuffing — any data line starting with `.`
+    has an extra `.` prepended on the wire; the
+    decoder removes the byte-stuffing); **Client
+    Command** (first line starts with an ASCII
+    letter; verb + optional argument).
+
+  - **15+ entry Verb name table** (RFC 1939 +
+    extensions): `USER` (authentication username —
+    first half of 2-step USER/PASS login) / `PASS`
+    (authentication password — second half; sent in
+    CLEARTEXT before STLS!) / `APOP` (legacy MD5-
+    challenge authentication — `APOP <user>
+    <md5-digest>`; the digest is `MD5(<banner-
+    timestamp> + <password>)`) / `STAT` (mailbox
+    status — `+OK <count> <octets>`) / `LIST`
+    (mailbox list — single-line per-message or
+    multi-line with `.` terminator) / `RETR`
+    (retrieve message — multi-line) / `DELE` (mark
+    for deletion, committed on QUIT in TRANSACTION
+    state) / `NOOP` (keep-alive) / `RSET` (reset
+    deletion marks) / `QUIT` (close session,
+    trigger UPDATE state, commit DELEs) / `TOP`
+    (retrieve headers + N body lines — multi-line) /
+    `UIDL` (unique-id list — multi-line or single-
+    line per-message) / `STLS` (opportunistic TLS
+    upgrade per RFC 2595) / `CAPA` (capability
+    list per RFC 2449 — multi-line) / `AUTH` (SASL
+    authentication per RFC 5034).
+
+  - **Status indicator categorisation**: `+OK` →
+    `Success`; `-ERR` → `Error`.
+
+  - **Multi-line data aggregation** — when the
+    response is a `+OK` followed by additional data
+    lines terminated by a single `.` on a line, the
+    decoder captures the data lines (with byte-
+    stuffing removed per RFC 1939 §3) into the
+    `data_lines` slice for caller-side processing.
+
+  Pure offline parser — operators paste POP3 bytes
+  (the TCP-segment payload as hex; default TCP port
+  110/995) from a `tcpdump -X port 110` line or a
+  Wireshark POP3 dissector view and get the
+  documented command/response breakdown.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the TCP-segment header strip; default
+  TCP port 110/995); STLS / POP3S transport (after
+  STLS the connection upgrades to TLS — handle the
+  TLS strip first); RFC 5322 message body parsing
+  (bytes between `+OK ...\r\n` and `\r\n.\r\n` for
+  RETR are the RFC 5322 mail body with optional
+  MIME structure per RFC 2045 — separate decoder;
+  surfaced as raw `data_lines`); APOP digest
+  verification (MD5 digest surfaced as second
+  whitespace-delimited token of APOP command
+  argument; verification against server-side
+  password is out of scope); SASL mechanism
+  decoding (per-mechanism PLAIN / CRAM-MD5 /
+  SCRAM-SHA-1 decode is out of scope).
+
+  Source: docs/catalog/gap-analysis.md (mail-
+  retrieval dissector — pairs with `smtp_decode`
+  for the email-protocol pair; canonical decode
+  for Dovecot / Courier / qmail-pop3d / Exchange
+  POP3 / Office 365 POP3 / Google Workspace POP3
+  servers; common in DEF CON + HITB + CTF
+  credential-spray + APOP timestamp-leakage
+  puzzles; foundational mail-server pentest tool
+  for username enumeration via USER/PASS error
+  divergence, STLS downgrade audit, SASL
+  mechanism enumeration). Wrap-vs-native: native
+  — RFC 1939 is publicly available; POP3 is a
+  tiny text-based protocol with two message
+  kinds + CRLF-terminated lines + a 15-entry
+  verb registry + a 2-state status indicator
+  (+OK / -ERR); multi-line response framing per
+  §3 with `.` terminator + byte-stuffing; no
+  crypto at the parse layer.
+
+### Changed
+
+- Registry capacity is now **406** Specs (was 405). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.327.0] - 2026-05-21
 
 **123rd native-fit decoder: SMTP (Simple Mail Transfer
