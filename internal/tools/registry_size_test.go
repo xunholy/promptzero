@@ -561,7 +561,18 @@ func TestRegistrySize(t *testing.T) {
 	// Header with 3-bit Flooding Scope + 13-bit Function
 	// Code (9-entry name table). IPv6 sibling to ospf_
 	// packet_decode; used in every IPv6-routed network.
-	const expected = 367
+	// v0.291.0 added sctp_packet_decode (SCTP per RFC
+	// 4960 + extensions — 12-byte common header + chunk
+	// walker with 4-byte alignment padding; ~20-entry
+	// chunk type table; per-type body decoders for DATA
+	// (with ~25-entry PPID name table) / INIT / INIT_ACK
+	// / SACK / HEARTBEAT / ABORT / ERROR; TLV parameter
+	// walker for INIT; Gap Ack Block + Duplicate TSN
+	// arrays for SACK; Error Cause TLV walker with 13-
+	// entry name table). Third-pillar IP transport;
+	// foundational for telco signalling + WebRTC data
+	// channels + multi-homed HA pairs.
+	const expected = 368
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

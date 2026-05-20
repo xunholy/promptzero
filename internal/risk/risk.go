@@ -951,6 +951,29 @@ var toolLevels = func() map[string]Level {
 		// Prefix). Pairs with ospf_packet_decode for the
 		// complete IPv4 + IPv6 OSPF picture.
 		"ospfv3_packet_decode",
+		// v0.291 (NATIVE-fit gap — third-pillar IP
+		// transport): SCTP per RFC 4960 + RFCs 4895 /
+		// 5061 / 6525 / 4820 / 3758 for AUTH / ASCONF /
+		// RE-CONFIG / PAD / FORWARD-TSN extensions. 12-
+		// byte common header (Source Port + Destination
+		// Port + Verification Tag + CRC32c Checksum) +
+		// chunk walker (4-byte header padded to 4-byte
+		// boundary). ~20-entry chunk type name table
+		// covering DATA / INIT / INIT_ACK / SACK /
+		// HEARTBEAT / ABORT / SHUTDOWN / ERROR / COOKIE_
+		// ECHO + extensions. Per-type body decoders for
+		// DATA (TSN + Stream ID + SSN + PPID with ~25-
+		// entry name table covering M3UA / SUA / IUA /
+		// Diameter / S1AP / NGAP / X2AP / XnAP + user
+		// data); INIT/INIT_ACK (Initiate Tag + a_rwnd +
+		// Outbound/Inbound Streams + Initial TSN + TLV
+		// parameters); SACK (Cumulative TSN + a_rwnd +
+		// Gap Ack Blocks + Duplicate TSNs); HEARTBEAT;
+		// ABORT/ERROR with Error Cause TLV walker (13-
+		// entry cause name table). Foundational for telco
+		// signalling (SIGTRAN + 3GPP control plane) +
+		// WebRTC data channels + multi-homed HA pairs.
+		"sctp_packet_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.291.0] - 2026-05-20
+
+**Eighty-sixth native-fit gap: SCTP (Stream Control
+Transmission Protocol) packet dissector per RFC 4960 (with
+the AUTH / ASCONF / RE-CONFIG / PAD / FORWARD-TSN chunk
+types from RFCs 4895 / 5061 / 6525 / 4820 / 3758). SCTP is
+the third pillar transport alongside TCP and UDP — often
+forgotten in security tooling, but foundational for telco
+signalling (M2PA / M2UA / M3UA / SUA / IUA for SIGTRAN;
+S1AP / X2AP / NGAP / XnAP for LTE+5G control plane;
+Diameter for 3GPP AAA), WebRTC data channels (SCTP-over-
+DTLS-over-UDP per RFC 8261), and multipath HA pairs. The
+long-standing decoder catalog gap.**
+
+### Added
+
+- **`sctp_packet_decode`** (`Risk.Low`, `GroupHostTools`)
+  — parses an SCTP packet into a structured view:
+
+  - **12-byte common header** (RFC 4960 §3.1): Source
+    Port + Destination Port + 32-bit Verification Tag
+    (zero on first INIT) + 32-bit CRC32c Checksum
+    (surfaced as hex; not re-computed).
+  - **Chunk walker** — repeated 4-byte header (Type +
+    Flags + Length) + body (Length - 4 bytes) + optional
+    trailing pad bytes to reach a 4-byte boundary. The
+    4-byte alignment is critical because chunk Lengths
+    are typically odd (DATA payloads aren't 32-bit
+    aligned).
+  - **~20-entry chunk type name table** (RFC 4960 §3.2 +
+    IANA SCTP chunk-types registry): DATA / INIT /
+    INIT_ACK / SACK / HEARTBEAT / HEARTBEAT_ACK / ABORT
+    / SHUTDOWN / SHUTDOWN_ACK / ERROR / COOKIE_ECHO /
+    COOKIE_ACK / ECNE / CWR / SHUTDOWN_COMPLETE / AUTH /
+    ASCONF_ACK / RE-CONFIG / PAD / ASCONF / FORWARD-TSN.
+  - **DATA chunk body** (Type 0): TSN + Stream Identifier
+    + Stream Sequence Number + **Payload Protocol
+    Identifier (PPID)** with a ~25-entry name table
+    covering M2UA / M3UA / SUA / IUA / M2PA / Diameter
+    (cleartext + over DTLS) / S1AP / NGAP / X2AP / XnAP
+    / BICC / TALI / DUA / H.248 / WebRTC binary+string +
+    more. Flag bits in the 1-byte Flags after Type: U
+    (Unordered) / B (Beginning fragment) / E (Ending
+    fragment) / I (SACK Immediately).
+  - **INIT / INIT_ACK chunk body** (Types 1 + 2):
+    Initiate Tag + Advertised Receiver Window Credit +
+    Outbound/Inbound Streams + Initial TSN + variable-
+    length TLV parameters (walked for IPv4 Address /
+    IPv6 Address / Cookie Preservative / Hostname /
+    Supported Address Types / State Cookie).
+  - **SACK chunk body** (Type 3): Cumulative TSN Ack +
+    a_rwnd + Number of Gap Ack Blocks + Number of
+    Duplicate TSNs + Gap Ack Blocks (each 4 bytes:
+    Start + End uint16 BE relative to Cumulative TSN
+    Ack) + Duplicate TSN list.
+  - **HEARTBEAT / HEARTBEAT_ACK chunk body** (Types 4 +
+    5) — Heartbeat Info Parameter (Type 1 + Length +
+    opaque Info; surfaced as hex for request/reply
+    correlation).
+  - **ABORT / ERROR chunk bodies** (Types 6 + 9) — Error
+    Cause TLVs (cause code with **13-entry name table**
+    per IANA SCTP Cause-Codes registry).
+
+- **Tooling** — registry capacity bumped from 367 → 368.
+
+### Out of scope
+
+- IP framing (feed bytes after IPv4/IPv6 header strip —
+  SCTP runs over IP protocol 132).
+- CRC32c checksum verification (surfaced as hex but not
+  re-computed).
+- Upper-layer dissection (once the PPID is decoded the
+  operator feeds the DATA payload into the existing
+  application-layer Specs — Diameter would warrant a
+  future Spec; SIP / RTP / DNS / etc. are already
+  covered).
+- SCTP-over-UDP (RFC 6951) and SCTP-over-DTLS (RFC 8261)
+  framing — both wrap the same SCTP common header; feed
+  bytes starting at the SCTP common header.
+- Association state-machine reasoning (4-way handshake
+  INIT/INIT_ACK/COOKIE_ECHO/COOKIE_ACK, multi-homing,
+  graceful shutdown — higher-level analysis).
+
+### Source
+
+- `docs/catalog/gap-analysis.md` (third-pillar IP
+  transport — foundational for telco signalling + WebRTC
+  data channels + multi-homed HA pairs; the long-standing
+  decoder catalog gap).
+- Wrap-vs-native judgement: **native** — RFC 4960 is
+  fully public; SCTP has a tight 12-byte common header
+  followed by one or more TLV chunks; no crypto at the
+  parse layer.
+
 ## [0.290.0] - 2026-05-20
 
 **Eighty-fifth native-fit gap: OSPFv3 (RFC 5340) packet
