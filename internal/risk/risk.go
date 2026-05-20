@@ -1732,6 +1732,30 @@ var toolLevels = func() map[string]Level {
 		// in credential-spray + APOP timestamp-leakage
 		// pentests.
 		"pop3_decode",
+		// v0.329 native-fit gap: imap4_decode is a pure
+		// offline dissector for IMAP4rev1 per RFC 3501 +
+		// RFC 2595 (STARTTLS) + RFC 2087 (QUOTA) + RFC
+		// 2342 (NAMESPACE) + RFC 2177 (IDLE) + RFC 2971
+		// (ID) — TCP/143 cleartext / 993 implicit-TLS
+		// IMAPS. Four message kinds: Continuation (+ /
+		// SASL multi-step prompt); Untagged Response (*
+		// / data or status); Command + Tagged Response
+		// (disambiguated by second token — OK/NO/BAD/
+		// BYE/PREAUTH → Tagged Response, else Command).
+		// 25+ entry Verb name table (LOGIN cleartext-
+		// creds risk / AUTHENTICATE / SELECT / EXAMINE
+		// / CREATE / DELETE / RENAME / SUBSCRIBE /
+		// UNSUBSCRIBE / LIST / LSUB / STATUS / APPEND /
+		// CHECK / CLOSE / EXPUNGE / SEARCH / FETCH
+		// content-disclosure risk / STORE / COPY / UID
+		// / NOOP / LOGOUT / CAPABILITY / STARTTLS /
+		// IDLE / NAMESPACE / ID); 5-entry Status name
+		// table (OK / NO / BAD / BYE / PREAUTH); 15+
+		// entry Untagged Type name table; continuation
+		// prompt extraction; numeric-prefix '* 12
+		// EXISTS' detection. Completes the email-
+		// protocol triad with smtp_decode + pop3_decode.
+		"imap4_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

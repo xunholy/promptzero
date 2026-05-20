@@ -7,6 +7,131 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.329.0] - 2026-05-21
+
+**125th native-fit decoder + the email-protocol triad
+completes. IMAP4rev1 (Internet Message Access Protocol
+v4 revision 1) message dissector per RFC 3501, plus
+the RFC 2595 (STARTTLS), RFC 2087 (QUOTA), RFC 2342
+(NAMESPACE), RFC 2177 (IDLE), and RFC 2971 (ID)
+extensions. IMAP is the dominant modern mail-access
+protocol — TCP/143 (cleartext) or TCP/993 (implicit-
+TLS, "IMAPS"). Powers Exchange / Office 365 / Google
+Workspace IMAP / Dovecot / Cyrus IMAP / Courier IMAP
+/ Zimbra / FastMail / Apple Mail / Thunderbird / iOS
+Mail / Outlook. Pairs with `smtp_decode` (v0.327) +
+`pop3_decode` (v0.328) for the complete email-
+protocol triad. Canonical mail-server pentest target
+with a richer surface than POP3: credential brute-
+force via LOGIN cleartext command, STARTTLS downgrade
+audit, SASL mechanism enumeration via CAPABILITY,
+FETCH-based content disclosure (`1 UID FETCH 1:*
+BODY[]` retrieves every message in one round-trip),
+IDLE abuse (persistent server-push observer access).**
+
+### Added
+
+- **`imap4_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an IMAP4rev1 message into a structured view:
+
+  - **Four message kinds** discriminated by the first
+    character of the first line: **Continuation**
+    (first char `+`; SASL multi-step server prompt or
+    APPEND literal upload); **Untagged Response**
+    (first char `*`; data response or status);
+    **Command + Tagged Response** (first char
+    alphanumeric; disambiguated by the second
+    whitespace-delimited token — if it's
+    `OK`/`NO`/`BAD`/`BYE`/`PREAUTH` → Tagged
+    Response, otherwise → Command).
+
+  - **25+ entry Verb name table** (RFC 3501 §6 +
+    extensions): `LOGIN` (cleartext credentials!) /
+    `AUTHENTICATE` (SASL with continuation) /
+    `SELECT` (open mailbox r/w) / `EXAMINE` (read-
+    only) / `CREATE` / `DELETE` / `RENAME` /
+    `SUBSCRIBE` / `UNSUBSCRIBE` / `LIST` (wildcards
+    `*` / `%`) / `LSUB` / `STATUS` (query without
+    SELECT) / `APPEND` (literal upload) / `CHECK` /
+    `CLOSE` / `EXPUNGE` (permanently delete
+    \Deleted) / `SEARCH` / `FETCH` (content
+    disclosure) / `STORE` (set flags) / `COPY` /
+    `UID` (variant prefix) / `NOOP` / `LOGOUT` /
+    `CAPABILITY` / `STARTTLS` / `IDLE` (server push
+    per RFC 2177) / `NAMESPACE` (per RFC 2342) /
+    `ID` (client/server identification per RFC 2971).
+
+  - **5-entry Status name table** (§7.1): `OK`
+    (success) / `NO` (failure) / `BAD` (malformed)
+    / `BYE` (server closing) / `PREAUTH` (server
+    pre-authenticated via Kerberos / IPsec).
+
+  - **15+ entry Untagged Type name table**:
+    `CAPABILITY` / `LIST` / `LSUB` / `STATUS` /
+    `SEARCH` / `FLAGS` / `FETCH` / `EXISTS` /
+    `RECENT` / `EXPUNGE` / `NAMESPACE` / `QUOTA` /
+    `QUOTAROOT` / `ID` / `ESEARCH` (RFC 4731
+    extended SEARCH) / `ENABLED`.
+
+  - **Numeric-prefix detection** — IMAP uses
+    `* 12 EXISTS` format for per-message untagged
+    responses; the decoder surfaces the numeric
+    prefix as `untagged_type` and flags it via
+    `untagged_type_name` as `numeric_prefix (see
+    untagged_data for real type)`.
+
+  - **Continuation prompt extraction** — text after
+    `+ ` on continuation responses is surfaced as
+    `continuation_prompt` for caller-side SASL
+    exchange analysis.
+
+  Pure offline parser — operators paste IMAP bytes
+  (the TCP-segment payload as hex; default TCP port
+  143/993) from a `tcpdump -X port 143` line or a
+  Wireshark IMAP dissector view and get the
+  documented per-kind breakdown.
+
+  Out of scope (deferred): network framing (feed
+  bytes after the TCP-segment header strip; default
+  TCP port 143/993); STARTTLS / IMAPS transport
+  (after STARTTLS the connection upgrades to TLS —
+  handle the TLS strip first); literal string body
+  handling (IMAP `{N}<CRLF>...<N bytes>` carries
+  binary data inline for FETCH BODY[] + APPEND
+  uploads; surfaces literal-length marker but
+  doesn't consume the following N bytes); FETCH
+  attribute parser (`FETCH (UID 12 FLAGS (\\Seen)
+  BODY[HEADER] {142}\\r\\n...)` nested attribute list
+  surfaced as `untagged_data`); MIME / RFC 5322
+  message body parsing; SASL mechanism decoding
+  (per-mechanism PLAIN / CRAM-MD5 / SCRAM-SHA-256);
+  RFC 5267 CONTEXT / RFC 5256 SORT/THREAD / RFC
+  4467 URLAUTH / RFC 5464 METADATA / RFC 6855 UTF8
+  extensions (verbs not in the name table surface
+  as `uncatalogued verb`).
+
+  Source: docs/catalog/gap-analysis.md (mail-access
+  dissector — **completes the email-protocol triad
+  with `smtp_decode` + `pop3_decode` + `imap4_decode`**;
+  canonical decode for Exchange / Office 365 /
+  Google Workspace / Dovecot / Cyrus IMAP / Courier
+  IMAP servers; common in DEF CON + HITB + CTF
+  credential-spray + STARTTLS-downgrade + LOGIN-
+  cleartext-capture pentests). Wrap-vs-native:
+  native — RFC 3501 is publicly available; IMAP is
+  a text-based protocol with four message kinds +
+  tag-pairing for request/response correlation + a
+  fixed verb registry + a 5-entry status name table;
+  literal handling + per-attribute FETCH parsing +
+  per-mechanism SASL decoding are out of scope; no
+  crypto at the parse layer.
+
+### Changed
+
+- Registry capacity is now **407** Specs (was 406). The
+  capacity invariant in `internal/tools/registry_size_test.go`
+  tracks the latest count.
+
 ## [0.328.0] - 2026-05-21
 
 **124th native-fit decoder: POP3 (Post Office Protocol

@@ -1274,7 +1274,41 @@ func TestRegistrySize(t *testing.T) {
 	// credential-spray + APOP timestamp-leakage
 	// + STLS-downgrade pentests + USER/PASS
 	// error-divergence username enumeration.
-	const expected = 406
+	// v0.329.0 added imap4_decode (IMAP4rev1
+	// per RFC 3501 + RFC 2595 STARTTLS + RFC
+	// 2087 QUOTA + RFC 2342 NAMESPACE + RFC
+	// 2177 IDLE + RFC 2971 ID — TCP/143
+	// cleartext / 993 implicit-TLS IMAPS).
+	// Four message kinds: Continuation (+ /
+	// SASL multi-step prompt); Untagged
+	// Response (* / data or status); Command
+	// + Tagged Response (disambiguated by
+	// second token — OK/NO/BAD/BYE/PREAUTH →
+	// Tagged Response, else Command). 25+
+	// entry Verb name table (LOGIN cleartext-
+	// creds / AUTHENTICATE / SELECT / EXAMINE
+	// / CREATE / DELETE / RENAME / SUBSCRIBE /
+	// UNSUBSCRIBE / LIST / LSUB / STATUS /
+	// APPEND / CHECK / CLOSE / EXPUNGE /
+	// SEARCH / FETCH content-disclosure /
+	// STORE / COPY / UID / NOOP / LOGOUT /
+	// CAPABILITY / STARTTLS / IDLE server-push
+	// / NAMESPACE / ID); 5-entry Status name
+	// table (OK / NO / BAD / BYE / PREAUTH);
+	// 15+ entry Untagged Type name table
+	// (CAPABILITY / LIST / LSUB / STATUS /
+	// SEARCH / FLAGS / FETCH / EXISTS / RECENT
+	// / EXPUNGE / NAMESPACE / QUOTA / QUOTAROOT
+	// / ID / ESEARCH); continuation prompt
+	// extraction; numeric-prefix '* 12 EXISTS'
+	// detection. Completes the email-protocol
+	// triad with smtp_decode + pop3_decode +
+	// imap4_decode; the dominant modern mail-
+	// access protocol used by Exchange / Office
+	// 365 / Google Workspace / Dovecot / Cyrus
+	// / Courier / Zimbra / FastMail / Apple
+	// Mail / Thunderbird / iOS Mail / Outlook.
+	const expected = 407
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
