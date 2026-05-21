@@ -1491,7 +1491,43 @@ func TestRegistrySize(t *testing.T) {
 	// password deobfuscation (deliberately
 	// omitted) + UDP/1434 [MS-SQLR] enumeration
 	// out of scope.
-	const expected = 412
+	// v0.335.0 added postgres_decode (PostgreSQL
+	// frontend/backend protocol v3 per the
+	// PostgreSQL documentation Part VIII; TCP/5432
+	// default). Sibling decoder to tds_decode;
+	// extends the database-protocol pentest surface
+	// across MSSQL + PostgreSQL. Second-largest
+	// open-source database pentest target after
+	// MySQL. Surfaces: cleartext username +
+	// database via StartupMessage; authentication
+	// method enumeration via AuthenticationRequest
+	// (CleartextPassword = MITM-capturable, MD5
+	// Password = offline-crackable hashcat mode 12,
+	// SASL SCRAM-SHA-256 = modern hardened); brute-
+	// force feedback via ErrorResponse SQLSTATE
+	// (28P01 invalid_password = canonical wrong-
+	// password response; 3D000 invalid_catalog
+	// _name = database enumeration); PostgreSQL
+	// version disclosure via ParameterStatus
+	// server_version GUC; SSL / GSS pre-handshake
+	// detection (SSLRequest / GSSENCRequest /
+	// CancelRequest magic payloads); application
+	// _name client tool ID (psql / pgAdmin /
+	// DBeaver / sqlmap). 15-entry frontend message
+	// type name table + 24-entry backend message
+	// type name table; StartupMessage body walker;
+	// AuthenticationRequest 11-entry sub-type name
+	// table; ErrorResponse TLV walker with 18-
+	// entry field-tag name table + 8-entry
+	// canonical SQLSTATE name table; Parameter
+	// Status body walker. Bind/Parse parameter
+	// marshalling + RowDescription type-OID
+	// parsing + DataRow body + extended query
+	// protocol + COPY streaming + TLS/GSSAPI
+	// handshake + SASL inner-mechanism decode
+	// (SCRAM-SHA-256 base64 blobs) + NOTIFY/LISTEN
+	// payload semantics out of scope.
+	const expected = 413
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

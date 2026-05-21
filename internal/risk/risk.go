@@ -1978,6 +1978,48 @@ var toolLevels = func() map[string]Level {
 		// Server Browser UDP/1434 [MS-SQLR] enumeration
 		// out of scope.
 		"tds_decode",
+		// v0.335 native-fit gap: postgres_decode is a pure
+		// offline dissector for PostgreSQL frontend/backend
+		// protocol v3 per the PostgreSQL documentation
+		// (Part VIII). TCP/5432 default. Sibling decoder
+		// to tds_decode; extends the database-protocol
+		// pentest surface across MSSQL + PostgreSQL.
+		// Second-largest open-source database pentest
+		// target after MySQL (RDS / Aurora / Cloud SQL /
+		// Crunchy / Supabase / Neon / Timescale Cloud /
+		// bare-metal). Surfaces: cleartext username +
+		// database via StartupMessage (user + database
+		// keys sent cleartext UTF-8 — canonical PostgreSQL
+		// credential disclosure on TCP/5432 without TLS);
+		// authentication method enumeration via Auth
+		// Request (0 AuthenticationOk = trust/no password,
+		// 3 CleartextPassword = MITM-capturable, 5
+		// MD5Password = offline-crackable hashcat mode 12,
+		// 10 SASL = SCRAM-SHA-256 modern hardened); brute-
+		// force feedback via ErrorResponse SQLSTATE (28P01
+		// invalid_password = canonical wrong-password
+		// response; 3D000 invalid_catalog_name = database
+		// enumeration feedback; 42P01 undefined_table =
+		// post-auth enumeration); PostgreSQL version
+		// disclosure via ParameterStatus (server_version
+		// GUC = canonical version-fingerprint); SSL / GSS
+		// pre-handshake detection (SSLRequest 0x04D2162F /
+		// GSSENCRequest 0x04D21630 / CancelRequest
+		// 0x04D21631); application_name client tool
+		// identification. 15-entry frontend message type
+		// name table + 24-entry backend message type name
+		// table; StartupMessage body walker; Authentication
+		// Request body walker with 11-entry sub-type name
+		// table; ErrorResponse TLV walker with 18-entry
+		// field-tag name table + 8-entry canonical SQLSTATE
+		// name table; ParameterStatus body walker. Bind /
+		// Parse parameter marshalling + RowDescription
+		// type-OID parsing + DataRow body + extended query
+		// protocol multi-message flow + COPY streaming +
+		// TLS / GSSAPI handshake + SASL inner-mechanism
+		// decode (SCRAM-SHA-256 base64 blobs) + NOTIFY /
+		// LISTEN payload semantics out of scope.
+		"postgres_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
