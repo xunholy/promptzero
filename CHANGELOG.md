@@ -7,6 +7,126 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.337.0] - 2026-05-21
+
+**133rd native-fit decoder. Redis RESP (REdis
+Serialization Protocol) v2 + v3 message decoder per
+the Redis documentation. TCP/6379 default; 6380/6381
+Sentinel; 16379/26379 Cluster bus. The third-largest
+open-source database pentest target after MySQL +
+PostgreSQL — every modern web-app stack uses Redis
+for caching / sessions / queues / pub-sub. Deployed
+everywhere from cloud-managed Redis (AWS ElastiCache
+/ MemoryDB / Google Cloud Memorystore / Azure Cache
+/ Upstash / Redis Enterprise Cloud) to bare-metal to
+containerized side-cars. The **canonical "exposed-
+to-the-internet without auth" pentest target** —
+default Redis deployments have NO authentication
+(`requirepass` unset; disabling `protected-mode` +
+binding to 0.0.0.0 = unauthenticated Redis on the
+internet; Shodan finds 100,000+ unauthenticated
+instances globally) AND multiple RCE primitives even
+after auth (`CONFIG SET dir + dbfilename + SAVE` =
+SSH authorized_keys / cron / webshell write; `MODULE
+LOAD` = direct native-code RCE; `SCRIPT`/`EVAL` =
+Lua sandbox escape CVE-2022-0543 Debian Redis;
+`SLAVEOF`/`REPLICAOF` = replication-based RCE via
+attacker-crafted RDB with malicious module). The
+wire format leaks: AUTH command with cleartext
+password on TCP/6379 (Redis 6+ supports TLS but
+opt-in); HELLO with embedded AUTH (RESP3 protocol
+negotiation with optional inline `AUTH <user>
+<password>` parameters); dangerous-command detection
+(CONFIG / DEBUG / MODULE / SCRIPT / EVAL / SLAVEOF /
+REPLICAOF / SHUTDOWN / FLUSH* / CLIENT KILL flagged
+with attack-vector classification); brute-force
+feedback (-NOAUTH = pre-auth signal; -WRONGPASS =
+canonical wrong-password — password-spray tools
+consume directly; -PERMISSION = ACL denied). Common
+in DEF CON + Black Hat + HITB + OffSec engagements
++ every nmap redis-* NSE / metasploit redis_login /
+redis-cli-driven Redis attack workflow.**
+
+### Added
+
+- **`redis_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a Redis RESP message into a structured view:
+
+  - **5-entry RESP2 type discrimination** by first
+    byte: `+` Simple String / `-` Error / `:` Integer
+    / `$` Bulk String / `*` Array.
+
+  - **8-entry RESP3 type discrimination** (in
+    addition to RESP2): `%` Map / `~` Set / `,`
+    Double / `(` Big Number / `#` Boolean / `_`
+    Null / `=` Verbatim String / `>` Push.
+
+  - **CRLF frame walker** — each value is `\r\n`-
+    terminated; Bulk Strings have a `$N\r\n<N bytes>
+    \r\n` length-prefixed form (N=-1 = null); Arrays
+    have a `*N\r\n` count-prefixed form.
+
+  - **Top-level Array of Bulk Strings detection** —
+    the canonical client→server command shape.
+    Surfaces `command` (uppercased) +
+    `argument_count` + `arguments` (up to 16
+    elements, each truncated to 256 bytes for
+    surfacing).
+
+  - **Command classification + dangerous-command
+    flagging** against a 13-entry table: `AUTH`
+    (cleartext password on the wire!) / `HELLO`
+    (RESP3 protocol with optional inline AUTH) /
+    `CONFIG` (CONFIG SET = RCE primitive when
+    targeting dir/dbfilename) / `DEBUG` (SLEEP DoS,
+    OBJECT leak, RELOAD) / `MODULE` (MODULE LOAD =
+    direct native-code RCE) / `SCRIPT` (Lua scripting
+    prep) / `EVAL` + `EVALSHA` (Lua execution —
+    CVE-2022-0543 sandbox escape) / `SLAVEOF` +
+    `REPLICAOF` (replication-based RCE) / `SHUTDOWN`
+    / `FLUSHDB` + `FLUSHALL` (data destruction) /
+    `CLIENT KILL`.
+
+  - **AUTH command password-length surfacing** — for
+    `AUTH <password>` (one-arg) surfaces
+    `password_bytes`; for `AUTH <user> <password>`
+    (two-arg, Redis 6 ACL) surfaces both
+    `auth_username` cleartext and `password_bytes`
+    length. **Privacy-preserving — never the
+    password contents itself.**
+
+  - **HELLO inline-AUTH detection** — scans HELLO
+    arguments for an `AUTH` keyword followed by user
+    + password; surfaces the same fields as AUTH.
+
+  - **11-entry error category classification table**:
+    `NOAUTH` (pre-auth signal — server requires
+    AUTH!) / `WRONGPASS` (canonical brute-force
+    feedback — wrong password!) / `PERMISSION` (ACL
+    denied) / `MOVED` (Cluster slot redirection) /
+    `ASK` (Cluster slot ASK redirection) / `LOADING`
+    (server warming after restart) / `BUSY` (script
+    execution in progress) / `MASTERDOWN` (Sentinel
+    failover) / `CLUSTERDOWN` (Cluster slot coverage
+    incomplete) / `READONLY` (writing to read-only
+    replica) / `ERR` (generic server error).
+
+- **`internal/redis`** package with focused CRLF
+  frame walker + top-level Array decoder + command
+  classification table + error category table. No
+  third-party Redis library; no crypto at the parse
+  layer; AUTH password contents NEVER decoded
+  (`password_bytes` length only — privacy-
+  preserving).
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry
+  size 414 → 415.
+- `internal/risk/risk.go`: appended `redis_decode` to
+  the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.336.0] - 2026-05-21
 
 **132nd native-fit decoder + the database-protocol
