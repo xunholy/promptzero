@@ -7,6 +7,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.340.0] - 2026-05-21
+
+**136th native-fit decoder. VNC RFB (Remote
+Framebuffer) Protocol handshake dissector per
+RFC 6143 plus the RealVNC / TightVNC / VeNCrypt /
+Apple ARD extensions. TCP/5900-5999 default
+(display offset = port - 5900); TCP/5800-5899
+Java applet HTTP wrapper; TCP/6000-6063 X11
+(separate protocol). Universal remote-access
+pentest target — RealVNC / TightVNC / TigerVNC /
+UltraVNC / x11vnc / Vino (GNOME) / KRfb (KDE) /
+Apple Remote Desktop (macOS built-in TCP/5900) /
+embedded device VNC (printers, ATMs, industrial
+HMIs, KVM-over-IP boxes Raritan / Avocent / iLO /
+iDRAC / IPMI BMC, digital signage, DVR/NVR) /
+cloud-managed VNC consoles (AWS Workspaces, Azure
+Bastion, GCP VM serial-console-over-VNC). Pairs
+with `rdp_x224_decode` (v0.339) for the complete
+remote-access pentest surface. The wire format
+leaks (all pre-auth — observed by passive TCP
+capture of the first ~100 bytes): RFB version
+banner via ProtocolVersion handshake (12-byte
+ASCII `RFB 003.NNN\n` reveals software class —
+003.008 RFC-6143 conformant / 003.007 legacy
+TightVNC 1.x / 003.003 very legacy single-type-
+only); security-type enumeration with
+vulnerability classification (1 None = NO
+AUTHENTICATION REQUIRED exposed!, Shodan finds
+tens of thousands of internet-exposed VNC with
+type=1; 2 VNC Authentication = weak 8-byte
+truncated DES challenge offline-crackable via
+hashcat mode 26200 / john --format=vnc; 19
+VeNCrypt with sub-type 256 PLAIN over
+unencrypted session = cleartext credential
+capture; 30 Apple Diffie-Hellman = macOS ARD
+detection); brute-force feedback via
+SecurityResult Failed reason (hydra vnc / medusa
+vnc / ncrack vnc consume directly); hostname
+disclosure via ServerInit desktop name
+(`<USER>'s Mac` macOS ARD / machine hostname /
+TigerVNC `desktop.local:1`); display resolution +
+pixel-format fingerprinting. Common in DEF CON +
+Black Hat + HITB + OffSec engagements + every
+nmap vnc-* NSE / metasploit auxiliary/scanner/vnc
+/ hydra vnc / medusa vnc / ncrack vnc-driven VNC
+attack workflow.**
+
+### Added
+
+- **`vnc_rfb_decode`** (`Risk.Low`,
+  `GroupHostTools`) — parses a VNC RFB handshake
+  fragment into a structured view. Decoder auto-
+  discriminates between message kinds by leading-
+  byte inspection; caller feeds one fragment at a
+  time:
+
+  - **12-byte ProtocolVersion banner detection**
+    — ASCII `RFB 003.NNN\n` pattern. Surfaces
+    `is_version_banner` boolean +
+    `protocol_version` (e.g. `003.008`).
+
+  - **RFB 3.7+ security-types list walker** —
+    1-byte count + N security-type bytes.
+    Surfaces `security_types` array +
+    `security_types_names` with vulnerability
+    classification.
+
+  - **RFB 3.3 single 4-byte security-type walker**
+    — surfaces same fields with `is_rfb_3_3`
+    boolean. Discrimination: when input is
+    exactly 4 bytes and value is 0 or 1, decoder
+    prefers the SecurityResult interpretation
+    (modern common case); explicit RFB 3.3
+    captures have value ≥ 2.
+
+  - **Security-type Invalid (0) reason walker** —
+    when server sends Invalid security type,
+    follows with length-prefixed reason string;
+    surfaces `security_invalid_reason`.
+
+  - **SecurityResult walker** — 4-byte BE status
+    (0=OK / 1=Failed); on RFB 3.8+ Failed,
+    follows with length-prefixed reason string.
+    Surfaces `security_result` +
+    `security_result_failed` boolean +
+    `security_failure_reason`.
+
+  - **ServerInit walker** — framebuffer-width +
+    framebuffer-height (BE) + 16-byte pixel-
+    format + 4-byte BE name-length + name-string.
+    Surfaces `framebuffer_width` +
+    `framebuffer_height` + `bits_per_pixel` +
+    `depth` + `big_endian_flag` +
+    `true_colour_flag` + `desktop_name`
+    (hostname disclosure!).
+
+  - **13-entry security-type name table** with
+    vulnerability classification: 0 Invalid / **1
+    None (NO AUTHENTICATION REQUIRED!)** / **2
+    VNC Authentication (weak DES — hashcat mode
+    26200)** / 5 RA2 / 6 RA2ne / 16 Tight / 17
+    Ultra (UltraVNC MS-Logon) / 18 TLS / 19
+    VeNCrypt (multi-mechanism — sub-types 256
+    PLAIN cleartext / 257-263 TLS/X509 variants)
+    / 20 SASL (GSSAPI Kerberos / DIGEST-MD5 /
+    PLAIN / EXTERNAL / CRAM-MD5) / 21 MD5 hash
+    (UltraVNC MS-Logon II) / 22 xvp (Xen
+    Virtualization Platform) / **30 Apple
+    Diffie-Hellman (Apple Remote Desktop)**.
+
+- **`internal/vncrfb`** package with focused
+  ProtocolVersion banner detector + security-
+  types list walker (RFB 3.7+) + single 4-byte
+  security-type walker (RFB 3.3) + Invalid (0)
+  reason walker + SecurityResult walker +
+  ServerInit walker. Auto-discrimination via
+  leading-byte inspection. No third-party VNC
+  library; no crypto at the parse layer; VNC
+  password decryption DELIBERATELY omitted (DES-
+  encrypted challenge requires offline hashcat).
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry
+  size 417 → 418.
+- `internal/risk/risk.go`: appended `vnc_rfb_decode`
+  to the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.339.0] - 2026-05-21
 
 **135th native-fit decoder. Microsoft RDP (Remote
