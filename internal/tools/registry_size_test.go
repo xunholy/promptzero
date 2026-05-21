@@ -1416,7 +1416,42 @@ func TestRegistrySize(t *testing.T) {
 	// _decode) + compound message chain + per-
 	// command body decode beyond key 4 commands +
 	// lease/durable handle state out of scope.
-	const expected = 410
+	// v0.333.0 added dcerpc_decode (DCE/RPC per
+	// DCE 1.1 + Microsoft [MS-RPCE] — the MS-RPC
+	// framing layer that carries nearly every
+	// Windows AD attack chain; TCP/135 EPM +
+	// TCP/49152+ ephemeral + inside SMB2 named
+	// pipes). Completes the AD-pentest dissector
+	// quintet with smb2_decode + kerberos_decode
+	// + ldap_decode + ntlm_decode. Surfaces BIND
+	// interface UUID + REQUEST opnum — the
+	// canonical attack-vector identifier. 20+
+	// interface UUIDs flagged with canonical
+	// attack vectors: netlogon (ZeroLogon
+	// CVE-2020-1472) / drsuapi (DCSync — mimikatz
+	// lsadump::dcsync + impacket secretsdump) /
+	// samr (AD enum) / lsarpc (SAM secrets) /
+	// svcctl (PsExec) / spoolss (PrintNightmare
+	// CVE-2021-1675/34527) / atsvc (Task Scheduler
+	// lateral move) / efs (PetitPotam coercion) /
+	// wkssvc + srvsvc (NetWkstaUserEnum +
+	// NetSessionEnum) / epmapper (RPC portmap).
+	// 14-entry PTYPE name table (REQUEST / PING /
+	// RESPONSE / FAULT / WORKING / NOCALL /
+	// REJECT / ACK / CL_CANCEL / FACK / CANCEL
+	// _ACK / BIND / BIND_ACK / BIND_NAK / ALTER
+	// _CONTEXT / ALTER_CONTEXT_RESP / SHUTDOWN /
+	// CO_CANCEL / ORPHANED / AUTH3); 6-entry pfc
+	// _flags name table; 16-byte common header
+	// with byte-order discrimination via drep[0]
+	// bit 4; BIND + REQUEST + FAULT body walkers;
+	// 9-entry NCA fault status name table. NDR
+	// parameter marshalling + IDL inner-decode +
+	// DCOM ORPCTHIS + sec_trailer (NTLM/Kerberos
+	// auth_value handled by ntlm_decode + kerberos
+	// _decode) + per-interface opnum-name mapping
+	// (1000+ interfaces) out of scope.
+	const expected = 411
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

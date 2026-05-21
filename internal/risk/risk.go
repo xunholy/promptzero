@@ -1881,6 +1881,53 @@ var toolLevels = func() map[string]Level {
 		// command body decode beyond NEGOTIATE/TREE_CONNECT
 		// /CREATE/SESSION_SETUP out of scope.
 		"smb2_decode",
+		// v0.333 native-fit gap: dcerpc_decode is a pure
+		// offline dissector for DCE/RPC (Distributed
+		// Computing Environment / Remote Procedure Call)
+		// messages per DCE 1.1 + Microsoft [MS-RPCE] — the
+		// Microsoft RPC framing layer that carries nearly
+		// every Windows AD attack chain. TCP/135 Endpoint
+		// Mapper + TCP/49152+ ephemeral RPC ports + inside
+		// SMB2 named pipes. Completes the AD-pentest
+		// dissector quintet with smb2_decode + kerberos
+		// _decode + ldap_decode + ntlm_decode. Surfaces the
+		// MS-RPC attack-vector identifier: BIND carries
+		// the interface UUID + REQUEST carries the opnum.
+		// 20+ interface UUIDs flagged with canonical attack
+		// vectors: NETLOGON 12345678-1234-abcd-ef00-
+		// 01234567cffb + opnum 30 = ZeroLogon CVE-2020-
+		// 1472 (DC password reset); DRSUAPI e3514235-4b06-
+		// 11d1-ab04-00c04fc2dcd2 + opnum 3 = DCSync
+		// (extracts all AD password hashes via mimikatz
+		// lsadump::dcsync + impacket secretsdump.py); SAMR
+		// 12345778-1234-abcd-ef00-0123456789ab = AD user/
+		// group enumeration; LSARPC 12345778-1234-abcd-
+		// ef00-0123456789ac = LSA-policy + SAM secrets
+		// dump; SVCCTL 367abb81-9844-35f1-ad32-
+		// 98f038001003 = PsExec lateral move; SPOOLSS
+		// 12345678-1234-abcd-ef00-0123456789ab + opnum 65
+		// = PrintNightmare CVE-2021-1675/34527; ATSVC
+		// 1ff70682-0a51-30e8-076d-740be8cee98b = Task
+		// Scheduler lateral move; EFS c681d488-d850-
+		// 11d0-8c52-00c04fd90f7e = PetitPotam coercion;
+		// WKSSVC + SRVSVC = NetWkstaUserEnum +
+		// NetSessionEnum; EPMAPPER afa8bd80-7d8a-11c9-
+		// bef4-08002b102989 = RPC portmap on TCP/135. 14-
+		// entry PTYPE name table (REQUEST/PING/RESPONSE/
+		// FAULT/WORKING/NOCALL/REJECT/ACK/CL_CANCEL/FACK/
+		// CANCEL_ACK/BIND/BIND_ACK/BIND_NAK/ALTER_CONTEXT/
+		// ALTER_CONTEXT_RESP/SHUTDOWN/CO_CANCEL/ORPHANED/
+		// AUTH3); 6-entry pfc_flags name table; 16-byte
+		// common header with byte-order discrimination via
+		// drep[0] bit 4; BIND + ALTER_CONTEXT + REQUEST +
+		// FAULT body walkers; 9-entry NCA fault status
+		// name table. NDR parameter marshalling + IDL
+		// inner-decode + DCOM ORPCTHIS chains + sec
+		// _trailer parsing (handled by ntlm_decode +
+		// kerberos_decode) + per-interface opnum-to-
+		// function name mapping (1000+ interfaces) out of
+		// scope.
+		"dcerpc_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
