@@ -7,6 +7,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.331.0] - 2026-05-21
+
+**127th native-fit decoder + the AD-pentest dissector pair
+completes. LDAP v3 (Lightweight Directory Access Protocol)
+message decoder per RFC 4511 — the canonical directory-
+service protocol used by every Active Directory deployment
++ most enterprise IAM stacks (Microsoft AD LDS, OpenLDAP,
+389 Directory Server, FreeIPA / IdM, Apple Open Directory,
+Apache Directory Server, Oracle Internet Directory, Novell
+eDirectory). TCP/389 (cleartext), TCP/636 (LDAPS — implicit
+TLS), UDP/389 (CLDAP — connectionless LDAP, used by
+Microsoft NetLogon for site/DC discovery). Pairs with
+`kerberos_decode` (v0.330) for the complete AD directory-
+attack dissector pair. Canonical AD-pentest decoder
+because the wire format leaks: cleartext credentials via
+SimpleBind (BindRequest authentication CHOICE [0] simple
+OCTET STRING carries the password IN CLEARTEXT — observing
+one such request on TCP/389 yields the password directly;
+AD allows simple-bind over cleartext by default unless
+LDAPServerIntegrity enforcement is on); username + DN
+enumeration via SearchRequest (baseObject reveals AD
+domain, SearchResultEntry leaks every user/computer/group
+DN); brute-force feedback via resultCode (49
+invalidCredentials = wrong password — password-spray tools
+like kerbrute + ldapsearch loops consume this directly);
+CLDAP NetLogon enumeration (anonymous UDP/389 rootDSE
+leaks DC site + GUID + DnsHostName + flags); SASL
+mechanism enumeration (rootDSE supportedSASLMechanisms
+lists GSSAPI / GSS-SPNEGO / DIGEST-MD5 / CRAM-MD5 /
+EXTERNAL / PLAIN). Common in every internal red-team
+engagement against a Windows environment + DEF CON +
+Black Hat + HITB + OffSec AD pentests.**
+
+### Added
+
+- **`ldap_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an LDAP v3 message into a structured view:
+
+  - **22-entry operation name table** (RFC 4511 §4.1.1):
+    `[APPLICATION 0]` `0x60` BindRequest /
+    `[APPLICATION 1]` `0x61` BindResponse /
+    `[APPLICATION 2]` `0x42` UnbindRequest /
+    `[APPLICATION 3]` `0x63` SearchRequest /
+    `[APPLICATION 4]` `0x64` SearchResultEntry /
+    `[APPLICATION 5]` `0x65` SearchResultDone /
+    `[APPLICATION 6]` `0x66` ModifyRequest /
+    `[APPLICATION 7]` `0x67` ModifyResponse /
+    `[APPLICATION 8]` `0x68` AddRequest /
+    `[APPLICATION 9]` `0x69` AddResponse /
+    `[APPLICATION 10]` `0x4A` DelRequest /
+    `[APPLICATION 11]` `0x6B` DelResponse /
+    `[APPLICATION 12]` `0x6C` ModifyDNRequest /
+    `[APPLICATION 13]` `0x6D` ModifyDNResponse /
+    `[APPLICATION 14]` `0x6E` CompareRequest /
+    `[APPLICATION 15]` `0x6F` CompareResponse /
+    `[APPLICATION 16]` `0x50` AbandonRequest /
+    `[APPLICATION 19]` `0x73` SearchResultReference /
+    `[APPLICATION 23]` `0x77` ExtendedRequest /
+    `[APPLICATION 24]` `0x78` ExtendedResponse /
+    `[APPLICATION 25]` `0x79` IntermediateResponse.
+
+  - **BindRequest body** (§4.2): version=3 / name (the
+    username / UPN / DN — leakable!) / authentication
+    CHOICE `[0]` simple OCTET STRING (cleartext password!)
+    or `[3]` sasl SaslCredentials. Surfaces `bind_name` +
+    `bind_auth_type` (simple / sasl) + `simple_bind_present`
+    (the cleartext-creds classification!) +
+    `bind_password_bytes` (LENGTH only — NOT the password
+    itself, privacy-preserving while still flagging the
+    simple-bind exposure) + `sasl_mechanism` (when SASL
+    is used; "GSSAPI" indicates Kerberos integration).
+
+  - **BindResponse body** (§4.2.2): SEQUENCE { resultCode
+    ENUMERATED / matchedDN / diagnosticMessage }. Surfaces
+    `result_code` + `result_code_name`. Shared LDAPResult
+    code path also handles SearchResultDone +
+    ModifyResponse + AddResponse + DelResponse +
+    ModifyDNResponse + CompareResponse + ExtendedResponse.
+
+  - **SearchRequest body** (§4.5.1): SEQUENCE {
+    `baseObject` LDAPDN (the search root — typically the
+    AD domain `DC=corp,DC=example,DC=com`) / `scope`
+    ENUMERATED / `sizeLimit` / `timeLimit` / `filter` /
+    `attributes` }. Surfaces `search_base_object` +
+    `search_scope` + `search_scope_name` +
+    `search_size_limit` + `search_time_limit` +
+    `filter_bytes` length.
+
+  - **SearchResultEntry body** (§4.5.2): SEQUENCE {
+    `objectName` LDAPDN (the matched DN — every user /
+    computer / group account leaked) / `attributes`
+    PartialAttributeList }. Surfaces `entry_object_name`
+    — the directory-enumeration leak.
+
+  - **17-entry resultCode name table** (RFC 4511 §4.1.9):
+    0 `success` / 1 `operationsError` / 2 `protocolError`
+    / 4 `sizeLimitExceeded` / 7 `authMethodNotSupported`
+    / 8 `strongerAuthRequired` / 10 `referral` / 11
+    `adminLimitExceeded` / 13 `confidentialityRequired` /
+    14 `saslBindInProgress` / 16 `noSuchAttribute` / 32
+    `noSuchObject` (canonical "DN doesn't exist") / 48
+    `inappropriateAuthentication` / 49
+    `invalidCredentials` (canonical wrong-password —
+    brute-force feedback signal!) / 50
+    `insufficientAccessRights` / 51 `busy` / 53
+    `unwillingToPerform` (canonical "policy rejected").
+
+  - **4-entry search scope name table** (§4.5.1): 0
+    `baseObject` (just this entry) / 1 `singleLevel`
+    (immediate children) / 2 `wholeSubtree` (recursive
+    — the canonical full-directory-dump scope) / 3
+    `subordinateSubtree` (children + descendants,
+    excluding base).
+
+- **`internal/ldap`** package with focused ASN.1 BER
+  walker (short / long-form length, `INTEGER`, `OCTET
+  STRING`, `ENUMERATED`, `SEQUENCE` traversal, context-
+  tag discrimination, [APPLICATION N] CHOICE handling)
+  — no third-party ASN.1 dependency. Pure offline
+  parser; password length surfaced (NOT the password
+  itself — privacy-preserving while flagging the
+  simple-bind exposure).
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry
+  size 408 → 409.
+- `internal/risk/risk.go`: appended `ldap_decode` to
+  the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.330.0] - 2026-05-21
 
 **126th native-fit decoder + the highest-value AD-
