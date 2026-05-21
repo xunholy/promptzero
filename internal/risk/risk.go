@@ -1835,6 +1835,52 @@ var toolLevels = func() map[string]Level {
 		// kerberos_decode) + controls parsing + MS
 		// NetLogon binary layout out of scope.
 		"ldap_decode",
+		// v0.332 native-fit gap: smb2_decode is a pure
+		// offline dissector for SMB2 / SMB3 messages per
+		// Microsoft Open Specifications [MS-SMB2] — the
+		// canonical Windows file-share and lateral-movement
+		// protocol. TCP/445 direct + TCP/139 NBSS framing.
+		// Lateral-movement decoder for every Windows
+		// pentest engagement; together with kerberos_decode
+		// + ldap_decode + ntlm_decode forms the complete
+		// AD-pentest dissector quartet. Surfaces: NTLM-
+		// relay vulnerability (NEGOTIATE_RESPONSE
+		// SecurityMode without SIGNING_REQUIRED = relay-
+		// vulnerable; impacket ntlmrelayx target); SMB1
+		// fallback / EternalBlue candidates (dialect
+		// 0x02FF wildcard = client advertises SMB1, MS17-
+		// 010 candidate); admin-share access (TREE_CONNECT
+		// \\<host>\ADMIN$ / C$ / IPC$); named-pipe lateral-
+		// movement vectors (CREATE \pipe\spoolss = Print
+		// Nightmare CVE-2021-1675/34527, \pipe\netlogon =
+		// ZeroLogon CVE-2020-1472, \pipe\lsarpc = LSA-
+		// policy SAM dump, \pipe\samr = AD enumeration,
+		// \pipe\srvsvc = NetSessionEnum); authentication
+		// feedback (SESSION_SETUP_RESPONSE STATUS_LOGON
+		// _FAILURE / STATUS_WRONG_PASSWORD / STATUS
+		// _ACCOUNT_LOCKED_OUT / STATUS_PASSWORD_EXPIRED =
+		// password-spray feedback; STATUS_MORE_PROCESSING
+		// _REQUIRED = multi-step auth in progress); server
+		// /client GUID disclosure (stable endpoint
+		// fingerprint). 19-entry command name table
+		// (NEGOTIATE / SESSION_SETUP / LOGOFF / TREE_
+		// CONNECT / TREE_DISCONNECT / CREATE / CLOSE /
+		// FLUSH / READ / WRITE / LOCK / IOCTL / CANCEL /
+		// ECHO / QUERY_DIRECTORY / CHANGE_NOTIFY /
+		// QUERY_INFO / SET_INFO / OPLOCK_BREAK); 6-entry
+		// dialect name table (0x0202 SMB 2.0.2 / 0x0210
+		// SMB 2.1 / 0x0300 SMB 3.0 / 0x0302 SMB 3.0.2 /
+		// 0x0311 SMB 3.1.1 / 0x02FF wildcard SMB1 flag);
+		// 15-entry NTSTATUS name table; NEGOTIATE_REQUEST
+		// + NEGOTIATE_RESPONSE + TREE_CONNECT_REQUEST +
+		// CREATE_REQUEST body walkers; SMB3 encryption
+		// Transform header (0xFD 'S' 'M' 'B') surfaced as
+		// type-flag only. NetBIOS framing + NTLMSSP /
+		// Kerberos inner blob (handled by ntlm_decode +
+		// kerberos_decode) + compound message chain + per-
+		// command body decode beyond NEGOTIATE/TREE_CONNECT
+		// /CREATE/SESSION_SETUP out of scope.
+		"smb2_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

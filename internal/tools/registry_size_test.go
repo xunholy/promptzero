@@ -1382,7 +1382,41 @@ func TestRegistrySize(t *testing.T) {
 	// Kerberos AP-REQ already handled by kerberos
 	// _decode) + controls + MS NetLogon binary
 	// layout out of scope.
-	const expected = 409
+	// v0.332.0 added smb2_decode (SMB2 / SMB3
+	// per Microsoft Open Specifications [MS-SMB2]
+	// — the canonical Windows file-share and
+	// lateral-movement protocol; TCP/445 direct
+	// + TCP/139 NBSS framing). Completes the AD-
+	// pentest dissector quartet with kerberos
+	// _decode + ldap_decode + ntlm_decode. Lateral-
+	// movement decoder for every Windows pentest
+	// engagement; surfaces NTLM-relay vulnerability
+	// (NEGOTIATE_RESPONSE SigningRequired flag),
+	// EternalBlue candidates (dialect 0x02FF
+	// wildcard = SMB1 advertise), admin-share
+	// access (TREE_CONNECT ADMIN$/C$/IPC$),
+	// named-pipe lateral-movement vectors (CREATE
+	// \pipe\spoolss PrintNightmare / \pipe\
+	// netlogon ZeroLogon / \pipe\lsarpc LSA SAM
+	// dump / \pipe\samr AD enum / \pipe\srvsvc
+	// NetSessionEnum), authentication feedback
+	// (STATUS_LOGON_FAILURE password-spray signal).
+	// 19-entry command name table (NEGOTIATE /
+	// SESSION_SETUP / LOGOFF / TREE_CONNECT /
+	// TREE_DISCONNECT / CREATE / CLOSE / FLUSH /
+	// READ / WRITE / LOCK / IOCTL / CANCEL / ECHO
+	// / QUERY_DIRECTORY / CHANGE_NOTIFY / QUERY
+	// _INFO / SET_INFO / OPLOCK_BREAK); 6-entry
+	// dialect name table; 15-entry NTSTATUS name
+	// table; NEGOTIATE_REQUEST + NEGOTIATE_RESPONSE
+	// + TREE_CONNECT_REQUEST + CREATE_REQUEST body
+	// walkers; SMB3 encryption Transform header
+	// detection. NetBIOS framing + NTLMSSP/Kerberos
+	// inner blob (handled by ntlm_decode + kerberos
+	// _decode) + compound message chain + per-
+	// command body decode beyond key 4 commands +
+	// lease/durable handle state out of scope.
+	const expected = 410
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
