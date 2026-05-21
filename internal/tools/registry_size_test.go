@@ -1527,7 +1527,43 @@ func TestRegistrySize(t *testing.T) {
 	// handshake + SASL inner-mechanism decode
 	// (SCRAM-SHA-256 base64 blobs) + NOTIFY/LISTEN
 	// payload semantics out of scope.
-	const expected = 413
+	// v0.336.0 added mysql_decode (MySQL /
+	// MariaDB client/server protocol per the
+	// MySQL documentation Chapter 4; TCP/3306
+	// default; compatible with MariaDB). Completes
+	// the database-protocol pentest trio with
+	// tds_decode + postgres_decode (MSSQL +
+	// PostgreSQL + MySQL/MariaDB). The largest
+	// open-source database pentest target —
+	// cloud-managed MySQL / RDS / Aurora / Cloud
+	// SQL / Azure Database / PlanetScale / bare-
+	// metal / containerized / cPanel. Surfaces:
+	// server fingerprint via Handshake v10
+	// server_version (canonical CVE-selection
+	// fingerprint); authentication plugin
+	// negotiation (mysql_native_password = SHA1-
+	// weak offline-crackable hashcat mode 11200/
+	// 300; caching_sha2_password = MySQL 8 modern
+	// default; sha256_password = RSA requires SSL;
+	// mysql_clear_password = CLEARTEXT MITM-
+	// capturable; auth_socket = Unix peer-creds);
+	// TLS support via CLIENT_SSL capability bit;
+	// cleartext username + database via Handshake
+	// Response41; brute-force feedback via ERR
+	// 1045 ER_ACCESS_DENIED_ERROR + database
+	// enumeration via 1049 ER_BAD_DB_ERROR. 25-
+	// entry capability flags name table; 5-entry
+	// status flags name table; 8-entry auth plugin
+	// description table with security-posture
+	// flagging; 11-entry error code name table.
+	// Command-specific bodies + result-set parsing
+	// + binary-protocol prepared-statement marshal
+	// + compressed packet format + SSL handshake +
+	// caching_sha2_password full-auth RSA exchange
+	// + LOAD DATA LOCAL INFILE abuse vector +
+	// MariaDB-specific extensions + XA/GTID/
+	// replication semantics out of scope.
+	const expected = 414
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

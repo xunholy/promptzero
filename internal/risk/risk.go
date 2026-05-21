@@ -2020,6 +2020,55 @@ var toolLevels = func() map[string]Level {
 		// decode (SCRAM-SHA-256 base64 blobs) + NOTIFY /
 		// LISTEN payload semantics out of scope.
 		"postgres_decode",
+		// v0.336 native-fit gap: mysql_decode is a pure
+		// offline dissector for MySQL / MariaDB client/
+		// server protocol per the MySQL documentation
+		// (Chapter 4 — Client/Server Protocol). TCP/3306
+		// default. Compatible with MariaDB which uses the
+		// same wire format with minor extensions.
+		// Completes the database-protocol pentest trio
+		// with tds_decode + postgres_decode (MSSQL +
+		// PostgreSQL + MySQL/MariaDB). The largest open-
+		// source database pentest target — deployed
+		// everywhere from cloud-managed MySQL (RDS /
+		// Aurora / Cloud SQL / Azure Database /
+		// PlanetScale) to bare-metal to containerized
+		// side-cars to every shared-hosting cPanel
+		// deployment. Surfaces: server fingerprint via
+		// Handshake v10 (server_version string —
+		// canonical CVE-selection fingerprint: 5.7.42 /
+		// 8.0.35 / 10.11.5-MariaDB / Percona Server);
+		// authentication plugin negotiation (auth_plugin
+		// _name reveals security posture: mysql_native
+		// _password SHA1-weak offline-crackable hashcat
+		// mode 11200/300; caching_sha2_password modern
+		// MySQL 8 default; sha256_password RSA-encrypted
+		// requires SSL; mysql_clear_password CLEARTEXT
+		// MITM-capturable; auth_socket Unix peer-creds;
+		// windows_native_password SSPI/NTLM; dialog
+		// interactive Percona PAM / MariaDB Cracklib);
+		// TLS support detection via CLIENT_SSL capability
+		// bit (0x00000800 — server advertises SSL; client
+		// without TLS upgrade sends username + auth data
+		// cleartext on TCP/3306); cleartext username +
+		// database via HandshakeResponse41 (canonical
+		// credential-disclosure); brute-force feedback
+		// via ERR packet 1045 ER_ACCESS_DENIED_ERROR;
+		// database enumeration via 1049 ER_BAD_DB_ERROR;
+		// connection ID disclosure. 25-entry capability
+		// flags name table; 5-entry status flags name
+		// table; 8-entry auth plugin description table
+		// with security-posture flagging; 11-entry error
+		// code name table. Command-specific bodies (COM
+		// _QUERY / COM_INIT_DB / COM_STMT_PREPARE / etc.
+		// — 32 entries) + result-set parsing + binary-
+		// protocol prepared-statement parameter
+		// marshalling + compressed packet format + SSL
+		// handshake + caching_sha2_password full-auth
+		// RSA exchange + LOAD DATA LOCAL INFILE 0xFB
+		// abuse vector + MariaDB-specific extensions +
+		// XA/GTID/replication semantics out of scope.
+		"mysql_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
