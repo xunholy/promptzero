@@ -1788,6 +1788,53 @@ var toolLevels = func() map[string]Level {
 		// next step); PAC + PKINIT + GSS-API wrapping out
 		// of scope.
 		"kerberos_decode",
+		// v0.331 native-fit gap: ldap_decode is a pure
+		// offline dissector for LDAP v3 per RFC 4511 — the
+		// canonical directory-service protocol used by
+		// every Active Directory deployment + most
+		// enterprise IAM stacks (Microsoft AD LDS,
+		// OpenLDAP, 389 Directory Server, FreeIPA / IdM,
+		// Apple Open Directory, Apache Directory Server,
+		// Oracle Internet Directory, Novell eDirectory).
+		// TCP/389 cleartext + TCP/636 LDAPS + UDP/389
+		// CLDAP. Canonical AD-pentest decoder paired with
+		// kerberos_decode for the complete AD directory-
+		// attack dissector. Surfaces: cleartext credentials
+		// via SimpleBind (BindRequest authentication
+		// CHOICE [0] simple carries password in cleartext;
+		// privacy-preserving: surfaces simple_bind_present
+		// boolean + bind_password_bytes LENGTH only, NOT
+		// the password); username + DN enumeration via
+		// SearchRequest (baseObject reveals AD domain,
+		// SearchResultEntry leaks every user/computer/
+		// group DN); brute-force feedback via resultCode
+		// (49 invalidCredentials = wrong password, 0
+		// success = working credential); CLDAP NetLogon
+		// enumeration (anonymous UDP/389 rootDSE leaks DC
+		// site + GUID + DnsHostName); SASL mechanism
+		// enumeration (GSSAPI / GSS-SPNEGO / DIGEST-MD5
+		// / CRAM-MD5 / EXTERNAL / PLAIN). 22-entry
+		// operation name table (BindRequest / BindResponse
+		// / UnbindRequest / SearchRequest / SearchResult
+		// Entry / SearchResultDone / ModifyRequest /
+		// ModifyResponse / AddRequest / AddResponse /
+		// DelRequest / DelResponse / ModifyDNRequest /
+		// ModifyDNResponse / CompareRequest / Compare
+		// Response / AbandonRequest / SearchResult
+		// Reference / ExtendedRequest / ExtendedResponse
+		// / IntermediateResponse); BindRequest body walker
+		// with version / name / auth-choice classification;
+		// BindResponse + SearchResultDone + Modify/Add/Del/
+		// CompareResponse + ExtendedResponse via unified
+		// LDAPResult code path; SearchRequest body walker
+		// with baseObject + scope + sizeLimit + timeLimit;
+		// SearchResultEntry objectName surfacing; 17-entry
+		// resultCode name table; 4-entry search scope name
+		// table. Filter parser + LDAPS/StartTLS + SASL
+		// inner-decode (GSSAPI Kerberos AP-REQ handled by
+		// kerberos_decode) + controls parsing + MS
+		// NetLogon binary layout out of scope.
+		"ldap_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

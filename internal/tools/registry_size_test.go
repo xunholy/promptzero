@@ -1348,7 +1348,41 @@ func TestRegistrySize(t *testing.T) {
 	// next step); PAC + PKINIT inner CMS +
 	// GSS-API wrapping + cross-realm referrals
 	// out of scope.
-	const expected = 408
+	// v0.331.0 added ldap_decode (LDAP v3 per RFC
+	// 4511 — the canonical directory-service
+	// protocol used by every Active Directory
+	// deployment + most enterprise IAM stacks;
+	// TCP/389 cleartext + TCP/636 LDAPS + UDP/389
+	// CLDAP). AD-pentest counterpart to kerberos
+	// _decode — together they form the complete
+	// AD directory-attack dissector pair.
+	// Surfaces cleartext credentials via SimpleBind
+	// (simple_bind_present flag + bind_password
+	// _bytes LENGTH only — privacy-preserving);
+	// username + DN enumeration via SearchRequest
+	// (baseObject + SearchResultEntry objectName
+	// — every user/computer/group DN leaked);
+	// brute-force feedback via resultCode (49
+	// invalidCredentials = wrong password, 0
+	// success = working credential); SASL
+	// mechanism enumeration (GSSAPI / GSS-SPNEGO /
+	// DIGEST-MD5 / CRAM-MD5 / EXTERNAL / PLAIN).
+	// 22-entry operation name table (BindRequest
+	// APP 0 / BindResponse APP 1 / UnbindRequest
+	// / SearchRequest / SearchResultEntry /
+	// SearchResultDone / Modify/Add/Del/ModifyDN
+	// /Compare/Extended Request+Response pairs /
+	// AbandonRequest / SearchResultReference /
+	// IntermediateResponse APP 25); 17-entry
+	// resultCode name table; 4-entry search scope
+	// name table (baseObject / singleLevel /
+	// wholeSubtree canonical full-dump / sub
+	// ordinateSubtree). Filter parser + LDAPS/
+	// StartTLS + SASL inner-decode (GSSAPI carries
+	// Kerberos AP-REQ already handled by kerberos
+	// _decode) + controls + MS NetLogon binary
+	// layout out of scope.
+	const expected = 409
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
