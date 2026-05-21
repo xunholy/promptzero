@@ -1673,7 +1673,44 @@ func TestRegistrySize(t *testing.T) {
 	// + RDP Security Layer + virtual channels +
 	// licensing + FastPath PDUs + multi-segment
 	// fragmentation out of scope.
-	const expected = 417
+	// v0.340.0 added vnc_rfb_decode (VNC RFB
+	// Remote Framebuffer Protocol per RFC 6143 +
+	// RealVNC / TightVNC / VeNCrypt / Apple ARD
+	// extensions; TCP/5900-5999 default).
+	// Universal remote-access pentest target —
+	// RealVNC / TightVNC / TigerVNC / UltraVNC /
+	// x11vnc / Vino / KRfb / Apple ARD / embedded
+	// device VNC (printers / ATMs / industrial
+	// HMIs / KVM-over-IP / DVR-NVR) / cloud-managed
+	// VNC consoles (AWS Workspaces / Azure Bastion
+	// / GCP). Pairs with rdp_x224_decode for
+	// complete remote-access pentest surface.
+	// Surfaces: ProtocolVersion banner (003.008 /
+	// 003.007 / 003.003 — software-class
+	// fingerprint); security-type enumeration
+	// with vulnerability classification (None=1
+	// NO AUTH REQUIRED exposed! / VNC=2 weak 8-
+	// byte truncated DES hashcat mode 26200 / TLS
+	// / VeNCrypt multi-mechanism / SASL / Apple
+	// ARD=30); SecurityResult Failed reason
+	// (canonical brute-force feedback); ServerInit
+	// desktop-name hostname disclosure; pixel-
+	// format + framebuffer-resolution
+	// fingerprinting. 13-entry security-type name
+	// table; ProtocolVersion banner walker;
+	// security-types list walker (3.7+) +
+	// single-type walker (3.3); Invalid (0) reason
+	// walker; SecurityResult walker; ServerInit
+	// 16-byte pixel-format walker. Auto-
+	// discrimination between message kinds by
+	// leading-byte inspection. Framebuffer
+	// encodings + event PDUs + VNC password
+	// decryption (deliberately omitted) +
+	// VeNCrypt sub-handshake + SASL inner-decode
+	// + Apple ARD DH key exchange + TightVNC sub-
+	// auth list + HTTP-tunneled VNC TCP/5800-5899
+	// out of scope.
+	const expected = 418
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

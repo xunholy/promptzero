@@ -2215,6 +2215,56 @@ var toolLevels = func() map[string]Level {
 		// PDUs + multi-segment fragmented X.224 data +
 		// NeGEx2 / SCard auth variants out of scope.
 		"rdp_x224_decode",
+		// v0.340 native-fit gap: vnc_rfb_decode is a pure
+		// offline dissector for VNC RFB (Remote Framebuffer)
+		// Protocol handshake messages per RFC 6143 plus the
+		// RealVNC / TightVNC / VeNCrypt / Apple ARD
+		// extensions. TCP/5900-5999 default (display offset
+		// = port - 5900); TCP/5800-5899 Java applet HTTP
+		// wrapper. Universal remote-access pentest target —
+		// RealVNC / TightVNC / TigerVNC / UltraVNC / x11vnc
+		// / Vino (GNOME) / KRfb (KDE) / Apple Remote Desktop
+		// (macOS built-in TCP/5900) / embedded device VNC
+		// (printers / ATMs / industrial HMIs / KVM-over-IP
+		// boxes Raritan / Avocent / iLO / iDRAC / IPMI BMC
+		// / digital signage / DVR-NVR) / cloud-managed VNC
+		// consoles (AWS Workspaces / Azure Bastion / GCP VM
+		// serial-console-over-VNC). Pairs with
+		// rdp_x224_decode for complete remote-access pentest
+		// surface. Surfaces: ProtocolVersion banner (12-byte
+		// "RFB 003.NNN\\n" — 003.008 RFC-6143 conformant /
+		// 003.007 legacy TightVNC 1.x / 003.003 very
+		// legacy); security-type enumeration via security
+		// types list (RFB 3.7+ 1-byte count + N security-
+		// type bytes; RFB 3.3 single 4-byte type); 13-entry
+		// security-type name table with vulnerability
+		// classification: 0 Invalid / 1 None NO
+		// AUTHENTICATION REQUIRED exposed! / 2 VNC Auth
+		// weak 8-byte truncated DES offline-crackable
+		// hashcat mode 26200 / 5 RA2 / 6 RA2ne / 16 Tight /
+		// 17 Ultra UltraVNC MS-Logon / 18 TLS / 19 VeNCrypt
+		// multi-mechanism / 20 SASL / 21 MD5 hash UltraVNC
+		// MS-Logon II / 22 xvp Xen / 30 Apple Diffie-Hellman
+		// ARD; brute-force feedback via SecurityResult
+		// Failed reason (RFB 3.8 + 1 + length-prefixed
+		// reason — hydra vnc / medusa vnc / ncrack vnc
+		// consume); hostname disclosure via ServerInit
+		// desktop name ("<USER>'s Mac" / machine hostname /
+		// "dc01.corp.example.com" / TigerVNC default); 16-
+		// byte pixel-format walker (bpp + depth + big-endian
+		// + true-colour flag + RGB max+shift). Auto-
+		// discrimination between message kinds by leading-
+		// byte inspection. Framebuffer update encodings
+		// (Raw / CopyRect / RRE / Hextile / TRLE / ZRLE /
+		// Tight / 30+ encodings) + mouse + keyboard event
+		// PDUs + VNC password decryption (deliberately
+		// omitted — DES challenge requires offline hashcat)
+		// + VeNCrypt sub-handshake (TLS / X.509) + SASL
+		// inner-decode (GSSAPI via kerberos_decode; others
+		// deferred) + Apple ARD DH key exchange details +
+		// TightVNC sub-auth list + HTTP-tunneled VNC TCP/
+		// 5800-5899 out of scope.
+		"vnc_rfb_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
