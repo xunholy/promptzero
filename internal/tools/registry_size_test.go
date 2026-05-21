@@ -1451,7 +1451,47 @@ func TestRegistrySize(t *testing.T) {
 	// auth_value handled by ntlm_decode + kerberos
 	// _decode) + per-interface opnum-name mapping
 	// (1000+ interfaces) out of scope.
-	const expected = 411
+	// v0.334.0 added tds_decode (TDS / Tabular
+	// Data Stream per Microsoft Open
+	// Specifications [MS-TDS] — the Microsoft SQL
+	// Server protocol; TCP/1433 default + dynamic
+	// TCP/49152+ for named instances + UDP/1434
+	// SQL Server Browser). Canonical SQL Server
+	// pentest dissector that extends the
+	// Microsoft-stack pentest surface beyond the
+	// AD-pentest quintet. Surfaces: cleartext
+	// username via Login7 OffsetLength UTF-16LE;
+	// password length only (XOR-obfuscated 0xA5
+	// deliberately NOT deobfuscated — privacy-
+	// preserving); TLS-downgrade vulnerability
+	// via Pre-Login ENCRYPTION token NOT_SUP; SQL
+	// Server version disclosure via TDSVersion
+	// field (canonical CVE-selection fingerprint);
+	// database + AppName disclosure (sqlmap / SSMS
+	// / SqlClient / SQLCMD identification); named-
+	// instance hostnames via ServerName. 12-entry
+	// packet type name table (SQL_BATCH / PRE
+	// _TDS7_LOGIN / RPC / TABULAR_RESULT /
+	// ATTENTION / BULK_LOAD_DATA / TRANSACTION
+	// _MANAGER / TDS7_LOGIN / SSPI / PRE_LOGIN /
+	// FEDERATED_AUTH_TOKEN); 5-entry Status flags
+	// name table; 8-entry Pre-Login token-type
+	// name table (VERSION / ENCRYPTION / INSTOPT
+	// / THREADID / MARS / TRACEID / FEDAUTH
+	// REQUIRED / NONCEOPT); 4-entry ENCRYPTION
+	// mode name table (OFF / ON / NOT_SUP
+	// downgrade flag / REQ hardened); Pre-Login
+	// TLV token walker; Login7 fixed-field +
+	// OffsetLength variable-data walker; 6-entry
+	// TDS version-to-SQL-Server name table (7.0 /
+	// 2000 SP1 / 2005 / 2008 / 2008 R2 / 2012-
+	// 2022). TABULAR_RESULT token-stream parsing
+	// (30+ tokens) + SSPI inner blob (ntlm/
+	// kerberos) + TLS handshake + FEDAUTH +
+	// password deobfuscation (deliberately
+	// omitted) + UDP/1434 [MS-SQLR] enumeration
+	// out of scope.
+	const expected = 412
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -1928,6 +1928,56 @@ var toolLevels = func() map[string]Level {
 		// function name mapping (1000+ interfaces) out of
 		// scope.
 		"dcerpc_decode",
+		// v0.334 native-fit gap: tds_decode is a pure
+		// offline dissector for TDS (Tabular Data Stream)
+		// packets per Microsoft Open Specifications
+		// [MS-TDS] — the Microsoft SQL Server protocol.
+		// TCP/1433 default + TCP dynamic for named
+		// instances + UDP/1434 SQL Server Browser.
+		// Canonical SQL Server pentest dissector that
+		// extends the Microsoft-stack pentest surface
+		// beyond the AD-pentest quintet. Surfaces:
+		// cleartext username via Login7 (TDS7_LOGIN
+		// OffsetLength UTF-16LE — canonical credential
+		// disclosure on TCP/1433 without TLS); password
+		// length only (XOR-obfuscated 0xA5 deliberately
+		// NOT deobfuscated — privacy-preserving); TLS-
+		// downgrade vulnerability via Pre-Login
+		// ENCRYPTION token (NOT_SUP = TLS-downgrade
+		// vector when client expected TLS); SQL Server
+		// version disclosure via TDSVersion field
+		// (0x70000000 7.0 / 0x71000001 2000 SP1 /
+		// 0x72090002 2005 / 0x730A0003 2008 / 0x730B0003
+		// 2008 R2 / 0x74000004 2012/2014/2016/2017/2019/
+		// 2022 — canonical version-fingerprint for CVE
+		// selection); database + AppName disclosure
+		// (Login7 carries requested database name + app
+		// identification — sqlmap / SSMS / SqlClient /
+		// SQLCMD / osql); named-instance hostnames via
+		// Login7 ServerName. 12-entry packet type name
+		// table (SQL_BATCH / PRE_TDS7_LOGIN / RPC /
+		// TABULAR_RESULT / ATTENTION / BULK_LOAD_DATA /
+		// TRANSACTION_MANAGER / TDS7_LOGIN / SSPI /
+		// PRE_LOGIN / FEDERATED_AUTH_TOKEN); 5-entry
+		// Status flags name table; 8-entry Pre-Login
+		// token-type name table (VERSION / ENCRYPTION /
+		// INSTOPT / THREADID / MARS / TRACEID /
+		// FEDAUTHREQUIRED / NONCEOPT); 4-entry ENCRYPTION
+		// mode name table (ENCRYPT_OFF / ENCRYPT_ON /
+		// ENCRYPT_NOT_SUP downgrade flag / ENCRYPT_REQ
+		// hardened); Pre-Login TLV token walker; Login7
+		// fixed-field + OffsetLength variable-data
+		// walker; 6-entry TDS version-to-SQL-Server
+		// name table. TABULAR_RESULT token-stream
+		// parsing (30+ token types) + SSPI inner blob
+		// (handled by ntlm_decode + kerberos_decode) +
+		// TLS/TDS encryption handshake + Federated
+		// Authentication Token + RPC parameter
+		// marshalling + bulk load data + password
+		// deobfuscation (deliberately omitted) + SQL
+		// Server Browser UDP/1434 [MS-SQLR] enumeration
+		// out of scope.
+		"tds_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
