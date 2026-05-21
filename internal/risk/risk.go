@@ -2114,6 +2114,53 @@ var toolLevels = func() map[string]Level {
 		// client tracking push messages + full key-value
 		// content out of scope.
 		"redis_decode",
+		// v0.338 native-fit gap: mongodb_decode is a pure
+		// offline dissector for MongoDB wire-protocol
+		// messages per the MongoDB documentation. TCP/27017
+		// default (mongod); TCP/27018 mongos; TCP/27019
+		// config servers. Compatible with FerretDB (Postgres-
+		// backed proxy) + AWS DocumentDB. High-value NoSQL
+		// pentest target with exposure profile similar to
+		// Redis — historical Mongo 2.x/3.x defaulted to "no
+		// auth, bind to 0.0.0.0"; Shodan finds tens of
+		// thousands of unauthenticated instances on TCP/
+		// 27017. Modern Mongo 4.x+ defaults to localhost +
+		// SCRAM-SHA-256. Surfaces: MongoDB version + auth-
+		// mechanism enumeration via isMaster/hello (driver
+		// always sends on connect; reply includes
+		// saslSupportedMechs SCRAM-SHA-1 weak / SCRAM-SHA-256
+		// modern / PLAIN cleartext / MONGODB-X509 / GSSAPI /
+		// MONGODB-AWS / MONGODB-OIDC); database + collection
+		// namespace cleartext (OP_QUERY fullCollectionName
+		// or OP_MSG $db top-level field); SASL auth exchange
+		// (saslStart + saslContinue — surfaces mechanism +
+		// payload_bytes LENGTH only, privacy-preserving;
+		// offline-crackable hashcat mode 24100 SCRAM-SHA-1 /
+		// 24200 SCRAM-SHA-256 once captured); dangerous-
+		// command flagging (createUser/updateUser/dropUser
+		// = backdoor primitive; dropDatabase/dropCollection
+		// = destruction; listDatabases/listCollections =
+		// enumeration; eval / $where / $expr = server-side
+		// JS RCE primitive REMOVED in 4.4 but legacy 3.x/
+		// 4.0/4.2 still deployed; shutdown/replSetStepDown
+		// = operational destructive); build info disclosure
+		// via buildInfo (version + gitVersion + modules +
+		// openssl + storageEngines = canonical CVE-selection
+		// fingerprint). 12-entry opCode name table (OP_REPLY
+		// legacy / OP_MSG_DEPRECATED / OP_UPDATE legacy /
+		// OP_INSERT legacy / OP_QUERY legacy but used for
+		// initial isMaster/hello probe / OP_GET_MORE /
+		// OP_DELETE / OP_KILL_CURSORS / OP_COMMAND server-
+		// internal / OP_COMMANDREPLY / OP_COMPRESSED Snappy/
+		// zlib/zstd / OP_MSG modern MongoDB 3.6+ default);
+		// 18-entry BSON element-type name table; OP_MSG +
+		// OP_QUERY body walkers; BSON top-level document
+		// walker. Full BSON value parsing + Binary subtypes
+		// + OP_COMPRESSED decompression + TLS handshake +
+		// SDAM topology monitoring + Change Streams oplog
+		// + GridFS + per-driver client metadata + CSFLE
+		// encrypted-field BinData out of scope.
+		"mongodb_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

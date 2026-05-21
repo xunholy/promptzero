@@ -1601,7 +1601,43 @@ func TestRegistrySize(t *testing.T) {
 	// / TLS handshake / RESP3 attributes /
 	// client tracking / full key-value content
 	// out of scope.
-	const expected = 415
+	// v0.338.0 added mongodb_decode (MongoDB wire
+	// protocol per MongoDB documentation; TCP/
+	// 27017 mongod / 27018 mongos / 27019 config).
+	// Compatible with FerretDB (Postgres proxy) +
+	// AWS DocumentDB. High-value NoSQL pentest
+	// target with exposure profile similar to
+	// Redis — historical Mongo 2.x/3.x defaulted
+	// to no auth + bind 0.0.0.0; Shodan finds tens
+	// of thousands of unauthenticated instances.
+	// Modern Mongo 4.x+ defaults to localhost +
+	// SCRAM-SHA-256. Surfaces: MongoDB version +
+	// auth-mechanism enumeration via isMaster/
+	// hello (driver always sends on connect);
+	// database + collection namespace cleartext
+	// (OP_QUERY fullCollectionName + OP_MSG $db);
+	// SASL auth exchange via saslStart/
+	// saslContinue (mechanism + payload_bytes
+	// LENGTH only — privacy-preserving; offline-
+	// crackable hashcat mode 24100/24200 once
+	// captured); dangerous-command flagging
+	// (createUser/dropDatabase/listDatabases/eval
+	// historical RCE primitive REMOVED in 4.4 but
+	// legacy still deployed); build info
+	// disclosure via buildInfo. 12-entry opCode
+	// name table (OP_REPLY / OP_MSG_DEPRECATED /
+	// OP_UPDATE / OP_INSERT / OP_QUERY / OP_GET
+	// _MORE / OP_DELETE / OP_KILL_CURSORS / OP
+	// _COMMAND / OP_COMMANDREPLY / OP_COMPRESSED
+	// Snappy/zlib/zstd / OP_MSG modern); 18-entry
+	// BSON element-type name table; OP_MSG +
+	// OP_QUERY body walkers; BSON top-level
+	// document walker. Full BSON value parsing +
+	// Binary subtypes + OP_COMPRESSED decompression
+	// + TLS handshake + SDAM topology monitoring +
+	// Change Streams oplog + GridFS + CSFLE
+	// encrypted-field BinData out of scope.
+	const expected = 416
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
