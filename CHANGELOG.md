@@ -7,6 +7,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.333.0] - 2026-05-21
+
+**129th native-fit decoder + the AD-pentest dissector
+quintet completes. DCE/RPC (Distributed Computing
+Environment / Remote Procedure Call) message decoder
+per DCE 1.1 + Microsoft Open Specifications [MS-RPCE]
+— the Microsoft RPC framing layer that carries nearly
+every Windows AD attack chain. Runs over TCP/135
+(Endpoint Mapper), TCP/49152+ (ephemeral RPC ports),
+and inside SMB2 named pipes (`\pipe\netlogon`,
+`\pipe\samr`, `\pipe\lsarpc`, `\pipe\srvsvc`,
+`\pipe\svcctl`, `\pipe\drsuapi`, `\pipe\spoolss`).
+Together with `smb2_decode` (v0.332) + `kerberos_decode`
+(v0.330) + `ldap_decode` (v0.331) + `ntlm_decode`, this
+completes the AD-pentest dissector quintet — every
+common Windows AD attack vector now has a native
+dissector pair (transport + RPC framing). The MS-RPC
+attack-vector identifier: SMB2 surfaces `\pipe\<name>`
+paths; DCE/RPC surfaces the underlying interface UUID
++ opnum that identify the exact RPC function being
+invoked. Key attack-vector interfaces flagged in the
+name table: **NETLOGON** + opnum 30 = **ZeroLogon**
+CVE-2020-1472 (DC password reset); **DRSUAPI** +
+opnum 3 = **DCSync** (extracts all AD password hashes
+via mimikatz `lsadump::dcsync` + impacket
+`secretsdump.py -just-dc`); **SPOOLSS** + opnum 65 =
+**PrintNightmare** CVE-2021-1675 / CVE-2021-34527
+(SYSTEM RCE on print spooler); **EFS** = **PetitPotam**
+authentication coercion (CVE-2021-36942); **SVCCTL** =
+**PsExec** lateral move (impacket psexec.py /
+smbexec.py); **SAMR** + **LSARPC** = AD enumeration +
+SAM secrets dump. Common in DEF CON + Black Hat +
+HITB + OffSec internal red-team engagements + every
+impacket / cme / mimikatz / rubeus / SharpHound-driven
+AD attack workflow.**
+
+### Added
+
+- **`dcerpc_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a DCE/RPC message into a structured view:
+
+  - **16-byte common header** ([MS-RPCE] §2.2.6.1):
+    `rpc_vers` = 5 / `rpc_vers_minor` = 0 / `PTYPE` /
+    `pfc_flags` / `drep[4]` (data representation;
+    `drep[0]` bit 4 = little-endian — Windows is
+    always LE on the wire) / `frag_length` /
+    `auth_length` / `call_id`.
+
+  - **14-entry PTYPE name table** (RFC 2237 / DCE 1.1
+    §12.1): 0 `REQUEST` / 1 `PING` / 2 `RESPONSE` /
+    3 `FAULT` / 4 `WORKING` / 5 `NOCALL` / 6 `REJECT`
+    / 7 `ACK` / 8 `CL_CANCEL` / 9 `FACK` / 10
+    `CANCEL_ACK` / 11 `BIND` / 12 `BIND_ACK` / 13
+    `BIND_NAK` / 14 `ALTER_CONTEXT` / 15
+    `ALTER_CONTEXT_RESP` / 16 `SHUTDOWN` / 17
+    `CO_CANCEL` / 18 `ORPHANED` / 19 `AUTH3`.
+
+  - **6-entry pfc_flags name table**: `0x01`
+    `FIRST_FRAG` / `0x02` `LAST_FRAG` / `0x04`
+    `PENDING_CANCEL` / `0x10` `CONC_MPX` / `0x20`
+    `DID_NOT_EXECUTE` / `0x80` `OBJECT_UUID`.
+
+  - **BIND / ALTER_CONTEXT body walker** (§2.2.6.4):
+    `max_xmit_frag` + `max_recv_frag` +
+    `assoc_group_id` + `p_context_elem_count` + first
+    context element abstract_syntax (UUID + version).
+    Surfaces `interface_uuid` + `interface_name`
+    (canonical attack-vector identification!) +
+    `interface_version_major` +
+    `interface_version_minor`. UUID rendered in
+    canonical 8-4-4-4-12 form with MS-RPC byte-order
+    correction (first three fields LE, last two BE
+    byte arrays).
+
+  - **20+ entry interface UUID name table** flagging
+    well-known interfaces with their canonical attack
+    vectors: **NETLOGON** (`12345678-1234-abcd-ef00-
+    01234567cffb`) = ZeroLogon CVE-2020-1472; **DRSUAPI**
+    (`e3514235-4b06-11d1-ab04-00c04fc2dcd2`) = DCSync;
+    **SAMR** (`12345778-1234-abcd-ef00-0123456789ab`)
+    = AD user/group enumeration; **LSARPC**
+    (`12345778-1234-abcd-ef00-0123456789ac`) =
+    LSA-policy + SAM secrets dump; **SVCCTL**
+    (`367abb81-9844-35f1-ad32-98f038001003`) = PsExec
+    lateral move; **SPOOLSS** (`12345678-1234-abcd-
+    ef00-0123456789ab`) = PrintNightmare CVE-2021-
+    1675/34527; **ATSVC** (`1ff70682-0a51-30e8-076d-
+    740be8cee98b`) = Task Scheduler lateral move;
+    **ITaskSchedulerService** (`86d35949-83c9-4044-
+    b424-db363231fd0c`) = modern schtasks lateral
+    move; **WKSSVC** (`6bffd098-a112-3610-9833-
+    46c3f87e345a`) = NetWkstaUserEnum; **SRVSVC**
+    (`4b324fc8-1670-01d3-1278-5a47bf6ee188`) =
+    NetSessionEnum + NetShareEnum; **EPMAPPER**
+    (`afa8bd80-7d8a-11c9-bef4-08002b102989`) = RPC
+    portmap on TCP/135; **EFS** (`c681d488-d850-
+    11d0-8c52-00c04fd90f7e` + `df1941c5-fe89-4e79-
+    bf10-463657acf44d`) = PetitPotam coercion;
+    **DnsServer** + **winreg** + **lsa_ds** + others.
+
+  - **REQUEST body walker** (§2.2.6.2): `alloc_hint`
+    + `p_cont_id` + `opnum` (the function within the
+    interface being called — combined with the
+    interface UUID = exact RPC function identifier).
+
+  - **FAULT body walker** (§2.2.6.6): `alloc_hint` +
+    `p_cont_id` + `cancel_count` + `status`. Surfaces
+    `fault_status` + `fault_status_name`.
+
+  - **9-entry NCA fault status name table** (DCE 1.1
+    §12.6.4.10 + MS-RPCE §3.1.1.5.5):
+    `nca_s_fault_access_denied` (`0x00000005`) /
+    `nca_s_fault_addr_error` /
+    `nca_s_fault_context_mismatch` /
+    `nca_s_fault_out_of_resources` /
+    `nca_s_fault_unspec_reject` /
+    `nca_s_fault_invalid_pres_context_id` /
+    `nca_s_fault_unsupported_type` /
+    `RPC_X_BAD_STUB_DATA` (`0x6BD`) /
+    `RPC_S_SERVER_UNAVAILABLE` (`0x6F7`).
+
+- **`internal/dcerpc`** package with focused 16-byte
+  header walker + per-PTYPE body decoders for BIND /
+  ALTER_CONTEXT / REQUEST / FAULT. UUID rendered with
+  MS-RPC byte-order correction. Byte-order discrimination
+  via `drep[0]` bit 4 (LE / BE selection per fragment).
+  No third-party MS-RPC library; no crypto at the parse
+  layer.
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry size
+  410 → 411.
+- `internal/risk/risk.go`: appended `dcerpc_decode` to
+  the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.332.0] - 2026-05-21
 
 **128th native-fit decoder + the AD-pentest dissector
