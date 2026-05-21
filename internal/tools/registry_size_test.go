@@ -1637,7 +1637,43 @@ func TestRegistrySize(t *testing.T) {
 	// + TLS handshake + SDAM topology monitoring +
 	// Change Streams oplog + GridFS + CSFLE
 	// encrypted-field BinData out of scope.
-	const expected = 416
+	// v0.339.0 added rdp_x224_decode (Microsoft
+	// RDP initial-handshake dissector per
+	// [MS-RDPBCGR] — TPKT + X.224 COTP CR/CC PDUs
+	// + RDP_NEG_REQ / NEG_RSP / NEG_FAILURE
+	// structures; TCP/3389 default). Universal
+	// Windows pentest entry point — every Windows
+	// Server + desktop deployment exposes 3389
+	// at some layer. Extends Windows-stack pentest
+	// surface alongside AD-pentest quintet.
+	// Surfaces: username cleartext via RDP Cookie
+	// (mstshash=<username> — canonical pre-auth
+	// enumeration without sending credentials!);
+	// routing token disclosure (msts=<token> RD
+	// Connection Broker form); NLA/CredSSP
+	// hardening posture (PROTOCOL_RDP=0 standard
+	// no-TLS BlueKeep target / PROTOCOL_SSL TLS /
+	// PROTOCOL_HYBRID CredSSP NLA modern
+	// hardened default / PROTOCOL_RDSTLS /
+	// PROTOCOL_HYBRID_EX / PROTOCOL_RDSAAD Entra
+	// ID); server hardening enforcement via
+	// NEG_FAILURE (SSL_REQUIRED_BY_SERVER /
+	// HYBRID_REQUIRED_BY_SERVER = canonical NLA-
+	// hardened response); selected-protocol via
+	// NEG_RSP; Restricted Admin Mode detection.
+	// 4-byte TPKT header + X.224 COTP header +
+	// 5-entry PDU-type name table (CR / CC / DT /
+	// DR / ER); RDP Cookie cstring walker;
+	// RDP_NEG_REQ + NEG_RSP + NEG_FAILURE walkers;
+	// 6-entry requestedProtocols name table; 3-
+	// entry NEG_REQ flags name table; 3-entry
+	// NEG_RSP flags name table; 6-entry
+	// failureCode name table. MCS Connect Initial
+	// + CredSSP TSRequest (handled by ntlm + krb5)
+	// + RDP Security Layer + virtual channels +
+	// licensing + FastPath PDUs + multi-segment
+	// fragmentation out of scope.
+	const expected = 417
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

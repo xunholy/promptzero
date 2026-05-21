@@ -2161,6 +2161,60 @@ var toolLevels = func() map[string]Level {
 		// + GridFS + per-driver client metadata + CSFLE
 		// encrypted-field BinData out of scope.
 		"mongodb_decode",
+		// v0.339 native-fit gap: rdp_x224_decode is a pure
+		// offline dissector for the initial-handshake
+		// frames of Microsoft RDP (Remote Desktop Protocol)
+		// per [MS-RDPBCGR] — TPKT-wrapped X.224 COTP
+		// Connection Request / Connection Confirm PDUs
+		// plus embedded RDP_NEG_REQ / RDP_NEG_RSP /
+		// RDP_NEG_FAILURE structures. TCP/3389 default.
+		// Universal Windows pentest entry point — every
+		// Windows Server + Windows desktop deployment
+		// exposes 3389 at some layer (LAN, jump host,
+		// Citrix gateway, RD Gateway, AWS Workspaces,
+		// Azure Virtual Desktop). Extends the Windows-
+		// stack pentest surface alongside the AD-pentest
+		// quintet (kerberos + ldap + ntlm + smb2 +
+		// dcerpc). Surfaces: username cleartext via RDP
+		// Cookie (Cookie: mstshash=<username> sent by
+		// mstsc.exe / Remmina / FreeRDP / rdesktop / AWS
+		// Workspaces client; canonical pre-auth username
+		// enumeration without sending credentials!);
+		// routing token disclosure (Cookie: msts=<token>
+		// alternative form); NLA / CredSSP hardening
+		// posture via requestedProtocols bitmask
+		// (PROTOCOL_RDP=0 standard no-TLS vulnerable to
+		// passive MITM = BlueKeep CVE-2019-0708 target;
+		// PROTOCOL_SSL=1 TLS 1.0+; PROTOCOL_HYBRID=2
+		// CredSSP NLA modern hardened default;
+		// PROTOCOL_RDSTLS=4; PROTOCOL_HYBRID_EX=8 CredSSP
+		// + EarlyUserAuthorizationResult; PROTOCOL_RDSAAD
+		// =16 Microsoft Entra ID AAD); server hardening
+		// enforcement via NEG_FAILURE (SSL_REQUIRED_BY
+		// _SERVER = TLS hardening; HYBRID_REQUIRED_BY
+		// _SERVER = canonical NLA-hardened response —
+		// CredSSP mandated pre-auth credential check);
+		// selected-protocol confirmation via NEG_RSP
+		// (selectedProtocol=0 on internet-reachable
+		// server = high-severity BlueKeep candidate);
+		// Restricted Admin Mode detection (NEG_REQ flags
+		// 0x01 = Windows 8.1+ login without sending creds
+		// to remote host). 4-byte TPKT header (RFC 1006)
+		// + X.224 COTP header (ITU-T X.224 / RFC 905) +
+		// 5-entry PDU-type name table (CR / CC / DT /
+		// DR / ER); RDP Cookie cstring-prefix walker;
+		// RDP_NEG_REQ + NEG_RSP + NEG_FAILURE walkers;
+		// 6-entry requestedProtocols name table; 3-entry
+		// NEG_REQ flags name table; 3-entry NEG_RSP
+		// flags name table; 6-entry failureCode name
+		// table. MCS Connect Initial / GCC ClientCoreData
+		// + CredSSP TSRequest (handled by ntlm_decode +
+		// kerberos_decode) + RDP Security Layer + virtual
+		// channels (RDPDR / RDPSND / CLIPRDR / RAIL /
+		// RemoteFX / DYNVC) + RDP licensing + FastPath
+		// PDUs + multi-segment fragmented X.224 data +
+		// NeGEx2 / SCard auth variants out of scope.
+		"rdp_x224_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
