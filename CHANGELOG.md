@@ -7,6 +7,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.332.0] - 2026-05-21
+
+**128th native-fit decoder + the AD-pentest dissector
+quartet completes. SMB2 / SMB3 (Server Message Block v2/v3)
+message decoder per Microsoft Open Specifications
+[MS-SMB2] — the canonical Windows file-share and lateral-
+movement protocol. TCP/445 (direct host) + TCP/139
+(NetBIOS Session Service framing). Together with
+`kerberos_decode` (v0.330) + `ldap_decode` (v0.331) +
+`ntlm_decode`, this completes the AD-pentest dissector
+quartet — every common Windows-protocol lateral-movement
+vector now has a native dissector. The lateral-movement
+decoder for every Windows pentest engagement; the wire
+format leaks: NTLM-relay vulnerability (NEGOTIATE_RESPONSE
+SecurityMode without SIGNING_REQUIRED = relay-vulnerable;
+impacket ntlmrelayx -t smb://target); SMB1 fallback /
+EternalBlue candidates (dialect 0x02FF wildcard advertises
+SMB1 capability — MS17-010 / WannaCry candidate); admin-
+share access (TREE_CONNECT `\\<host>\ADMIN$` / `\C$` /
+`\IPC$`); named-pipe lateral-movement vectors (CREATE
+`\pipe\spoolss` = PrintNightmare CVE-2021-1675/34527,
+`\pipe\netlogon` = ZeroLogon CVE-2020-1472, `\pipe\lsarpc`
+= LSA-policy / SAM secrets dump, `\pipe\samr` = AD account
+enumeration, `\pipe\srvsvc` = NetSessionEnum);
+authentication feedback (STATUS_LOGON_FAILURE 0xC000006D /
+STATUS_WRONG_PASSWORD 0xC000006A / STATUS_ACCOUNT_LOCKED
+_OUT 0xC0000234 = password-spray feedback consumed by
+cme + kerbrute). Common in DEF CON + Black Hat + HITB +
+OffSec internal red-team engagements + every impacket /
+cme / kerbrute-driven lateral-movement workflow.**
+
+### Added
+
+- **`smb2_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses an SMB2 / SMB3 message into a structured view:
+
+  - **64-byte SMB2 header** ([MS-SMB2] §2.2.1):
+    `ProtocolId` discriminator (`0xFE` 'S' 'M' 'B' Sync
+    or `0xFD` 'S' 'M' 'B' Encrypted Transform Header —
+    surfaced as `transform_header_present` flag);
+    `Command` / `Flags` (incl. `SMB2_FLAGS_SERVER_TO_REDIR`
+    0x01 response indicator, `SMB2_FLAGS_ASYNC_COMMAND`
+    0x02, `SMB2_FLAGS_RELATED_OPERATIONS` 0x04 compound
+    chain, `SMB2_FLAGS_SIGNED` 0x08) / `NextCommand` /
+    `MessageId` / `TreeId` / `SessionId` / `Signature`.
+
+  - **19-entry command name table** (§2.2.1.2): 0x00
+    `NEGOTIATE` / 0x01 `SESSION_SETUP` / 0x02 `LOGOFF` /
+    0x03 `TREE_CONNECT` / 0x04 `TREE_DISCONNECT` / 0x05
+    `CREATE` / 0x06 `CLOSE` / 0x07 `FLUSH` / 0x08 `READ`
+    / 0x09 `WRITE` / 0x0A `LOCK` / 0x0B `IOCTL` / 0x0C
+    `CANCEL` / 0x0D `ECHO` / 0x0E `QUERY_DIRECTORY` /
+    0x0F `CHANGE_NOTIFY` / 0x10 `QUERY_INFO` / 0x11
+    `SET_INFO` / 0x12 `OPLOCK_BREAK`.
+
+  - **6-entry SMB2 dialect name table** (§2.2.3): `0x0202`
+    SMB 2.0.2 / `0x0210` SMB 2.1 / `0x0300` SMB 3.0 /
+    `0x0302` SMB 3.0.2 / `0x0311` SMB 3.1.1 / `0x02FF`
+    SMB2 wildcard (client advertises SMB1 — EternalBlue
+    candidate indicator!).
+
+  - **NEGOTIATE_REQUEST body** (§2.2.3): walks the dialect
+    list + SecurityMode. Surfaces `dialects` +
+    `dialect_names` + `signing_enabled` +
+    `signing_required` + `smb1_offered` (presence of
+    `0x02FF` wildcard — EternalBlue candidate).
+
+  - **NEGOTIATE_RESPONSE body** (§2.2.4): SecurityMode +
+    DialectRevision + SecurityBufferLength. Surfaces
+    `dialect_chosen` + `dialect_chosen_name` +
+    `signing_required` + `signing_enabled` +
+    `security_buffer_bytes` (length of GSS-API / SPNEGO
+    blob).
+
+  - **TREE_CONNECT_REQUEST body** (§2.2.9): UNC path
+    (UTF-16LE decoded) surfaced as `tree_connect_path`
+    — e.g. `\\dc01\ADMIN$`.
+
+  - **CREATE_REQUEST body** (§2.2.13): file or pipe name
+    (UTF-16LE decoded) surfaced as `create_name` — e.g.
+    `spoolss` (PrintNightmare), `netlogon` (ZeroLogon),
+    `lsarpc` (SAM dump).
+
+  - **15-entry NTSTATUS name table** ([MS-ERREF] §2.3):
+    `STATUS_SUCCESS` / `STATUS_PENDING` (async) /
+    `STATUS_MORE_PROCESSING_REQUIRED` (multi-step
+    NTLMSSP / Kerberos) / `STATUS_ACCESS_DENIED` /
+    `STATUS_OBJECT_NAME_NOT_FOUND` /
+    `STATUS_PRIVILEGE_NOT_HELD` / `STATUS_WRONG_PASSWORD`
+    / `STATUS_LOGON_FAILURE` (canonical password-spray
+    feedback) / `STATUS_PASSWORD_EXPIRED` /
+    `STATUS_INVALID_IMAGE_FORMAT` / `STATUS_NOT_SUPPORTED`
+    / `STATUS_NETWORK_NAME_DELETED` / `STATUS_FILE_CLOSED`
+    / `STATUS_INSUFF_SERVER_RESOURCES` /
+    `STATUS_ACCOUNT_LOCKED_OUT`.
+
+- **`internal/smb2`** package with focused little-endian
+  64-byte header walker + per-command body decoders for
+  NEGOTIATE / TREE_CONNECT / CREATE. UTF-16LE path
+  decoding via `unicode/utf16`. No third-party SMB
+  library; no crypto at the parse layer.
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry size
+  409 → 410.
+- `internal/risk/risk.go`: appended `smb2_decode` to the
+  `GroupHostTools` allowlist with a detailed rationale
+  block.
+
 ## [0.331.0] - 2026-05-21
 
 **127th native-fit decoder + the AD-pentest dissector pair
