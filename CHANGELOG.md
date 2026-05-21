@@ -7,6 +7,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.339.0] - 2026-05-21
+
+**135th native-fit decoder. Microsoft RDP (Remote
+Desktop Protocol) initial-handshake dissector per
+[MS-RDPBCGR] — TPKT-wrapped X.224 (COTP) Connection
+Request / Connection Confirm PDUs plus the embedded
+RDP_NEG_REQ / RDP_NEG_RSP / RDP_NEG_FAILURE
+structures. TCP/3389 default. The **universal
+Windows pentest entry point** — every Windows Server
++ Windows desktop deployment exposes 3389 at some
+layer (LAN, jump host, Citrix gateway, Microsoft
+Remote Desktop Gateway, AWS Workspaces, Azure
+Virtual Desktop). The X.224 + RDP_NEG_REQ initial
+handshake completes within the first two TCP
+segments — observing these reveals the username +
+security-posture intent without ever needing to
+attempt authentication. Extends the Windows-stack
+pentest surface alongside the AD-pentest quintet
+(kerberos + ldap + ntlm + smb2 + dcerpc). The wire
+format leaks: **username cleartext via RDP Cookie**
+(`Cookie: mstshash=<username>\r\n` sent by mstsc.exe
+/ Remmina / FreeRDP / rdesktop / AWS Workspaces
+client / Microsoft Remote Desktop for Mac — used
+historically by RD Connection Broker for load
+balancing, still emitted by default; observing one
+CR PDU enumerates an authenticated username without
+sending credentials!); routing token disclosure
+(alternative `Cookie: msts=<base64-token>\r\n`
+form); NLA / CredSSP hardening posture via
+requestedProtocols bitmask (PROTOCOL_RDP=0 standard
+no-TLS = vulnerable to passive MITM, BlueKeep
+CVE-2019-0708 target; PROTOCOL_HYBRID=2 CredSSP NLA
+= modern hardened default protecting against
+BlueKeep + DejaBlue + credential-relay attacks);
+server hardening enforcement via NEG_FAILURE
+(SSL_REQUIRED_BY_SERVER = TLS hardening;
+HYBRID_REQUIRED_BY_SERVER = canonical NLA-hardened
+response — CredSSP mandated pre-auth credential
+check); selected-protocol confirmation via NEG_RSP;
+Restricted Admin Mode detection (NEG_REQ flags 0x01
+= Windows 8.1+ login without sending creds to remote
+host). Common in DEF CON + Black Hat + HITB + OffSec
+internal red-team engagements + every nmap rdp-* NSE
+/ metasploit auxiliary/scanner/rdp / impacket
+rdp_check / crowbar rdesktop-guru / hydra rdp-driven
+RDP attack workflow.**
+
+### Added
+
+- **`rdp_x224_decode`** (`Risk.Low`,
+  `GroupHostTools`) — parses an RDP initial-
+  handshake PDU into a structured view:
+
+  - **4-byte TPKT header** (RFC 1006): `version`=3
+    / reserved / `length` (BE — total including
+    TPKT header).
+
+  - **X.224 COTP header** (ITU-T X.224 / RFC 905):
+    LI length-indicator / PDU-type+credit / dst-ref
+    / src-ref / class+option.
+
+  - **5-entry X.224 PDU-type name table**: `0xE0`
+    CR Connection Request (client → server initial
+    probe) / `0xD0` CC Connection Confirm (server →
+    client reply) / `0xF0` DT Data / `0x80` DR
+    Disconnect Request / `0x70` ER Error.
+
+  - **RDP Cookie extraction** — for CR PDUs walks
+    the post-X.224-header user data looking for a
+    `Cookie: ` prefix terminated by `\r\n`. Extracts
+    `mstshash_username` (cleartext!) or
+    `msts_routing_token` depending on cookie form.
+
+  - **RDP_NEG_REQ walker** ([MS-RDPBCGR] §2.2.1.1.1):
+    type=`0x01` / flags / length=8 /
+    requestedProtocols. Surfaces
+    `neg_req_requested_protocols` bitmask +
+    `neg_req_requested_protocols_names` array +
+    `neg_req_flags` + `neg_req_flags_names`.
+
+  - **6-entry requestedProtocols name table** with
+    vulnerability flagging: `0x00` PROTOCOL_RDP
+    (standard — no TLS, vulnerable to passive MITM!)
+    / `0x01` PROTOCOL_SSL (TLS 1.0+) / `0x02`
+    PROTOCOL_HYBRID (CredSSP NLA — modern hardened
+    default) / `0x04` PROTOCOL_RDSTLS / `0x08`
+    PROTOCOL_HYBRID_EX (CredSSP +
+    EarlyUserAuthorizationResult) / `0x10`
+    PROTOCOL_RDSAAD (Microsoft Entra ID AAD).
+
+  - **3-entry NEG_REQ flags name table**: `0x01`
+    RESTRICTED_ADMIN_MODE_REQUIRED / `0x02`
+    REDIRECTED_AUTHENTICATION_MODE_REQUIRED / `0x08`
+    CORRELATION_INFO_PRESENT.
+
+  - **RDP_NEG_RSP walker** ([MS-RDPBCGR] §2.2.1.2.1):
+    type=`0x02` / flags / length=8 /
+    selectedProtocol. Surfaces
+    `neg_rsp_selected_protocol` + name +
+    `neg_rsp_flags_names`.
+
+  - **3-entry NEG_RSP flags name table**: `0x01`
+    EXTENDED_CLIENT_DATA_SUPPORTED / `0x02`
+    DYNVC_GFX_PROTOCOL_SUPPORTED / `0x04`
+    RDP_NEGRSP_RESERVED.
+
+  - **RDP_NEG_FAILURE walker** ([MS-RDPBCGR]
+    §2.2.1.2.2): type=`0x03` / flags / length=8 /
+    failureCode. Surfaces `neg_failure_code` + name.
+
+  - **6-entry failureCode name table** with
+    hardening-posture flagging: `0x01`
+    SSL_REQUIRED_BY_SERVER (hardening applied) /
+    `0x02` SSL_NOT_ALLOWED_BY_SERVER (very rare) /
+    `0x03` SSL_CERT_NOT_ON_SERVER (TLS misconfig) /
+    `0x04` INCONSISTENT_FLAGS / `0x05`
+    HYBRID_REQUIRED_BY_SERVER (canonical NLA-
+    hardened response — CredSSP mandated) / `0x06`
+    SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER.
+
+- **`internal/rdpx224`** package with focused TPKT
+  + X.224 COTP header walker + RDP Cookie cstring-
+  prefix walker + RDP_NEG_REQ / NEG_RSP /
+  NEG_FAILURE 8-byte structure walkers. No third-
+  party RDP library; no crypto at the parse layer.
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry
+  size 416 → 417.
+- `internal/risk/risk.go`: appended `rdp_x224_decode`
+  to the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.338.0] - 2026-05-21
 
 **134th native-fit decoder. MongoDB wire-protocol
