@@ -2069,6 +2069,51 @@ var toolLevels = func() map[string]Level {
 		// abuse vector + MariaDB-specific extensions +
 		// XA/GTID/replication semantics out of scope.
 		"mysql_decode",
+		// v0.337 native-fit gap: redis_decode is a pure
+		// offline dissector for Redis RESP (REdis
+		// Serialization Protocol) v2 + v3 per the Redis
+		// documentation. TCP/6379 default; 6380/6381
+		// Sentinel; 16379/26379 Cluster bus. Third-largest
+		// open-source database pentest target after MySQL
+		// + PostgreSQL — every modern web-app stack uses
+		// Redis for caching/sessions/queues/pub-sub. Cloud-
+		// managed: ElastiCache / MemoryDB / Cloud
+		// Memorystore / Azure Cache / Upstash / Redis
+		// Enterprise. Canonical "exposed-to-internet
+		// without auth" pentest target — default
+		// deployments have NO auth (requirepass unset,
+		// protected-mode disabled + bound to 0.0.0.0 =
+		// 100,000+ unauthenticated instances per Shodan).
+		// Multiple RCE primitives even after auth: CONFIG
+		// SET dir/dbfilename + SAVE = SSH authorized_keys
+		// / cron / webshell write; MODULE LOAD = direct
+		// native-code RCE; SCRIPT/EVAL = Lua sandbox
+		// escape CVE-2022-0543 Debian Redis; SLAVEOF/
+		// REPLICAOF = replication-RCE via attacker-crafted
+		// RDB with malicious module. Surfaces: AUTH with
+		// cleartext password (password_bytes LENGTH only,
+		// privacy-preserving); HELLO with embedded AUTH
+		// (RESP3 inline credentials); dangerous-command
+		// flagging (CONFIG / DEBUG / MODULE / SCRIPT /
+		// EVAL / SLAVEOF / REPLICAOF / SHUTDOWN / FLUSH*
+		// / CLIENT KILL); brute-force feedback via error
+		// responses (-NOAUTH pre-auth signal; -WRONGPASS
+		// canonical wrong-password; -PERMISSION ACL
+		// denied; -MOVED/-ASK Cluster redirection;
+		// -LOADING/-BUSY operational state). 5-entry
+		// RESP2 type table + 8-entry RESP3 type table;
+		// CRLF frame walker with length-prefixed Bulk
+		// Strings + count-prefixed Arrays; 13-entry
+		// dangerous-command classification table; 11-
+		// entry error category table. RDB persistence
+		// format + AOF format + Cluster slot map binary
+		// encoding + module command IDLs (RediSearch /
+		// RedisJSON / RedisGraph / RedisTimeSeries /
+		// RedisBloom) + sub-array deep recursion + TLS
+		// handshake (Redis 6+) + RESP3 attribute prefix +
+		// client tracking push messages + full key-value
+		// content out of scope.
+		"redis_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

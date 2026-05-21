@@ -1563,7 +1563,45 @@ func TestRegistrySize(t *testing.T) {
 	// + LOAD DATA LOCAL INFILE abuse vector +
 	// MariaDB-specific extensions + XA/GTID/
 	// replication semantics out of scope.
-	const expected = 414
+	// v0.337.0 added redis_decode (Redis RESP /
+	// REdis Serialization Protocol v2 + v3 per
+	// the Redis documentation; TCP/6379 default).
+	// Third-largest open-source database pentest
+	// target after MySQL + PostgreSQL — every
+	// modern web-app stack uses Redis for
+	// caching / sessions / queues / pub-sub.
+	// Cloud-managed: ElastiCache / MemoryDB /
+	// Cloud Memorystore / Azure Cache / Upstash
+	// / Redis Enterprise. Canonical "exposed-
+	// to-internet without auth" target —
+	// 100,000+ unauthenticated instances per
+	// Shodan. Multiple RCE primitives: CONFIG
+	// SET dir/dbfilename = SSH authorized_keys
+	// write; MODULE LOAD = direct native-code
+	// RCE; SCRIPT/EVAL = Lua sandbox escape
+	// CVE-2022-0543; SLAVEOF/REPLICAOF =
+	// replication-RCE. Surfaces: AUTH cleartext
+	// password (password_bytes length only —
+	// privacy-preserving); HELLO with embedded
+	// AUTH (RESP3 inline credentials);
+	// dangerous-command flagging (CONFIG /
+	// DEBUG / MODULE / SCRIPT / EVAL / SLAVEOF
+	// / REPLICAOF / SHUTDOWN / FLUSH* / CLIENT
+	// KILL); brute-force feedback via error
+	// responses (-NOAUTH pre-auth signal; -
+	// WRONGPASS canonical wrong-password; -
+	// PERMISSION ACL denied; -MOVED/-ASK
+	// Cluster redirection; -LOADING/-BUSY
+	// operational state). 5-entry RESP2 type
+	// table + 8-entry RESP3 type table; CRLF
+	// frame walker; 13-entry dangerous-command
+	// classification; 11-entry error category
+	// table. RDB / AOF / Cluster slot map /
+	// module command IDLs / sub-array recursion
+	// / TLS handshake / RESP3 attributes /
+	// client tracking / full key-value content
+	// out of scope.
+	const expected = 415
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
