@@ -7,6 +7,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.336.0] - 2026-05-21
+
+**132nd native-fit decoder + the database-protocol
+pentest trio completes. MySQL / MariaDB client/server
+protocol packet decoder per the MySQL documentation
+(Chapter 4: "Client/Server Protocol"). TCP/3306
+default; also seen via Unix sockets and MySQL Group
+Replication on TCP/33061. Compatible with MariaDB
+which uses the same wire format with minor extensions.
+Together with `tds_decode` (v0.334) +
+`postgres_decode` (v0.335) this completes the
+**database-protocol pentest trio** — every common
+SQL database now has a native dissector. MySQL is the
+**largest open-source database pentest target** —
+deployed everywhere from cloud-managed MySQL (RDS /
+Aurora / Cloud SQL / Azure Database / PlanetScale)
+to bare-metal installations to containerized side-
+cars to every shared-hosting cPanel deployment. The
+wire format leaks: server fingerprint via Handshake
+v10 (server_version string — canonical MySQL
+version-fingerprint for CVE selection); authentication
+plugin negotiation (auth_plugin_name reveals security
+posture — mysql_native_password = SHA1-weak offline-
+crackable hashcat mode 11200/300, caching_sha2_password
+= modern MySQL 8 default, mysql_clear_password = MITM-
+capturable cleartext, auth_socket = Unix peer-creds
+no password on wire); TLS support detection via
+CLIENT_SSL capability bit (0x00000800 — server
+advertises SSL; client without TLS upgrade sends
+cleartext credentials on TCP/3306); cleartext
+username + database via HandshakeResponse41; brute-
+force feedback via ERR packet 1045
+ER_ACCESS_DENIED_ERROR; database enumeration via
+1049 ER_BAD_DB_ERROR; connection ID disclosure.
+Common in DEF CON + Black Hat + HITB + OffSec
+engagements + every sqlmap / hydra mysql / nmap
+mysql-* NSE / metasploit mysql_login-driven MySQL
+attack workflow.**
+
+### Added
+
+- **`mysql_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a MySQL / MariaDB packet into a structured
+  view:
+
+  - **4-byte packet header**: 3-byte LE length + 1-byte
+    sequence ID. Sequence resets to 0 at start of each
+    command.
+
+  - **Handshake v10 body walker** (server → client,
+    first packet, sequence 0): protocol_version `0x0A`
+    + null-terminated server_version + connection_id +
+    capability flags + character set + status flags +
+    auth_plugin_name. Surfaces `protocol_version` +
+    `server_version` + `connection_id` +
+    `capability_flags` + `capability_names` +
+    `status_flags` + `auth_plugin_name` +
+    `auth_plugin_description` (canonical security-
+    posture flag) + `ssl_supported` (CLIENT_SSL bit).
+
+  - **HandshakeResponse41 body walker** (client →
+    server, second packet, sequence 1): capability
+    flags + username + auth-data + database +
+    client_plugin_name. Surfaces `user_name`
+    (cleartext!) + `database` (cleartext!) +
+    `client_plugin_name` + `auth_data_bytes` LENGTH
+    only (privacy-preserving — never the auth-data
+    itself).
+
+  - **ERR packet walker** (server → client): `0xFF`
+    header + 2-byte LE error code + `0x23` marker +
+    5-byte SQL state + error message. Surfaces
+    `error_code` + `error_code_name` + `sql_state` +
+    `error_message`.
+
+  - **OK / EOF packet detection** — `0x00` / `0xFE`
+    headers surfaced as `is_ok_packet` /
+    `is_eof_packet` boolean classifications.
+
+  - **25-entry capability flags name table**:
+    CLIENT_LONG_PASSWORD / CLIENT_FOUND_ROWS /
+    CLIENT_LONG_FLAG / CLIENT_CONNECT_WITH_DB /
+    CLIENT_NO_SCHEMA / CLIENT_COMPRESS / CLIENT_ODBC /
+    CLIENT_LOCAL_FILES / CLIENT_IGNORE_SPACE /
+    CLIENT_PROTOCOL_41 / CLIENT_INTERACTIVE /
+    **CLIENT_SSL** (`0x00000800` — TLS support!) /
+    CLIENT_IGNORE_SIGPIPE / CLIENT_TRANSACTIONS /
+    CLIENT_RESERVED / CLIENT_SECURE_CONNECTION /
+    CLIENT_MULTI_STATEMENTS / CLIENT_MULTI_RESULTS /
+    CLIENT_PS_MULTI_RESULTS / CLIENT_PLUGIN_AUTH /
+    CLIENT_CONNECT_ATTRS /
+    CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA /
+    CLIENT_CAN_HANDLE_EXPIRED_PASSWORDS /
+    CLIENT_SESSION_TRACK / CLIENT_DEPRECATE_EOF /
+    CLIENT_SSL_VERIFY_SERVER_CERT.
+
+  - **5-entry status flags name table**:
+    SERVER_STATUS_IN_TRANS /
+    SERVER_STATUS_AUTOCOMMIT /
+    SERVER_MORE_RESULTS_EXISTS /
+    SERVER_QUERY_NO_GOOD_INDEX_USED /
+    SERVER_QUERY_NO_INDEX_USED.
+
+  - **8-entry auth plugin description table** flagging
+    security posture: `mysql_native_password` (SHA1-
+    weak / offline-crackable hashcat mode 11200/300)
+    / `caching_sha2_password` (modern MySQL 8 default)
+    / `sha256_password` (RSA — requires SSL or pubkey
+    transfer) / **`mysql_clear_password`** (CLEARTEXT
+    — MITM-capturable!) / `auth_socket` (Unix peer-
+    credentials — no password on wire) /
+    `windows_native_password` (SSPI/NTLM) / `dialog`
+    (interactive Percona PAM / MariaDB Cracklib) /
+    `ed25519` (MariaDB).
+
+  - **11-entry error code name table**: 1044
+    `ER_DBACCESS_DENIED_ERROR` / 1045
+    `ER_ACCESS_DENIED_ERROR` (canonical brute-force
+    feedback!) / 1049 `ER_BAD_DB_ERROR` (canonical
+    database enumeration) / 1129 `ER_HOST_IS_BLOCKED`
+    (server-side block) / 1130 `ER_HOST_NOT_PRIVILEGED`
+    / 1158 `ER_NET_PACKET_TOO_LARGE` / 1251
+    `ER_NOT_SUPPORTED_AUTH_MODE` (auth plugin
+    mismatch) / 2059 `ER_NO_AUTH_PLUGIN_FOUND` / 2061
+    `ER_AUTH_PLUGIN_REQUIRES_SECURE_CONNECTION` /
+    2068 `ER_NOT_IMPLEMENTED_FOR_CACHED_PASSWORD` /
+    3950 `ER_NOT_VALID_PASSWORD`.
+
+- **`internal/mysqldb`** package with focused 4-byte
+  packet header walker + Handshake v10 body walker +
+  HandshakeResponse41 body walker + ERR packet walker
+  + OK / EOF packet detection. Capability flags
+  walker via bit-iterated name table. No third-party
+  MySQL library; no crypto at the parse layer;
+  password contents NEVER decoded
+  (`auth_data_bytes` length only).
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry
+  size 413 → 414.
+- `internal/risk/risk.go`: appended `mysql_decode` to
+  the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.335.0] - 2026-05-21
 
 **131st native-fit decoder + the database-protocol
