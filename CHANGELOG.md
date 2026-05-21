@@ -7,6 +7,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.334.0] - 2026-05-21
+
+**130th native-fit decoder + the SQL Server pentest
+dissector lands. TDS (Tabular Data Stream) packet
+decoder per Microsoft Open Specifications [MS-TDS] —
+the Microsoft SQL Server protocol. Runs on TCP/1433
+(default instance), TCP dynamic ports for named
+instances (TCP/49152+ — discoverable via the SQL
+Server Browser on UDP/1434 [MS-SQLR]), and tunneled
+inside SMB2 named pipes (`\pipe\sql\query` — rare
+modern deployments). Extends the Microsoft-stack
+pentest surface beyond the AD-pentest quintet
+(kerberos + ldap + ntlm + smb2 + dcerpc) into the
+database-protocol pentest layer. The canonical SQL
+Server pentest decoder; the wire format leaks:
+cleartext username via Login7 (TDS7_LOGIN OffsetLength
+UTF-16LE — canonical credential disclosure on TCP/1433
+without TLS); password length only (XOR-obfuscated
+0xA5 deliberately NOT deobfuscated — privacy-
+preserving); TLS-downgrade vulnerability via Pre-Login
+ENCRYPTION token (NOT_SUP = TLS-downgrade vector when
+client expected TLS); SQL Server version disclosure
+via TDSVersion field (canonical CVE-selection
+fingerprint); database + AppName disclosure (sqlmap /
+SSMS / SqlClient / SQLCMD / osql identification);
+named-instance hostnames via Login7 ServerName.
+Common in DEF CON + Black Hat + HITB + OffSec
+engagements + every sqlmap / impacket-mssqlclient /
+PowerUpSQL / SQLRecon-driven SQL Server attack
+workflow.**
+
+### Added
+
+- **`tds_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a TDS packet into a structured view:
+
+  - **8-byte packet header** ([MS-TDS] §2.2.3.1):
+    `Type` / `Status` / `Length` (BE — total packet
+    length including header) / `SPID` (BE) /
+    `PacketID` / `Window`.
+
+  - **12-entry packet type name table** (§2.2.3.1.1):
+    `0x01` `SQL_BATCH` / `0x02` `PRE_TDS7_LOGIN`
+    (legacy) / `0x03` `RPC` / `0x04` `TABULAR_RESULT`
+    (server → client) / `0x06` `ATTENTION` (client →
+    cancel) / `0x07` `BULK_LOAD_DATA` / `0x0E`
+    `TRANSACTION_MANAGER` / `0x10` `TDS7_LOGIN`
+    (Login7!) / `0x11` `SSPI` / `0x12` `PRE_LOGIN` /
+    `0x13` `FEDERATED_AUTH_TOKEN`.
+
+  - **5-entry Status flags name table** (§2.2.3.1.2):
+    `0x01` `EOM` (End-Of-Message) / `0x02` `IGNORE` /
+    `0x04` `EVENT_NOTIFICATION` / `0x08`
+    `RESETCONNECTION` / `0x10`
+    `RESETCONNECTIONSKIPTRAN`.
+
+  - **Pre-Login token walker** (§2.2.6.5): TLV-style
+    table — TokenType + TokenOffset (BE) +
+    TokenLength (BE) — terminated by `0xFF`. Surfaces
+    each token's type + name + offset + length; for
+    the `ENCRYPTION` token (0x01) extracts the
+    1-byte value and surfaces `encryption_mode` +
+    `encryption_mode_name`.
+
+  - **8-entry Pre-Login token-type name table**
+    (§2.2.6.5): `0x00` `VERSION` / `0x01`
+    `ENCRYPTION` / `0x02` `INSTOPT` / `0x03`
+    `THREADID` / `0x04` `MARS` (Multiple Active
+    Result Sets) / `0x05` `TRACEID` / `0x06`
+    `FEDAUTHREQUIRED` / `0x07` `NONCEOPT`.
+
+  - **4-entry ENCRYPTION mode name table**
+    (§2.2.6.5): `0x00` `ENCRYPT_OFF` / `0x01`
+    `ENCRYPT_ON` / `0x02` `ENCRYPT_NOT_SUP`
+    (TLS-downgrade vulnerable!) / `0x03`
+    `ENCRYPT_REQ` (hardened).
+
+  - **Login7 body walker** (§2.2.6.4): Length (LE) +
+    TDSVersion (LE) + PacketSize (LE) + OffsetLength
+    block (10 offset/length entries for HostName,
+    UserName, Password, AppName, ServerName,
+    Extension, CltIntName, Language, Database, SSPI).
+    Surfaces `host_name` + `user_name` (cleartext!)
+    + `password_bytes` (LENGTH only — privacy-
+    preserving) + `app_name` + `server_name` +
+    `database` as UTF-16LE-decoded strings.
+
+  - **6-entry TDS version name table** mapping
+    `TDSVersion` to SQL Server release: `0x70000000`
+    SQL Server 7.0 / `0x71000001` SQL Server 2000
+    SP1 / `0x72090002` SQL Server 2005 / `0x730A0003`
+    SQL Server 2008 / `0x730B0003` SQL Server 2008
+    R2 / `0x74000004` SQL Server
+    2012/2014/2016/2017/2019/2022.
+
+- **`internal/tds`** package with focused 8-byte
+  header walker + Pre-Login TLV token walker +
+  Login7 OffsetLength variable-data walker. UTF-16LE
+  string decoding via `unicode/utf16`. Password
+  deobfuscation deliberately omitted (XOR-0xA5-with-
+  nibble-swap is trivial but the decoder surfaces
+  length only — privacy-preserving). No third-party
+  TDS library; no crypto at the parse layer.
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry
+  size 411 → 412.
+- `internal/risk/risk.go`: appended `tds_decode` to
+  the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.333.0] - 2026-05-21
 
 **129th native-fit decoder + the AD-pentest dissector
