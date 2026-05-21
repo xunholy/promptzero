@@ -7,6 +7,124 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.330.0] - 2026-05-21
+
+**126th native-fit decoder + the highest-value AD-
+pentest dissector lands. Kerberos v5 message decoder
+per RFC 4120 — the authentication protocol underpinning
+every Active Directory deployment + most enterprise
+SSO stacks (MIT Kerberos, Heimdal, Microsoft Active
+Directory, Apple Open Directory, FreeIPA / IdM, Samba 4
+KDC). UDP/88 (the common case — requests under MTU) +
+TCP/88 (large requests with PAC inflation). The
+canonical AD-pentest decoder because the wire format
+leaks: username enumeration (every AS-REQ carries
+`cname` in cleartext), AS-REP roasting detection
+(when `pre_auth_required` is false the account is
+hashcat mode 18200 candidate material), encryption-
+type downgrade audit (`etype` reveals legacy `rc4-hmac`
+= etype 23 support), realm + SPN disclosure (`sname`
+is the Kerberoasting enumeration goldmine), and
+Kerberoasting recon (observing TGS-REQ traffic pre-
+targets high-privilege service accounts). Common in
+DEF CON + Black Hat + HITB AD pentests and every
+internal red-team engagement against a Windows
+environment.**
+
+### Added
+
+- **`kerberos_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a Kerberos v5 message into a structured view:
+
+  - **7-entry message type name table** (RFC 4120
+    §5.10): `[APPLICATION 10]` `0x6A` `AS-REQ` (initial
+    TGT request) / `[APPLICATION 11]` `0x6B` `AS-REP`
+    (TGT response — AS-REP-roastable material!) /
+    `[APPLICATION 12]` `0x6C` `TGS-REQ` (per-service
+    ticket request — Kerberoast initiator!) /
+    `[APPLICATION 13]` `0x6D` `TGS-REP` (per-service
+    ticket — Kerberoastable!) / `[APPLICATION 14]`
+    `0x6E` `AP-REQ` / `[APPLICATION 15]` `0x6F` `AP-REP`
+    / `[APPLICATION 30]` `0x7E` `KRB-ERROR`.
+
+  - **AS-REQ / TGS-REQ body** (KDC-REQ-BODY, §5.4.1):
+    inner SEQUENCE context-tagged fields `[1]` pvno=5 /
+    `[2]` msg-type / `[3]` padata / `[4]` req-body
+    { `[1]` cname PrincipalName / `[2]` realm
+    GeneralString / `[3]` sname PrincipalName / `[8]`
+    etype SEQUENCE OF Int32 }. PrincipalName name-string
+    joined with `/` (`krbtgt/CORP.EXAMPLE.COM` or
+    `MSSQLSvc/sql01.corp.example.com:1433`).
+
+  - **`pre_auth_required` boolean** — surfaces whether
+    `PA-ENC-TIMESTAMP` (padata type 2) is present in the
+    padata list. **When `false`, the account is AS-REP
+    roastable** (request the AS-REP, extract enc-part,
+    hashcat -m 18200 against the user's password). The
+    canonical AS-REP-roasting attack-chain indicator.
+
+  - **11-entry Encryption Type name table** (RFC 3961
+    + extensions): 1 `des-cbc-crc` / 2 `des-cbc-md4` /
+    3 `des-cbc-md5` / 16 `des3-cbc-sha1` / 17
+    `aes128-cts-hmac-sha1-96` / 18
+    `aes256-cts-hmac-sha1-96` / 19
+    `aes128-cts-hmac-sha256-128` / 20
+    `aes256-cts-hmac-sha384-192` / 23 `rc4-hmac`
+    (legacy NT-compat; weak) / 24 `rc4-hmac-exp`
+    (export-grade) / 25 `camellia128-cts-cmac` / 26
+    `camellia256-cts-cmac`.
+
+  - **8-entry PA-DATA type name table** (§7.5.2 +
+    extensions): 1 `PA-TGS-REQ` / 2 `PA-ENC-TIMESTAMP`
+    (preauth!) / 3 `PA-PW-SALT` / 11 `PA-ETYPE-INFO` /
+    14 `PA-PK-AS-REQ` (PKINIT) / 19 `PA-ETYPE-INFO2` /
+    128 `PA-PAC-REQUEST` (Windows PAC) / 129
+    `PA-FOR-USER` (S4U2self).
+
+  - **AS-REP / TGS-REP body** (KDC-REP, §5.4.2): inner
+    SEQUENCE `[0]` pvno / `[1]` msg-type / `[2]` padata
+    / `[3]` crealm / `[4]` cname / `[5]` ticket
+    (encrypted with krbtgt key — byte length surfaced)
+    / `[6]` enc-part (encrypted with user's password-
+    derived key — byte length surfaced, the AS-REP-
+    roastable material!).
+
+  - **KRB-ERROR body** (§5.9.1): context-tagged inner
+    SEQUENCE `[6]` error-code / `[7]` crealm / `[9]`
+    realm / `[10]` sname / `[11]` e-text.
+
+  - **13-entry KRB-ERROR error-code name table**
+    (§7.5.9 + Microsoft extensions): 6
+    `KDC_ERR_C_PRINCIPAL_UNKNOWN` (canonical username-
+    doesn't-exist response — great for username-
+    enumeration sweeps) / 7 `KDC_ERR_S_PRINCIPAL_UNKNOWN`
+    / 14 `KDC_ERR_ETYPE_NOTSUPP` / 18
+    `KDC_ERR_CLIENT_REVOKED` (account locked) / 24
+    `KDC_ERR_PREAUTH_FAILED` (wrong password) / 25
+    `KDC_ERR_PREAUTH_REQUIRED` (canonical "this user is
+    NOT AS-REP roastable" response — preauth ON) / 32
+    `KRB_AP_ERR_TKT_EXPIRED` / 33 `KRB_AP_ERR_TKT_NYV`
+    / 34 `KRB_AP_ERR_REPEAT` / 35 `KRB_AP_ERR_NOT_US` /
+    37 `KRB_AP_ERR_SKEW` (clock skew > 5 min) / 60
+    `KRB_ERR_GENERIC` / 68 `KDC_ERR_WRONG_REALM`
+    (cross-realm referral).
+
+- **`internal/kerberos`** package with focused ASN.1
+  DER walker (short / long-form length, `INTEGER`,
+  `GeneralString`, `SEQUENCE` / `SEQUENCE OF`, context-
+  tag discrimination) — no third-party ASN.1
+  dependency. Pure offline parser; encrypted parts
+  surfaced as byte counts only (no crypto at the parse
+  layer).
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry
+  size 407 → 408.
+- `internal/risk/risk.go`: appended `kerberos_decode` to
+  the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.329.0] - 2026-05-21
 
 **125th native-fit decoder + the email-protocol triad
