@@ -1756,6 +1756,38 @@ var toolLevels = func() map[string]Level {
 		// EXISTS' detection. Completes the email-
 		// protocol triad with smtp_decode + pop3_decode.
 		"imap4_decode",
+		// v0.330 native-fit gap: kerberos_decode is a pure
+		// offline dissector for Kerberos v5 per RFC 4120 —
+		// the authentication protocol underpinning every
+		// Active Directory deployment + most enterprise SSO
+		// stacks (MIT Kerberos, Heimdal, Microsoft AD, Apple
+		// Open Directory, FreeIPA / IdM). UDP/88 + TCP/88.
+		// Canonical AD-pentest decoder — the highest-value
+		// AD dissector in the catalogue — because the wire
+		// format leaks: username enumeration (every AS-REQ
+		// carries cname in cleartext); AS-REP roasting (when
+		// PA-ENC-TIMESTAMP is absent from padata, the
+		// account is AS-REP-roastable — hashcat mode 18200);
+		// encryption type downgrade audit (etype reveals
+		// rc4-hmac support, weak); realm + SPN disclosure
+		// (the Kerberoasting enumeration goldmine);
+		// Kerberoasting recon (observing TGS-REQ traffic
+		// pre-targets high-privilege service accounts).
+		// 7-entry message type name table (AS-REQ / AS-REP
+		// / TGS-REQ / TGS-REP / AP-REQ / AP-REP /
+		// KRB-ERROR); AS-REQ / TGS-REQ body walker with
+		// cname / realm / sname / etype extraction;
+		// pre_auth_required boolean (PA-ENC-TIMESTAMP
+		// presence detection); 11-entry Encryption Type
+		// name table; 8-entry PA-DATA type name table;
+		// AS-REP / TGS-REP body walker with ticket + enc-
+		// part byte-length surfacing; KRB-ERROR body walker
+		// with 13-entry error-code name table. Encrypted
+		// ticket + enc-part NOT decrypted (offline hashcat
+		// modes 18200 AS-REP + 13100 Kerberoast TGS are the
+		// next step); PAC + PKINIT + GSS-API wrapping out
+		// of scope.
+		"kerberos_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

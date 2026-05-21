@@ -1308,7 +1308,47 @@ func TestRegistrySize(t *testing.T) {
 	// 365 / Google Workspace / Dovecot / Cyrus
 	// / Courier / Zimbra / FastMail / Apple
 	// Mail / Thunderbird / iOS Mail / Outlook.
-	const expected = 407
+	// v0.330.0 added kerberos_decode (Kerberos
+	// v5 per RFC 4120 — the authentication
+	// protocol underpinning every Active
+	// Directory deployment + most enterprise
+	// SSO stacks; MIT Kerberos / Heimdal /
+	// Microsoft AD / Apple Open Directory /
+	// FreeIPA-IdM; UDP/88 + TCP/88). The
+	// highest-value AD-pentest dissector in
+	// the catalogue: username enumeration
+	// (cname leaked in every AS-REQ); AS-REP
+	// roasting detection (pre_auth_required
+	// false = hashcat mode 18200 candidate);
+	// encryption-type downgrade audit (rc4-
+	// hmac etype 23 flagged weak); SPN +
+	// realm disclosure (Kerberoasting target
+	// goldmine); Kerberoasting recon (TGS-REQ
+	// surfaces actively-requested SPNs).
+	// 7-entry message type name table (AS-REQ
+	// / AS-REP / TGS-REQ / TGS-REP / AP-REQ /
+	// AP-REP / KRB-ERROR); 11-entry Encryption
+	// Type name table (des-cbc-crc / des-cbc-
+	// md4 / des-cbc-md5 / des3-cbc-sha1 / aes
+	// 128 + 256 cts-hmac-sha1-96 / aes128 +
+	// 256 cts-hmac-sha256 + 384 / rc4-hmac /
+	// rc4-hmac-exp / camellia128 + 256 cts-
+	// cmac); 8-entry PA-DATA name table (PA-
+	// TGS-REQ / PA-ENC-TIMESTAMP preauth / PA-
+	// PW-SALT / PA-ETYPE-INFO / PA-PK-AS-REQ
+	// PKINIT / PA-ETYPE-INFO2 / PA-PAC-REQUEST
+	// / PA-FOR-USER S4U2self); 13-entry KRB-
+	// ERROR error-code name table including
+	// KDC_ERR_C_PRINCIPAL_UNKNOWN (username
+	// enum) + KDC_ERR_PREAUTH_REQUIRED (canon
+	// "NOT AS-REP roastable") + KDC_ERR_PREAUTH
+	// _FAILED (wrong password). Encrypted
+	// ticket + enc-part NOT decrypted (byte
+	// counts only — offline hashcat is the
+	// next step); PAC + PKINIT inner CMS +
+	// GSS-API wrapping + cross-realm referrals
+	// out of scope.
+	const expected = 408
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
