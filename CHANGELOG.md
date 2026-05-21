@@ -7,6 +7,144 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.335.0] - 2026-05-21
+
+**131st native-fit decoder + the database-protocol
+pentest pair completes. PostgreSQL frontend/backend
+protocol v3 message decoder per the PostgreSQL
+documentation (Part VIII). TCP/5432 default. Sibling
+decoder to `tds_decode` (v0.334) — together they form
+the cross-database-protocol pentest surface across
+MSSQL + PostgreSQL. PostgreSQL is the second-largest
+open-source database pentest target after MySQL,
+deployed everywhere from cloud-managed Postgres (RDS /
+Aurora / Cloud SQL / Crunchy / Supabase / Neon /
+Timescale Cloud) to bare-metal installations to
+containerized side-cars. The wire format leaks:
+cleartext username + database via StartupMessage (no-
+type-byte first message after TCP connect; `user` and
+`database` keys cleartext UTF-8); authentication
+method enumeration via AuthenticationRequest (0
+AuthenticationOk = trust/no password!, 3
+CleartextPassword = MITM-capturable!, 5 MD5Password =
+offline-crackable hashcat mode 12, 10 SASL = SCRAM-
+SHA-256 modern hardened); brute-force feedback via
+ErrorResponse SQLSTATE (28P01 invalid_password =
+canonical wrong-password response; 3D000
+invalid_catalog_name = database enumeration; 42P01
+undefined_table = post-auth enumeration); PostgreSQL
+version disclosure via ParameterStatus
+(`server_version` GUC = canonical version-fingerprint
+for CVE selection); SSL / GSS pre-handshake detection
+(SSLRequest 0x04D2162F + GSSENCRequest 0x04D21630 +
+CancelRequest 0x04D21631 magic payloads); client tool
+identification via `application_name` (psql / pgAdmin
+4 / DBeaver / pgcli / node-postgres / sqlmap). Common
+in DEF CON + Black Hat + HITB + OffSec engagements +
+every sqlmap / nmap pgsql-* NSE / metasploit
+postgres_login-driven PostgreSQL attack workflow.**
+
+### Added
+
+- **`postgres_decode`** (`Risk.Low`, `GroupHostTools`) —
+  parses a PostgreSQL message into a structured view:
+
+  - **Type+Length+Body frame parsing**: Type (1 byte)
+    + Length (4 BE, includes self) + Body. Startup
+    messages have NO type byte and are discriminated
+    by Length + ProtocolVersion magic.
+
+  - **3-entry pre-startup magic name table**:
+    `0x04D2162F` SSLRequest / `0x04D21630`
+    GSSENCRequest / `0x04D21631` CancelRequest.
+    Surfaces `is_ssl_request` / `is_gss_request` /
+    `is_cancel_request` boolean classifications.
+
+  - **15-entry frontend message type name table**:
+    `B` Bind / `C` Close / `d` CopyData / `c`
+    CopyDone / `f` CopyFail / `D` Describe / `E`
+    Execute / `F` FunctionCall / `H` Flush / `P`
+    Parse / `p` PasswordMessage / `Q` Query / `S`
+    Sync / `X` Terminate.
+
+  - **24-entry backend message type name table**:
+    `R` Authentication / `K` BackendKeyData / `2`
+    BindComplete / `3` CloseComplete / `C`
+    CommandComplete / `G` CopyInResponse / `H`
+    CopyOutResponse / `W` CopyBothResponse / `D`
+    DataRow / `I` EmptyQueryResponse / `E`
+    ErrorResponse / `V` FunctionCallResponse / `v`
+    NegotiateProtocolVersion / `n` NoData / `N`
+    NoticeResponse / `A` NotificationResponse / `t`
+    ParameterDescription / `S` ParameterStatus / `1`
+    ParseComplete / `s` PortalSuspended / `Z`
+    ReadyForQuery / `T` RowDescription.
+
+  - **StartupMessage body walker**: ProtocolVersion
+    (BE) + sequence of null-terminated key/value
+    strings terminated by extra null byte. Surfaces
+    `startup_params` map plus canonical `user` /
+    `database` / `application_name` /
+    `client_encoding` keys as top-level fields.
+
+  - **AuthenticationRequest body walker**: first 4 BE
+    bytes are the sub-type. Surfaces `auth_subtype`
+    + `auth_subtype_name`.
+
+  - **11-entry AuthenticationRequest sub-type name
+    table**: 0 `AuthenticationOk` (trust auth — no
+    password!) / 2 `KerberosV5` / 3
+    `CleartextPassword` (MITM-capturable!) / 5
+    `MD5Password` (offline-crackable hashcat mode
+    12) / 7 `GSS` / 8 `GSSContinue` / 9 `SSPI` /
+    10 `SASL` (SCRAM-SHA-256 — modern hardened) /
+    11 `SASLContinue` / 12 `SASLFinal`.
+
+  - **ErrorResponse / NoticeResponse body walker**:
+    TLV-style (1-byte field tag + null-terminated
+    value, terminated by 0-byte tag). Surfaces all
+    observed field tags as `error_fields` map.
+
+  - **18-entry ErrorResponse field-tag name table**
+    (PostgreSQL §52.8): `S` Severity / `V` Severity
+    (non-localized) / `C` SQLSTATE / `M` Message /
+    `D` Detail / `H` Hint / `P` Position / `p`
+    InternalPosition / `q` InternalQuery / `W` Where
+    / `s` Schema / `t` Table / `c` Column / `d`
+    DataType / `n` Constraint / `F` File / `L` Line
+    / `R` Routine.
+
+  - **8-entry canonical SQLSTATE name table**:
+    `00000` `successful_completion` / `28P01`
+    `invalid_password` (canonical brute-force
+    feedback!) / `28000`
+    `invalid_authorization_specification` / `3D000`
+    `invalid_catalog_name` (database doesn't exist)
+    / `42501` `insufficient_privilege` / `42P01`
+    `undefined_table` / `53300`
+    `too_many_connections` (DoS signal) / `57P03`
+    `cannot_connect_now` (server shutdown/recovery).
+
+  - **ParameterStatus body walker**: two null-
+    terminated strings (parameter name + value).
+    Canonical pentest-interesting: `server_version`
+    (CVE-selection fingerprint), `is_superuser`,
+    `session_authorization`.
+
+- **`internal/postgres`** package with focused frame
+  walker + StartupMessage body walker + Authentication
+  Request body walker + ErrorResponse / NoticeResponse
+  TLV walker + ParameterStatus body walker. No third-
+  party PG library; no crypto at the parse layer.
+
+### Changed
+
+- `internal/tools/registry_size_test.go`: registry
+  size 412 → 413.
+- `internal/risk/risk.go`: appended `postgres_decode`
+  to the `GroupHostTools` allowlist with a detailed
+  rationale block.
+
 ## [0.334.0] - 2026-05-21
 
 **130th native-fit decoder + the SQL Server pentest
