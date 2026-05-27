@@ -82,6 +82,16 @@ func WithSuppressPrompt(command string) Option {
 	}
 }
 
+// WithDynamicSuppressPrompt conditionally suppresses the prompt for a command
+// based on a function that's called at dispatch time. When fn returns true the
+// prompt is withheld; when false the prompt is emitted normally. This lets
+// tests simulate a command that hangs on the first call but succeeds on retry.
+func WithDynamicSuppressPrompt(command string, fn func() bool) Option {
+	return func(m *Mock) {
+		m.dynamicSuppressPrompt[command] = fn
+	}
+}
+
 // WithBanner overrides the one-shot welcome banner.
 func WithBanner(s string) Option {
 	return func(m *Mock) { m.banner = s }
@@ -94,9 +104,10 @@ type Mock struct {
 	slave  *os.File
 	path   string
 
-	banner            string
-	handlers          map[string]Handler
-	suppressPromptFor map[string]bool
+	banner                string
+	handlers              map[string]Handler
+	suppressPromptFor     map[string]bool
+	dynamicSuppressPrompt map[string]func() bool
 
 	mu      sync.Mutex
 	counted atomic.Int64 // commands observed so far, for test assertions
@@ -183,14 +194,15 @@ func Spawn(t *testing.T, opts ...Option) *Mock {
 	}
 
 	m := &Mock{
-		master:            master,
-		slave:             slave,
-		path:              slavePath,
-		banner:            DefaultBanner,
-		handlers:          defaultHandlers(),
-		suppressPromptFor: make(map[string]bool),
-		closed:            make(chan struct{}),
-		done:              make(chan struct{}),
+		master:                master,
+		slave:                 slave,
+		path:                  slavePath,
+		banner:                DefaultBanner,
+		handlers:              defaultHandlers(),
+		suppressPromptFor:     make(map[string]bool),
+		dynamicSuppressPrompt: make(map[string]func() bool),
+		closed:                make(chan struct{}),
+		done:                  make(chan struct{}),
 	}
 	for _, o := range opts {
 		o(m)
@@ -299,7 +311,13 @@ func (m *Mock) dispatch(line string) {
 			_, _ = m.master.WriteString("\r\n")
 		}
 	}
-	if !m.suppressPromptFor[head] {
+	suppress := m.suppressPromptFor[head]
+	if !suppress {
+		if fn, ok := m.dynamicSuppressPrompt[head]; ok {
+			suppress = fn()
+		}
+	}
+	if !suppress {
 		_, _ = m.master.WriteString("\r\n>: ")
 	}
 }

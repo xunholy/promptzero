@@ -156,8 +156,8 @@ func TestExec_EmptySuccessStaysSuccess(t *testing.T) {
 
 // TestExecCtx_RetriesTransientHang verifies that the CLI retry loop
 // retries a command that hangs on the first attempt but succeeds on
-// the second. Uses the resilient pipeline profile which sets
-// CLIRetryAttempts=3.
+// the second. The first call suppresses the prompt so ExecCtx times
+// out; subsequent calls return normally.
 func TestExecCtx_RetriesTransientHang(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing-sensitive retry test")
@@ -167,10 +167,12 @@ func TestExecCtx_RetriesTransientHang(t *testing.T) {
 		mock.WithHandler("storage", func(args []string) string {
 			n := calls.Add(1)
 			if n == 1 {
-				time.Sleep(15 * time.Second)
-				return ""
+				return "stalling..."
 			}
 			return "listing /ext"
+		}),
+		mock.WithDynamicSuppressPrompt("storage", func() bool {
+			return calls.Load() <= 1
 		}),
 	)
 	flip := connectAndDetect(t, m)
