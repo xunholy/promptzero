@@ -71,9 +71,10 @@ type Pipeline struct {
 	RPCRetryDelay time.Duration
 
 	// FileWriteRetryAttempts is the number of times WriteFileCtx will
-	// re-issue a failed storage write_chunk before giving up. As with
-	// CLIRetryAttempts, today's WriteFileCtx is single-shot; values > 1
-	// are reserved for the auto-tune follow-up.
+	// re-issue a failed storage write_chunk before giving up. Each retry
+	// re-issues the full command + data so the firmware gets a clean
+	// write. Only transient errors (timeout, send failures) trigger a
+	// retry. Value of 1 (or <=0) means single-shot.
 	FileWriteRetryAttempts int
 	// FileWriteRetryDelay is the delay between file-write retries.
 	FileWriteRetryDelay time.Duration

@@ -1164,6 +1164,11 @@ func (f *Flipper) WriteFile(path string, data []byte) error {
 // any disconnect-class error via markDisconnectedIfRelevant so the next
 // op can recover.
 //
+// When the pipeline's FileWriteRetryAttempts > 1, WriteFileCtx retries
+// transient failures (timeout waiting for prompt, send errors) with
+// FileWriteRetryDelay between attempts. Each retry re-issues the full
+// write_chunk command so the firmware gets a clean write.
+//
 // Firmware append behaviour: some firmware builds — notably Momentum dev
 // branch as of mntm-dev 430a3d50 (2026-03-09) — do NOT truncate an existing
 // file when storage write_chunk is called; they append to the existing
@@ -1177,6 +1182,43 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 	if f.rpcMode.Load() {
 		return f.rpcModeError("write_file " + path)
 	}
+
+	pl := f.pipeline()
+	attempts := pl.FileWriteRetryAttempts
+	if attempts <= 0 {
+		attempts = 1
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		lastErr = f.writeFileOnce(ctx, path, data)
+		if lastErr == nil {
+			return nil
+		}
+		if !isTransientExecError(lastErr) || ctx.Err() != nil {
+			return lastErr
+		}
+		if attempt < attempts {
+			obs.Default().Warn("file_write_retry",
+				"path", path,
+				"attempt", attempt,
+				"max", attempts,
+				"err", lastErr)
+			delay := pl.FileWriteRetryDelay
+			if delay <= 0 {
+				delay = 500 * time.Millisecond
+			}
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+	return lastErr
+}
+
+func (f *Flipper) writeFileOnce(ctx context.Context, path string, data []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -1192,16 +1234,13 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 		return fmt.Errorf("sending write_chunk command: %w", err)
 	}
 
-	// Wait for the device to acknowledge the command before sending data.
-	// Cancellable so a Ctrl+C mid-write isn't stuck in Sleep.
 	select {
 	case <-time.After(100 * time.Millisecond):
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	f.drain() // drain the echo
+	f.drain()
 
-	// Write data, ensuring all bytes are sent.
 	written := 0
 	for written < len(data) {
 		n, err := f.transport.Write(data[written:])
@@ -1212,8 +1251,6 @@ func (f *Flipper) WriteFileCtx(ctx context.Context, path string, data []byte) er
 		written += n
 	}
 
-	// Same precedence as ExecCtx: explicit SetWriteFileTimeout wins over
-	// the pipeline value when set; otherwise read from the active profile.
 	writeTO := f.writeFileTimeout
 	if writeTO <= 0 {
 		writeTO = f.pipeline().WriteFile
