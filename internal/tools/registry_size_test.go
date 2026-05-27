@@ -1719,7 +1719,13 @@ func TestRegistrySize(t *testing.T) {
 	// SASL_PLAINTEXT, TCP/9095 SASL_SSL), and
 	// memcached_decode (Memcached binary protocol;
 	// TCP/11211).
-	const expected = 421
+	//
+	// v0.342.0 added ipmi_decode (IPMI RMCP/RMCP+
+	// wire protocol; UDP/623), rip_decode (RIP
+	// v1/v2 routing protocol; UDP/520), and
+	// eigrp_decode (EIGRP routing protocol; IP
+	// protocol 88).
+	const expected = 424
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

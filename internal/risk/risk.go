@@ -2292,6 +2292,31 @@ var toolLevels = func() map[string]Level {
 		// classification. Cached values + SASL credentials
 		// NEVER surfaced (length only).
 		"memcached_decode",
+		// v0.342 native-fit gap: ipmi_decode is a pure
+		// offline IPMI RMCP/RMCP+ wire-protocol parser — no
+		// network I/O, no Flipper/Marauder interaction.
+		// Decodes IPMI session headers, Get Channel Auth
+		// Capabilities (auth enumeration), Get Device ID
+		// (version fingerprint), RMCP+ RAKP exchange,
+		// cipher suite zero detection. Auth codes NEVER
+		// decoded (presence only).
+		"ipmi_decode",
+		// v0.342 native-fit gap: rip_decode is a pure
+		// offline RIP v1/v2 wire-protocol parser — no
+		// network I/O, no Flipper/Marauder interaction.
+		// Decodes RIP header + route entries + auth entries;
+		// surfaces route topology, cleartext password auth
+		// flag, infinity metric detection. Passwords NEVER
+		// extracted (flag only).
+		"rip_decode",
+		// v0.342 native-fit gap: eigrp_decode is a pure
+		// offline EIGRP wire-protocol parser — no network
+		// I/O, no Flipper/Marauder interaction. Decodes
+		// EIGRP header + TLVs (Parameters K-values,
+		// Software Version, Auth, Internal/External Routes);
+		// surfaces AS number, hold time, route topology.
+		// Auth data NEVER decoded (type only).
+		"eigrp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
