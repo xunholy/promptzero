@@ -1725,7 +1725,12 @@ func TestRegistrySize(t *testing.T) {
 	// v1/v2 routing protocol; UDP/520), and
 	// eigrp_decode (EIGRP routing protocol; IP
 	// protocol 88).
-	const expected = 424
+	//
+	// v0.343.0 added isis_decode (IS-IS routing
+	// protocol; OSI CLNS L2), ldp_decode (LDP
+	// MPLS signalling; TCP/UDP 646), and
+	// rtmp_decode (RTMP live streaming; TCP/1935).
+	const expected = 427
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

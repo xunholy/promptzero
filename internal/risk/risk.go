@@ -2317,6 +2317,32 @@ var toolLevels = func() map[string]Level {
 		// surfaces AS number, hold time, route topology.
 		// Auth data NEVER decoded (type only).
 		"eigrp_decode",
+		// v0.343 native-fit gap: ldp_decode is a pure
+		// offline LDP (Label Distribution Protocol) wire-
+		// protocol parser per RFC 5036 — no network I/O,
+		// no Flipper/Marauder interaction. Decodes LDP PDU
+		// header (version, lsr_id, label_space) + message
+		// header (type, id) + TLVs (Common Hello Params,
+		// Transport Address, Session Params, Generic Label);
+		// surfaces LSR topology, targeted-Hello flag,
+		// label bindings. Auth at TCP layer; not in PDU.
+		"ldp_decode",
+		// native-fit gap: isis_decode is a pure offline IS-IS wire-protocol
+		// parser per ISO 10589 + RFC 1195 — no network I/O, no
+		// Flipper/Marauder interaction. Decodes IS-IS common header,
+		// per-PDU-type fixed fields (LAN IIH / P2P IIH / LSP / CSNP /
+		// PSNP), and TLVs (Area Addresses, Authentication, IP Interface
+		// Address, Dynamic Hostname); surfaces topology, auth type,
+		// system IDs. Auth data NEVER decoded (type only).
+		"isis_decode",
+		// v0.343 native-fit gap: rtmp_decode is a pure
+		// offline RTMP wire-protocol parser — no network
+		// I/O, no Flipper/Marauder interaction. Decodes
+		// RTMP handshake (C0/S0 version, RTMPE detection),
+		// chunk headers (fmt, cs_id, message type), AMF0
+		// command extraction (connect/play/publish). Stream
+		// keys + credentials NEVER extracted.
+		"rtmp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
