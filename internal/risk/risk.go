@@ -2365,6 +2365,27 @@ var toolLevels = func() map[string]Level {
 		// cleartext flagged), message/presence/iq stanzas.
 		// Auth data + message content NEVER extracted.
 		"xmpp_decode",
+		// v0.345 native-fit gap: es_transport_decode is a pure
+		// offline Elasticsearch internal transport protocol
+		// parser (TCP/9300 inter-node binary framing). No
+		// network I/O, no Flipper/Marauder interaction. Decodes
+		// ES magic marker, request_id, status flags (request/
+		// response/error/compressed/handshake), transport_version,
+		// and action name. Action names NEVER decoded beyond
+		// string extraction (no index data surfaced).
+		"es_transport_decode",
+		// v0.345 native-fit gap: zmtp_decode is a pure offline ZMTP
+		// wire-protocol parser — no network I/O, no Flipper/Marauder
+		// interaction. Decodes ZMTP handshake + message frames.
+		// Frame content NEVER decoded (length only).
+		"zmtp_decode",
+		// v0.345 native-fit gap: cassandra_decode is a pure offline
+		// Cassandra CQL binary protocol parser — no network I/O,
+		// no Flipper/Marauder interaction. Decodes CQL frame header,
+		// STARTUP CQL version, QUERY text (first 200 chars),
+		// AUTHENTICATE class name, ERROR code + message.
+		// AUTH_RESPONSE bytes NEVER decoded (length only).
+		"cassandra_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

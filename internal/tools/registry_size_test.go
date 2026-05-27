@@ -1736,7 +1736,12 @@ func TestRegistrySize(t *testing.T) {
 	// rsvpte_decode (RSVP-TE MPLS TE signalling;
 	// IP protocol 46), and xmpp_decode (XMPP XML
 	// messaging; TCP/5222, 5269).
-	const expected = 430
+	//
+	// v0.345.0 added es_transport_decode (Elasticsearch internal
+	// transport protocol; TCP/9300), zmtp_decode (ZMTP wire
+	// protocol), and cassandra_decode (Cassandra CQL binary
+	// protocol; TCP/9042 plaintext, TCP/9142 TLS).
+	const expected = 433
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
