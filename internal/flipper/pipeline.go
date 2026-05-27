@@ -54,14 +54,11 @@ const (
 // SetPipeline call can swap the whole bundle without partial reads.
 type Pipeline struct {
 	// CLIRetryAttempts is the number of times ExecCtx will issue the
-	// command before giving up on a hung CLI. ExecCtx's existing
-	// per-attempt timeout (ExecTimeout) gates each try.
-	//
-	// NOTE: today's serial.go ExecCtx is single-shot — it sends once and
-	// either returns the response or the "hung" error. We carry this
-	// field so the auto-tune side can grow per-op retries without a
-	// second refactor; the current dispatcher reads it but treats values
-	// > 1 as a no-op until the retry loop is added in a follow-up.
+	// command before giving up. Each attempt is gated by the per-command
+	// Exec timeout. Only transient errors (command hung, send failures)
+	// trigger a retry; non-transient errors (context cancelled, bridge
+	// mode, unknown command) return immediately. Value of 1 (or <=0)
+	// means single-shot (no retries).
 	CLIRetryAttempts int
 	// CLIRetryDelay is the delay between CLI retries when CLIRetryAttempts > 1.
 	CLIRetryDelay time.Duration

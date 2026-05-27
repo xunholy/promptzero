@@ -855,7 +855,12 @@ func (f *Flipper) Exec(command string) (string, error) {
 }
 
 // ExecCtx is the context-aware variant of Exec. The ctx is honoured during
-// reconnect polling and during the 10 s per-command read deadline.
+// reconnect polling and during the per-command read deadline.
+//
+// When the pipeline's CLIRetryAttempts > 1, ExecCtx retries transient
+// failures (command hung, send errors) up to that many times with
+// CLIRetryDelay between attempts. Non-transient errors (context
+// cancellation, bridge mode, unknown command) are returned immediately.
 func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 	if f.bridgeMode.Load() {
 		return "", ErrFlipperSuspended
@@ -863,6 +868,44 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 	if f.rpcMode.Load() {
 		return "", f.rpcModeError(command)
 	}
+
+	pl := f.pipeline()
+	attempts := pl.CLIRetryAttempts
+	if attempts <= 0 {
+		attempts = 1
+	}
+
+	var lastOut string
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		lastOut, lastErr = f.execOnce(ctx, command)
+		if lastErr == nil {
+			return lastOut, nil
+		}
+		if !isTransientExecError(lastErr) || ctx.Err() != nil {
+			return lastOut, lastErr
+		}
+		if attempt < attempts {
+			obs.Default().Warn("cli_retry",
+				"command", firstWord(command),
+				"attempt", attempt,
+				"max", attempts,
+				"err", lastErr)
+			delay := pl.CLIRetryDelay
+			if delay <= 0 {
+				delay = 200 * time.Millisecond
+			}
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return lastOut, ctx.Err()
+			}
+		}
+	}
+	return lastOut, lastErr
+}
+
+func (f *Flipper) execOnce(ctx context.Context, command string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -872,15 +915,11 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 
 	f.drain()
 
-	// CR only (0x0D) — the Flipper CLI processes input on carriage return.
 	if err := f.sendRaw(command + "\r"); err != nil {
 		f.markDisconnectedIfRelevant(err)
 		return "", fmt.Errorf("sending command: %w", err)
 	}
 
-	// Pipeline is the source of truth; SetExecTimeout still wins when
-	// non-zero so existing callers that explicitly tightened the deadline
-	// keep that override (e.g. cfg.Flipper.ExecTimeout in setup.go).
 	execTO := f.execTimeout
 	if execTO <= 0 {
 		execTO = f.pipeline().Exec
@@ -892,9 +931,6 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 	defer cancel()
 	out, err := f.readUntilPromptCtx(readCtx)
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		// safety net fired — command hung. Stop the firmware, drain, then
-		// surface a distinct error so callers can distinguish "hung" from a
-		// real disconnect.
 		_ = f.sendRaw("\x03")
 		drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer drainCancel()
@@ -915,6 +951,24 @@ func (f *Flipper) ExecCtx(ctx context.Context, command string) (string, error) {
 		}
 	}
 	return out, err
+}
+
+func isTransientExecError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(err, ErrFlipperSuspended) {
+		return false
+	}
+	msg := err.Error()
+	if strings.HasPrefix(msg, "cli rejected") {
+		return false
+	}
+	return strings.Contains(msg, "command hung") ||
+		strings.Contains(msg, "sending command")
 }
 
 // detectUnknownCommand scans a command's raw output for the Flipper

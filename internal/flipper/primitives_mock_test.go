@@ -154,6 +154,46 @@ func TestExec_EmptySuccessStaysSuccess(t *testing.T) {
 	}
 }
 
+// TestExecCtx_RetriesTransientHang verifies that the CLI retry loop
+// retries a command that hangs on the first attempt but succeeds on
+// the second. Uses the resilient pipeline profile which sets
+// CLIRetryAttempts=3.
+func TestExecCtx_RetriesTransientHang(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing-sensitive retry test")
+	}
+	var calls atomic.Int32
+	m := mock.Spawn(t,
+		mock.WithHandler("storage", func(args []string) string {
+			n := calls.Add(1)
+			if n == 1 {
+				time.Sleep(15 * time.Second)
+				return ""
+			}
+			return "listing /ext"
+		}),
+	)
+	flip := connectAndDetect(t, m)
+
+	pl := flipper.ProfileSettings(flipper.ProfileResilient)
+	pl.Exec = 2 * time.Second
+	pl.CLIRetryDelay = 100 * time.Millisecond
+	flip.SetPipelineBundle(pl)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := flip.ExecCtx(ctx, "storage list /ext")
+	if err != nil {
+		t.Fatalf("ExecCtx should have succeeded on retry: %v", err)
+	}
+	if !strings.Contains(out, "listing /ext") {
+		t.Errorf("output should contain 'listing /ext': %q", out)
+	}
+	if calls.Load() < 2 {
+		t.Errorf("expected at least 2 attempts, got %d", calls.Load())
+	}
+}
+
 // TestNFCDetect_LoopsScannerUntilCardAppears verifies the fix for the
 // thrashing loop an operator hit in production: Momentum's `nfc
 // scanner` CLI subcommand is a one-shot poll (~1s, prints "Target
