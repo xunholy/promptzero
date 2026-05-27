@@ -39,7 +39,7 @@ type Classifier struct {
 	protos []Protocol
 }
 
-// NewClassifier returns a Classifier pre-loaded with all 20 protocol decoders.
+// NewClassifier returns a Classifier pre-loaded with all 23 protocol decoders.
 func NewClassifier() *Classifier {
 	return &Classifier{
 		protos: []Protocol{
@@ -63,6 +63,9 @@ func NewClassifier() *Classifier {
 			protocols.CAMETwin{},
 			protocols.Aprimatic{},
 			protocols.PhoenixV2{},
+			protocols.NiceFLO{},
+			protocols.BFTMitto{},
+			protocols.SomfyRTS{},
 		},
 	}
 }

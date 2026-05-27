@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Closed-loop tests for all 20 protocols.
+// Closed-loop tests for all 23 protocols.
 // Each test synthesises a frame with a known payload, runs the decoder,
 // and asserts protocol name, confidence ≥ 0.75, and decoded payload fields.
 package protocols_test
@@ -515,6 +515,111 @@ func TestPhoenixV2RoundTrip(t *testing.T) {
 
 func TestPhoenixV2Name(t *testing.T) {
 	assertName(t, protocols.PhoenixV2{}, "Phoenix V2")
+}
+
+// ---------------------------------------------------------------------------
+// Nice FLO
+// ---------------------------------------------------------------------------
+
+func TestNiceFLORoundTrip(t *testing.T) {
+	const te = 700
+	const wantCode = uint32(0xA5B)
+	bits := uint16ToBits(uint16(wantCode), 12)
+	// Nice FLO: sync = 1×TE mark + 36×TE space; "1" = 3×TE + 1×TE; "0" = 1×TE + 3×TE
+	pulses := encodePWMFrame(bits, te, 1, 36, 3, 1, 1, 3, 1)
+
+	p := protocols.NiceFLO{}
+	res, err := p.Decode(pulses)
+	if err != nil {
+		t.Fatalf("NiceFLO Decode error: %v", err)
+	}
+	assertMinConfidence(t, "NiceFLO", res.Confidence, 0.75)
+	assertPayloadUint32(t, "NiceFLO", res.Payload, "code", wantCode)
+	if _, ok := res.Payload["te_us"]; !ok {
+		t.Errorf("NiceFLO: payload missing key \"te_us\"")
+	}
+}
+
+func TestNiceFLOName(t *testing.T) {
+	assertName(t, protocols.NiceFLO{}, "Nice FLO")
+}
+
+// ---------------------------------------------------------------------------
+// BFT Mitto
+// ---------------------------------------------------------------------------
+
+func TestBFTMittoRoundTrip(t *testing.T) {
+	const te = 400
+	const wantCode = uint32(0xC3A)
+	bits := uint16ToBits(uint16(wantCode), 12)
+	// BFT Mitto: sync = 1×TE mark + 36×TE space; "1" = 3×TE + 1×TE; "0" = 1×TE + 3×TE
+	pulses := encodePWMFrame(bits, te, 1, 36, 3, 1, 1, 3, 1)
+
+	p := protocols.BFTMitto{}
+	res, err := p.Decode(pulses)
+	if err != nil {
+		t.Fatalf("BFTMitto Decode error: %v", err)
+	}
+	assertMinConfidence(t, "BFTMitto", res.Confidence, 0.75)
+	assertPayloadUint32(t, "BFTMitto", res.Payload, "code", wantCode)
+	if _, ok := res.Payload["te_us"]; !ok {
+		t.Errorf("BFTMitto: payload missing key \"te_us\"")
+	}
+}
+
+func TestBFTMittoName(t *testing.T) {
+	assertName(t, protocols.BFTMitto{}, "BFT Mitto")
+}
+
+// ---------------------------------------------------------------------------
+// Somfy RTS
+// ---------------------------------------------------------------------------
+
+func TestSomfyRTSRoundTrip(t *testing.T) {
+	const te = 640
+	// Build 56 Manchester bits: space→mark = 1, mark→space = 0.
+	// Encode a simple payload: all-ones for key byte, then alternating.
+	bits := make([]byte, 56)
+	for i := range bits {
+		if i%2 == 0 {
+			bits[i] = 1
+		} else {
+			bits[i] = 0
+		}
+	}
+	pulses := encodeSomfyRTSFrame(bits, te)
+
+	p := protocols.SomfyRTS{}
+	res, err := p.Decode(pulses)
+	if err != nil {
+		t.Fatalf("SomfyRTS Decode error: %v", err)
+	}
+	assertMinConfidence(t, "SomfyRTS", res.Confidence, 0.75)
+	if len(res.Bits) != 56 {
+		t.Errorf("SomfyRTS: got %d bits, want 56", len(res.Bits))
+	}
+}
+
+func TestSomfyRTSName(t *testing.T) {
+	assertName(t, protocols.SomfyRTS{}, "Somfy RTS")
+}
+
+// encodeSomfyRTSFrame builds a Somfy RTS pulse sequence for testing.
+// Soft sync: 4×TE mark + 4×TE space, then 56 Manchester bits.
+// Manchester: bit=1 → space(−TE) + mark(+TE); bit=0 → mark(+TE) + space(−TE).
+func encodeSomfyRTSFrame(bits []byte, te int) []int {
+	// Soft sync: long mark + long space (each ≥3×TE)
+	out := []int{4 * te, -(4 * te)}
+	for _, b := range bits {
+		if b != 0 {
+			// rising transition: space half then mark half
+			out = append(out, -te, te)
+		} else {
+			// falling transition: mark half then space half
+			out = append(out, te, -te)
+		}
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
