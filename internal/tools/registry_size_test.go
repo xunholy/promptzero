@@ -1710,7 +1710,16 @@ func TestRegistrySize(t *testing.T) {
 	// + Apple ARD DH key exchange + TightVNC sub-
 	// auth list + HTTP-tunneled VNC TCP/5800-5899
 	// out of scope.
-	const expected = 418
+	//
+	// v0.341.0 added amqp091_decode (RabbitMQ /
+	// AMQP 0-9-1 wire protocol; TCP/5672
+	// plaintext, TCP/5671 AMQPS), kafka_decode
+	// (Apache Kafka wire protocol; TCP/9092
+	// plaintext, TCP/9093 SSL, TCP/9094
+	// SASL_PLAINTEXT, TCP/9095 SASL_SSL), and
+	// memcached_decode (Memcached binary protocol;
+	// TCP/11211).
+	const expected = 421
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

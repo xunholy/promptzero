@@ -2265,6 +2265,33 @@ var toolLevels = func() map[string]Level {
 		// TightVNC sub-auth list + HTTP-tunneled VNC TCP/
 		// 5800-5899 out of scope.
 		"vnc_rfb_decode",
+		// v0.341 native-fit gap: amqp091_decode is a pure
+		// offline AMQP 0-9-1 wire-protocol parser — no
+		// network I/O, no Flipper/Marauder interaction.
+		// Decodes RabbitMQ / AMQP 0-9-1 frames from hex;
+		// surfaces Connection.Start version fingerprint,
+		// SASL PLAIN cleartext credential exposure flag,
+		// vhost/exchange/queue topology disclosure. SASL
+		// response payload NEVER decoded (length only).
+		"amqp091_decode",
+		// v0.341 native-fit gap: kafka_decode is a pure
+		// offline Kafka wire-protocol parser — no network
+		// I/O, no Flipper/Marauder interaction. Decodes
+		// Apache Kafka request frames from hex; surfaces
+		// ApiVersions version fingerprint, SaslHandshake
+		// mechanism enumeration, SASL PLAIN cleartext flag,
+		// topic/group topology disclosure. SASL auth bytes
+		// NEVER decoded (length only).
+		"kafka_decode",
+		// v0.341 native-fit gap: memcached_decode is a pure
+		// offline Memcached binary-protocol parser — no
+		// network I/O, no Flipper/Marauder interaction.
+		// Decodes Memcached binary frames from hex; surfaces
+		// cache key names, SET extras (flags/expiration),
+		// INCR/DECR extras, SASL auth detection, operation
+		// classification. Cached values + SASL credentials
+		// NEVER surfaced (length only).
+		"memcached_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/
