@@ -665,3 +665,150 @@ func lsbFirstBits(v uint32, n int) []byte {
 	}
 	return bits
 }
+
+// ---------------------------------------------------------------------------
+// Marantec
+// ---------------------------------------------------------------------------
+
+func TestMarantecRoundTrip(t *testing.T) {
+	const te = 800
+	const wantCode = uint32(0xA5B)
+	bits := uint16ToBits(uint16(wantCode), 12)
+	// Marantec: sync = 1×TE mark + 16×TE space; "1" = 3×TE + 1×TE; "0" = 1×TE + 3×TE
+	pulses := encodePWMFrame(bits, te, 1, 16, 3, 1, 1, 3, 1)
+
+	p := protocols.Marantec{}
+	res, err := p.Decode(pulses)
+	if err != nil {
+		t.Fatalf("Marantec Decode error: %v", err)
+	}
+	assertMinConfidence(t, "Marantec", res.Confidence, 0.75)
+	assertPayloadUint32(t, "Marantec", res.Payload, "code", wantCode)
+	if _, ok := res.Payload["te_us"]; !ok {
+		t.Errorf("Marantec: payload missing key \"te_us\"")
+	}
+}
+
+func TestMarantecName(t *testing.T) {
+	assertName(t, protocols.Marantec{}, "Marantec")
+}
+
+// ---------------------------------------------------------------------------
+// BETT
+// ---------------------------------------------------------------------------
+
+func TestBETTRoundTrip(t *testing.T) {
+	const te = 400
+	// 18-bit code: 9 DIP pairs — encode as PWM bits
+	// Use a pattern that produces known DIP states:
+	//   ON=11, OFF=00, Float=01 → bits: 1,1,0,0,0,1,1,1,0,0,0,1,1,1,0,0,0,1
+	bits := []byte{1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1}
+	const wantCode = uint32((1 << 17) | (1 << 16) | (0 << 15) | (0 << 14) | (0 << 13) | (1 << 12) |
+		(1 << 11) | (1 << 10) | (0 << 9) | (0 << 8) | (0 << 7) | (1 << 6) |
+		(1 << 5) | (1 << 4) | (0 << 3) | (0 << 2) | (0 << 1) | 1)
+	// Sync: 1×TE mark + 45×TE space; "1" = 3×TE + 1×TE; "0" = 1×TE + 3×TE
+	pulses := encodePWMFrame(bits, te, 1, 45, 3, 1, 1, 3, 1)
+
+	p := protocols.BETT{}
+	res, err := p.Decode(pulses)
+	if err != nil {
+		t.Fatalf("BETT Decode error: %v", err)
+	}
+	assertMinConfidence(t, "BETT", res.Confidence, 0.75)
+	assertPayloadUint32(t, "BETT", res.Payload, "code", wantCode)
+	dipRaw, ok := res.Payload["dip_switches"]
+	if !ok {
+		t.Fatalf("BETT: payload missing key \"dip_switches\"")
+	}
+	dips, ok := dipRaw.([]string)
+	if !ok {
+		t.Fatalf("BETT: dip_switches type = %T, want []string", dipRaw)
+	}
+	if len(dips) != 9 {
+		t.Errorf("BETT: len(dip_switches) = %d, want 9", len(dips))
+	}
+	// Pair 0 = bits[0..1] = 1,1 → ON
+	if dips[0] != "ON" {
+		t.Errorf("BETT: dip_switches[0] = %q, want \"ON\"", dips[0])
+	}
+	// Pair 1 = bits[2..3] = 0,0 → OFF
+	if dips[1] != "OFF" {
+		t.Errorf("BETT: dip_switches[1] = %q, want \"OFF\"", dips[1])
+	}
+	// Pair 2 = bits[4..5] = 0,1 → Float
+	if dips[2] != "Float" {
+		t.Errorf("BETT: dip_switches[2] = %q, want \"Float\"", dips[2])
+	}
+	if _, ok := res.Payload["te_us"]; !ok {
+		t.Errorf("BETT: payload missing key \"te_us\"")
+	}
+}
+
+func TestBETTName(t *testing.T) {
+	assertName(t, protocols.BETT{}, "BETT")
+}
+
+// ---------------------------------------------------------------------------
+// Security+ v2
+// ---------------------------------------------------------------------------
+
+func TestSecplusV2RoundTrip(t *testing.T) {
+	const te = 250
+	// Build 20 trits: use a simple repeating pattern 0,1,2,0,1,2,...
+	trits := []int{0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1}
+	var wantTritValue uint64
+	for _, trit := range trits {
+		wantTritValue = wantTritValue*3 + uint64(trit)
+	}
+
+	pulses := encodeSecplusV2Frame(trits, te)
+
+	p := protocols.SecplusV2{}
+	res, err := p.Decode(pulses)
+	if err != nil {
+		t.Fatalf("SecplusV2 Decode error: %v", err)
+	}
+	assertMinConfidence(t, "SecplusV2", res.Confidence, 0.75)
+	gotTV, ok := res.Payload["trit_value"]
+	if !ok {
+		t.Fatalf("SecplusV2: payload missing key \"trit_value\"")
+	}
+	gotU64, ok := gotTV.(uint64)
+	if !ok {
+		t.Fatalf("SecplusV2: trit_value type = %T, want uint64", gotTV)
+	}
+	if gotU64 != wantTritValue {
+		t.Errorf("SecplusV2: trit_value = %d, want %d", gotU64, wantTritValue)
+	}
+	if _, ok := res.Payload["te_us"]; !ok {
+		t.Errorf("SecplusV2: payload missing key \"te_us\"")
+	}
+}
+
+func TestSecplusV2Name(t *testing.T) {
+	assertName(t, protocols.SecplusV2{}, "Security+ v2")
+}
+
+// encodeSecplusV2Frame synthesises a Security+ v2 pulse sequence for testing.
+// Preamble: 10 short alternating pulses (each ~TE), then a 5×TE sync mark,
+// then 20 trit pairs: each = ~1×TE mark + space of (2*trit+3)*TE/2.
+func encodeSecplusV2Frame(trits []int, te int) []int {
+	// Preamble: 10 alternating pulses
+	out := make([]int, 0, 12+len(trits)*2)
+	for i := 0; i < 10; i++ {
+		if i%2 == 0 {
+			out = append(out, te)
+		} else {
+			out = append(out, -te)
+		}
+	}
+	// Sync: long mark (5×TE)
+	out = append(out, 5*te)
+	// Trits: mark=TE, space=(1.5, 2.5, or 3.5)×TE
+	// Trit 0 → space = 3*te/2; Trit 1 → 5*te/2; Trit 2 → 7*te/2
+	spaceFor := [3]int{3 * te / 2, 5 * te / 2, 7 * te / 2}
+	for _, trit := range trits {
+		out = append(out, te, -spaceFor[trit])
+	}
+	return out
+}
