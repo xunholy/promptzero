@@ -661,6 +661,64 @@ func TestExport(t *testing.T) {
 	}
 }
 
+func TestExportCSV(t *testing.T) {
+	log := openTestLog(t)
+	log.sessionID = "csv-test"
+	log.Record("rfid_read", map[string]string{"mode": "lf"}, "uid: 1234", "medium", LevelAction, 50*time.Millisecond, true)
+	log.Record("nfc_detect", nil, "ok", "low", LevelInfo, 10*time.Millisecond, false)
+
+	out, err := log.ExportCSV()
+	if err != nil {
+		t.Fatalf("ExportCSV: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines (header + 2 rows), got %d", len(lines))
+	}
+	if !strings.HasPrefix(lines[0], "id,timestamp,tool,") {
+		t.Errorf("header doesn't match expected format: %q", lines[0])
+	}
+	if !strings.Contains(out, "rfid_read") {
+		t.Error("CSV missing rfid_read")
+	}
+	if !strings.Contains(out, "nfc_detect") {
+		t.Error("CSV missing nfc_detect")
+	}
+	if !strings.Contains(out, ",true") {
+		t.Error("CSV missing success=true value")
+	}
+	if !strings.Contains(out, ",false") {
+		t.Error("CSV missing success=false value")
+	}
+}
+
+func TestExportCSV_EmptySession(t *testing.T) {
+	log := openTestLog(t)
+	log.sessionID = "csv-empty"
+	out, err := log.ExportCSV()
+	if err != nil {
+		t.Fatalf("ExportCSV: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 1 {
+		t.Errorf("empty session should have header only, got %d lines", len(lines))
+	}
+}
+
+func TestExportCSV_QuotesSpecialChars(t *testing.T) {
+	log := openTestLog(t)
+	log.sessionID = "csv-special"
+	log.Record("test_tool", map[string]string{"k": "v"}, "output with, comma", "low", LevelAction, 0, true)
+
+	out, err := log.ExportCSV()
+	if err != nil {
+		t.Fatalf("ExportCSV: %v", err)
+	}
+	if !strings.Contains(out, `"output with, comma"`) {
+		t.Errorf("comma in output should be quoted: %s", out)
+	}
+}
+
 // TestOpen_WALSidecarsInheritMainDBPerms pins the load-bearing
 // ordering in audit.Open: chmod the main DB to 0o600 BEFORE the
 // PRAGMA journal_mode=WAL pragma. SQLite (modernc.org/sqlite

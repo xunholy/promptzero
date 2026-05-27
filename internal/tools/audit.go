@@ -58,16 +58,22 @@ func init() {
 
 	Register(Spec{
 		Name: "audit_export",
-		Description: "Export the current session's complete audit log as JSON. " +
-			"Useful for pentest reports and compliance documentation.",
-		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
+		Description: "Export the current session's complete audit log. " +
+			"Supports JSON (default) and CSV formats. " +
+			"Useful for pentest reports, SIEM ingestion, and compliance documentation.",
+		Schema: json.RawMessage(`{"type":"object","properties":{
+			"format":{"type":"string","description":"Export format: 'json' (default) or 'csv'. CSV is RFC 4180 compliant, suitable for spreadsheet import or SIEM ingestion.","enum":["json","csv"]}
+		}}`),
 		Required:  nil,
 		Risk:      risk.Low,
 		Group:     GroupMetaAudit,
 		AgentOnly: true,
-		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if d.Audit == nil {
 				return "Audit logging not enabled", nil
+			}
+			if str(p, "format") == "csv" {
+				return d.Audit.ExportCSV()
 			}
 			return d.Audit.Export()
 		},

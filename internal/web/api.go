@@ -86,6 +86,7 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/audit/session/{id}", s.requireAuth(s.handleAuditSession))
 	mux.HandleFunc("GET /api/audit/top", s.requireAuth(s.handleAuditTop))
 	mux.HandleFunc("GET /api/audit/export", s.requireAuth(s.handleAuditExport))
+	mux.HandleFunc("GET /api/audit/export/csv", s.requireAuth(s.handleAuditExportCSV))
 
 	mux.HandleFunc("GET /api/rules", s.requireAuth(s.handleRulesList))
 	mux.HandleFunc("POST /api/rules/{name}/pause", s.requireAuth(s.handleRulePause))
@@ -1153,6 +1154,22 @@ func (s *Server) handleAuditExport(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(data))
+}
+
+func (s *Server) handleAuditExportCSV(w http.ResponseWriter, _ *http.Request) {
+	if s.auditLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "audit log not configured")
+		return
+	}
+	data, err := s.auditLog.ExportCSV()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "audit export csv: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit.csv")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(data))
 }

@@ -694,6 +694,41 @@ func (l *Log) Export() (string, error) {
 	return string(data), nil
 }
 
+// ExportCSV returns the current session's audit entries as CSV text
+// suitable for spreadsheet import or SIEM ingestion. Columns match
+// the JSON Export field names. Values containing commas, quotes, or
+// newlines are quoted per RFC 4180.
+func (l *Log) ExportCSV() (string, error) {
+	entries, err := l.QueryBySession(l.sessionID)
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	sb.WriteString("id,timestamp,tool,input,output,risk,level,session_id,duration_ms,success\n")
+	for _, e := range entries {
+		fmt.Fprintf(&sb, "%d,%s,%s,%s,%s,%s,%s,%s,%d,%t\n",
+			e.ID,
+			csvQuote(e.Timestamp.UTC().Format(time.RFC3339)),
+			csvQuote(e.Tool),
+			csvQuote(e.Input),
+			csvQuote(e.Output),
+			csvQuote(e.Risk),
+			csvQuote(string(e.Level)),
+			csvQuote(e.SessionID),
+			e.Duration,
+			e.Success,
+		)
+	}
+	return sb.String(), nil
+}
+
+func csvQuote(s string) string {
+	if strings.ContainsAny(s, ",\"\n\r") {
+		return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+	}
+	return s
+}
+
 func (l *Log) Stats() (string, error) {
 	var total, success, tools int
 	err := l.db.QueryRow(`
