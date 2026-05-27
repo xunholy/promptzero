@@ -695,10 +695,6 @@ func (l *Log) Export() (string, error) {
 }
 
 func (l *Log) Stats() (string, error) {
-	// One conditional-aggregate query instead of three round-trips.
-	// SQLite turns SUM(boolean-expr) into a count-where for free, and
-	// COUNT(DISTINCT tool) coexists with the conditional sums in a
-	// single scan over the session's rows.
 	var total, success, tools int
 	err := l.db.QueryRow(`
 		SELECT
@@ -711,8 +707,35 @@ func (l *Log) Stats() (string, error) {
 	}
 	failed := total - success
 
-	return fmt.Sprintf("Session: %s\nTotal actions: %d\nSuccessful: %d\nFailed: %d\nUnique tools: %d",
-		l.sessionID, total, success, failed, tools), nil
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Session: %s\nTotal actions: %d\nSuccessful: %d\nFailed: %d\nUnique tools: %d",
+		l.sessionID, total, success, failed, tools)
+
+	rows, err := l.db.Query(`
+		SELECT COALESCE(risk,''), COUNT(*)
+		FROM audit_log WHERE session_id = ?
+		GROUP BY risk ORDER BY COUNT(*) DESC`, l.sessionID)
+	if err == nil {
+		defer rows.Close()
+		first := true
+		for rows.Next() {
+			var r string
+			var c int
+			if rows.Scan(&r, &c) != nil {
+				continue
+			}
+			if first {
+				sb.WriteString("\nRisk breakdown:")
+				first = false
+			}
+			if r == "" {
+				r = "unset"
+			}
+			fmt.Fprintf(&sb, " %s=%d", r, c)
+		}
+	}
+
+	return sb.String(), nil
 }
 
 // RequireOpen returns an error when l is nil and level is High or above.

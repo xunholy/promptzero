@@ -676,6 +676,237 @@ func TestExport(t *testing.T) {
 // This test is the safety net: a future refactor that swaps the
 // chmod and PRAGMA WAL lines silently broke the WAL sidecar
 // permissions; running this test catches it.
+// --- Edge-case tests added in v0.346 ---
+
+func TestQueryFiltered_EmptyDB(t *testing.T) {
+	log := openTestLog(t)
+	entries, err := log.QueryFiltered(Filter{})
+	if err != nil {
+		t.Fatalf("QueryFiltered on empty DB: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries from empty DB, got %d", len(entries))
+	}
+}
+
+func TestQueryFiltered_SuccessFalseOnly(t *testing.T) {
+	log := openTestLog(t)
+	seed(t, log)
+	f := false
+	entries, err := log.QueryFiltered(Filter{Success: &f})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 failed entry, got %d", len(entries))
+	}
+	if entries[0].Success {
+		t.Errorf("expected Success=false, got true")
+	}
+	if entries[0].Tool != "subghz_transmit" {
+		t.Errorf("expected subghz_transmit, got %q", entries[0].Tool)
+	}
+}
+
+func TestQueryFiltered_SuccessTrueOnly(t *testing.T) {
+	log := openTestLog(t)
+	seed(t, log)
+	tr := true
+	entries, err := log.QueryFiltered(Filter{Success: &tr})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(entries) != 4 {
+		t.Errorf("expected 4 successful entries, got %d", len(entries))
+	}
+	for _, e := range entries {
+		if !e.Success {
+			t.Errorf("entry %q has Success=false but filter asked for true-only", e.Tool)
+		}
+	}
+}
+
+func TestQueryFiltered_SuccessNil(t *testing.T) {
+	log := openTestLog(t)
+	seed(t, log)
+	entries, err := log.QueryFiltered(Filter{Success: nil})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(entries) != 5 {
+		t.Errorf("expected 5 entries (nil = any), got %d", len(entries))
+	}
+}
+
+func TestQueryFiltered_SuccessAndRiskCombined(t *testing.T) {
+	log := openTestLog(t)
+	seed(t, log)
+	f := false
+	entries, err := log.QueryFiltered(Filter{Risk: "high", Success: &f})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry (high + failed), got %d", len(entries))
+	}
+	if entries[0].Tool != "subghz_transmit" {
+		t.Errorf("expected subghz_transmit, got %q", entries[0].Tool)
+	}
+}
+
+func TestQueryFiltered_PaginationBeyondEnd(t *testing.T) {
+	log := openTestLog(t)
+	seed(t, log)
+	entries, err := log.QueryFiltered(Filter{Offset: 100, Limit: 10})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries at offset=100, got %d", len(entries))
+	}
+}
+
+func TestQueryFiltered_PaginationConsistency(t *testing.T) {
+	log := openTestLog(t)
+	seed(t, log)
+	page1, err := log.QueryFiltered(Filter{Limit: 2, Offset: 0})
+	if err != nil {
+		t.Fatalf("page1: %v", err)
+	}
+	page2, err := log.QueryFiltered(Filter{Limit: 2, Offset: 2})
+	if err != nil {
+		t.Fatalf("page2: %v", err)
+	}
+	page3, err := log.QueryFiltered(Filter{Limit: 2, Offset: 4})
+	if err != nil {
+		t.Fatalf("page3: %v", err)
+	}
+	total := len(page1) + len(page2) + len(page3)
+	if total != 5 {
+		t.Errorf("expected 5 entries across 3 pages, got %d", total)
+	}
+	seen := make(map[int64]bool)
+	for _, e := range append(append(page1, page2...), page3...) {
+		if seen[e.ID] {
+			t.Errorf("duplicate entry ID %d across pages", e.ID)
+		}
+		seen[e.ID] = true
+	}
+}
+
+func TestStats_EmptySession(t *testing.T) {
+	log := openTestLog(t)
+	log.sessionID = "empty-session"
+	s, err := log.Stats()
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	for _, want := range []string{
+		"Total actions: 0",
+		"Successful: 0",
+		"Failed: 0",
+		"Unique tools: 0",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Stats missing %q in:\n%s", want, s)
+		}
+	}
+}
+
+func TestStats_MixedSuccessFailure(t *testing.T) {
+	log := openTestLog(t)
+	log.sessionID = "stats-test"
+	log.Record("tool_a", nil, "ok", "low", LevelAction, 10*time.Millisecond, true)
+	log.Record("tool_a", nil, "fail", "low", LevelAction, 10*time.Millisecond, false)
+	log.Record("tool_b", nil, "ok", "high", LevelAction, 10*time.Millisecond, true)
+
+	s, err := log.Stats()
+	if err != nil {
+		t.Fatalf("Stats: %v", err)
+	}
+	for _, want := range []string{
+		"Total actions: 3",
+		"Successful: 2",
+		"Failed: 1",
+		"Unique tools: 2",
+		"Risk breakdown:",
+		"low=2",
+		"high=1",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("Stats missing %q in:\n%s", want, s)
+		}
+	}
+}
+
+func TestTopTools_EmptyDB(t *testing.T) {
+	log := openTestLog(t)
+	tools, err := log.TopTools(time.Time{}, 10)
+	if err != nil {
+		t.Fatalf("TopTools: %v", err)
+	}
+	if len(tools) != 0 {
+		t.Errorf("expected 0 tools from empty DB, got %d", len(tools))
+	}
+}
+
+func TestTopRisks_EmptyDB(t *testing.T) {
+	log := openTestLog(t)
+	risks, err := log.TopRisks(time.Time{})
+	if err != nil {
+		t.Fatalf("TopRisks: %v", err)
+	}
+	if len(risks) != 0 {
+		t.Errorf("expected 0 risks from empty DB, got %d", len(risks))
+	}
+}
+
+func TestTopTools_Ordering(t *testing.T) {
+	log := openTestLog(t)
+	log.sessionID = "top-tools-test"
+	for i := 0; i < 5; i++ {
+		log.Record("frequent_tool", nil, "ok", "low", LevelAction, 0, true)
+	}
+	for i := 0; i < 2; i++ {
+		log.Record("rare_tool", nil, "ok", "low", LevelAction, 0, true)
+	}
+	tools, err := log.TopTools(time.Time{}, 10)
+	if err != nil {
+		t.Fatalf("TopTools: %v", err)
+	}
+	if len(tools) < 2 {
+		t.Fatalf("expected at least 2 tools, got %d", len(tools))
+	}
+	if tools[0].Tool != "frequent_tool" {
+		t.Errorf("expected frequent_tool first, got %q", tools[0].Tool)
+	}
+	if tools[0].Count != 5 {
+		t.Errorf("expected count=5, got %d", tools[0].Count)
+	}
+}
+
+func TestQuerySince_EmptyDB(t *testing.T) {
+	log := openTestLog(t)
+	entries, err := log.QuerySince(0)
+	if err != nil {
+		t.Fatalf("QuerySince: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+func TestMaxID_ReturnsZeroForEmptyDB(t *testing.T) {
+	log := openTestLog(t)
+	id, err := log.MaxID()
+	if err != nil {
+		t.Fatalf("MaxID: %v", err)
+	}
+	if id != 0 {
+		t.Errorf("expected 0 for empty DB, got %d", id)
+	}
+}
+
 func TestOpen_WALSidecarsInheritMainDBPerms(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "audit.db")
 	log, err := Open(path)

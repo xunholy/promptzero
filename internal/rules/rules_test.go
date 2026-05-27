@@ -510,3 +510,96 @@ func TestRegister_DefaultsEnabledTrue(t *testing.T) {
 		t.Fatalf("paused rule fired anyway: got %d fires after Pause+Handle, want 2", fires)
 	}
 }
+
+// --- Success tristate match tests added in v0.346 ---
+
+func TestMatch_SuccessNil_MatchesBoth(t *testing.T) {
+	var fires int
+	eng := New(Deps{
+		WebhookFire: func(_ string, _ map[string]any) { fires++ },
+	})
+	eng.Register(Rule{
+		Name:    "any-outcome",
+		Match:   Match{Tool: "scan", Success: nil},
+		Actions: []Action{{Kind: ActionWebhook, Webhook: "ops"}},
+	})
+	eng.Handle(audit.Entry{Tool: "scan", Success: true})
+	eng.Handle(audit.Entry{Tool: "scan", Success: false})
+	if fires != 2 {
+		t.Errorf("nil Success should match both outcomes: got %d fires, want 2", fires)
+	}
+}
+
+func TestMatch_SuccessTrue_OnlyMatchesSuccess(t *testing.T) {
+	var fires int
+	eng := New(Deps{
+		WebhookFire: func(_ string, _ map[string]any) { fires++ },
+	})
+	tr := true
+	eng.Register(Rule{
+		Name:    "success-only",
+		Match:   Match{Tool: "scan", Success: &tr},
+		Actions: []Action{{Kind: ActionWebhook, Webhook: "ops"}},
+	})
+	eng.Handle(audit.Entry{Tool: "scan", Success: true})
+	eng.Handle(audit.Entry{Tool: "scan", Success: false})
+	if fires != 1 {
+		t.Errorf("Success=true should match only successes: got %d fires, want 1", fires)
+	}
+}
+
+func TestMatch_SuccessFalse_OnlyMatchesFailure(t *testing.T) {
+	var fires int
+	eng := New(Deps{
+		WebhookFire: func(_ string, _ map[string]any) { fires++ },
+	})
+	f := false
+	eng.Register(Rule{
+		Name:    "failure-only",
+		Match:   Match{Tool: "scan", Success: &f},
+		Actions: []Action{{Kind: ActionWebhook, Webhook: "ops"}},
+	})
+	eng.Handle(audit.Entry{Tool: "scan", Success: true})
+	eng.Handle(audit.Entry{Tool: "scan", Success: false})
+	if fires != 1 {
+		t.Errorf("Success=false should match only failures: got %d fires, want 1", fires)
+	}
+}
+
+func TestMatch_SuccessFalse_CombinedWithRisk(t *testing.T) {
+	var fires int
+	eng := New(Deps{
+		WebhookFire: func(_ string, _ map[string]any) { fires++ },
+	})
+	f := false
+	eng.Register(Rule{
+		Name:    "high-risk-failures",
+		Match:   Match{Risk: "high", Success: &f},
+		Actions: []Action{{Kind: ActionWebhook, Webhook: "ops"}},
+	})
+	eng.Handle(audit.Entry{Tool: "a", Risk: "high", Success: true})
+	eng.Handle(audit.Entry{Tool: "b", Risk: "low", Success: false})
+	eng.Handle(audit.Entry{Tool: "c", Risk: "high", Success: false})
+	if fires != 1 {
+		t.Errorf("expected 1 fire (high+failed), got %d", fires)
+	}
+}
+
+func TestMatch_SuccessTrue_CombinedWithToolGlob(t *testing.T) {
+	var fires int
+	eng := New(Deps{
+		WebhookFire: func(_ string, _ map[string]any) { fires++ },
+	})
+	tr := true
+	eng.Register(Rule{
+		Name:    "workflow-successes",
+		Match:   Match{Tool: "workflow_*", Success: &tr},
+		Actions: []Action{{Kind: ActionWebhook, Webhook: "ops"}},
+	})
+	eng.Handle(audit.Entry{Tool: "workflow_recon", Success: true})
+	eng.Handle(audit.Entry{Tool: "workflow_recon", Success: false})
+	eng.Handle(audit.Entry{Tool: "rfid_read", Success: true})
+	if fires != 1 {
+		t.Errorf("expected 1 fire (workflow_* + success), got %d", fires)
+	}
+}
