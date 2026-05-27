@@ -328,3 +328,56 @@ func FuzzParseMarauderResponse(f *testing.F) {
 		_ = parseMarauderResponse(b)
 	})
 }
+
+func TestParseDeviceInfo_CanonicalOutput(t *testing.T) {
+	raw := "ESP32 Marauder v0.13.10\nESP-IDF Version: v4.4.7\nChannel: 1\nMAC: AA:BB:CC:DD:EE:FF"
+	d := ParseDeviceInfo(raw)
+	if !d.Detected {
+		t.Error("expected Detected=true")
+	}
+	if d.FirmwareVersion != "0.13.10" {
+		t.Errorf("version=%q, want 0.13.10", d.FirmwareVersion)
+	}
+	if d.ESPIDFVersion != "4.4.7" {
+		t.Errorf("esp_idf=%q, want 4.4.7", d.ESPIDFVersion)
+	}
+	if d.Channel != 1 {
+		t.Errorf("channel=%d, want 1", d.Channel)
+	}
+	if d.MAC != "AA:BB:CC:DD:EE:FF" {
+		t.Errorf("mac=%q, want AA:BB:CC:DD:EE:FF", d.MAC)
+	}
+	if d.CompatBand() != "2.4GHz" {
+		t.Errorf("band=%q, want 2.4GHz", d.CompatBand())
+	}
+}
+
+func TestParseDeviceInfo_VersionOnly(t *testing.T) {
+	d := ParseDeviceInfo("Marauder v0.10.0")
+	if !d.Detected {
+		t.Error("expected Detected=true")
+	}
+	if d.FirmwareVersion != "0.10.0" {
+		t.Errorf("version=%q, want 0.10.0", d.FirmwareVersion)
+	}
+	if d.Channel != 0 {
+		t.Errorf("channel=%d, want 0 (absent)", d.Channel)
+	}
+}
+
+func TestParseDeviceInfo_Empty(t *testing.T) {
+	d := ParseDeviceInfo("")
+	if d.Detected {
+		t.Error("expected Detected=false for empty input")
+	}
+	if d.CompatBand() != "" {
+		t.Errorf("band=%q, want empty for undetected", d.CompatBand())
+	}
+}
+
+func TestParseDeviceInfo_GarbageInput(t *testing.T) {
+	d := ParseDeviceInfo("some random firmware output\nno version here")
+	if d.Detected {
+		t.Error("expected Detected=false for unrecognized output")
+	}
+}

@@ -286,3 +286,61 @@ func (m *Marauder) ListStationsParsed() (StationResult, error) {
 // a zero-valued result with Count=0 — but it's exposed so future
 // strict callers can upgrade without an API break.
 var ErrParseEmpty = fmt.Errorf("marauder: empty parse input")
+
+// DeviceInfo holds structured fields parsed from the Marauder `info`
+// command output.
+type DeviceInfo struct {
+	FirmwareName    string `json:"firmware_name,omitempty"`
+	FirmwareVersion string `json:"firmware_version,omitempty"`
+	ESPIDFVersion   string `json:"esp_idf_version,omitempty"`
+	Channel         int    `json:"channel,omitempty"`
+	MAC             string `json:"mac,omitempty"`
+	Detected        bool   `json:"detected"`
+}
+
+var (
+	reMarauderVersion = regexp.MustCompile(`(?i)(?:ESP32\s+)?Marauder\s+v?([\d.]+)`)
+	reESPIDFVersion   = regexp.MustCompile(`(?i)ESP-IDF\s+(?:Version:\s*)?v?([\S]+)`)
+	reChannel         = regexp.MustCompile(`(?i)Channel:\s*(\d+)`)
+	reMAC             = regexp.MustCompile(`(?i)MAC:\s*([\da-fA-F:]{17})`)
+)
+
+// ParseDeviceInfo extracts structured device information from the raw
+// output of the Marauder `info` command.
+func ParseDeviceInfo(raw string) DeviceInfo {
+	var d DeviceInfo
+	if m := reMarauderVersion.FindStringSubmatch(raw); len(m) > 1 {
+		d.Detected = true
+		d.FirmwareVersion = m[1]
+		d.FirmwareName = "ESP32 Marauder"
+	}
+	if m := reESPIDFVersion.FindStringSubmatch(raw); len(m) > 1 {
+		d.ESPIDFVersion = m[1]
+	}
+	if m := reChannel.FindStringSubmatch(raw); len(m) > 1 {
+		d.Channel, _ = strconv.Atoi(m[1])
+	}
+	if m := reMAC.FindStringSubmatch(raw); len(m) > 1 {
+		d.MAC = m[1]
+	}
+	return d
+}
+
+// InfoParsed calls the `info` command and returns structured device info.
+func (m *Marauder) InfoParsed() (DeviceInfo, error) {
+	raw, err := m.Info()
+	if err != nil {
+		return DeviceInfo{}, err
+	}
+	return ParseDeviceInfo(raw), nil
+}
+
+// CompatBand returns the WiFi band compatibility string based on the
+// firmware version. Marauder v0.13.0+ supports both 2.4 GHz and 5 GHz
+// on ESP32-S3; older versions and ESP32/ESP32-S2 are 2.4 GHz only.
+func (d DeviceInfo) CompatBand() string {
+	if !d.Detected {
+		return ""
+	}
+	return "2.4GHz"
+}
