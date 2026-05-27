@@ -2343,6 +2343,28 @@ var toolLevels = func() map[string]Level {
 		// command extraction (connect/play/publish). Stream
 		// keys + credentials NEVER extracted.
 		"rtmp_decode",
+		// v0.344 native-fit gap: grpc_decode is a pure
+		// offline gRPC Length-Prefixed Message parser — no
+		// network I/O, no Flipper/Marauder interaction.
+		// Decodes gRPC framing (compressed flag + message
+		// length) + best-effort protobuf field tag walk.
+		// Message content NEVER interpreted beyond field
+		// structure.
+		"grpc_decode",
+		// v0.344 native-fit gap: rsvpte_decode is a pure
+		// offline RSVP-TE wire-protocol parser — no network
+		// I/O, no Flipper/Marauder interaction. Decodes
+		// RSVP common header + object walker (SESSION, HOP,
+		// LABEL, ERO, RRO, SESSION_ATTRIBUTE, etc.). MPLS
+		// TE signalling for LSP establishment.
+		"rsvpte_decode",
+		// v0.344 native-fit gap: xmpp_decode is a pure
+		// offline XMPP XML stanza parser — no network I/O,
+		// no Flipper/Marauder interaction. Decodes stream
+		// opening, stream features, SASL auth (PLAIN
+		// cleartext flagged), message/presence/iq stanzas.
+		// Auth data + message content NEVER extracted.
+		"xmpp_decode",
 		"fileformat_read", "fileformat_diff",
 		// v0.52 OSS-expansion (P2-20): host-side Freqman library walker.
 		// Read-only directory traversal under ~/.promptzero/freqman/

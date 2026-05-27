@@ -1730,7 +1730,13 @@ func TestRegistrySize(t *testing.T) {
 	// protocol; OSI CLNS L2), ldp_decode (LDP
 	// MPLS signalling; TCP/UDP 646), and
 	// rtmp_decode (RTMP live streaming; TCP/1935).
-	const expected = 427
+	//
+	// v0.344.0 added grpc_decode (gRPC Length-
+	// Prefixed Message framing; HTTP/2),
+	// rsvpte_decode (RSVP-TE MPLS TE signalling;
+	// IP protocol 46), and xmpp_decode (XMPP XML
+	// messaging; TCP/5222, 5269).
+	const expected = 430
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
