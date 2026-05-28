@@ -812,3 +812,59 @@ func encodeSecplusV2Frame(trits []int, te int) []int {
 	}
 	return out
 }
+
+// allDecoders returns every registered protocol decoder. Kept in sync
+// with subghz.NewClassifier — a guard against a new protocol being
+// added without negative-path coverage.
+func allDecoders() []interface {
+	Name() string
+	Decode([]int) (protocols.Result, error)
+} {
+	return []interface {
+		Name() string
+		Decode([]int) (protocols.Result, error)
+	}{
+		protocols.PrincetonPT2262{}, protocols.CAME{}, protocols.HoltekHT12E{},
+		protocols.Linear{}, protocols.NICEFlorS{}, protocols.KeeLoqHCS{},
+		protocols.FaacSLH{}, protocols.Beninca{}, protocols.Prastel{},
+		protocols.Ansonic{}, protocols.Smartgate{}, protocols.Aerolite{},
+		protocols.Doitrand{}, protocols.SecplusV1{}, protocols.Magicode{},
+		protocols.HoneywellWS{}, protocols.PrincetonHoltek{}, protocols.CAMETwin{},
+		protocols.Aprimatic{}, protocols.PhoenixV2{}, protocols.NiceFLO{},
+		protocols.BFTMitto{}, protocols.SomfyRTS{}, protocols.Marantec{},
+		protocols.BETT{}, protocols.SecplusV2{},
+	}
+}
+
+// TestAllProtocols_MalformedInputNeverPanics feeds every decoder a
+// battery of degenerate pulse sequences (nil, empty, single pulse,
+// zero-width, sign-only). A decoder must return an error or a
+// low-confidence Result — never panic — because real-world captures
+// from a noisy RF environment routinely produce truncated or garbage
+// pulse trains.
+func TestAllProtocols_MalformedInputNeverPanics(t *testing.T) {
+	inputs := [][]int{
+		nil,
+		{},
+		{0},
+		{1},
+		{-1},
+		{1, -1},
+		{100},
+		{100, -100},
+		{0, 0, 0},
+		{1 << 30, -(1 << 30)},
+	}
+	for _, p := range allDecoders() {
+		for _, in := range inputs {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("%s panicked on input %v: %v", p.Name(), in, r)
+					}
+				}()
+				_, _ = p.Decode(in)
+			}()
+		}
+	}
+}

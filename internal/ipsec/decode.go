@@ -210,9 +210,13 @@ func DecodeAH(hexStr string) (*AHResult, error) {
 			"AH header declares %d bytes (PayloadLength=%d) but only %d bytes provided",
 			r.HeaderTotalBytes, r.PayloadLengthField, len(b)))
 		r.ICVBytes = len(b) - 12
-		if r.ICVBytes < 0 {
-			r.ICVBytes = 0
-		}
+	}
+	// PayloadLength can declare a HeaderTotalBytes < 12 (e.g. a
+	// zero/garbage length field), which makes ICVBytes negative. A
+	// negative ICVBytes would produce an inverted slice (b[12:8])
+	// and panic, so clamp to the valid [0, len(b)-12] range.
+	if r.ICVBytes < 0 {
+		r.ICVBytes = 0
 	}
 	icvEnd := 12 + r.ICVBytes
 	if icvEnd > len(b) {

@@ -171,6 +171,25 @@ func TestDecodeAH_TruncatedICV_Note(t *testing.T) {
 	}
 }
 
+// TestDecodeAH_ShortPayloadLengthNoPanic guards a bounds bug: a
+// PayloadLength field that declares a header total below the fixed
+// 12-byte minimum (e.g. 0 → HeaderTotalBytes=8 → ICVBytes=-4) used
+// to produce an inverted slice b[12:8] and panic. The negative
+// ICVBytes must be clamped to 0 regardless of the input length.
+func TestDecodeAH_ShortPayloadLengthNoPanic(t *testing.T) {
+	// All-zero buffer, longer than 12 bytes so the "declares more
+	// than provided" branch does NOT fire — the negative ICVBytes
+	// path is reached directly. PayloadLength byte = 0x00.
+	in := strings.Repeat("00", 64)
+	r, err := DecodeAH(in)
+	if err != nil {
+		t.Fatalf("DecodeAH on zero buffer: %v", err)
+	}
+	if r.ICVBytes < 0 {
+		t.Errorf("ICVBytes = %d; must be clamped to >= 0", r.ICVBytes)
+	}
+}
+
 func TestDecodeAH_NextHeaderNameTable(t *testing.T) {
 	cases := map[int]string{
 		1:   "ICMP",
