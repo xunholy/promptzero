@@ -178,9 +178,11 @@ func TestParse_FunctionKeysRejectArgs(t *testing.T) {
 }
 
 // TestParse_RepeatRequiresPositiveInt — REPEAT 0 / negative /
-// non-numeric should all flag.
+// non-numeric should all flag. A leading STRING gives REPEAT a
+// command to repeat so the only issues are the bad-arg variants.
 func TestParse_RepeatRequiresPositiveInt(t *testing.T) {
-	src := `REPEAT 5
+	src := `STRING hello
+REPEAT 5
 REPEAT 0
 REPEAT abc
 `
@@ -188,6 +190,46 @@ REPEAT abc
 	if got.IssueCount != 2 {
 		t.Errorf("IssueCount = %d; want 2 (0 and abc rejected, 5 ok)",
 			got.IssueCount)
+	}
+}
+
+// TestParse_RepeatWithoutPrecedingCommand — REPEAT as the very
+// first command has nothing to repeat and must be flagged.
+func TestParse_RepeatWithoutPrecedingCommand(t *testing.T) {
+	got := Parse("REPEAT 5\n")
+	if got.IssueCount != 1 {
+		t.Fatalf("IssueCount = %d; want 1 (REPEAT with no preceding command)", got.IssueCount)
+	}
+	if got.Lines[0].Kind != "invalid" {
+		t.Errorf("Kind = %q; want invalid", got.Lines[0].Kind)
+	}
+	if !strings.Contains(got.Lines[0].Issue, "no preceding command") {
+		t.Errorf("Issue = %q; want mention of no preceding command", got.Lines[0].Issue)
+	}
+}
+
+// TestParse_RepeatMultipliesPreviousCommandTime — REPEAT N adds
+// N × the previous command's execution estimate, since the
+// firmware re-runs the previous line N times.
+func TestParse_RepeatMultipliesPreviousCommandTime(t *testing.T) {
+	// DELAY 100 estimates 100ms; REPEAT 3 re-runs it 3× = 300ms.
+	got := Parse("DELAY 100\nREPEAT 3\n")
+	if got.IssueCount != 0 {
+		t.Fatalf("IssueCount = %d; want 0", got.IssueCount)
+	}
+	// Total = 100 (DELAY) + 300 (REPEAT 3 × 100) = 400.
+	if got.EstimatedTotalMS != 400 {
+		t.Errorf("EstimatedTotalMS = %d; want 400 (100 + 3×100)", got.EstimatedTotalMS)
+	}
+	// The REPEAT line itself carries the 300ms estimate.
+	var repeatLine Line
+	for _, l := range got.Lines {
+		if l.Command == "REPEAT" {
+			repeatLine = l
+		}
+	}
+	if repeatLine.EstimatedMS != 300 {
+		t.Errorf("REPEAT EstimatedMS = %d; want 300", repeatLine.EstimatedMS)
 	}
 }
 

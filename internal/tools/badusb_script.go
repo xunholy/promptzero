@@ -38,7 +38,10 @@ var badusbScriptParseSpec = Spec{
 		"identifies the command and validates its arguments:\n\n" +
 		"- **DELAY / DEFAULTDELAY**: must have a non-negative integer (milliseconds).\n" +
 		"- **STRING / STRINGLN**: must have text to type.\n" +
-		"- **REPEAT**: must have a positive integer.\n" +
+		"- **REPEAT**: must have a positive integer AND a preceding command to " +
+		"repeat (REPEAT re-runs the previous line N times; its execution-time " +
+		"estimate is N × the previous command's estimate). REPEAT as the first " +
+		"command is flagged — there is nothing to repeat.\n" +
 		"- **Single-key commands** (ENTER / TAB / ESC / BACKSPACE / SPACE / DELETE / F1-F12 / " +
 		"navigation keys / lock keys / etc.): must have no arguments.\n" +
 		"- **Modifier commands** (GUI / WINDOWS / META / CTRL / ALT / SHIFT / OPTION / " +

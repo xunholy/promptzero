@@ -106,6 +106,11 @@ func Parse(source string) Script {
 	const stringMSPerChar = 1
 	out := Script{}
 	defaultDelay := 0
+	// prevCmdMS tracks the per-line estimate of the most recent
+	// valid command line, so REPEAT N can multiply it. -1 means
+	// "no preceding command" (REPEAT as the first command is
+	// invalid — there's nothing to repeat).
+	prevCmdMS := -1
 	for i, raw := range strings.Split(source, "\n") {
 		raw = strings.TrimRight(raw, "\r")
 		line := Line{
@@ -133,11 +138,27 @@ func Parse(source string) Script {
 				line.Args = strings.TrimSpace(parts[1])
 			}
 			ms, err := validateCommand(line.Command, line.Args)
-			if err != nil {
+			isRepeat := line.Command == "REPEAT"
+			switch {
+			case err != nil:
 				line.Issue = err.Error()
 				line.Kind = "invalid"
 				out.IssueCount++
-			} else {
+			case isRepeat && prevCmdMS < 0:
+				// REPEAT with no preceding command — there is
+				// nothing to repeat. Flag it; the firmware no-ops
+				// this but a typo'd payload that opens with REPEAT
+				// is almost always a mistake.
+				line.Issue = "REPEAT has no preceding command to repeat"
+				line.Kind = "invalid"
+				out.IssueCount++
+			case isRepeat:
+				// REPEAT N repeats the previous command N times.
+				// The estimate is N × the previous line's estimate.
+				if n, perr := strconv.Atoi(line.Args); perr == nil {
+					ms = n * prevCmdMS
+				}
+			default:
 				// Add the default-delay between commands (set by
 				// a previous DEFAULTDELAY / DEFAULT_DELAY) so the
 				// estimate reflects script-wide pacing.
@@ -157,6 +178,13 @@ func Parse(source string) Script {
 			line.EstimatedMS = ms
 			out.CommandCount++
 			out.EstimatedTotalMS += ms
+			// Record this command's estimate so a following REPEAT
+			// can multiply it. REPEAT itself doesn't become the new
+			// "previous command" (you can't REPEAT a REPEAT), and
+			// invalid lines don't either.
+			if line.Kind == "command" && !isRepeat {
+				prevCmdMS = ms
+			}
 		}
 		out.Lines = append(out.Lines, line)
 	}
