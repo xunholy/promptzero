@@ -480,3 +480,29 @@ func buildV2cGetBulk(t *testing.T, community string, requestID, nonRepeaters, ma
 	body := append(append(encodeInt(1), encodeTLV(0x04, []byte(community))...), pdu...)
 	return encodeTLV(0x30, body)
 }
+
+// TestReadTLV_OverflowLengthNoPanic guards a BER length-field
+// overflow: a long-form length declaring many bytes (e.g. 0xFF →
+// 127 length bytes) used to accumulate into a negative int, slip
+// past the "exceeds buffer" check, and panic on an inverted slice
+// b[idx:idx+length]. The decoder must reject the wide/over-long
+// length field with an error instead.
+func TestReadTLV_OverflowLengthNoPanic(t *testing.T) {
+	inputs := []string{
+		strings.Repeat("ff", 256),          // all-FF: 0xff tag, 0xff long-form len
+		"30ff" + strings.Repeat("ff", 200), // SEQUENCE + 127-byte length
+		"3088ffffffffffffffff00",           // 8-byte length = overflow territory
+		"3085ffffffffff00",                 // 5-byte length (just over the cap)
+	}
+	for _, in := range inputs {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("Decode panicked on %q: %v", in, r)
+				}
+			}()
+			// Error is fine; panic is not.
+			_, _ = Decode(in)
+		}()
+	}
+}

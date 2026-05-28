@@ -527,6 +527,14 @@ func readTLV(b []byte, off int) (int, []byte, int, error) {
 		if nb == 0 {
 			return 0, nil, 0, fmt.Errorf("indefinite length not supported in SNMP")
 		}
+		// A length field wider than 4 bytes (>4 GiB) cannot describe a
+		// real SNMP PDU and, more importantly, accumulating 5+ bytes
+		// into an int overflows it to a negative value — which would
+		// slip past the bounds check below and produce an inverted
+		// slice b[idx:idx+length] (start > end) panic. Reject early.
+		if nb > 4 {
+			return 0, nil, 0, fmt.Errorf("length field too wide (%d bytes)", nb)
+		}
 		if idx+nb > len(b) {
 			return 0, nil, 0, fmt.Errorf("long-form length bytes truncated")
 		}
@@ -535,7 +543,7 @@ func readTLV(b []byte, off int) (int, []byte, int, error) {
 		}
 		idx += nb
 	}
-	if idx+length > len(b) {
+	if length < 0 || idx+length > len(b) {
 		return 0, nil, 0, fmt.Errorf("value (length %d) exceeds buffer", length)
 	}
 	return tag, b[idx : idx+length], idx + length - off, nil
