@@ -341,6 +341,16 @@ var toolLevels = func() map[string]Level {
 		// lookup. Companion to modbus_decode for the full
 		// OT-pentest workflow.
 		"bacnet_ip_decode",
+		// v0.356 (NATIVE-fit gap in the building-automation / OT
+		// decode space): KNXnet/IP (KNX over UDP/3671) frame
+		// dissector — the dominant European BMS bus for lighting,
+		// HVAC, blinds, access control, room controllers. Pure
+		// offline parser: KNXnet/IP header + HPAI + connection
+		// header + cEMI L_Data telegram decode (source/dest KNX
+		// addresses, GroupValue read/write APCI + payload).
+		// Companion to bacnet_ip_decode + modbus_decode for the
+		// full OT-pentest workflow.
+		"knxnetip_decode",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS

@@ -1741,7 +1741,11 @@ func TestRegistrySize(t *testing.T) {
 	// transport protocol; TCP/9300), zmtp_decode (ZMTP wire
 	// protocol), and cassandra_decode (Cassandra CQL binary
 	// protocol; TCP/9042 plaintext, TCP/9142 TLS).
-	const expected = 433
+	//
+	// v0.356.0 added knxnetip_decode (KNXnet/IP — KNX building-
+	// automation bus over UDP/3671; KNXnet/IP header + HPAI +
+	// connection header + cEMI L_Data GroupValue telegram decode).
+	const expected = 434
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
