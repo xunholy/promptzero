@@ -204,7 +204,20 @@ func scanProtoFields(buf []byte) ([]ProtoField, int) {
 			if n == 0 {
 				goto done
 			}
-			off += n + int(length)
+			off += n
+			// length is an untrusted uint64. int(length) can overflow
+			// to a negative value, making off negative and the next
+			// buf[off:] an inverted-slice panic — and the off>len(buf)
+			// guard below only catches positive overruns. Compare as
+			// uint64 against the remaining bytes before converting: a
+			// length that can't fit the buffer means the field value is
+			// truncated, so stop the best-effort walk here. Found by
+			// FuzzHexDecoders.
+			remaining := len(buf) - off
+			if remaining < 0 || length > uint64(remaining) {
+				goto done
+			}
+			off += int(length)
 		case 5: // 32-bit
 			off += 4
 		default:

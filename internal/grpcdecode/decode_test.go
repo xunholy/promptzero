@@ -237,3 +237,25 @@ func TestGRPCStatusName(t *testing.T) {
 		}
 	}
 }
+
+// TestDecode_ProtoLengthOverflowNoPanic guards an inverted-slice bug
+// in scanProtoFields: a protobuf length-delimited field (wire type 2)
+// whose length varint is huge made off += int(length) overflow to a
+// negative value, so the next buf[off:] panicked with a negative
+// slice bound. The walk must instead stop the best-effort scan and
+// return cleanly. Found by FuzzHexDecoders.
+func TestDecode_ProtoLengthOverflowNoPanic(t *testing.T) {
+	// gRPC header for the payload, then a protobuf field: tag 0x0A
+	// (field 1, wire type 2 = length-delimited) followed by a 10-byte
+	// max-value varint length (0xFF…0x01) that overflows int.
+	payload := []byte{0x0A, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x30, 0x30}
+	frame := grpcFrame(false, payload)
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Decode panicked on overflowing proto length: %v", r)
+		}
+	}()
+	if _, err := Decode(hex.EncodeToString(frame)); err != nil {
+		t.Fatalf("Decode returned error (want graceful no-panic): %v", err)
+	}
+}
