@@ -253,3 +253,31 @@ func TestDecode_Rejections(t *testing.T) {
 		}
 	}
 }
+
+// TestDecode_AuthLengthBelowHeaderMinNoPanic guards an inverted-slice
+// bug: a BFD packet with the Auth (A) flag set and an auth-section
+// Length byte < 3 used to compute body := b[3:Length] = b[3:0] and
+// panic. The decoder must reject the sub-minimum length with an error.
+// Found by FuzzHexDecoders.
+func TestDecode_AuthLengthBelowHeaderMinNoPanic(t *testing.T) {
+	// 24-byte mandatory header with A-flag (0x04) set in byte 1,
+	// followed by an auth section whose Length byte (2nd auth byte)
+	// is 0x00 — below the 3-byte header minimum.
+	// byte0: vers(1)<<5 | diag = 0x20
+	// byte1: state<<6 | flags; set A-flag = 0x04
+	// Auth section starts at byte 24: type=0x01, length=0x00, keyid=0x00
+	hexPkt := "20040003" + "00000001" + "00000002" + "000f4240" + "000f4240" + "00000000" +
+		"010000" // auth: type=1 length=0 keyid=0
+	r, err := Decode(hexPkt)
+	if err != nil {
+		// An error is acceptable (and expected) — the contract is
+		// "no panic". A nil result with error is fine.
+		_ = r
+		return
+	}
+	// If it parsed without error, the auth section must not have been
+	// decoded from an inverted slice.
+	if r.Authentication != nil && r.Authentication.Length < 3 {
+		t.Errorf("auth Length %d below minimum should have errored", r.Authentication.Length)
+	}
+}

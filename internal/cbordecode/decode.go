@@ -224,19 +224,31 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 		neg := -1 - int64(arg) //nolint:gosec // documented overflow case
 		v.Int = &neg
 	case 2:
-		if off+int(arg) > len(b) {
+		// Compare as uint64 against the remaining bytes BEFORE
+		// converting arg to int. A huge arg (e.g. an 8-byte length
+		// prefix of 0xf3...) overflows int to a negative value on
+		// conversion, so off+int(arg) would be negative — slipping
+		// past a signed "> len(b)" check and producing an inverted
+		// slice b[off:negative] panic. Found by FuzzHexDecoders.
+		if arg > uint64(len(b)-off) {
 			return nil, 0, fmt.Errorf("byte string length %d exceeds remaining buffer", arg)
 		}
 		v.Bytes = strings.ToUpper(hex.EncodeToString(b[off : off+int(arg)]))
 		off += int(arg)
 	case 3:
-		if off+int(arg) > len(b) {
+		if arg > uint64(len(b)-off) {
 			return nil, 0, fmt.Errorf("text string length %d exceeds remaining buffer", arg)
 		}
 		v.Text = string(b[off : off+int(arg)])
 		off += int(arg)
 	case 4:
-		v.Array = make([]*Value, 0, int(arg))
+		// Bound the preallocation hint: an array can't hold more
+		// elements than there are remaining bytes (each item is ≥1
+		// byte), and a raw int(arg) from an 8-byte length prefix can
+		// be negative or astronomically large — make() panics on a
+		// negative or oversized cap. The loop is self-limiting because
+		// decodeItem errors at EOF.
+		v.Array = make([]*Value, 0, prealloc(arg, len(b)-off))
 		for i := uint64(0); i < arg; i++ {
 			child, used, err := decodeItem(b, off)
 			if err != nil {
@@ -246,7 +258,7 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 			off += used
 		}
 	case 5:
-		v.Map = make([]*MapEntry, 0, int(arg))
+		v.Map = make([]*MapEntry, 0, prealloc(arg, len(b)-off))
 		for i := uint64(0); i < arg; i++ {
 			key, used1, err := decodeItem(b, off)
 			if err != nil {
@@ -291,6 +303,23 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 		return nil, 0, fmt.Errorf("major type %d out of 0..7", major)
 	}
 	return v, off - start, nil
+}
+
+// prealloc returns a safe slice-capacity hint for a CBOR container
+// declaring want elements when remaining bytes are available. A CBOR
+// array/map element occupies at least one byte, so the realised
+// element count can never exceed remaining; capping the hint to that
+// bound prevents make() from panicking on a negative (int-overflowed)
+// or astronomically large untrusted length. Negative remaining (which
+// shouldn't happen) yields 0.
+func prealloc(want uint64, remaining int) int {
+	if remaining < 0 {
+		return 0
+	}
+	if want > uint64(remaining) {
+		return remaining
+	}
+	return int(want)
 }
 
 // readArgument reads the additional-information argument for

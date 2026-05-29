@@ -209,6 +209,28 @@ func TestDecode_Rejections(t *testing.T) {
 	}
 }
 
+// TestDecode_MgmtAddrZeroStrLenNoPanic guards an inverted-slice bug:
+// a Management Address TLV (type 8) whose address-string-length byte
+// is 0 made decodeManagementAddress compute addr := body[2:1+0] =
+// body[2:1] and panic. The decoder must reject the sub-minimum length
+// and decode the frame without panicking. Found by FuzzHexDecoders.
+func TestDecode_MgmtAddrZeroStrLenNoPanic(t *testing.T) {
+	// Single TLV: type=8 (Management Address), length=16, body all
+	// zeros — so body[0] (addr string length) = 0. The 0x1010 header
+	// is type=8<<9? No: type occupies the top 7 bits. 0x1010 = type 8,
+	// length 16. This is the exact shape FuzzHexDecoders surfaced.
+	in := "1010" + strings.Repeat("00", 16)
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Decode panicked on zero-length mgmt addr: %v", r)
+		}
+	}()
+	if _, err := Decode(in); err != nil {
+		// An error is acceptable; the contract is no panic.
+		_ = err
+	}
+}
+
 func TestCapabilityFlagsTable(t *testing.T) {
 	if !strings.Contains(capabilityFlagsName(0x07FF), "Other") {
 		t.Error("0x07FF should include Other")

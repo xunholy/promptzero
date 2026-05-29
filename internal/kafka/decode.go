@@ -307,7 +307,13 @@ func decodeJoinGroupRequest(r *Result, body []byte) {
 	if r.APIVersion >= 1 {
 		off += 4
 	}
-	// member_id (string)
+	// member_id (string). off may now exceed len(body) for a
+	// truncated/garbage frame, so guard before slicing — body[off:]
+	// panics when off > len(body) before readString's own length
+	// check can run. Found by FuzzHexDecoders.
+	if off+2 > len(body) {
+		return
+	}
 	_, n = readString(body[off:])
 	off += n
 	// protocol_type (string)

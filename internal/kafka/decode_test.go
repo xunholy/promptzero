@@ -225,3 +225,22 @@ func TestDecode_RejectsTruncated(t *testing.T) {
 		t.Fatal("want error for truncated input")
 	}
 }
+
+// TestDecode_JoinGroupTruncatedNoPanic guards an out-of-bounds slice
+// in the JoinGroup walker: after reading group_id and skipping the
+// session_timeout + rebalance_timeout fields, off could exceed the
+// body length, making body[off:] panic before readString's own
+// length guard runs. Found by FuzzHexDecoders.
+func TestDecode_JoinGroupTruncatedNoPanic(t *testing.T) {
+	// api_key=11 (JoinGroup), api_version high enough to trigger the
+	// rebalance_timeout skip, then a short body that runs off the end.
+	req := kafkaRequest(11, 5, 1, "", []byte{0x00, 0x00})
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Decode panicked on truncated JoinGroup: %v", r)
+		}
+	}()
+	if _, err := Decode(hex.EncodeToString(req)); err != nil {
+		t.Fatalf("Decode returned error (acceptable is no-panic, but got err): %v", err)
+	}
+}

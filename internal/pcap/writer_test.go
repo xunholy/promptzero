@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"io"
 	"math/rand"
 	"strings"
@@ -329,5 +330,41 @@ func TestReaderTruncatedPacket(t *testing.T) {
 	_, _, err = r.Next()
 	if err == nil {
 		t.Error("expected error for truncated packet data, got nil")
+	}
+}
+
+// TestNext_OversizedInclLenNoOOM guards a memory-amplification bug: a
+// record header declaring inclLen up to 4 GiB used to drive
+// make([]byte, inclLen) into an out-of-memory kill before io.ReadFull
+// could fail. Next must reject any inclLen above the clamped snaplen
+// (here the 16 MiB absolute backstop) with errPacketTrunc and never
+// allocate the oversized buffer. Found via fuzzing.
+func TestNext_OversizedInclLenNoOOM(t *testing.T) {
+	le := binary.LittleEndian
+	// Valid 24-byte global header with snaplen=0 (→ clamped to the
+	// 16 MiB backstop).
+	hdr := make([]byte, 24)
+	le.PutUint32(hdr[0:], 0xa1b2c3d4)
+	le.PutUint16(hdr[4:], 2)  // version major
+	le.PutUint16(hdr[6:], 4)  // version minor
+	le.PutUint32(hdr[16:], 0) // snaplen = 0
+	le.PutUint32(hdr[20:], 1) // linktype = Ethernet
+
+	// One record header with inclLen = 0xFFFFFFFF (4 GiB) and no body.
+	rec := make([]byte, 16)
+	le.PutUint32(rec[8:], 0xFFFFFFFF)  // incl_len
+	le.PutUint32(rec[12:], 0xFFFFFFFF) // orig_len
+
+	r, err := NewReader(bytes.NewReader(append(hdr, rec...)))
+	if err != nil {
+		t.Fatalf("NewReader: %v", err)
+	}
+	_, _, err = r.Next()
+	if err == nil {
+		t.Fatal("expected error for oversized inclLen, got nil")
+	}
+	// Must be the truncation error, not an OOM/panic.
+	if !errors.Is(err, errPacketTrunc) {
+		t.Errorf("got %v; want errPacketTrunc", err)
 	}
 }

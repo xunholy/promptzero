@@ -303,3 +303,28 @@ func TestDecodeRejectsBadHex(t *testing.T) {
 		t.Fatal("want error for non-hex chars")
 	}
 }
+
+// TestDecodeArrayHugeCountNoOOM guards a memory-amplification bug: a
+// RESP array header declaring an astronomically large element count
+// (e.g. "*999999999\r\n") drove make([]string, 0, count) into an
+// out-of-memory kill before the self-limiting decode loop could run.
+// The preallocation hint must be clamped to the remaining byte count,
+// so a tiny frame with a giant declared count decodes (or bails)
+// without allocating gigabytes. Found by FuzzHexDecoders.
+func TestDecodeArrayHugeCountNoOOM(t *testing.T) {
+	// 11-byte frame: array header claims ~1e9 elements, then EOF.
+	frame := resp("*999999999\r\n")
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Decode panicked on huge array count: %v", r)
+		}
+	}()
+	res, err := Decode(hex.EncodeToString(frame))
+	if err != nil {
+		t.Fatalf("Decode returned error (want graceful no-OOM): %v", err)
+	}
+	// The loop exhausts the buffer immediately, so no bulk args parse.
+	if res.IsCommand {
+		t.Errorf("truncated array misclassified as command %q", res.Command)
+	}
+}

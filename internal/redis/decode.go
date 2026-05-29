@@ -250,8 +250,19 @@ func decodeArray(r *Result, b []byte) {
 		return
 	}
 	r.ArgumentCount = count - 1
-	args := make([]string, 0, count)
-	argLens := make([]int, 0, count)
+	// Cap the preallocation hint to the remaining byte count. A RESP
+	// array header can declare an astronomically large element count
+	// (e.g. "*999999999\r\n"), and make([]string, 0, count) would OOM
+	// before the self-limiting loop (bounded by off < len(b)) could
+	// run. Each element consumes at least one byte, so the realised
+	// count can never exceed the bytes available. Found by
+	// FuzzHexDecoders.
+	hint := count
+	if hint > len(b) {
+		hint = len(b)
+	}
+	args := make([]string, 0, hint)
+	argLens := make([]int, 0, hint)
 	allBulk := true
 	for i := 0; i < count && off < len(b); i++ {
 		if b[off] != '$' {

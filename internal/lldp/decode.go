@@ -315,6 +315,15 @@ func decodeManagementAddress(body []byte) *ManagementAddress {
 		return nil
 	}
 	addrStrLen := int(body[0])
+	// The management-address string length (IEEE 802.1AB §8.5.9.2)
+	// counts the 1-byte address subtype plus the address octets, so it
+	// must be at least 1. A declared length of 0 would make the address
+	// slice body[2:1+0] = body[2:1] an inverted-range panic, and the
+	// subtype byte body[1] wouldn't exist. Reject sub-minimum lengths.
+	// Found by FuzzHexDecoders.
+	if addrStrLen < 1 {
+		return nil
+	}
 	if 1+addrStrLen+5 > len(body) {
 		return nil
 	}

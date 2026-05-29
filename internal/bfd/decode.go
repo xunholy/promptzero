@@ -269,6 +269,14 @@ func decodeAuth(b []byte) (*AuthSection, error) {
 		KeyID:  int(b[2]),
 	}
 	a.TypeName = authTypeName(a.Type)
+	// Auth Length (RFC 5880 §4.2) counts the whole auth section
+	// including the 3-byte Type/Length/KeyID header, so it must be
+	// at least 3. A smaller value (e.g. 0 from a malformed/garbage
+	// packet) would make body := b[3:a.Length] an inverted slice
+	// (b[3:0]) and panic. Reject anything outside [3, len(b)].
+	if a.Length < 3 {
+		return nil, fmt.Errorf("auth length %d below 3-byte header minimum", a.Length)
+	}
 	if a.Length > len(b) {
 		return nil, fmt.Errorf("auth length %d exceeds %d available bytes",
 			a.Length, len(b))
