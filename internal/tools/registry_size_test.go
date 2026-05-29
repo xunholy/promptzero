@@ -1750,7 +1750,12 @@ func TestRegistrySize(t *testing.T) {
 	// European smart-metering bus + wired sibling of wM-Bus;
 	// link-layer frame + checksum + C/A/CI fields + Variable Data
 	// Structure header with BCD serial / manufacturer / medium).
-	const expected = 435
+	//
+	// v0.358.0 added ethercat_decode (EtherCAT, IEC 61158 — real-time
+	// industrial-Ethernet motion-control fieldbus; EtherCAT header +
+	// datagram chain walk with command / addressing / data / working
+	// counter).
+	const expected = 436
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

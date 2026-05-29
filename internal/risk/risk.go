@@ -362,6 +362,15 @@ var toolLevels = func() map[string]Level {
 		// surfaced, never value-decoded. Companion to knxnetip_decode
 		// + bacnet_ip_decode + modbus_decode.
 		"mbus_decode",
+		// v0.358 (NATIVE-fit gap in the OT / industrial-Ethernet
+		// decode space): EtherCAT (IEC 61158) datagram dissector —
+		// the dominant real-time motion-control fieldbus (Beckhoff
+		// TwinCAT, ET1100/ET1200 slaves). Pure offline parser:
+		// EtherCAT header + datagram chain walk (command, ADP/ADO or
+		// logical addressing, data length + flags, IRQ, working
+		// counter). Data block surfaced as hex, never interpreted.
+		// Companion to the PROFINET / Modbus / OPC UA decoders.
+		"ethercat_decode",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS
