@@ -255,3 +255,78 @@ func FuzzHexDecoders(f *testing.F) {
 		}
 	})
 }
+
+// textDecoderHandler pairs a pure text-decoder Spec with the name of
+// its sole required string parameter.
+type textDecoderHandler struct {
+	spec  Spec
+	param string
+}
+
+// textDecoderHandlers caches the pure text-decoder handlers once so
+// the fuzz body doesn't re-scan the registry on every input.
+func textDecoderHandlers() []textDecoderHandler {
+	var out []textDecoderHandler
+	for _, s := range All() {
+		if s.Handler == nil {
+			continue
+		}
+		if param := pureTextDecoderParam(s); param != "" {
+			out = append(out, textDecoderHandler{spec: s, param: param})
+		}
+	}
+	return out
+}
+
+// FuzzTextDecoders drives every pure offline text decoder (NMEA
+// sentences, JWT tokens, SIP/HTTP messages, syslog lines,
+// Wiegand/DCF77 bit strings, X.509 PEM, etc.) with fuzzer-generated
+// strings. It explores the delimiter-splitting / base64-decoding /
+// index-into-segments space far more thoroughly than the fixed
+// battery in TestTextDecoders_MalformedInputNeverPanics — that test
+// stays as the fast CI gate; this target is for deep local
+// exploration via `go test -fuzz=FuzzTextDecoders`.
+//
+// Each decoder is fed the fuzzer string through its own required
+// parameter name, so a single corpus entry exercises every
+// string-input parser at once. The contract is "return an error or a
+// benign result, never panic".
+func FuzzTextDecoders(f *testing.F) {
+	seeds := []string{
+		"",
+		".",
+		"..",
+		"...",                         // empty JWT segments
+		"=",                           // lone base64 pad
+		"$GPGGA,",                     // truncated NMEA sentence
+		"AAAA.BBBB.CCCC",              // JWT-shaped
+		"SIP/2.0 200 OK\r\n",          // SIP status line
+		"-----BEGIN CERTIFICATE-----", // truncated PEM
+		"<14>",                        // syslog priority only
+		strings.Repeat("1", 4096),     // long bit/text run
+		strings.Repeat("A.", 2048),    // many segments
+		"\x00\xff\x00\xff",            // raw control bytes
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+
+	handlers := textDecoderHandlers()
+	if len(handlers) < 8 {
+		f.Fatalf("only %d text decoders registered; expected 8+", len(handlers))
+	}
+
+	f.Fuzz(func(t *testing.T, data string) {
+		for _, h := range handlers {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("%s panicked on %s=%q: %v",
+							h.spec.Name, h.param, data, r)
+					}
+				}()
+				_, _ = h.spec.Handler(context.Background(), nil, map[string]any{h.param: data})
+			}()
+		}
+	})
+}
