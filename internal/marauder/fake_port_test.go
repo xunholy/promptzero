@@ -366,13 +366,20 @@ func TestExecCtx_HonoursCancellation(t *testing.T) {
 
 	// Cancellation should yield a non-nil error (timeout-shaped from
 	// readUntilPromptCtx since it doesn't distinguish ctx-cancel
-	// from deadline) but the elapsed time should be under ~500 ms,
-	// far less than the 5 s timeout.
+	// from deadline) but the elapsed time should be well under the
+	// 5 s timeout. The bound is generous (1.5 s) rather than tight:
+	// the read loop polls SetReadTimeout on a ~100 ms cadence, so the
+	// no-load expectation is ~200 ms, but under the parallel CPU load
+	// of the full `task test` suite (GOMAXPROCS workers all busy)
+	// goroutine scheduling can delay the cancel goroutine and the
+	// next poll by several cadences. 1.5 s still proves cancellation
+	// fires promptly (3x+ below the 5 s deadline) without flaking
+	// under load.
 	if err == nil {
 		t.Errorf("ExecCtx on ctx cancel: expected error, got nil")
 	}
-	if elapsed > 500*time.Millisecond {
-		t.Errorf("ExecCtx did not honour ctx cancel promptly: took %s (expected ≤500ms)", elapsed)
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("ExecCtx did not honour ctx cancel promptly: took %s (expected well under the 5s timeout)", elapsed)
 	}
 }
 
