@@ -1745,7 +1745,12 @@ func TestRegistrySize(t *testing.T) {
 	// v0.356.0 added knxnetip_decode (KNXnet/IP — KNX building-
 	// automation bus over UDP/3671; KNXnet/IP header + HPAI +
 	// connection header + cEMI L_Data GroupValue telegram decode).
-	const expected = 434
+	//
+	// v0.357.0 added mbus_decode (M-Bus / Meter-Bus, EN 13757 —
+	// European smart-metering bus + wired sibling of wM-Bus;
+	// link-layer frame + checksum + C/A/CI fields + Variable Data
+	// Structure header with BCD serial / manufacturer / medium).
+	const expected = 435
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

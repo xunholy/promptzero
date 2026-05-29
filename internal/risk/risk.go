@@ -351,6 +351,17 @@ var toolLevels = func() map[string]Level {
 		// Companion to bacnet_ip_decode + modbus_decode for the
 		// full OT-pentest workflow.
 		"knxnetip_decode",
+		// v0.357 (NATIVE-fit gap in the OT / smart-metering decode
+		// space): M-Bus (Meter-Bus, EN 13757) telegram dissector —
+		// the dominant European meter bus (electricity, gas, water,
+		// heat) and the wired sibling of Flipper-capturable wM-Bus
+		// (868 MHz Sub-GHz). Pure offline parser: link-layer frame
+		// classification + checksum, C/A/CI field naming, and the
+		// Variable Data Structure header (BCD serial, FLAG
+		// manufacturer, medium/device type). Raw DIF/VIF data records
+		// surfaced, never value-decoded. Companion to knxnetip_decode
+		// + bacnet_ip_decode + modbus_decode.
+		"mbus_decode",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS
