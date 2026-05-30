@@ -1049,7 +1049,22 @@ func (f *Flipper) GPIOSet(pin string, value int) (string, error) {
 		"gpio_set",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("gpio set %s %d", sanitizeArg(pin), value))
+			safe := sanitizeArg(pin)
+			// Momentum / current OFW reject `gpio set` unless the pin is
+			// already in OUTPUT mode — verified on momentum/mntm-dev
+			// (2026-05-31): a bare `gpio set <pin> <v>` returns
+			// "Err: pin <pin> is not set as an output." (as stdout, with
+			// no CLI error). Set the mode first; this mirrors what
+			// gpioSetViaRPC does over RPC and is idempotent. A non-0/1
+			// value is the input-mode-prep hook (matches the RPC INPUT
+			// branch) — the CLI `set` only drives 0/1.
+			if value == 0 || value == 1 {
+				if _, err := f.Exec(fmt.Sprintf("gpio mode %s 1", safe)); err != nil {
+					return "", fmt.Errorf("gpio mode (output) for %s: %w", pin, err)
+				}
+				return f.Exec(fmt.Sprintf("gpio set %s %d", safe, value))
+			}
+			return f.Exec(fmt.Sprintf("gpio mode %s 0", safe))
 		},
 		func() (string, error) { return f.gpioSetViaRPC(context.Background(), pin, value) },
 	)
@@ -1093,8 +1108,11 @@ func (f *Flipper) gpioSetViaRPC(ctx context.Context, pin string, value int) (str
 
 // GPIORead reads the current value of a GPIO pin.
 //
-// CLI transport: `gpio read <pin>` text command. Output format from
-// firmware is "Pin <name> = <0|1>" (with mild fork-to-fork variation).
+// CLI transport: `gpio mode <pin> 0` (input) then `gpio read <pin>`.
+// The mode-set is required — current firmware rejects a bare read with
+// "Err: pin <pin> is not set as an input." Output format from firmware is
+// "Pin <name> <= <0|1>" (momentum/mntm-dev); gpioValueFromOutput keys off
+// the "= <v>" substring so both this and the RPC "= <v>" re-emit parse.
 // RPC transport (BLE): gpio_read_pin streamed via the persistent
 // rpc.Client. The numeric value is reformatted as the same single-line
 // "Pin <name> = <0|1>\n" string the CLI emits so downstream parsers
@@ -1109,15 +1127,27 @@ func (f *Flipper) GPIORead(pin string) (string, error) {
 		"gpio_read",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("gpio read %s", sanitizeArg(pin)))
+			safe := sanitizeArg(pin)
+			// Momentum / current OFW reject `gpio read` unless the pin is
+			// already in INPUT mode — verified on momentum/mntm-dev
+			// (2026-05-31): a bare `gpio read <pin>` returns
+			// "Err: pin <pin> is not set as an input." (as stdout, with no
+			// CLI error). Set input mode first; gpioReadViaRPC already does
+			// the equivalent over RPC, and switching to input is the safe,
+			// idempotent pre-read state.
+			if _, err := f.Exec(fmt.Sprintf("gpio mode %s 0", safe)); err != nil {
+				return "", fmt.Errorf("gpio mode (input) for %s: %w", pin, err)
+			}
+			return f.Exec(fmt.Sprintf("gpio read %s", safe))
 		},
 		func() (string, error) { return f.gpioReadViaRPC(context.Background(), pin) },
 	)
 }
 
 // gpioReadViaRPC drives the BLE-only RPC dispatch for GPIORead.
-// Switches the pin to INPUT mode first (matching what the CLI's
-// `gpio read` does implicitly on the firmware side), then issues
+// Switches the pin to INPUT mode first (the CLI path now does the
+// equivalent explicitly via `gpio mode <pin> 0` — current firmware does
+// NOT set input implicitly), then issues
 // gpio_read_pin and re-emits the value as the single-line CLI shape so
 // transport-agnostic parsers continue to work.
 func (f *Flipper) gpioReadViaRPC(ctx context.Context, pin string) (string, error) {
