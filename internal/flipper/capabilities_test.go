@@ -515,7 +515,10 @@ func TestDetectCapabilitiesFull(t *testing.T) {
 				t.Helper()
 				assertEqual(t, "StorageExtFatLabel", c.StorageExtFatLabel, "MOMENTUM")
 				assertEqual(t, "HasSeaderFAP", c.HasSeaderFAP, true)
-				assertEqual(t, "HasPsCmd", c.HasPsCmd, true)
+				// Verified false against real momentum/mntm-dev hardware
+				// (2026-05-30): `ps` is absent from the CLI command table;
+				// `top` is the universal verb. See capabilities.go.
+				assertEqual(t, "HasPsCmd", c.HasPsCmd, false)
 			},
 		},
 		"momentum_legacy_0_29_0": {

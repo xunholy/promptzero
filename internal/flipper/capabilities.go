@@ -69,7 +69,7 @@ type Capabilities struct {
 	HasStorageFormatExt    bool // `storage format_ext` verb present (all custom forks; absent on stock OFW)
 	HasSubGHzEncryptKeeloq bool // `subghz encrypt_keeloq` verb present (all custom forks)
 	HasSubGHzChat          bool // `subghz chat` verb present (universal — all five forks)
-	HasPsCmd               bool // `ps` alias for `top` present (Momentum + Xtreme)
+	HasPsCmd               bool // `ps` alias for `top`. Verified ABSENT on Momentum mntm-dev (2026-05-30) — set false there; `top` is universal. Xtreme value unverified (no device).
 	HasClearCmd            bool // `clear` terminal-clear command present (Momentum only)
 
 	// ===== Storage quirks (new) =====
@@ -353,7 +353,14 @@ func detectCapabilities(deviceInfo string) Capabilities {
 		c.StorageExtFatLabel = "MOMENTUM"
 		c.HasStorageFormatExt = true
 		c.HasSubGHzEncryptKeeloq = true
-		c.HasPsCmd = true
+		// HasPsCmd stays false on Momentum: hardware validation (2026-05-30,
+		// momentum/mntm-dev, commit 430a3d50) showed `ps` is NOT in the CLI
+		// command table — the device fuzzy-matches it to `js` and errors
+		// ("could not find command `ps`"). `top` is the universal process-
+		// list verb. The earlier `ps`-alias assumption was speculative;
+		// surfacing HasPsCmd=true via firmware_introspect would steer the
+		// LLM to a verb the firmware rejects, so the safe + verified value
+		// is false (the LLM falls back to `top`, which is always present).
 		c.HasClearCmd = true
 	}
 
