@@ -204,19 +204,23 @@ func (f *Flipper) SubGHzTx(filePath string) (string, error) {
 	}
 	// A missing/unreadable .sub file is reported on stdout with NO CLI
 	// error, so a failed transmit would otherwise read as success — see
-	// detectSubGHzFileError. Critical here because this command transmits.
-	return out, detectSubGHzFileError(out)
+	// detectFileLoadError. Critical here because this command transmits.
+	return out, detectFileLoadError(out)
 }
 
-// detectSubGHzFileError surfaces the firmware's file-load error banner as a
-// real Go error. Verified momentum/mntm-dev (2026-05-31): a missing file
-// makes `subghz tx_from_file` / `subghz decode_raw` print
-// "subghz <cmd>: Error open file <path>" to stdout while Exec returns
-// err=nil — so a caller (or the LLM driving it) would read a failed
-// transmit/decode as a success. The markers are specific to the firmware's
-// storage-failure path and do not appear in successful output.
-func detectSubGHzFileError(out string) error {
-	for _, marker := range []string{"Error open file", "Storage error"} {
+// detectFileLoadError surfaces the firmware's file-load error banner as a
+// real Go error. Several file-taking CLI commands print a load failure to
+// stdout while the CLI returns success, so a caller (or the LLM driving it)
+// would read a failed transmit/decode/analyze as a success. Verified
+// against momentum/mntm-dev (2026-05-31), where a missing file yields:
+//   - `subghz tx_from_file` / `decode_raw` → "...: Error open file <path>"
+//   - `ir decode`                          → "Failed to open file for reading: ..."
+//   - `rfid raw_analyze`                   → "Failed to open file"
+//
+// The markers are specific to the firmware's storage-failure path and do
+// not appear in successful output.
+func detectFileLoadError(out string) error {
+	for _, marker := range []string{"Error open file", "Failed to open file", "Storage error"} {
 		if idx := strings.Index(out, marker); idx >= 0 {
 			line := out[idx:]
 			if nl := strings.IndexByte(line, '\n'); nl >= 0 {
@@ -320,7 +324,7 @@ func (f *Flipper) SubGHzDecode(filePath string) (string, error) {
 	if err != nil {
 		return out, err
 	}
-	return out, detectSubGHzFileError(out)
+	return out, detectFileLoadError(out)
 }
 
 // SubGHzTxKey transmits a raw Sub-GHz key. Xtreme firmware requires a
@@ -2175,7 +2179,11 @@ func (f *Flipper) SubGHzChatCtx(ctx context.Context, frequency uint32, duration 
 // Read-only and local to the SD card — no transmit.
 // CLI: ir decode <path>
 func (f *Flipper) IRDecodeFile(path string) (string, error) {
-	return f.Exec(fmt.Sprintf("ir decode %s", sanitizeArg(path)))
+	out, err := f.Exec(fmt.Sprintf("ir decode %s", sanitizeArg(path)))
+	if err != nil {
+		return out, err
+	}
+	return out, detectFileLoadError(out)
 }
 
 // IRUniversalList lists entries in a universal remote library file so the
@@ -2319,7 +2327,11 @@ func (f *Flipper) RFIDRawRead(mode, filePath string, duration time.Duration) (st
 // contained protocol. Pure local analysis — no RF activity.
 // CLI: rfid raw_analyze <file_path>
 func (f *Flipper) RFIDRawAnalyze(filePath string) (string, error) {
-	return f.Exec(fmt.Sprintf("rfid raw_analyze %s", sanitizeArg(filePath)))
+	out, err := f.Exec(fmt.Sprintf("rfid raw_analyze %s", sanitizeArg(filePath)))
+	if err != nil {
+		return out, err
+	}
+	return out, detectFileLoadError(out)
 }
 
 // RFIDRawEmulate replays a raw 125 kHz capture against a reader. Active
