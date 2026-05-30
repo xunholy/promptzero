@@ -188,14 +188,20 @@ jobs:
             --output-certificate dist/install.sh.pem \
             dist/install.sh
 
-      # Extract the CHANGELOG section matching the tag. The pattern
-      # mirrors Keep a Changelog: ## [<version>] - <date>. Falling
-      # back to auto-generated notes when no section is found means a
-      # forgotten CHANGELOG bump never blocks a release. The tag name
-      # flows through an env var (safe pattern) and is then shell-
-      # expanded under double quotes — no direct ${{ ... }} inside
+      # Resolve the release notes, in priority order:
+      #   1. The CHANGELOG section matching the tag (Keep a Changelog:
+      #      ## [<version>] - <date>) — curated, human-authored.
+      #   2. The annotated tag message (subject + body, minus the
+      #      signature) — every release is cut with `git tag -a` carrying
+      #      a rich per-release description, so this guarantees real
+      #      notes even when the CHANGELOG bump is skipped (the recent
+      #      norm). This is the line that stops releases shipping with
+      #      only an auto-generated "Full Changelog" link.
+      #   3. GitHub auto-generated notes — last resort if both are empty.
+      # The tag name flows through an env var (safe pattern) and is then
+      # shell-expanded under double quotes — no direct ${{ ... }} inside
       # run: so no workflow-injection surface.
-      - name: Extract release notes from CHANGELOG
+      - name: Resolve release notes
         id: extract_notes
         env:
           TAG_NAME: ${{ github.ref_name }}
@@ -212,10 +218,21 @@ jobs:
 
           if [ -s "$notes_file" ]; then
             echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
-            echo "--- release notes for $TAG_NAME ---"
+            echo "--- release notes for $TAG_NAME (from CHANGELOG) ---"
+            cat "$notes_file"
+            exit 0
+          fi
+
+          # Fall back to the annotated tag message. %(contents:subject)
+          # and %(contents:body) exclude the GPG/SSH signature block.
+          git tag -l "$TAG_NAME" \
+            --format='%(contents:subject)%0a%0a%(contents:body)' > "$notes_file"
+          if [ -n "$(tr -d '[:space:]' < "$notes_file")" ]; then
+            echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
+            echo "--- release notes for $TAG_NAME (from tag annotation) ---"
             cat "$notes_file"
           else
-            echo "no CHANGELOG section found for $TAG_NAME; falling back to auto-generated notes"
+            echo "no CHANGELOG section or tag annotation for $TAG_NAME; falling back to auto-generated notes"
             rm -f "$notes_file"
           fi
 
