@@ -266,6 +266,24 @@ func main() {
 			}
 		}
 
+		// iButton key types: validIButtonProtocols (Dallas/Cyfral/Metakom in
+		// commands.go) is case-sensitive on the wire — a firmware rename would
+		// silently break ikey emulate/write. Confirm the device's `ikey` usage
+		// still advertises exactly those three.
+		if ikeyUsage, err := f.Exec("ikey"); err == nil {
+			var missing []string
+			for _, p := range []string{"Dallas", "Cyfral", "Metakom"} {
+				if !strings.Contains(ikeyUsage, p) {
+					missing = append(missing, p)
+				}
+			}
+			if len(missing) == 0 {
+				add("ibutton:protocols", "PASS", "ikey usage advertises Dallas/Cyfral/Metakom")
+			} else {
+				add("ibutton:protocols", "FAIL", "ikey usage missing key types: "+strings.Join(missing, ","))
+			}
+		}
+
 		fmt.Printf("\ndetected capabilities:\n%s\n", dumpCaps(caps))
 	}
 
