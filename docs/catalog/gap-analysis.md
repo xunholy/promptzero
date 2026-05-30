@@ -114,7 +114,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | RollBack RKE replay (offensive) | attacks + audit Q5 | — by policy — | — | — | Intentional skip |
 | RollBack capture-only detect | attacks #5 | ❌ | — | — | **§2a** ⟶ `subghz_rollback_detect` |
 | Sub-GHz `chat` verb | firmware §4.2 #2 | ✅ `subghz_chat` | — | — | **researcher claim was stale** |
-| TPMS decode (Schrader/Citroën/Renault/Toyota/Ford) | attacks #1 + apps top-20 #2 | ❌ | — | — | **§2b** ⟶ `subghz_tpms_decode` |
+| TPMS decode (Schrader/Citroën/Renault/Toyota/Ford) | attacks #1 + apps top-20 #2 | ✅ `subghz_tpms_decode` | — | — | shipped v0.360 — Manchester (both conventions/alignments) + CRC-8 disambiguation + 32-bit sensor ID |
 | TPMS synth | attacks + apps | ❌ | — | — | **§2b** ⟶ `subghz_tpms_synth` |
 | Tesla VCSEC TPMS anomaly detect | attacks #15 | ❌ | — | — | **NEW vs audit** ⟶ `tpms_anomaly_detect` |
 | Weather-station 433 MHz decode (LaCrosse/Acurite/Oregon) | apps `weather_station` | ❌ | — | — | **NEW** small gap |

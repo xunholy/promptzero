@@ -371,6 +371,15 @@ var toolLevels = func() map[string]Level {
 		// counter). Data block surfaced as hex, never interpreted.
 		// Companion to the PROFINET / Modbus / OPC UA decoders.
 		"ethercat_decode",
+		// v0.360 (gap-analysis §3 rank 6): subghz_tpms_decode is a
+		// pure offline TPMS Sub-GHz bit-stream decoder — Manchester
+		// line decode (both conventions/alignments) + CRC-8
+		// convention disambiguation + 32-bit sensor-ID extraction.
+		// No RF, no Flipper/Marauder I/O; operator brings a
+		// pre-demodulated bit-stream. Sibling to subghz_pocsag_decode.
+		// Manufacturer pressure/temp scaling NOT decoded (raw bytes
+		// surfaced) — unverifiable without per-model captures.
+		"subghz_tpms_decode",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS

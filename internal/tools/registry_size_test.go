@@ -1755,7 +1755,11 @@ func TestRegistrySize(t *testing.T) {
 	// industrial-Ethernet motion-control fieldbus; EtherCAT header +
 	// datagram chain walk with command / addressing / data / working
 	// counter).
-	const expected = 436
+	//
+	// v0.360.0 added subghz_tpms_decode (TPMS Sub-GHz bit-stream —
+	// Manchester line decode + CRC-8 convention disambiguation +
+	// 32-bit sensor-ID extraction; gap-analysis §3 rank 6).
+	const expected = 437
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
