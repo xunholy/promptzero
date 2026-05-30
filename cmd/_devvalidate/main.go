@@ -35,6 +35,7 @@ func main() {
 	baud := flag.Int("baud", 230400, "serial baud rate")
 	timeout := flag.Duration("timeout", 15*time.Second, "connect timeout")
 	deep := flag.Bool("deep", false, "include passive-radio checks (NFC detect + Sub-GHz RX)")
+	capsCheck := flag.Bool("caps", false, "truth-check detected capabilities against the device's `help` command list")
 	flag.Parse()
 
 	url := fmt.Sprintf("serial://%s?baud=%d", *port, *baud)
@@ -178,6 +179,45 @@ func main() {
 		}
 	}
 
+	// --- capability-detection truth-check -------------------------------
+	// Cross-check what detectCapabilities() concluded against how the real
+	// firmware actually behaves, using `help` (the device's authoritative
+	// command list) as ground truth. A mismatch is a genuine detection bug.
+	if *capsCheck {
+		help, herr := f.Exec("help")
+		if herr != nil || strings.TrimSpace(help) == "" {
+			help, _ = f.Exec("?")
+		}
+		// `help` is a space-padded multi-column grid (≈3 commands/row), so
+		// match the command in ANY column, not just the first token.
+		hasCmd := func(name string) bool {
+			for _, tok := range strings.Fields(help) {
+				if tok == name {
+					return true
+				}
+			}
+			return false
+		}
+		type capCheck struct {
+			flag    string
+			claimed bool
+			cmd     string
+		}
+		for _, c := range []capCheck{
+			{"HasPsCmd", caps.HasPsCmd, "ps"},
+			{"HasClearCmd", caps.HasClearCmd, "clear"},
+			{"HasNFCSubshell", caps.HasNFCSubshell, "nfc"},
+		} {
+			actual := hasCmd(c.cmd)
+			if actual == c.claimed {
+				add("cap:"+c.flag, "PASS", fmt.Sprintf("claimed=%v · help has %q=%v", c.claimed, c.cmd, actual))
+			} else {
+				add("cap:"+c.flag, "FAIL", fmt.Sprintf("MISMATCH claimed=%v but help has %q=%v", c.claimed, c.cmd, actual))
+			}
+		}
+		fmt.Printf("\ndetected capabilities:\n%s\n", dumpCaps(caps))
+	}
+
 	// --- summary --------------------------------------------------------
 	var pass, warn, fail int
 	for _, r := range results {
@@ -201,6 +241,22 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// dumpCaps renders the high-signal capability flags one per line.
+func dumpCaps(c flipper.Capabilities) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "  fork=%s ver=%s commit=%s\n", c.FirmwareFork, c.FirmwareVersion, c.FirmwareCommit)
+	fmt.Fprintf(&b, "  hardware=%s region=%s ver=%d uid=%s\n", c.HardwareName, c.HardwareRegion, c.HardwareVer, c.HardwareUID)
+	fmt.Fprintf(&b, "  power_info_cmd=%q nfc_subshell=%v subghz_needs_dev=%v js=%q\n",
+		c.PowerInfoCmd, c.HasNFCSubshell, c.SubGHzNeedsDev, c.JSEngineKind)
+	fmt.Fprintf(&b, "  ps=%v clear=%v storage_format_ext=%v subghz_chat=%v subghz_encrypt_keeloq=%v\n",
+		c.HasPsCmd, c.HasClearCmd, c.HasStorageFormatExt, c.HasSubGHzChat, c.HasSubGHzEncryptKeeloq)
+	fmt.Fprintf(&b, "  FAPs: ble_spam=%v bruteforcer=%v mousejack=%v seader=%v picopass=%v nfcmagic=%v mfkey=%v nested=%v\n",
+		c.HasBLESpam, c.HasSubGHzBruteforcer, c.HasMouseJackerFAP, c.HasSeaderFAP,
+		c.HasPicopassFAP, c.HasNFCMagicFAP, c.HasMFKeyFAP, c.HasMifareNestedFAP)
+	fmt.Fprintf(&b, "  ir_library=%q marauder=%v", c.UniversalIRLibraryName, c.MarauderDetected)
+	return b.String()
 }
 
 // summarize collapses multi-line device output into a single compact line
