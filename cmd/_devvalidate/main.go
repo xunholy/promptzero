@@ -215,6 +215,42 @@ func main() {
 				add("cap:"+c.flag, "FAIL", fmt.Sprintf("MISMATCH claimed=%v but help has %q=%v", c.claimed, c.cmd, actual))
 			}
 		}
+
+		// Subcommand-gated flags: a bare parent invocation prints a usage
+		// block enumerating its real subcommands — the device's own ground
+		// truth for which verbs exist. hasSub reports whole-word presence.
+		usage := map[string]string{}
+		for _, parent := range []string{"subghz", "storage"} {
+			out, _ := f.Exec(parent)
+			usage[parent] = out
+		}
+		hasSub := func(parent, verb string) bool {
+			for _, tok := range strings.Fields(usage[parent]) {
+				if tok == verb {
+					return true
+				}
+			}
+			return false
+		}
+		type subCheck struct {
+			flag    string
+			claimed bool
+			parent  string
+			verb    string
+		}
+		for _, c := range []subCheck{
+			{"HasSubGHzChat", caps.HasSubGHzChat, "subghz", "chat"},
+			{"HasSubGHzEncryptKeeloq", caps.HasSubGHzEncryptKeeloq, "subghz", "encrypt_keeloq"},
+			{"HasStorageFormatExt", caps.HasStorageFormatExt, "storage", "format_ext"},
+		} {
+			actual := hasSub(c.parent, c.verb)
+			if actual == c.claimed {
+				add("cap:"+c.flag, "PASS", fmt.Sprintf("claimed=%v · %s usage has %q=%v", c.claimed, c.parent, c.verb, actual))
+			} else {
+				add("cap:"+c.flag, "FAIL", fmt.Sprintf("MISMATCH claimed=%v but %s usage has %q=%v", c.claimed, c.parent, c.verb, actual))
+			}
+		}
+
 		fmt.Printf("\ndetected capabilities:\n%s\n", dumpCaps(caps))
 	}
 
