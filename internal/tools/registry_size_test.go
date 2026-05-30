@@ -1768,7 +1768,12 @@ func TestRegistrySize(t *testing.T) {
 	// over the SocketCAN candump grammar — 11/29-bit ID, CAN-FD
 	// FDF/BRS/ESI + DLC↔length table, SAE J1939 PGN decomposition;
 	// gap-analysis §3 rank 17).
-	const expected = 439
+	//
+	// v0.367.0 added tpms_anomaly_detect (defensive blue-team analysis of a
+	// sequence of TPMS frames — excess unique sensor IDs vs wheel count +
+	// CRC-invalid frame flagging, observation-with-interpretation framing;
+	// gap-analysis §3 rank 6). Companion to subghz_tpms_decode.
+	const expected = 440
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

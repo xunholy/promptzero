@@ -398,6 +398,13 @@ var toolLevels = func() map[string]Level {
 		// brings a captured frame. Companion to the live canbus_* Specs;
 		// signal-level (DBC) decode deliberately not attempted.
 		"canbus_fd_decode",
+		// v0.367 (gap-analysis §3 rank 6): tpms_anomaly_detect is a pure
+		// offline, defensive analyser over a sequence of decoded TPMS
+		// frames — flags excess unique sensor IDs vs the vehicle wheel
+		// count and CRC-invalid frames, framed as observations not
+		// verdicts. No SDR/TX; analysis-only. Companion to
+		// subghz_tpms_decode.
+		"tpms_anomaly_detect",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS
