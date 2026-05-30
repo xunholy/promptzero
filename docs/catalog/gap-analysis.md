@@ -116,7 +116,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | Sub-GHz `chat` verb | firmware §4.2 #2 | ✅ `subghz_chat` | — | — | **researcher claim was stale** |
 | TPMS decode (Schrader/Citroën/Renault/Toyota/Ford) | attacks #1 + apps top-20 #2 | ✅ `subghz_tpms_decode` | — | — | shipped v0.360 — Manchester (both conventions/alignments) + CRC-8 disambiguation + 32-bit sensor ID |
 | TPMS synth | attacks + apps | ❌ | — | — | **§2b** ⟶ `subghz_tpms_synth` |
-| Tesla VCSEC TPMS anomaly detect | attacks #15 | ❌ | — | — | **NEW vs audit** ⟶ `tpms_anomaly_detect` |
+| Tesla VCSEC TPMS anomaly detect | attacks #15 | ⚠️ partial | — | — | `tpms_anomaly_detect` shipped v0.367 — Sub-GHz-side sequence analyser (excess unique sensor IDs vs wheel count + CRC-invalid frames, observation-not-verdict framing). The Tesla VCSEC **BLE-side** malformed-cert angle (CVE-2025-2082) is a separate, still-unshipped primitive. |
 | Weather-station 433 MHz decode (LaCrosse/Acurite/Oregon) | apps `weather_station` | ✅ `subghz_weather_decode` | — | — | shipped v0.361 — LaCrosse TX141TH-Bv2 + Acurite 609TXC (fixed-40-bit, checksum-gated); Oregon/5n1 deferred |
 | POCSAG paging decode | apps top-20 #11 | ❌ | — | — | **NEW vs audit** ⟶ `subghz_pocsag_decode` |
 | Sub-GHz playlist / scheduler / remote | apps | ✅ `loader_subghz_playlist` | — | — | — (`subghz_scheduler` low-priority) |
@@ -158,7 +158,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | Primitive | Anchor source | Native | Container | Federation | Gap |
 |---|---|:---:|:---:|:---:|:---:|
 | BadUSB run / validate / DuckyScript corpus | baseline | ✅ `badusb_*`, `bruce_badusb_run` | — | — | — |
-| BadUSB **forensic classifier** (DuckyScript reconstruct from usbmon pcap) | attacks #11 | ❌ | — | — | **NEW vs audit** ⟶ `usb_badusb_classify` |
+| BadUSB **forensic classifier** (DuckyScript reconstruct from usbmon pcap) | attacks #11 | ✅ `usb_badusb_classify` | — | — | shipped — HID Boot-Protocol report decode → DuckyScript; v0.366 added raw Linux usbmon-capture ingestion (auto-strips per-URB framing). USBPcap (Windows) framing still deferred. |
 | USB Rubber Ducky compile-and-drop | hardware §8 + audit §2c #5 | ❌ | — | — | **§2c #5** |
 | O.MG Cable / Plug push | hardware §8 | ❌ | — | — | New gap (low priority) |
 | Mass storage / MTP / MIDI emulate | apps BadUSB | ❌ | — | — | Niche; low priority |
@@ -282,11 +282,11 @@ Items already in the audit (§2 above) are excluded — this list is the
 | 3 | `magspoof_emulate` (mag-stripe T1/T2/T3 wireless coil) | apps top-20 #9 (`zacharyweiss/magspoof_flipper`) | Untouched by audit; complements NFC payment pentest; widely shipped Samy-Kamkar port. | M | new `internal/magstripe/` |
 | 4 | `subghz_pocsag_decode` (paging dragnet) | apps top-20 #11, attacks (rtl_433-adjacent) | Universal European paging still alive; fits `subghz_classify` pipeline. | S | extend `subghz_classify` |
 | 5 | `subghz_weather_decode` (LaCrosse / Acurite / Oregon 433 MHz) | apps `weather_station` | ✅ shipped v0.361 — LaCrosse TX141TH-Bv2 + Acurite 609TXC, checksum-gated; Oregon/5n1 deferred. | S | `internal/weather/` |
-| 6 | `tpms_anomaly_detect` (Tesla VCSEC malformed certs, BLE side) | attacks #15 (CVE-2025-2082) | Defensive primitive on the same wire as `subghz_tpms_decode`; high signal-to-noise. | M | `subghz` + BLE classifier |
+| 6 | `tpms_anomaly_detect` (Tesla VCSEC malformed certs, BLE side) | attacks #15 (CVE-2025-2082) | ⚠️ Sub-GHz-side analyser **shipped v0.367** (excess unique sensor IDs + CRC-invalid frames, on the same wire as `subghz_tpms_decode`). The Tesla VCSEC **BLE-side** malformed-cert primitive (CVE-2025-2082) is still unshipped — needs a BLE classifier. | M | `subghz` + BLE classifier |
 | 7 | `wifi_pmkid_capture` (native `.hc22000` writer + hashcat federate) | attacks #7 (hcxdumptool / hashcat 22000) | Closes the loop on Marauder PMKID capture; pure Go, no new HW. | M | `marauder`, future `pineapple` |
 | 8 | `ble_continuity_classify` (Apple Continuity dissector) | attacks #8 (furiousMAC) + AppleJuice | Pure decode; pairs with audit's §2d `workflow_apple_continuity_audit`. | M | `marauder` BT pcap, `defense.go` |
 | 9 | `iclass_dummy_mac_emulate` (legacy iClass, no MAC keys) | attacks #9 (bettse/Flipper picopass app) | Small change in existing emulation path; opens lab/red-team flows currently PM3-only. | S | `internal/iclass/` |
-| 10 | `usb_badusb_classify` (DuckyScript reconstruct from usbmon pcap) | attacks #11 (agentzex Wireshark dissector) | Sole forensic-side primitive in this list; defensive. | M | new `internal/usbforensic/` |
+| 10 | `usb_badusb_classify` (DuckyScript reconstruct from usbmon pcap) | attacks #11 (agentzex Wireshark dissector) | ✅ **shipped** — HID Boot-Protocol report → DuckyScript decode (`internal/usbhid`); v0.366 added raw Linux usbmon-capture ingestion. USBPcap (Windows) framing deferred. | M | `internal/usbhid` |
 | 11 | `swd_dump` + `avr_isp_read` (chip-dump Specs) | apps top-20 #16 | **Blocks audit §2d `workflow_glitch_chip_dump`** — without these the workflow has no data path. | M | new `internal/swd/` or extend `buspirate` |
 | 12 | `gpio_logic_capture` (8-channel logic analyzer / oscilloscope) | apps top-20 #17 | Pairs with hw_recon workflows; only device-internal scope primitive. | M | extend `buspirate` GPIO sample loop |
 | 13 | `nfc_apdu_script_run` (sequence-file APDU runner) | apps top-20 #14 | Audit named `nfc_apdu_run` (single-frame); script-file variant is a separate Spec. | S | extend `nfc.go` |
