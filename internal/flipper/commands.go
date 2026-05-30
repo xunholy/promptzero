@@ -2475,7 +2475,15 @@ func (f *Flipper) StorageCopy(src, dst string) (string, error) {
 	if f.IsBLE() {
 		return "", usbOnlyError("storage_copy")
 	}
-	return f.Exec(fmt.Sprintf("storage copy %s %s", sanitizeArg(src), sanitizeArg(dst)))
+	out, err := f.Exec(fmt.Sprintf("storage copy %s %s", sanitizeArg(src), sanitizeArg(dst)))
+	if err != nil {
+		return out, err
+	}
+	// `storage copy` is silent on success (verified momentum/mntm-dev), so a
+	// non-empty banner ("Storage error: file/dir not exist") is a failure the
+	// firmware returns with no CLI error — surface it. Safe here precisely
+	// because success carries no echoed path/content to false-positive on.
+	return out, detectFileLoadError(out)
 }
 
 // StorageRename renames/moves a file or directory on the SD card.
@@ -2485,7 +2493,13 @@ func (f *Flipper) StorageRename(src, dst string) (string, error) {
 		"storage_rename",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("storage rename %s %s", sanitizeArg(src), sanitizeArg(dst)))
+			out, err := f.Exec(fmt.Sprintf("storage rename %s %s", sanitizeArg(src), sanitizeArg(dst)))
+			if err != nil {
+				return out, err
+			}
+			// Silent on success; a non-empty "Storage error" banner is a
+			// failure with no CLI error. Safe — success echoes nothing.
+			return out, detectFileLoadError(out)
 		},
 		func() (string, error) { return f.storageRenameViaRPC(context.Background(), src, dst) },
 	)
