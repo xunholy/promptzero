@@ -198,7 +198,34 @@ func (f *Flipper) withSuccessBuzz(fn func() (string, error)) (string, error) {
 // SubGHzTx transmits a Sub-GHz signal from a saved file.
 // CLI: subghz tx_from_file <file_path>
 func (f *Flipper) SubGHzTx(filePath string) (string, error) {
-	return f.Exec(fmt.Sprintf("subghz tx_from_file %s", sanitizeArg(filePath)))
+	out, err := f.Exec(fmt.Sprintf("subghz tx_from_file %s", sanitizeArg(filePath)))
+	if err != nil {
+		return out, err
+	}
+	// A missing/unreadable .sub file is reported on stdout with NO CLI
+	// error, so a failed transmit would otherwise read as success — see
+	// detectSubGHzFileError. Critical here because this command transmits.
+	return out, detectSubGHzFileError(out)
+}
+
+// detectSubGHzFileError surfaces the firmware's file-load error banner as a
+// real Go error. Verified momentum/mntm-dev (2026-05-31): a missing file
+// makes `subghz tx_from_file` / `subghz decode_raw` print
+// "subghz <cmd>: Error open file <path>" to stdout while Exec returns
+// err=nil — so a caller (or the LLM driving it) would read a failed
+// transmit/decode as a success. The markers are specific to the firmware's
+// storage-failure path and do not appear in successful output.
+func detectSubGHzFileError(out string) error {
+	for _, marker := range []string{"Error open file", "Storage error"} {
+		if idx := strings.Index(out, marker); idx >= 0 {
+			line := out[idx:]
+			if nl := strings.IndexByte(line, '\n'); nl >= 0 {
+				line = line[:nl]
+			}
+			return fmt.Errorf("firmware could not load the file: %s", strings.TrimSpace(line))
+		}
+	}
+	return nil
 }
 
 // SubGHzRx receives Sub-GHz signals on the given frequency (Hz). Xtreme
@@ -289,7 +316,11 @@ func (f *Flipper) streamLines(ctx context.Context, cmd string, duration time.Dur
 // SubGHzDecode decodes a previously captured raw Sub-GHz file.
 // CLI: subghz decode_raw <file_path>
 func (f *Flipper) SubGHzDecode(filePath string) (string, error) {
-	return f.Exec(fmt.Sprintf("subghz decode_raw %s", sanitizeArg(filePath)))
+	out, err := f.Exec(fmt.Sprintf("subghz decode_raw %s", sanitizeArg(filePath)))
+	if err != nil {
+		return out, err
+	}
+	return out, detectSubGHzFileError(out)
 }
 
 // SubGHzTxKey transmits a raw Sub-GHz key. Xtreme firmware requires a
