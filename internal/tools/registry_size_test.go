@@ -1759,7 +1759,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.360.0 added subghz_tpms_decode (TPMS Sub-GHz bit-stream —
 	// Manchester line decode + CRC-8 convention disambiguation +
 	// 32-bit sensor-ID extraction; gap-analysis §3 rank 6).
-	const expected = 437
+	//
+	// v0.361.0 added subghz_weather_decode (433 MHz weather-station —
+	// LaCrosse TX141TH-Bv2 + Acurite 609TXC fixed-40-bit families with
+	// checksum-gated interpretation; gap-analysis §3 rank 5).
+	const expected = 438
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

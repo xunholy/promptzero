@@ -117,7 +117,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | TPMS decode (Schrader/Citroën/Renault/Toyota/Ford) | attacks #1 + apps top-20 #2 | ✅ `subghz_tpms_decode` | — | — | shipped v0.360 — Manchester (both conventions/alignments) + CRC-8 disambiguation + 32-bit sensor ID |
 | TPMS synth | attacks + apps | ❌ | — | — | **§2b** ⟶ `subghz_tpms_synth` |
 | Tesla VCSEC TPMS anomaly detect | attacks #15 | ❌ | — | — | **NEW vs audit** ⟶ `tpms_anomaly_detect` |
-| Weather-station 433 MHz decode (LaCrosse/Acurite/Oregon) | apps `weather_station` | ❌ | — | — | **NEW** small gap |
+| Weather-station 433 MHz decode (LaCrosse/Acurite/Oregon) | apps `weather_station` | ✅ `subghz_weather_decode` | — | — | shipped v0.361 — LaCrosse TX141TH-Bv2 + Acurite 609TXC (fixed-40-bit, checksum-gated); Oregon/5n1 deferred |
 | POCSAG paging decode | apps top-20 #11 | ❌ | — | — | **NEW vs audit** ⟶ `subghz_pocsag_decode` |
 | Sub-GHz playlist / scheduler / remote | apps | ✅ `loader_subghz_playlist` | — | — | — (`subghz_scheduler` low-priority) |
 | Spectrum analyzer / freq sweep | baseline + apps | ✅ `subghz_freq_sweep`, `loader_spectrum_analyzer` | — | — | — |
@@ -281,7 +281,7 @@ Items already in the audit (§2 above) are excluded — this list is the
 | 2 | `gpio_sentry_safe_open` (Sentry / Master factory backdoor) | apps top-20 #10 (`H4ckd4ddy/flipperzero-sentry-safe-plugin`) | Real physical-pentest primitive; tiny GPIO/UART sequence. | S | new `internal/safe/` or `flipper.go` GPIO path |
 | 3 | `magspoof_emulate` (mag-stripe T1/T2/T3 wireless coil) | apps top-20 #9 (`zacharyweiss/magspoof_flipper`) | Untouched by audit; complements NFC payment pentest; widely shipped Samy-Kamkar port. | M | new `internal/magstripe/` |
 | 4 | `subghz_pocsag_decode` (paging dragnet) | apps top-20 #11, attacks (rtl_433-adjacent) | Universal European paging still alive; fits `subghz_classify` pipeline. | S | extend `subghz_classify` |
-| 5 | `subghz_weather_decode` (LaCrosse / Acurite / Oregon 433 MHz) | apps `weather_station` | Pairs trivially with TPMS code path; ~150 LoC each per protocol. | S | extend `subghz_classify` |
+| 5 | `subghz_weather_decode` (LaCrosse / Acurite / Oregon 433 MHz) | apps `weather_station` | ✅ shipped v0.361 — LaCrosse TX141TH-Bv2 + Acurite 609TXC, checksum-gated; Oregon/5n1 deferred. | S | `internal/weather/` |
 | 6 | `tpms_anomaly_detect` (Tesla VCSEC malformed certs, BLE side) | attacks #15 (CVE-2025-2082) | Defensive primitive on the same wire as `subghz_tpms_decode`; high signal-to-noise. | M | `subghz` + BLE classifier |
 | 7 | `wifi_pmkid_capture` (native `.hc22000` writer + hashcat federate) | attacks #7 (hcxdumptool / hashcat 22000) | Closes the loop on Marauder PMKID capture; pure Go, no new HW. | M | `marauder`, future `pineapple` |
 | 8 | `ble_continuity_classify` (Apple Continuity dissector) | attacks #8 (furiousMAC) + AppleJuice | Pure decode; pairs with audit's §2d `workflow_apple_continuity_audit`. | M | `marauder` BT pcap, `defense.go` |

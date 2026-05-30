@@ -380,6 +380,16 @@ var toolLevels = func() map[string]Level {
 		// Manufacturer pressure/temp scaling NOT decoded (raw bytes
 		// surfaced) — unverifiable without per-model captures.
 		"subghz_tpms_decode",
+		// v0.361 (gap-analysis §3 rank 5): subghz_weather_decode is a
+		// pure offline 433 MHz weather-station decoder for the
+		// fixed-40-bit LaCrosse TX141TH-Bv2 + Acurite 609TXC families.
+		// Checksum-gated interpretation — a reading is reported only
+		// for a format whose checksum (8-bit sum / lfsr_digest8_reflect)
+		// validates, disambiguating the family/scaling exactly as the
+		// CRC-8 disambiguates the Manchester convention in the TPMS
+		// decoder. No RF; operator brings a pre-demodulated frame.
+		// Sibling to subghz_tpms_decode / subghz_pocsag_decode.
+		"subghz_weather_decode",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS
