@@ -251,6 +251,21 @@ func main() {
 			}
 		}
 
+		// NFCFlaggedArgs is functional (it gates real NFC subshell syntax in
+		// commands.go), so verify it against the subshell's own `raw` usage:
+		// the flag-based parser advertises `--data` / `--protocol`, the
+		// positional one does not. Sending `raw` with no args returns the
+		// usage block (and a benign "required keys missing" error).
+		if caps.HasNFCSubshell {
+			rawUsage, _ := f.NFCSubcommand("raw", 4*time.Second)
+			flagged := strings.Contains(rawUsage, "--data")
+			if flagged == caps.NFCFlaggedArgs {
+				add("cap:NFCFlaggedArgs", "PASS", fmt.Sprintf("claimed=%v · nfc raw usage flag-based=%v", caps.NFCFlaggedArgs, flagged))
+			} else {
+				add("cap:NFCFlaggedArgs", "FAIL", fmt.Sprintf("MISMATCH claimed=%v but nfc raw usage flag-based=%v", caps.NFCFlaggedArgs, flagged))
+			}
+		}
+
 		fmt.Printf("\ndetected capabilities:\n%s\n", dumpCaps(caps))
 	}
 
