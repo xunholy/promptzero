@@ -216,11 +216,14 @@ func (f *Flipper) SubGHzTx(filePath string) (string, error) {
 //   - `subghz tx_from_file` / `decode_raw` → "...: Error open file <path>"
 //   - `ir decode`                          → "Failed to open file for reading: ..."
 //   - `rfid raw_analyze`                   → "Failed to open file"
+//   - `rfid raw_emulate`                   → "File not found: <path>"
 //
 // The markers are specific to the firmware's storage-failure path and do
-// not appear in successful output.
+// not appear in successful output (decoded fields, sending/emulating
+// banners). NOT used for `storage read`, whose successful output is file
+// content that could itself legitimately contain these words.
 func detectFileLoadError(out string) error {
-	for _, marker := range []string{"Error open file", "Failed to open file", "Storage error"} {
+	for _, marker := range []string{"Error open file", "Failed to open file", "File not found", "Storage error"} {
 		if idx := strings.Index(out, marker); idx >= 0 {
 			line := out[idx:]
 			if nl := strings.IndexByte(line, '\n'); nl >= 0 {
@@ -2375,7 +2378,14 @@ func (f *Flipper) RFIDRawEmulate(filePath string, duration time.Duration) (strin
 
 // RFIDRawEmulateCtx is the context-aware variant of RFIDRawEmulate.
 func (f *Flipper) RFIDRawEmulateCtx(ctx context.Context, filePath string, duration time.Duration) (string, error) {
-	return f.ExecLongCtx(ctx, fmt.Sprintf("rfid raw_emulate %s", sanitizeArg(filePath)), duration)
+	out, err := f.ExecLongCtx(ctx, fmt.Sprintf("rfid raw_emulate %s", sanitizeArg(filePath)), duration)
+	if err != nil {
+		return out, err
+	}
+	// A missing/unreadable raw-RFID file is reported on stdout with NO CLI
+	// error ("File not found: <path>"), so a failed EMULATE would otherwise
+	// read as success — see detectFileLoadError. Critical: this transmits.
+	return out, detectFileLoadError(out)
 }
 
 // --- OneWire / iButton helpers ---
