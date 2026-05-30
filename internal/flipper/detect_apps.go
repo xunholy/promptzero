@@ -2,14 +2,24 @@ package flipper
 
 import "strings"
 
-// DetectApps queries the connected Flipper's FAP (Flipper App Package) list via
-// `loader list` and updates the capability flags for app-presence fields
-// (HasBLESpam, HasSubGHzBruteforcer, HasMouseJackerFAP, etc.).
+// DetectApps updates the FAP (Flipper App Package) capability flags
+// (HasBLESpam, HasSubGHzBruteforcer, HasMouseJackerFAP, etc.) by probing the
+// connected device two ways:
 //
-// This is a best-effort probe: if `loader list` fails or times out, the FAP
-// flags retain their fork-typical static defaults from detectCapabilities (set
-// conservatively for Unleashed and optimistically for RogueMaster per
-// firmware-matrix.md §6 Q8). A failed probe never propagates an error — the
+//  1. `loader list` — catches apps that are in-tree / menu-registered on the
+//     running fork (e.g. MFKey on Unleashed).
+//  2. A scan of /ext/apps/<category>/ for the backing `.fap` files — catches
+//     EXTERNAL FAPs, which never appear in `loader list` (verified on
+//     momentum/mntm-dev 2026-05-30: `loader list` returns only the built-in
+//     menu apps, while the real apps live under /ext/apps/Bluetooth,
+//     /ext/apps/NFC, /ext/apps/Sub-GHz, …). Without this scan the FAP flags
+//     are never actually confirmed against what is installed.
+//
+// Both passes are ADDITIVE: a flag is only ever set true, never cleared. An
+// incomplete category/filename map therefore degrades to the fork-typical
+// static defaults from detectCapabilities (conservative for Unleashed,
+// optimistic for RogueMaster per firmware-matrix.md §6 Q8) and can never
+// produce a false negative. A failed probe never propagates an error — the
 // device_info parse is the authoritative signal for fork/version detection.
 //
 // Integration note: DetectApps should be called from DetectCapabilities
@@ -66,5 +76,49 @@ func (f *Flipper) DetectApps() {
 		}
 	}
 
+	// Pass 2: scan /ext/apps/<category>/ for the backing .fap files. External
+	// FAPs never surface in `loader list`, so this is the only signal that
+	// confirms them. Additive only — presence flips a flag true; absence
+	// leaves the static default untouched (an incomplete map can't regress).
+	fapToFlag := map[string]*bool{
+		"ble_spam.fap":           &caps.HasBLESpam,
+		"seader.fap":             &caps.HasSeaderFAP,
+		"picopass.fap":           &caps.HasPicopassFAP,
+		"nfc_magic.fap":          &caps.HasNFCMagicFAP,
+		"mfkey.fap":              &caps.HasMFKeyFAP,
+		"mfkey32.fap":            &caps.HasMFKeyFAP,
+		"nested.fap":             &caps.HasMifareNestedFAP,
+		"mfkey_nested.fap":       &caps.HasMifareNestedFAP,
+		"subghz_bruteforcer.fap": &caps.HasSubGHzBruteforcer,
+		"subbrute.fap":           &caps.HasSubGHzBruteforcer,
+		"nrf24_mousejacker.fap":  &caps.HasMouseJackerFAP,
+		"mousejacker.fap":        &caps.HasMouseJackerFAP,
+	}
+	for _, cat := range []string{"Bluetooth", "NFC", "Sub-GHz", "GPIO", "GPIO/NRF24"} {
+		listing, err := f.StorageList("/ext/apps/" + cat)
+		if err != nil {
+			continue // category absent on this fork/SD — fall back to defaults
+		}
+		for _, fap := range parseFapNames(listing) {
+			if flag, ok := fapToFlag[fap]; ok {
+				*flag = true
+			}
+		}
+	}
+
 	f.caps.Store(&caps)
+}
+
+// parseFapNames extracts the .fap filenames from a `storage list` listing.
+// Each file entry is "[F] <name> <size>b" (leading whitespace tolerated);
+// directory entries ("[D] <name>") are skipped.
+func parseFapNames(listing string) []string {
+	var out []string
+	for _, line := range strings.Split(listing, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) >= 2 && fields[0] == "[F]" && strings.HasSuffix(fields[1], ".fap") {
+			out = append(out, fields[1])
+		}
+	}
+	return out
 }
