@@ -63,14 +63,17 @@ var usbHIDClassifySpec = Spec{
 		"modifier + key combinations → DuckyScript modifier keywords (CTRL, " +
 		"SHIFT, ALT, GUI, CTRL-SHIFT, CTRL-ALT, ALT-SHIFT, GUI-SHIFT) followed " +
 		"by the bare key.\n\n" +
-		"Pure offline parser — operators paste the concatenated 8-byte HID " +
-		"Keyboard Boot Protocol reports (extracted from a usbmon pcap or " +
-		"USBPcap capture by stripping the per-URB headers) and get back the " +
-		"per-report decode, key-down event sequence, reconstructed text, and " +
-		"DuckyScript-style transcript.\n\n" +
-		"Out of scope (deferred): usbmon framing (operators must extract the " +
-		"8-byte HID reports from a usbmon pcap (Linux) or USBPcap (Windows) " +
-		"by stripping the per-URB headers); USB enumeration descriptors " +
+		"Pure offline parser. Two input modes:\n" +
+		" - `usbmon`: paste a raw Linux usbmon text capture " +
+		"(`cat /sys/kernel/debug/usb/usbmon/<N>u`, or the usbmon lines " +
+		"Wireshark shows) and the framing is stripped for you — every 8-byte " +
+		"Interrupt-IN keyboard callback is extracted in order and decoded.\n" +
+		" - `hex`: paste the already-extracted concatenated 8-byte HID " +
+		"Keyboard Boot Protocol reports directly.\n" +
+		"Either way you get back the per-report decode, key-down event " +
+		"sequence, reconstructed text, and DuckyScript-style transcript.\n\n" +
+		"Out of scope (deferred): USBPcap (Windows) framing (use the Linux " +
+		"usbmon text mode, or pre-extract to `hex`); USB enumeration descriptors " +
 		"(Device / Configuration / Interface / HID Report descriptors that " +
 		"*declare* the report layout — vendor ID, product ID, report-ID field, " +
 		"non-Boot-Protocol report shapes — are out of scope); composite HID " +
@@ -98,11 +101,11 @@ var usbHIDClassifySpec = Spec{
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"hex":{"type":"string","description":"Concatenated 8-byte USB HID Keyboard Boot Protocol reports (extracted from a usbmon pcap by stripping the per-URB headers). Must be a multiple of 8 bytes. Separators (':' '-' '_' whitespace) tolerated. '0x' prefix tolerated."}
+			"hex":{"type":"string","description":"Concatenated 8-byte USB HID Keyboard Boot Protocol reports (already extracted from the capture). Must be a multiple of 8 bytes. Separators (':' '-' '_' whitespace) tolerated. '0x' prefix tolerated. Mutually exclusive with 'usbmon'."},
+			"usbmon":{"type":"string","description":"A raw Linux usbmon text capture (cat /sys/kernel/debug/usb/usbmon/<N>u). The 8-byte Interrupt-IN keyboard reports are extracted from the callback lines automatically. Mutually exclusive with 'hex'."}
 		},
-		"required":["hex"]
+		"oneOf":[{"required":["hex"]},{"required":["usbmon"]}]
 	}`),
-	Required:  []string{"hex"},
 	Risk:      risk.Low,
 	Group:     GroupHostTools,
 	AgentOnly: false,
@@ -110,14 +113,32 @@ var usbHIDClassifySpec = Spec{
 }
 
 func usbHIDClassifyHandler(_ context.Context, _ *Deps, p map[string]any) (string, error) {
-	raw := str(p, "hex")
-	if strings.TrimSpace(raw) == "" {
-		return "", fmt.Errorf("usb_badusb_classify: 'hex' is required")
+	hexRaw := strings.TrimSpace(str(p, "hex"))
+	usbmonRaw := strings.TrimSpace(str(p, "usbmon"))
+	if hexRaw == "" && usbmonRaw == "" {
+		return "", fmt.Errorf("usb_badusb_classify: one of 'hex' or 'usbmon' is required")
 	}
-	res, err := usbhid.Decode(raw)
+	if hexRaw != "" && usbmonRaw != "" {
+		return "", fmt.Errorf("usb_badusb_classify: provide 'hex' OR 'usbmon', not both")
+	}
+
+	reportHex := hexRaw
+	extracted := 0
+	if usbmonRaw != "" {
+		var err error
+		reportHex, extracted, err = usbhid.ExtractUsbmonReports(usbmonRaw)
+		if err != nil {
+			return "", fmt.Errorf("usb_badusb_classify: %w", err)
+		}
+	}
+
+	res, err := usbhid.Decode(reportHex)
 	if err != nil {
 		return "", fmt.Errorf("usb_badusb_classify: %w", err)
 	}
 	out, _ := json.MarshalIndent(res, "", "  ")
+	if extracted > 0 {
+		return fmt.Sprintf("// extracted %d HID keyboard report(s) from usbmon capture\n%s", extracted, string(out)), nil
+	}
 	return string(out), nil
 }
