@@ -293,7 +293,7 @@ Items already in the audit (§2 above) are excluded — this list is the
 | 14 | `wifi_peap_downgrade_audit` (CVE-2023-52160) | attacks #13 | Adjacent to SSID Confusion; same hostapd backend; net-new attack-class. | M | future `pineapple` |
 | 15 | `wifi_fragattacks_audit` (Vanhoef WiSec'25 follow-up) | attacks #14 | Defensive coverage of FragAttacks remediation status. | L | future `pineapple`, container-bridge |
 | 16 | `subghz_jammer_detect` (RSSI floor + dwell heuristic) | apps `subghz_jammer_detect` | Pairs with `subghz_rollback_detect` (§2a #3) — natural sibling; same signal path. | S | extend `subghz` |
-| 17 | `canbus_fd_sniff` (CAN-FD framing) | apps top-20 #18 | Current-gen automotive (Tesla, EVs); existing `canbus_*` only does classic 2.0. | M | extend `canbus` |
+| 17 | `canbus_fd_sniff` (CAN-FD framing) | apps top-20 #18 | ✅ offline-decode sibling `canbus_fd_decode` shipped v0.362 — candump grammar + CAN-FD DLC↔length + SAE J1939 PGN; live sniff still TODO. | M | extend `canbus` |
 | 18 | `ble_proximity_audit` (long-running passive Find-My / SmartThings flagging) | attacks BLE (Liu et al. USENIX'25) | Defensive complement to `ble_findmy_emulate`; needs Sniffle/CatSniffer. | M | new `internal/sniffle/` |
 | 19 | `rfid_pacs_decode` (HID Prox / EM4xxx PACS payload decode) | apps top-20 #15 + attacks #6 | LF baseline for reader-cloning workflows; pairs with Wiegand. | S | `rfid.go` |
 | 20 | `nfc_iso15693_writer` (HF tag-it / ICODE write) | firmware §4.2 #4 + apps `iso15693_nfc_writer` | Net-new write surface added by Momentum 2025-2026. | S | `nfc.go` |

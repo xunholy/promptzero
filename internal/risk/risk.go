@@ -390,6 +390,14 @@ var toolLevels = func() map[string]Level {
 		// decoder. No RF; operator brings a pre-demodulated frame.
 		// Sibling to subghz_tpms_decode / subghz_pocsag_decode.
 		"subghz_weather_decode",
+		// v0.362 (gap-analysis §3 rank 17): canbus_fd_decode is a pure
+		// offline CAN / CAN-FD frame decoder over the SocketCAN candump
+		// grammar — identifier (11/29-bit), CAN-FD FDF/BRS/ESI flags +
+		// ISO 11898-1:2015 DLC↔length table, and SAE J1939-21 PGN
+		// decomposition of 29-bit IDs. No bus/MCP2515 I/O; operator
+		// brings a captured frame. Companion to the live canbus_* Specs;
+		// signal-level (DBC) decode deliberately not attempted.
+		"canbus_fd_decode",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS
