@@ -1251,7 +1251,35 @@ func (f *Flipper) BadUSBRun(scriptPath string) (string, error) {
 	if strings.TrimSpace(scriptPath) == "" {
 		return "", fmt.Errorf("invalid BadUSB script path: empty (expected e.g. /ext/badusb/payload.txt)")
 	}
-	return f.ExecLong(fmt.Sprintf("loader open \"Bad USB\" %s", sanitizeArg(scriptPath)), 2*time.Minute)
+	out, err := f.ExecLong(fmt.Sprintf("loader open \"Bad USB\" %s", sanitizeArg(scriptPath)), 2*time.Minute)
+	if err != nil {
+		return out, err
+	}
+	return out, detectLoaderOpenError(out)
+}
+
+// detectLoaderOpenError surfaces a `loader open` failure as a Go error.
+// loader open is SILENT on success, so a non-empty stdout is a failure
+// banner the firmware returns with NO CLI error — verified momentum/mntm-dev
+// (2026-05-31): a bad app name yields 'Application "<name>" not found',
+// which LoaderOpen/BadUSBRun would otherwise read as a launched app/payload.
+// Keys off failure markers (so a fork that prints a benign launch banner is
+// not misread); also catches a missing script-file argument.
+func detectLoaderOpenError(out string) error {
+	t := strings.TrimSpace(out)
+	if t == "" {
+		return nil
+	}
+	for _, marker := range []string{"not found", "Error open file", "Failed to open file", "Storage error", "Invalid"} {
+		if strings.Contains(t, marker) {
+			line := t
+			if nl := strings.IndexByte(line, '\n'); nl >= 0 {
+				line = line[:nl]
+			}
+			return fmt.Errorf("loader open failed: %s", strings.TrimSpace(line))
+		}
+	}
+	return nil
 }
 
 // --- Loader ---
@@ -1284,7 +1312,11 @@ func (f *Flipper) LoaderOpen(appName string, args string) (string, error) {
 			if args != "" {
 				cmd += " " + sanitizeArg(args)
 			}
-			return f.Exec(cmd)
+			out, err := f.Exec(cmd)
+			if err != nil {
+				return out, err
+			}
+			return out, detectLoaderOpenError(out)
 		},
 		func() (string, error) { return f.loaderOpenViaRPC(context.Background(), appName, args) },
 	)
