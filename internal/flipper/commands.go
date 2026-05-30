@@ -43,9 +43,24 @@ func subGHzFreqAllowed(freq uint32) bool {
 // validateSubGHzTxKey checks freq/te/repeat fall in firmware-permitted
 // ranges. te=0 means no signal; repeat<=0 means no transmission.
 // Frequency out-of-band fails fast with a band-list diagnostic.
-func validateSubGHzTxKey(freq uint32, te uint32, repeat int) error {
+// validateSubGHzFreq returns a band-list error if freq is outside the
+// CC1101 hardware bands. Shared by the receive/chat paths (the transmit
+// path uses validateSubGHzTxKey, which also checks te/repeat). Without it
+// an out-of-band frequency comes back as a firmware error banner on stdout
+// with NO CLI error — verified momentum/mntm-dev 2026-05-31: a 999 MHz
+// `subghz rx` returns "Frequency must be in ...range, not 999000000" as
+// successful-looking output. Validating up front turns that into a real
+// Go error and avoids the slow round-trip.
+func validateSubGHzFreq(freq uint32) error {
 	if !subGHzFreqAllowed(freq) {
 		return fmt.Errorf("invalid Sub-GHz frequency %d Hz (allowed bands: 300-348 MHz, 387-464 MHz, 779-928 MHz)", freq)
+	}
+	return nil
+}
+
+func validateSubGHzTxKey(freq uint32, te uint32, repeat int) error {
+	if err := validateSubGHzFreq(freq); err != nil {
+		return err
 	}
 	if te == 0 {
 		return fmt.Errorf("invalid Sub-GHz te=0 (timing element must be > 0 µs; typical 100-50000)")
@@ -204,6 +219,9 @@ func (f *Flipper) SubGHzRx(frequency uint32, duration time.Duration) (string, er
 // aborts the in-flight capture without waiting for the duration
 // timer.
 func (f *Flipper) SubGHzRxCtx(ctx context.Context, frequency uint32, duration time.Duration) (string, error) {
+	if err := validateSubGHzFreq(frequency); err != nil {
+		return "", err
+	}
 	cmd := fmt.Sprintf("subghz rx %d", frequency)
 	if f.Capabilities().SubGHzNeedsDev {
 		cmd += " 0"
@@ -219,6 +237,9 @@ func (f *Flipper) SubGHzRxCtx(ctx context.Context, frequency uint32, duration ti
 // output is returned so callers can feed it to ParseSubGHzReceive on
 // the streaming path the same way they would on the blocking path.
 func (f *Flipper) SubGHzRxStream(ctx context.Context, frequency uint32, duration time.Duration, onLine func(line string) (stop bool)) (string, error) {
+	if err := validateSubGHzFreq(frequency); err != nil {
+		return "", err
+	}
 	cmd := fmt.Sprintf("subghz rx %d", frequency)
 	if f.Capabilities().SubGHzNeedsDev {
 		cmd += " 0"
@@ -2055,6 +2076,11 @@ func (f *Flipper) SubGHzRxRawCtx(ctx context.Context, frequency uint32, duration
 	if caps.SubGHzRxRawHasFilePath {
 		return "", fmt.Errorf("subghz rx_raw on %s firmware requires a file-path argument; use SubGHzRx for capture or StorageWrite to build a .sub file", caps.FriendlyFork())
 	}
+	if frequency > 0 {
+		if err := validateSubGHzFreq(frequency); err != nil {
+			return "", err
+		}
+	}
 	cmd := "subghz rx_raw"
 	if frequency > 0 {
 		cmd += fmt.Sprintf(" %d", frequency)
@@ -2077,6 +2103,11 @@ func (f *Flipper) SubGHzRxRawStream(ctx context.Context, frequency uint32, durat
 	if caps.SubGHzRxRawHasFilePath {
 		return "", fmt.Errorf("subghz rx_raw on %s firmware requires a file-path argument; use SubGHzRx for capture or StorageWrite to build a .sub file", caps.FriendlyFork())
 	}
+	if frequency > 0 {
+		if err := validateSubGHzFreq(frequency); err != nil {
+			return "", err
+		}
+	}
 	cmd := "subghz rx_raw"
 	if frequency > 0 {
 		cmd += fmt.Sprintf(" %d", frequency)
@@ -2097,6 +2128,9 @@ func (f *Flipper) SubGHzChat(frequency uint32, duration time.Duration) (string, 
 
 // SubGHzChatCtx is the context-aware variant of SubGHzChat.
 func (f *Flipper) SubGHzChatCtx(ctx context.Context, frequency uint32, duration time.Duration) (string, error) {
+	if err := validateSubGHzFreq(frequency); err != nil {
+		return "", err
+	}
 	cmd := fmt.Sprintf("subghz chat %d", frequency)
 	if f.Capabilities().SubGHzNeedsDev {
 		cmd += " 0"
