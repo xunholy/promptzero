@@ -34,6 +34,7 @@ func main() {
 	port := flag.String("port", "/dev/ttyACM0", "Flipper serial port")
 	baud := flag.Int("baud", 230400, "serial baud rate")
 	timeout := flag.Duration("timeout", 15*time.Second, "connect timeout")
+	deep := flag.Bool("deep", false, "include passive-radio checks (NFC detect + Sub-GHz RX)")
 	flag.Parse()
 
 	url := fmt.Sprintf("serial://%s?baud=%d", *port, *baud)
@@ -148,6 +149,35 @@ func main() {
 		}
 	}
 
+	// --- loader info ----------------------------------------------------
+	if li, err := f.LoaderInfo(); err != nil {
+		add("loader_info", "WARN", err.Error())
+	} else {
+		add("loader_info", "PASS", strings.TrimSpace(firstLine(li)))
+	}
+
+	if !*deep {
+		fmt.Println("\n(skipping passive-radio checks; pass -deep to include NFC detect + Sub-GHz RX)")
+	} else {
+		// --- passive NFC detect (no card expected) ----------------------
+		// Receive-only: validates the NFCDetect parser path. With no card
+		// present it returns a clean "no card" after the timeout.
+		if out, err := f.NFCDetect(3 * time.Second); err != nil {
+			add("nfc_detect (passive)", "WARN", err.Error())
+		} else {
+			add("nfc_detect (passive)", "PASS", summarize(out))
+		}
+
+		// --- passive Sub-GHz RX on 433.92 MHz ---------------------------
+		// Receive-only sniff; validates SubGHzReceive parsing against real
+		// device output. No transmit.
+		if out, err := f.SubGHzRx(433920000, 3*time.Second); err != nil {
+			add("subghz_rx 433.92 (passive)", "WARN", err.Error())
+		} else {
+			add("subghz_rx 433.92 (passive)", "PASS", summarize(out))
+		}
+	}
+
 	// --- summary --------------------------------------------------------
 	var pass, warn, fail int
 	for _, r := range results {
@@ -171,4 +201,20 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// summarize collapses multi-line device output into a single compact line
+// (line count + first non-empty line) for one-line check reporting.
+func summarize(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "(empty response)"
+	}
+	lines := strings.Split(s, "\n")
+	for _, ln := range lines {
+		if t := strings.TrimSpace(ln); t != "" {
+			return fmt.Sprintf("%d lines; %q", len(lines), t)
+		}
+	}
+	return fmt.Sprintf("%d lines", len(lines))
 }
