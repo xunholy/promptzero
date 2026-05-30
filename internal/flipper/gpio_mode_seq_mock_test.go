@@ -77,4 +77,20 @@ func TestGPIO_CLISetsModeBeforeReadAndSet(t *testing.T) {
 	if mi > si {
 		t.Errorf("GPIOSet issued mode after set (mode@%d set@%d); want output mode first; lines=%v", mi, si, sl)
 	}
+
+	// --- set with a non-0/1 value: the input-mode-prep branch (matches the
+	// RPC INPUT path) — issues `gpio mode PC3 0` and NO `gpio set`. ---
+	before = len(m.Lines())
+	if _, err := flip.GPIOSet("PC3", 2); err != nil {
+		t.Fatalf("GPIOSet(input-prep): %v", err)
+	}
+	pl := gpioLinesAfter(m, before)
+	if indexOf(pl, "gpio mode PC3 0") < 0 {
+		t.Errorf("GPIOSet(PC3,2) lines = %v; want 'gpio mode PC3 0' (input-mode prep)", pl)
+	}
+	for _, l := range pl {
+		if strings.HasPrefix(l, "gpio set ") {
+			t.Errorf("GPIOSet(PC3,2) should not drive a `gpio set` (input-prep only); lines=%v", pl)
+		}
+	}
 }
