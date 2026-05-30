@@ -208,6 +208,15 @@ jobs:
         run: |
           version="${TAG_NAME#v}"
           notes_file="dist/release-notes.md"
+
+          # actions/checkout resolves a tag-push trigger to its commit and
+          # writes a LIGHTWEIGHT refs/tags/<tag> pointing at that commit, so
+          # the %(contents:*) read below would return the *commit* message
+          # instead of the annotated tag body (this silently shipped commit
+          # subjects as release notes). Force-fetch the real annotated tag
+          # object so %(contents:subject/body) resolve to the tag annotation.
+          git fetch --force origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}" 2>/dev/null || true
+
           awk -v ver="$version" '
             /^## \[/{
               if (capture) { exit }
