@@ -66,8 +66,8 @@ type Capabilities struct {
 	UniversalIRLibraryName string // SD path for the universal IR library; "assets/infrared/assets" (stock/Unleashed/RM) vs "infrared/assets" (Momentum/Xtreme)
 
 	// ===== CLI surface (new — research additions §4.2) =====
-	HasStorageFormatExt    bool // `storage format_ext` verb present (all custom forks; absent on stock OFW)
-	HasSubGHzEncryptKeeloq bool // `subghz encrypt_keeloq` verb present (all custom forks)
+	HasStorageFormatExt    bool // `storage format_ext` verb. Verified ABSENT on Momentum mntm-dev (2026-05-30) — the verb is `format` (`storage format /ext`); set false there. Other forks unverified.
+	HasSubGHzEncryptKeeloq bool // `subghz encrypt_keeloq` verb. Verified ABSENT on Momentum mntm-dev (2026-05-30); set false there. Other forks unverified.
 	HasSubGHzChat          bool // `subghz chat` verb present (universal — all five forks)
 	HasPsCmd               bool // `ps` alias for `top`. Verified ABSENT on Momentum mntm-dev (2026-05-30) — set false there; `top` is universal. Xtreme value unverified (no device).
 	HasClearCmd            bool // `clear` terminal-clear command present (Momentum only)
@@ -351,8 +351,15 @@ func detectCapabilities(deviceInfo string) Capabilities {
 		c.HasPicopassFAP = true
 		c.UniversalIRLibraryName = "infrared/assets"
 		c.StorageExtFatLabel = "MOMENTUM"
-		c.HasStorageFormatExt = true
-		c.HasSubGHzEncryptKeeloq = true
+		// HasStorageFormatExt and HasSubGHzEncryptKeeloq stay false on
+		// Momentum: hardware validation (2026-05-30, momentum/mntm-dev,
+		// commit 430a3d50) enumerated the real subcommand lists from the
+		// devices' own `storage` and `subghz` usage output — `storage`
+		// exposes `format` (used as `storage format /ext`), NOT a distinct
+		// `format_ext` verb, and `subghz`'s verb list (chat/tx/rx/rx_raw/
+		// decode_raw/tx_from_file) has no `encrypt_keeloq`. Both were
+		// speculative assumptions; firmware_introspect serialises them to
+		// the LLM, so true would steer it to verbs the firmware rejects.
 		// HasPsCmd stays false on Momentum: hardware validation (2026-05-30,
 		// momentum/mntm-dev, commit 430a3d50) showed `ps` is NOT in the CLI
 		// command table — the device fuzzy-matches it to `js` and errors
