@@ -36,6 +36,7 @@ func main() {
 	timeout := flag.Duration("timeout", 15*time.Second, "connect timeout")
 	deep := flag.Bool("deep", false, "include passive-radio checks (NFC detect + Sub-GHz RX)")
 	capsCheck := flag.Bool("caps", false, "truth-check detected capabilities against the device's `help` command list")
+	rw := flag.Bool("rw", false, "include a self-cleaning storage write round-trip (mkdir/write/read/remove under /ext)")
 	flag.Parse()
 
 	url := fmt.Sprintf("serial://%s?baud=%d", *port, *baud)
@@ -155,6 +156,14 @@ func main() {
 		add("loader_info", "WARN", err.Error())
 	} else {
 		add("loader_info", "PASS", strings.TrimSpace(firstLine(li)))
+	}
+
+	// --- storage write round-trip (opt-in, self-cleaning) --------------
+	// The one state-mutating check: exercises the mkdir → write → list →
+	// read → remove path on a temp dir under /ext, then deletes it. Gated
+	// behind -rw so the default run stays purely read-only/passive.
+	if *rw {
+		validateStorageRoundTrip(f, add)
 	}
 
 	if !*deep {
@@ -310,6 +319,46 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// validateStorageRoundTrip exercises the write path on a temp dir under
+// /ext and removes it afterwards. Best-effort pre-clean handles a prior
+// aborted run. Each step reports its own check via add.
+func validateStorageRoundTrip(f *flipper.Flipper, add func(name, level, detail string)) {
+	const dir = "/ext/.pz_devvalidate_tmp"
+	const file = dir + "/probe.txt"
+	const content = "pz-devvalidate"
+
+	_, _ = f.StorageRemove(file) // pre-clean (ignore errors)
+	_, _ = f.StorageRemove(dir)
+
+	if _, err := f.StorageMkdir(dir); err != nil {
+		add("storage_rw mkdir", "FAIL", err.Error())
+		return
+	}
+	if err := f.StorageWrite(file, content); err != nil {
+		add("storage_rw write", "FAIL", err.Error())
+		_, _ = f.StorageRemove(dir)
+		return
+	}
+	if listing, err := f.StorageList(dir); err != nil || !strings.Contains(listing, "probe.txt") {
+		add("storage_rw list", "FAIL", fmt.Sprintf("err=%v listing=%q", err, strings.TrimSpace(listing)))
+	} else {
+		add("storage_rw list", "PASS", strings.TrimSpace(listing))
+	}
+	if rd, err := f.Exec("storage read " + file); err != nil || !strings.Contains(rd, content) {
+		add("storage_rw read", "FAIL", fmt.Sprintf("err=%v out=%q", err, strings.TrimSpace(rd)))
+	} else {
+		add("storage_rw read", "PASS", "content round-tripped")
+	}
+
+	_, e1 := f.StorageRemove(file)
+	_, e2 := f.StorageRemove(dir)
+	if e1 != nil || e2 != nil {
+		add("storage_rw cleanup", "WARN", fmt.Sprintf("remove errors: file=%v dir=%v", e1, e2))
+	} else {
+		add("storage_rw cleanup", "PASS", "temp dir removed")
+	}
 }
 
 // dumpCaps renders the high-signal capability flags one per line.
