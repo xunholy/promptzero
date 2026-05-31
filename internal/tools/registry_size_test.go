@@ -1778,7 +1778,11 @@ func TestRegistrySize(t *testing.T) {
 	// BCD + even-parity inverse of dcf77_decode, round-trip-verified against
 	// it; gap-analysis honourable mention dcf77_clock_spoof, generation
 	// only / no TX).
-	const expected = 441
+	//
+	// v0.376.0 added rfid_pacs_encode (offline HID Wiegand bit-stream
+	// generator — FC+CN+parity inverse of rfid_pacs_decode for H10301/
+	// H10306, round-trip-verified; generation only / no write/TX).
+	const expected = 442
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

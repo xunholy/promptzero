@@ -600,6 +600,12 @@ var toolLevels = func() map[string]Level {
 		// H10304 and H10302). Natural sibling to
 		// wiegand_decode.
 		"rfid_pacs_decode",
+		// rfid_pacs_encode is the offline inverse — builds the Wiegand
+		// bit-stream (FC + CN + parity) for H10301/H10306, round-trip-
+		// verified against rfid_pacs_decode. Generation only; it writes
+		// nothing and transmits nothing (the T5577 write is the separate
+		// risk-gated rfid_write step), so it stays Low like the decoder.
+		"rfid_pacs_encode",
 		// v0.260 (NATIVE-fit gap — top-30 #8, BLE Apple
 		// Continuity classifier): pure-decode dissector for
 		// the Apple Continuity TLV stream advertised in BLE
