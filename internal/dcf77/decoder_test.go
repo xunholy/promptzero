@@ -65,16 +65,8 @@ func buildFrame(t *testing.T, minute, hour, day, dow, month, year int, cest bool
 	return sb.String()
 }
 
-// encodeBCD writes the BCD-weighted bits for the value into the
-// given bit slice. Mirrors the decoder's bcdValue inverse.
-func encodeBCD(bits []byte, value int, weights []int) {
-	for i := len(weights) - 1; i >= 0 && value > 0; i-- {
-		if weights[i] <= value {
-			bits[i] = 1
-			value -= weights[i]
-		}
-	}
-}
+// encodeBCD now lives in synth.go (production) — the test's buildFrame
+// helper shares that single implementation.
 
 // TestDecode_HappyPath pins decoding of a specific real-world-
 // shaped frame: 14:35, Tuesday 2026-04-22, CEST (DST active).

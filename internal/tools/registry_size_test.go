@@ -1773,7 +1773,12 @@ func TestRegistrySize(t *testing.T) {
 	// sequence of TPMS frames — excess unique sensor IDs vs wheel count +
 	// CRC-invalid frame flagging, observation-with-interpretation framing;
 	// gap-analysis §3 rank 6). Companion to subghz_tpms_decode.
-	const expected = 440
+	//
+	// v0.375.0 added dcf77_synth (offline DCF77 minute-telegram generator —
+	// BCD + even-parity inverse of dcf77_decode, round-trip-verified against
+	// it; gap-analysis honourable mention dcf77_clock_spoof, generation
+	// only / no TX).
+	const expected = 441
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

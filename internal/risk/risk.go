@@ -228,6 +228,11 @@ var toolLevels = func() map[string]Level {
 		// + leap-second + DST-change announcement decode.
 		// Pure offline parser.
 		"dcf77_decode",
+		// dcf77_synth is the offline inverse — builds the 60-bit DCF77
+		// minute telegram (BCD + even parity) from a wall-clock time,
+		// round-trip-verified against dcf77_decode. Generation only; it
+		// does not transmit, so it stays Low like the decoder.
+		"dcf77_synth",
 		// v0.228 (NATIVE-fit gap in the IoT application-layer
 		// decode space): MQTT v3.1.1 control packet dissector —
 		// the IP-side application-layer protocol most IoT devices

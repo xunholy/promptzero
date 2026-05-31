@@ -315,7 +315,7 @@ above pending evidence:
 
 - `nfc_amiibo_clone` (RM `amiibo_toolkit`)
 - `nfc_dicts_manager` (already covered by `corpora` Spec — keep as is)
-- `dcf77_clock_spoof` (LF time-signal synth)
+- `dcf77_clock_spoof` (LF time-signal synth) — ⚠️ telegram-synth shipped v0.375 (`dcf77_synth`: offline 60-bit minute-telegram generator, BCD + even parity, round-trip-verified against `dcf77_decode`). The long-wave TX stage (actual spoof transmission) remains a separate loader step.
 - `combo_cracker` (3-wheel padlock — niche physical primitive)
 - `m2_lin_capture` / `m2_j1850_decode` (Macchina M2 — superset of CANable)
 - `ghostesp_pwnagotchi_friend` (rolled into §2c #4 backend Specs)
