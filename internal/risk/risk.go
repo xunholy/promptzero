@@ -116,6 +116,11 @@ var toolLevels = func() map[string]Level {
 		// record (UTF-8 / UTF-16), Smart Poster recursion, MIME and
 		// External type pass-through. Pure offline parser.
 		"ndef_decode",
+		// ndef_encode is the offline inverse — assembles the NDEF message
+		// bytes (URI / Text records, prefix-abbreviated) from a record list,
+		// round-trip-verified against ndef_decode. Generation only; it writes
+		// nothing to a tag and transmits nothing, so it stays Low.
+		"ndef_encode",
 		// v0.213 (NATIVE-fit gap in the WiFi decode space): EAPOL-Key
 		// frame dissector — WPA/WPA2/WPA3 4-way handshake. Header,
 		// key-info bitfield, handshake-message ID (M1/M2/M3/M4),

@@ -1795,7 +1795,11 @@ func TestRegistrySize(t *testing.T) {
 	// generator — BCH(31,21) + parity + batch framing inverse of
 	// subghz_pocsag_decode, BCH-verified vs the idle codeword + round-trip;
 	// generation only / no TX).
-	const expected = 445
+	//
+	// v0.380.0 added ndef_encode (offline NDEF message builder — URI + Text
+	// record assembly inverse of ndef_decode, round-trip-verified; generation
+	// only / no tag write).
+	const expected = 446
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
