@@ -32,7 +32,10 @@ var ndefEncodeSpec = Spec{
 		"Supported well-known record types (the highest-runners for tag writing):\n" +
 		" - **uri** — NFC Forum URI record (type \"U\"); the longest-matching prefix (http://www., " +
 		"https://, tel:, mailto:, …) is abbreviated to its 1-byte Identifier Code automatically.\n" +
-		" - **text** — Text record (type \"T\"); UTF-8 body + language code (default \"en\").\n\n" +
+		" - **text** — Text record (type \"T\"); UTF-8 body + language code (default \"en\").\n" +
+		" - **smartposter** — Smart Poster (type \"Sp\"): a record wrapping a nested message of a " +
+		"URI (the target), an optional title (`text`), and an optional `action` (do/launch, save, " +
+		"edit) — the classic poster-tag format.\n\n" +
 		"The first record gets the Message-Begin flag, the last gets Message-End, and short-record " +
 		"length encoding is used for payloads < 256 bytes. Output is the message bytes (hex) plus the " +
 		"message decoded back from them for confirmation — round-trip-verified against ndef_decode.\n\n" +
@@ -48,10 +51,11 @@ var ndefEncodeSpec = Spec{
 				"items":{
 					"type":"object",
 					"properties":{
-						"kind":{"type":"string","description":"uri or text."},
-						"uri":{"type":"string","description":"For kind=uri: the full URI (e.g. https://example.com)."},
-						"text":{"type":"string","description":"For kind=text: the UTF-8 body."},
-						"lang":{"type":"string","description":"For kind=text: ISO language code (default en)."}
+						"kind":{"type":"string","description":"uri, text, or smartposter."},
+						"uri":{"type":"string","description":"For kind=uri/smartposter: the full URI (e.g. https://example.com)."},
+						"text":{"type":"string","description":"For kind=text: the UTF-8 body. For smartposter: the optional title."},
+						"lang":{"type":"string","description":"For text/smartposter title: ISO language code (default en)."},
+						"action":{"type":"string","description":"For smartposter: optional action — do/launch, save, or edit."}
 					},
 					"required":["kind"]
 				}
@@ -78,10 +82,11 @@ func ndefEncodeHandler(_ context.Context, _ *Deps, p map[string]any) (string, er
 			return "", fmt.Errorf("ndef_encode: records[%d] is not an object", i)
 		}
 		recs = append(recs, ndef.EncodeRecord{
-			Kind: strOf(m["kind"]),
-			URI:  strOf(m["uri"]),
-			Text: strOf(m["text"]),
-			Lang: strOf(m["lang"]),
+			Kind:   strOf(m["kind"]),
+			URI:    strOf(m["uri"]),
+			Text:   strOf(m["text"]),
+			Lang:   strOf(m["lang"]),
+			Action: strOf(m["action"]),
 		})
 	}
 

@@ -8,20 +8,26 @@ import (
 )
 
 // EncodeRecord describes one NDEF record to build. Kind selects the
-// well-known type: "uri" (NFC Forum URI record, type "U") or "text" (Text
-// record, type "T"). For text, Lang defaults to "en".
+// well-known type: "uri" (URI record, type "U"), "text" (Text record, type
+// "T"), or "smartposter" (Smart Poster, type "Sp" — a record whose payload
+// is a nested NDEF message of a URI + optional title Text + optional Action).
+// For text/smartposter, Lang defaults to "en". For smartposter: URI is the
+// target, Text is the optional title, Action is "" / "do" (launch) / "save" /
+// "edit".
 type EncodeRecord struct {
-	Kind string `json:"kind"`
-	URI  string `json:"uri,omitempty"`
-	Text string `json:"text,omitempty"`
-	Lang string `json:"lang,omitempty"`
+	Kind   string `json:"kind"`
+	URI    string `json:"uri,omitempty"`
+	Text   string `json:"text,omitempty"`
+	Lang   string `json:"lang,omitempty"`
+	Action string `json:"action,omitempty"`
 }
 
 // Encode builds the raw bytes of an NDEF message from a list of records —
 // the inverse of DecodeBytes. The first record gets MB (Message Begin), the
 // last gets ME (Message End); each uses a short-record length when its
-// payload is < 256 bytes. Supports the two highest-runner well-known types,
-// URI and Text, both round-trip-verified against Decode.
+// payload is < 256 bytes. Supports the highest-runner well-known types —
+// URI, Text, and Smart Poster (a "Sp" record wrapping a nested URI + title +
+// action message) — all round-trip-verified against Decode.
 //
 // # Wrap-vs-native judgement
 //
@@ -35,7 +41,7 @@ type EncodeRecord struct {
 //
 // # Deliberately deferred
 //
-// Smart Poster, MIME, External, and chunked records — the URI + Text RTDs
+// MIME, External, and chunked records — the URI / Text / Smart Poster RTDs
 // cover the overwhelming majority of tag-writing use; the rest can be added
 // when there's a verified need. ID fields are omitted (IL=0).
 func Encode(records []EncodeRecord) ([]byte, error) {
@@ -54,8 +60,11 @@ func Encode(records []EncodeRecord) ([]byte, error) {
 		case "text":
 			typeStr = "T"
 			payload, err = encodeTextPayload(r.Text, r.Lang)
+		case "smartposter", "sp":
+			typeStr = "Sp"
+			payload, err = buildSmartPosterPayload(r)
 		default:
-			return nil, fmt.Errorf("ndef: record %d: unsupported kind %q (supported: uri, text)", i, r.Kind)
+			return nil, fmt.Errorf("ndef: record %d: unsupported kind %q (supported: uri, text, smartposter)", i, r.Kind)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("ndef: record %d: %w", i, err)
@@ -109,6 +118,56 @@ func encodeURIPayload(uri string) []byte {
 		}
 	}
 	return append([]byte{code}, tail...)
+}
+
+// buildSmartPosterPayload builds the payload of a Smart Poster ("Sp")
+// record: a nested NDEF message of a URI record (the target, required), an
+// optional Text title, and an optional Action record. The decoder re-parses
+// this payload as a sub-message (decodeSmartPosterRecord).
+func buildSmartPosterPayload(r EncodeRecord) ([]byte, error) {
+	if r.URI == "" {
+		return nil, fmt.Errorf("smartposter requires a uri")
+	}
+	type irec struct {
+		typ     string
+		payload []byte
+	}
+	inner := []irec{{"U", encodeURIPayload(r.URI)}}
+	if r.Text != "" {
+		tp, err := encodeTextPayload(r.Text, r.Lang)
+		if err != nil {
+			return nil, err
+		}
+		inner = append(inner, irec{"T", tp})
+	}
+	if r.Action != "" {
+		code, ok := actionCode(r.Action)
+		if !ok {
+			return nil, fmt.Errorf("invalid smartposter action %q (do/launch, save, edit)", r.Action)
+		}
+		inner = append(inner, irec{"act", []byte{code}})
+	}
+	var out []byte
+	for i, ir := range inner {
+		out = append(out, encodeWellKnownRecord(ir.typ, ir.payload, i == 0, i == len(inner)-1)...)
+	}
+	return out, nil
+}
+
+// actionCode maps a Smart Poster action name to its 1-byte RTD code
+// (NFC Forum RTD-Action): 0 = do/launch, 1 = save for later, 2 = open
+// for editing.
+func actionCode(a string) (byte, bool) {
+	switch strings.ToLower(strings.TrimSpace(a)) {
+	case "do", "launch", "exec", "0":
+		return 0, true
+	case "save", "1":
+		return 1, true
+	case "edit", "open", "2":
+		return 2, true
+	default:
+		return 0, false
+	}
 }
 
 // encodeTextPayload builds a Text record payload: a status byte (UTF-8, so

@@ -81,6 +81,53 @@ func TestEncode_LongestPrefix(t *testing.T) {
 	}
 }
 
+// TestEncode_SmartPosterRoundTrip builds a Smart Poster (URI + title +
+// action) and confirms Decode recovers it as an "Sp" record whose nested
+// message carries the URI and title.
+func TestEncode_SmartPosterRoundTrip(t *testing.T) {
+	b, err := Encode([]EncodeRecord{{
+		Kind: "smartposter", URI: "https://example.com/promo", Text: "Tap me", Lang: "en", Action: "do",
+	}})
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	msg, err := DecodeBytes(b)
+	if err != nil {
+		t.Fatalf("DecodeBytes(%X): %v", b, err)
+	}
+	if msg.Count != 1 || msg.Records[0].Type != "Sp" {
+		t.Fatalf("outer record = %+v, want one Sp record", msg.Records)
+	}
+	nested, ok := msg.Records[0].Decoded["nested"].(Message)
+	if !ok {
+		t.Fatalf("Sp Decoded has no nested Message: %+v", msg.Records[0].Decoded)
+	}
+	var gotURI, gotTitle any
+	for _, r := range nested.Records {
+		switch r.Type {
+		case "U":
+			gotURI = r.Decoded["uri"]
+		case "T":
+			gotTitle = r.Decoded["text"]
+		}
+	}
+	if gotURI != "https://example.com/promo" {
+		t.Errorf("nested URI = %v, want https://example.com/promo", gotURI)
+	}
+	if gotTitle != "Tap me" {
+		t.Errorf("nested title = %v, want 'Tap me'", gotTitle)
+	}
+}
+
+func TestEncode_SmartPosterRejectsBad(t *testing.T) {
+	if _, err := Encode([]EncodeRecord{{Kind: "smartposter", Text: "no uri"}}); err == nil {
+		t.Error("expected error: smartposter without uri")
+	}
+	if _, err := Encode([]EncodeRecord{{Kind: "smartposter", URI: "x", Action: "bogus"}}); err == nil {
+		t.Error("expected error: invalid action")
+	}
+}
+
 func TestEncode_RejectsBadInput(t *testing.T) {
 	if _, err := Encode(nil); err == nil {
 		t.Error("expected error for empty records")
