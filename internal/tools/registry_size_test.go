@@ -1900,8 +1900,14 @@ func TestRegistrySize(t *testing.T) {
 	// v0.404.0 added nfc_t2t_decode (NFC Forum Type 2 Tag structure decoder —
 	// NTAG21x / Ultralight 7-byte UID + BCC validation + static lock bytes +
 	// Capability Container; distinct from mifare (Classic) and ndef (the
-	// message). Pure offline, BCC-checksum-anchored).
-	const expected = 467
+	// message). Pure offline, BCC-checksum-anchored). v0.405 enhanced it with
+	// NTAG21x config/password-protection decode (no new tool).
+	//
+	// v0.406.0 added lorawan_replay_detect (defensive LoRaWAN replay /
+	// frame-counter-reuse analyser over a sequence of decoded frames —
+	// key-free FCnt reuse/regression, direction-aware; observation-not-
+	// verdict, no RF/TX).
+	const expected = 468
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

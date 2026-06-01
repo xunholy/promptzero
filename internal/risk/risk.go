@@ -548,6 +548,12 @@ var toolLevels = func() map[string]Level {
 		// comms-control services UDS lacks), so uds_decode would mislabel
 		// KWP traffic. Pure offline parser; unknown values surfaced raw.
 		"kwp_decode",
+		// v0.406 (defensive LoRaWAN analyser): lorawan_replay_detect flags
+		// frame-counter reuse / regression over a sequence of decoded
+		// LoRaWAN frames — the replay the spec's FCnt check exists to stop.
+		// Key-free (FCnt is cleartext FHDR), direction-aware (independent
+		// up/down counters), observation-not-verdict. No RF/TX.
+		"lorawan_replay_detect",
 		// v0.367 (gap-analysis §3 rank 6): tpms_anomaly_detect is a pure
 		// offline, defensive analyser over a sequence of decoded TPMS
 		// frames — flags excess unique sensor IDs vs the vehicle wheel
