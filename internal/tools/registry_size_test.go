@@ -1940,7 +1940,11 @@ func TestRegistrySize(t *testing.T) {
 	// NEC family: standard / extended / repeat, gated on NEC's address &
 	// command bitwise-inverse checksum. Offline read; the IR analogue of
 	// subghz_decode, complement to ir_decode_file).
-	const expected = 475
+	// v0.414.0 added nfc_emv_track2_decode (EMV tag 57 / ISO 7813 Track 2
+	// Equivalent Data decoder — cracks the nibble-packed PAN / expiry /
+	// service code / discretionary the BER-TLV walker leaves raw, gated on
+	// the PAN's Luhn check digit. Offline read; extends internal/emv).
+	const expected = 476
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
