@@ -1839,7 +1839,13 @@ func TestRegistrySize(t *testing.T) {
 	// builder — WPA*01*pmkid*ap*sta*essid***; removes the hcxpcapngtool
 	// shell-out for the clientless-PMKID case. Anchored on hashcat's
 	// published example hash; pure host-side, no capture/radio).
-	const expected = 455
+	//
+	// v0.391.0 added wifi_wps_decode (WPS / Wi-Fi Simple Config data-element
+	// dissector — walks the WSC attribute TLVs in a WPS IE: version, setup
+	// state, AP-setup-locked, device password ID, config methods, identity.
+	// The wash/reaver triage fields; pure offline parser, unknown attrs
+	// surfaced as raw hex).
+	const expected = 456
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

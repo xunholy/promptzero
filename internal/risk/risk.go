@@ -164,6 +164,13 @@ var toolLevels = func() map[string]Level {
 		// operator already holds. Pure host-side string assembly — no
 		// capture, no radio — anchored on hashcat's published example.
 		"wifi_pmkid_hc22000",
+		// v0.391 (NATIVE-fit WiFi recon gap): WPS / Wi-Fi Simple Config
+		// data-element dissector — walks the WSC attribute TLVs in a WPS
+		// IE (version, setup state, AP-setup-locked, device password ID,
+		// config methods, device identity), the same fields wash/reaver
+		// read. Pure offline parser; unknown attributes surfaced as raw
+		// hex, never guessed. Pairs with wifi_80211.
+		"wifi_wps_decode",
 		// v0.214 (NATIVE-fit gap in the Sub-GHz decode space):
 		// LoRaWAN PHYPayload dissector — MAC-layer structural decode
 		// for LoRaWAN 1.0.x / 1.1 captures. MHDR + FHDR + FCtrl
