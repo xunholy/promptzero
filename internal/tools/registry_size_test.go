@@ -1856,7 +1856,12 @@ func TestRegistrySize(t *testing.T) {
 	// flood analyser over a sequence of decoded frames — broadcast-deauth /
 	// volume-flood / targeted-client signals + reason-code histogram;
 	// observation-not-verdict, no RF/TX).
-	const expected = 458
+	//
+	// v0.394.0 added wifi_rogue_ap_detect (defensive rogue-AP / evil-twin
+	// analyser over a set of decoded beacons — security-mismatch (downgrade
+	// lure) / bssid-changed-security / ssid-multiple-bssid signals;
+	// observation-not-verdict, composes with wifi_rsn_decode, no RF/TX).
+	const expected = 459
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -185,6 +185,13 @@ var toolLevels = func() map[string]Level {
 		// histogram. Observation-not-verdict; no RF/TX. Sibling of
 		// tpms_anomaly_detect / subghz_rollback_detect.
 		"wifi_deauth_detect",
+		// v0.394 (defensive WiFi analyser): rogue-AP / evil-twin
+		// detector over a set of decoded beacons — flags an SSID
+		// advertised with conflicting security postures (the downgrade
+		// lure), a BSSID whose posture changed, and SSIDs on multiple
+		// BSSIDs. Observation-not-verdict; no RF/TX. Composes with
+		// wifi_rsn_decode.
+		"wifi_rogue_ap_detect",
 		// v0.214 (NATIVE-fit gap in the Sub-GHz decode space):
 		// LoRaWAN PHYPayload dissector — MAC-layer structural decode
 		// for LoRaWAN 1.0.x / 1.1 captures. MHDR + FHDR + FCtrl
