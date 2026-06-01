@@ -1799,7 +1799,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.380.0 added ndef_encode (offline NDEF message builder — URI + Text
 	// record assembly inverse of ndef_decode, round-trip-verified; generation
 	// only / no tag write).
-	const expected = 446
+	//
+	// v0.381.0 added em4100_encode (offline EM4100 64-bit wire-frame builder —
+	// header + row/column parity + stop, companion to em4100_decode; verified
+	// by independent parity re-derivation; generation only / no write).
+	const expected = 447
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

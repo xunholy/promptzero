@@ -75,6 +75,11 @@ var toolLevels = func() map[string]Level {
 		// decoder. Pure offline parser, no Flipper required, host-side
 		// only. Same risk band as the existing wiegand_decode.
 		"em4100_decode",
+		// em4100_encode builds the 64-bit EM4100 wire frame (header + row/
+		// column parity + stop) from the 5-byte ID — generation only, no
+		// write/TX (the Flipper firmware does this for `rfid write EM4100`),
+		// so it stays Low like the decoder.
+		"em4100_encode",
 		// v0.207 (NATIVE-fit gap from top-30 rank 21): EMV BER-TLV
 		// decoder for contactless-card APDU responses. Pure offline
 		// parser; no card crypto verification (deliberately scoped out).
