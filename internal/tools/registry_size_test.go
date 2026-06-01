@@ -1823,7 +1823,12 @@ func TestRegistrySize(t *testing.T) {
 	// UID/URL/TLM/EID service-data assembly inverse of ble_eddystone_decode,
 	// with URL scheme/expansion abbreviation; round-trip + spec-vector
 	// verified; generation only / no BLE TX).
-	const expected = 451
+	//
+	// v0.388.0 added ble_ibeacon_encode (offline Apple iBeacon builder —
+	// UUID + major + minor + measured-power manufacturer-data assembly,
+	// inverse of the iBeacon decode in ble_continuity_classify; round-trip +
+	// fixed-layout vector verified; generation only / no BLE TX).
+	const expected = 452
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
