@@ -1891,7 +1891,12 @@ func TestRegistrySize(t *testing.T) {
 	// validates an 8-digit PIN or completes a 7-digit prefix via the
 	// reaver/bully wps_pin_checksum; pairs with wifi_wps_decode. Pure
 	// offline math; vendor default-PIN databases deliberately not embedded).
-	const expected = 465
+	//
+	// v0.403.0 added kwp_decode (KWP2000 / ISO 14230 diagnostic-message
+	// decoder — UDS predecessor with a DISTINCT service-ID table (local-
+	// identifier + comms-control services UDS lacks) that uds_decode would
+	// mislabel; pure offline parser, unknown values surfaced raw).
+	const expected = 466
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

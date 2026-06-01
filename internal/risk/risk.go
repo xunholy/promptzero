@@ -535,6 +535,12 @@ var toolLevels = func() map[string]Level {
 		// between canbus_fd_decode (frame) and uds_decode/obd2_* (PDU).
 		// Pure offline transform; sequence-number gaps noted.
 		"isotp_decode",
+		// v0.403 (NATIVE-fit automotive gap): kwp_decode parses a KWP2000
+		// (ISO 14230) diagnostic message. Shares UDS's +0x40 / 0x7F
+		// framing but a DISTINCT service-ID table (local-identifier +
+		// comms-control services UDS lacks), so uds_decode would mislabel
+		// KWP traffic. Pure offline parser; unknown values surfaced raw.
+		"kwp_decode",
 		// v0.367 (gap-analysis §3 rank 6): tpms_anomaly_detect is a pure
 		// offline, defensive analyser over a sequence of decoded TPMS
 		// frames — flags excess unique sensor IDs vs the vehicle wheel
