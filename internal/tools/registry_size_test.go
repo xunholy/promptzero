@@ -1786,7 +1786,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.377.0 added subghz_tpms_synth (offline TPMS frame generator —
 	// Manchester + CRC-8 inverse of subghz_tpms_decode, round-trip-verified;
 	// generation only / no TX).
-	const expected = 443
+	//
+	// v0.378.0 added subghz_weather_synth (offline 433 MHz weather-station
+	// frame generator — LaCrosse/Acurite field-packing + checksum inverse of
+	// subghz_weather_decode, round-trip-verified; generation only / no TX).
+	const expected = 444
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

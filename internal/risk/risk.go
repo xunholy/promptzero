@@ -400,6 +400,11 @@ var toolLevels = func() map[string]Level {
 		// decoder. No RF; operator brings a pre-demodulated frame.
 		// Sibling to subghz_tpms_decode / subghz_pocsag_decode.
 		"subghz_weather_decode",
+		// subghz_weather_synth is the offline inverse — builds the 5-byte
+		// LaCrosse/Acurite frame (field packing + checksum) from a reading,
+		// round-trip-verified against subghz_weather_decode. Generation
+		// only; it transmits nothing, so it stays Low like the decoder.
+		"subghz_weather_synth",
 		// v0.362 (gap-analysis §3 rank 17): canbus_fd_decode is a pure
 		// offline CAN / CAN-FD frame decoder over the SocketCAN candump
 		// grammar — identifier (11/29-bit), CAN-FD FDF/BRS/ESI flags +
