@@ -542,6 +542,12 @@ var toolLevels = func() map[string]Level {
 		// between canbus_fd_decode (frame) and uds_decode/obd2_* (PDU).
 		// Pure offline transform; sequence-number gaps noted.
 		"isotp_decode",
+		// v0.408 (transmit-side inverse of isotp_decode): isotp_encode
+		// segments an application PDU into ISO-TP CAN frames (SF, or
+		// FF + cycling-SN CFs, padded to 8) for injecting a multi-frame
+		// UDS/OBD-II request. Generation only — emits frame bytes, sends
+		// nothing; round-trip-verified against the reassembler.
+		"isotp_encode",
 		// v0.403 (NATIVE-fit automotive gap): kwp_decode parses a KWP2000
 		// (ISO 14230) diagnostic message. Shares UDS's +0x40 / 0x7F
 		// framing but a DISTINCT service-ID table (local-identifier +

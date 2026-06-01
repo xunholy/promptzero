@@ -1911,7 +1911,12 @@ func TestRegistrySize(t *testing.T) {
 	// v0.407.0 added subghz_debruijn (de Bruijn optimal fixed-code brute
 	// sequence generator — OpenSesame technique; all 2^n codes in ~2^n bits.
 	// Generation only / no TX; self-verifiable de Bruijn property).
-	const expected = 469
+	//
+	// v0.408.0 added isotp_encode (ISO-TP segmenter — inverse of
+	// isotp_decode; splits a PDU into SF or FF+CFs (padded to 8) for
+	// injecting a multi-frame UDS/OBD-II request. Generation only / no TX;
+	// round-trip-verified against the reassembler).
+	const expected = 470
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
