@@ -112,7 +112,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | KeeLoq (decrypt / brute / dictionary) | baseline | ✅ `keeloq_*` family | — | — | — |
 | URH decode bridge | baseline | ✅ `urh_decode_sub` | ✅ | — | — |
 | RollBack RKE replay (offensive) | attacks + audit Q5 | — by policy — | — | — | Intentional skip |
-| RollBack capture-only detect | attacks #5 | ❌ | — | — | **§2a** ⟶ `subghz_rollback_detect` |
+| RollBack capture-only detect | attacks #5 | ✅ `subghz_rollback_detect` | — | — | shipped v0.386 — offline defensive sequence analyser: flags non-consecutive duplicate rolling codes (key-free replay/RollBack signature; consecutive burst repeats excluded) + counter regressions when decrypted counters are supplied. Observation-not-verdict, no RF/TX. |
 | Sub-GHz `chat` verb | firmware §4.2 #2 | ✅ `subghz_chat` | — | — | **researcher claim was stale** |
 | TPMS decode (Schrader/Citroën/Renault/Toyota/Ford) | attacks #1 + apps top-20 #2 | ✅ `subghz_tpms_decode` | — | — | shipped v0.360 — Manchester (both conventions/alignments) + CRC-8 disambiguation + 32-bit sensor ID |
 | TPMS synth | attacks + apps | ✅ `subghz_tpms_synth` | — | — | shipped v0.377 — offline inverse of `subghz_tpms_decode` ([sensor ID][payload][CRC-8] Manchester frame, round-trip-verified; generation only, no TX). Per-model pressure/temp scaling left to the caller (unverifiable). |

@@ -1812,7 +1812,13 @@ func TestRegistrySize(t *testing.T) {
 	// family + 48-bit serial + Maxim CRC-8, inverse of ibutton_decode;
 	// verified by round-trip + the canonical Maxim AN-27 vector; generation
 	// only / no key write).
-	const expected = 449
+	//
+	// v0.386.0 added subghz_rollback_detect (offline defensive analyser over
+	// a sequence of captured rolling-code frames — flags non-consecutive
+	// duplicate codes (key-free replay/RollBack signature) + counter
+	// regressions when decrypted counters are supplied; observation-not-
+	// verdict; no RF/TX).
+	const expected = 450
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

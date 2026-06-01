@@ -448,6 +448,14 @@ var toolLevels = func() map[string]Level {
 		// verdicts. No SDR/TX; analysis-only. Companion to
 		// subghz_tpms_decode.
 		"tpms_anomaly_detect",
+		// v0.386 (gap-analysis §1.2 — subghz_rollback_detect, attacks
+		// #5): pure offline, defensive analyser over a sequence of
+		// captured rolling-code frames (KeeLoq / Security+ keyfobs).
+		// Flags non-consecutive duplicate codes (the key-free replay /
+		// RollBack signature; consecutive burst repeats are not flagged)
+		// and, when decrypted counters are supplied, counter regressions
+		// — both as observations, not verdicts. No RF/TX; analysis-only.
+		"subghz_rollback_detect",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS
