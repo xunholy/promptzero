@@ -1845,7 +1845,13 @@ func TestRegistrySize(t *testing.T) {
 	// state, AP-setup-locked, device password ID, config methods, identity.
 	// The wash/reaver triage fields; pure offline parser, unknown attrs
 	// surfaced as raw hex).
-	const expected = 456
+	//
+	// v0.392.0 added wifi_rsn_decode (RSN WPA2/WPA3 IE dissector — names the
+	// cipher + AKM suites (00-0F-AC), decodes the PMF capability bits, and
+	// derives the security posture: WPA2-Personal / WPA3-SAE / transition /
+	// Enterprise / OWE. Completes the suite-naming the wifi_80211 decoder
+	// deferred; pure offline parser, vendor suites surfaced raw).
+	const expected = 457
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

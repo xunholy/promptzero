@@ -171,6 +171,13 @@ var toolLevels = func() map[string]Level {
 		// read. Pure offline parser; unknown attributes surfaced as raw
 		// hex, never guessed. Pairs with wifi_80211.
 		"wifi_wps_decode",
+		// v0.392 (NATIVE-fit WiFi security-recon gap): RSN (WPA2/WPA3)
+		// IE dissector — names the cipher + AKM suites, decodes the PMF
+		// (MFPR/MFPC) capability bits, and derives the security posture
+		// (WPA2-Personal / WPA3-SAE / transition / Enterprise / OWE).
+		// The wifi_80211 decoder left suite naming + PMF to a follow-on;
+		// this is it. Pure offline parser; vendor suites surfaced raw.
+		"wifi_rsn_decode",
 		// v0.214 (NATIVE-fit gap in the Sub-GHz decode space):
 		// LoRaWAN PHYPayload dissector — MAC-layer structural decode
 		// for LoRaWAN 1.0.x / 1.1 captures. MHDR + FHDR + FCtrl
