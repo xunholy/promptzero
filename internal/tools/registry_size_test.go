@@ -1926,7 +1926,12 @@ func TestRegistrySize(t *testing.T) {
 	// of nfc_t2t_decode; UID + computed BCCs + lock + CC for magic-tag UID
 	// clone-prep, NFC analogue of ibutton_encode. Generation only / no card;
 	// round-trip + BCC-vector verified).
-	const expected = 472
+	//
+	// v0.411.0 added uds_encode (UDS / ISO 14229 message builder — inverse of
+	// uds_decode; SID + sub-function + suppressPosRsp + DID + payload, the
+	// application-layer top of the inject chain. Generation only / no TX;
+	// round-trip-verified against the decoder).
+	const expected = 473
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

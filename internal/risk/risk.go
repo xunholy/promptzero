@@ -548,6 +548,12 @@ var toolLevels = func() map[string]Level {
 		// protocol behind modern ECU attacks; pure offline parser,
 		// unknown values surfaced raw.
 		"uds_decode",
+		// v0.411 (application-layer inverse of uds_decode): uds_encode
+		// builds a UDS request/response PDU (SID + sub-function +
+		// suppressPosRsp bit + DID + payload) — the top of the inject
+		// chain (uds_encode -> isotp_encode -> canbus_fd_encode ->
+		// canbus_inject). Generation only; round-trip-verified.
+		"uds_encode",
 		// v0.398 (the missing automotive transport layer): isotp_decode
 		// decodes ISO-TP (ISO 15765-2) PCI (SF/FF/CF/FC) and reassembles
 		// the multi-frame UDS/OBD-II message off a CAN capture — the link
