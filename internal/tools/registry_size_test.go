@@ -1921,7 +1921,12 @@ func TestRegistrySize(t *testing.T) {
 	// inverse of canbus_fd_decode; classic/remote/CAN-FD with BRS/ESI, the
 	// frame-layer complement to isotp_encode. Generation only / no TX;
 	// round-trip-verified against the decoder).
-	const expected = 471
+	//
+	// v0.410.0 added nfc_t2t_encode (NFC Type 2 Tag header builder — inverse
+	// of nfc_t2t_decode; UID + computed BCCs + lock + CC for magic-tag UID
+	// clone-prep, NFC analogue of ibutton_encode. Generation only / no card;
+	// round-trip + BCC-vector verified).
+	const expected = 472
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

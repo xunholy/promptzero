@@ -87,6 +87,12 @@ var toolLevels = func() map[string]Level {
 		// offline parser; per-variant config pages deliberately not
 		// guessed. Distinct from mifare (Classic) and ndef (the message).
 		"nfc_t2t_decode",
+		// v0.410 (inverse of nfc_t2t_decode): nfc_t2t_encode builds the
+		// Type 2 Tag header (UID + computed BCCs + lock + CC) from a chosen
+		// UID — clone-prep for a magic NTAG/Ultralight (NFC analogue of
+		// ibutton_encode). Generation only — touches no card; round-trip-
+		// verified against the decoder. Low like the decoder.
+		"nfc_t2t_encode",
 		// v0.207 (NATIVE-fit gap from top-30 rank 21): EMV BER-TLV
 		// decoder for contactless-card APDU responses. Pure offline
 		// parser; no card crypto verification (deliberately scoped out).
