@@ -169,7 +169,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 |---|---|:---:|:---:|:---:|:---:|
 | GPIO read/set | baseline | ✅ `gpio_read`, `gpio_set` | — | — | — |
 | 1-Wire search | baseline | ✅ `onewire_search` | — | — | — |
-| iButton read/write/emulate | baseline | ✅ `ibutton_*` | — | — | — |
+| iButton read/write/emulate | baseline | ✅ `ibutton_*` | — | — | host-side `ibutton_decode` (Dallas ROM dissector) + `ibutton_encode` (v0.385 — offline ROM-ID builder, family + 48-bit serial + Maxim CRC-8, round-trip + Maxim AN-27 vector verified) close the offline clone-prep loop |
 | Bus Pirate I²C / SPI / UART | baseline | ✅ `buspirate_*` family | — | — | — |
 | AVR ICSP programmer / read | apps top-20 #16 | ❌ | — | — | **NEW vs audit** ⟶ `avr_isp_read` (block on `workflow_glitch_chip_dump`) |
 | ARM SWD probe / dump | apps top-20 #16 | ❌ | — | — | **NEW vs audit** ⟶ `swd_dump` |

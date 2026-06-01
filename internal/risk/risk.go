@@ -309,6 +309,13 @@ var toolLevels = func() map[string]Level {
 		// CRC-8 validation (poly 0x31 reflected). Pure offline
 		// parser. Pairs with ibutton_read for live captures.
 		"ibutton_decode",
+		// v0.385 (offline inverse of ibutton_decode): builds a
+		// well-formed 8-byte Dallas ROM ID from family + 48-bit
+		// serial, computing the Maxim CRC-8 (shared with the
+		// decoder). Host-side construction for cloning a contact
+		// key; generation only — writes nothing, touches no
+		// hardware (ibutton_write does the burn). Low like decode.
+		"ibutton_encode",
 		// v0.235 (NATIVE-fit gap in the aerospace decode space):
 		// Mode S / ADS-B 1090 MHz frame dissector. Pure offline
 		// parser — DF detection, ICAO 24-bit extraction, CRC-24

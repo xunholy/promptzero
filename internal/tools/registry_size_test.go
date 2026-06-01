@@ -1807,7 +1807,12 @@ func TestRegistrySize(t *testing.T) {
 	// v0.382.0 added nfc_emv_encode (offline EMV BER-TLV builder —
 	// tag/length/value assembly inverse of nfc_emv_decode, round-trip-
 	// verified; generation only / no card I/O).
-	const expected = 448
+	//
+	// v0.385.0 added ibutton_encode (offline Dallas 1-Wire ROM-ID builder —
+	// family + 48-bit serial + Maxim CRC-8, inverse of ibutton_decode;
+	// verified by round-trip + the canonical Maxim AN-27 vector; generation
+	// only / no key write).
+	const expected = 449
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
