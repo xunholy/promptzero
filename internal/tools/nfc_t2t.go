@@ -37,10 +37,13 @@ var nfcT2TDecodeSpec = Spec{
 		"block-locking bits — i.e. which pages are write-protected.\n" +
 		" - the **Capability Container** (page 3): NDEF magic (0xE1), version, NDEF memory size " +
 		"(CC2 x 8 bytes), and the read/write access conditions.\n\n" +
-		"Per-variant configuration pages (AUTH0 / ACCESS / PWD / PACK) are deliberately NOT " +
-		"interpreted — their page location differs between NTAG213/215/216 and the Ultralight EV1 " +
-		"variants, and guessing the variant to locate them would risk a confidently-wrong reading; the " +
-		"CC size hint is surfaced instead. Pass the dump page-aligned (4 bytes/page); ':' / '-' / '_' " +
+		"When the dump size exactly matches an NTAG213/215/216 (45/135/231 pages), the configuration " +
+		"pages are also decoded into the password-protection posture — AUTH0 (first page requiring " +
+		"authentication), the protected range, read+write vs write-only protection, the failed-auth " +
+		"lockout (AUTHLIM), and whether the config is permanently locked (CFGLCK) — the key NFC " +
+		"security property. Their location is derived structurally (config is always the last four " +
+		"pages of an NTAG21x), so no per-variant page table is guessed; Ultralight EV1 is not covered. " +
+		"Pass the dump page-aligned (4 bytes/page); ':' / '-' / '_' " +
 		"/ whitespace and a 0x prefix tolerated. Pure offline parser — no card. Companion to " +
 		"ndef_decode / nfc_mfu_rdbl. Wrap-vs-native: native — public NFC Forum Type 2 layout, a " +
 		"fixed-offset read + BCC checksum, no hardware.",

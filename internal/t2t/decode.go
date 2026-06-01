@@ -29,14 +29,18 @@
 // Both are validated and surfaced; a mismatch is flagged (a misread, or a
 // non-7-byte-UID tag) rather than silently trusted.
 //
-// # Deliberately deferred
+// # Configuration pages (NTAG21x)
 //
-// The per-variant configuration pages (AUTH0 / ACCESS / PWD / PACK), whose
-// PAGE LOCATION differs between NTAG213/215/216 and the Ultralight EV1
-// variants, are NOT interpreted — guessing the variant to locate them would
-// risk a confidently-wrong reading; the size hint from the Capability
-// Container is surfaced instead. The NDEF message in the user pages is
-// decoded by ndef_decode.
+// When the dump size exactly matches an NTAG213/215/216 (45/135/231 pages),
+// the configuration pages (CFG0 / CFG1 / PWD / PACK) are decoded into the
+// password-protection posture: AUTH0 (first page requiring authentication),
+// PROT (read+write vs write-only protection), AUTHLIM (failed-auth lockout),
+// and CFGLCK (config permanently locked). Their location is derived
+// STRUCTURALLY — the config pages are always the last four pages on every
+// NTAG21x — so no per-variant page table is guessed, and decoding only runs
+// when the size uniquely identifies an NTAG21x. The Ultralight EV1 variants
+// (different config layout) and the NDEF message in the user pages
+// (decoded by ndef_decode) are deliberately not covered here.
 package t2t
 
 import (
@@ -72,7 +76,23 @@ type T2T struct {
 	LockedPages []int               `json:"locked_pages"`
 	BlockLocks  []string            `json:"block_locking,omitempty"`
 	CC          CapabilityContainer `json:"capability_container"`
+	Model       string              `json:"model,omitempty"`  // NTAG213/215/216 when the dump size matches
+	Config      *NTAGConfig         `json:"config,omitempty"` // NTAG21x password-protection config
 	Notes       []string            `json:"notes,omitempty"`
+}
+
+// NTAGConfig is the decoded NTAG21x configuration (the last four pages:
+// CFG0, CFG1, PWD, PACK) — the password-protection security posture.
+type NTAGConfig struct {
+	CFG0Hex       string `json:"cfg0_hex"`
+	CFG1Hex       string `json:"cfg1_hex"`
+	PWDHex        string `json:"pwd_hex"`
+	PACKHex       string `json:"pack_hex"`
+	AUTH0         int    `json:"auth0"`          // first page requiring password auth
+	ProtectedFrom string `json:"protected_from"` // human summary of the protected range
+	ProtectMode   string `json:"protect_mode"`   // "write only" | "read and write"
+	AuthLimit     int    `json:"auth_limit"`     // failed-auth attempts before lockout (0 = unlimited)
+	ConfigLocked  bool   `json:"config_locked"`  // CFGLCK: config pages permanently locked
 }
 
 // Decode parses a hex-encoded Type 2 Tag memory dump. At least the first 4
@@ -117,6 +137,7 @@ func Decode(hexStr string) (*T2T, error) {
 	out.LockedPages, out.BlockLocks = decodeStaticLocks(lock0, lock1)
 
 	out.CC = decodeCC(b[12:16])
+	out.Model, out.Config = decodeNTAGConfig(b, out.Pages)
 	return out, nil
 }
 
@@ -142,6 +163,59 @@ func decodeStaticLocks(lock0, lock1 byte) (locked []int, blockLocks []string) {
 		}
 	}
 	return locked, blockLocks
+}
+
+// ntagModels maps a total page count to the NTAG21x model with that exact
+// memory size. Only these exact sizes enable config decoding — the config
+// pages are the last four pages on every NTAG21x, so locating them is
+// structural (no per-variant page table), but we only trust that rule when
+// the dump size uniquely identifies an NTAG21x.
+var ntagModels = map[int]string{45: "NTAG213", 135: "NTAG215", 231: "NTAG216"}
+
+// decodeNTAGConfig decodes the NTAG21x configuration pages (CFG0/CFG1/PWD/
+// PACK = the last four pages) when the dump size matches a known NTAG21x.
+// AUTH0 (CFG0 byte 3) is the first page requiring password authentication;
+// the ACCESS byte (CFG1 byte 0) carries PROT (bit 7: read+write vs
+// write-only protection), CFGLCK (bit 6: config permanently locked), and
+// AUTHLIM (bits 0-2: failed-auth lockout count).
+func decodeNTAGConfig(b []byte, totalPages int) (string, *NTAGConfig) {
+	model, ok := ntagModels[totalPages]
+	if !ok {
+		return "", nil
+	}
+	base := (totalPages - 4) * 4
+	if base+14 > len(b) {
+		return model, nil
+	}
+	cfg0 := b[base : base+4]
+	cfg1 := b[base+4 : base+8]
+	pwd := b[base+8 : base+12]
+	pack := b[base+12 : base+14]
+
+	auth0 := int(cfg0[3])
+	access := cfg1[0]
+	prot := access&0x80 != 0
+	c := &NTAGConfig{
+		CFG0Hex:      strings.ToUpper(hex.EncodeToString(cfg0)),
+		CFG1Hex:      strings.ToUpper(hex.EncodeToString(cfg1)),
+		PWDHex:       strings.ToUpper(hex.EncodeToString(pwd)),
+		PACKHex:      strings.ToUpper(hex.EncodeToString(pack)),
+		AUTH0:        auth0,
+		AuthLimit:    int(access & 0x07),
+		ConfigLocked: access&0x40 != 0,
+	}
+	if prot {
+		c.ProtectMode = "read and write"
+	} else {
+		c.ProtectMode = "write only"
+	}
+	lastPage := totalPages - 1
+	if auth0 > lastPage {
+		c.ProtectedFrom = fmt.Sprintf("none (AUTH0=0x%02X disables password protection)", auth0)
+	} else {
+		c.ProtectedFrom = fmt.Sprintf("pages %d onward (%s)", auth0, c.ProtectMode)
+	}
+	return model, c
 }
 
 // decodeCC decodes the 4-byte Capability Container at page 3.
