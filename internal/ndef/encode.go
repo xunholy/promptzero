@@ -3,6 +3,7 @@
 package ndef
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 )
@@ -20,14 +21,23 @@ type EncodeRecord struct {
 	Text   string `json:"text,omitempty"`
 	Lang   string `json:"lang,omitempty"`
 	Action string `json:"action,omitempty"`
+	// Type is the record type for "mime" (a MIME media type, e.g.
+	// "text/vcard") and "external" (a "domain:type" name, e.g.
+	// "android.com:pkg" for an Android Application Record).
+	Type string `json:"type,omitempty"`
+	// Payload is the raw payload as hex for "mime"/"external". When empty,
+	// Text (UTF-8) is used as the payload — the common case (vCard text, an
+	// AAR package name).
+	Payload string `json:"payload,omitempty"`
 }
 
 // Encode builds the raw bytes of an NDEF message from a list of records —
 // the inverse of DecodeBytes. The first record gets MB (Message Begin), the
 // last gets ME (Message End); each uses a short-record length when its
-// payload is < 256 bytes. Supports the highest-runner well-known types —
-// URI, Text, and Smart Poster (a "Sp" record wrapping a nested URI + title +
-// action message) — all round-trip-verified against Decode.
+// payload is < 256 bytes. Supports the highest-runner record types — URI,
+// Text, and Smart Poster (well-known); MIME media-type records; and External
+// records (TNF 0x04, e.g. an Android Application Record "android.com:pkg")
+// — all round-trip-verified against Decode.
 //
 // # Wrap-vs-native judgement
 //
@@ -41,15 +51,16 @@ type EncodeRecord struct {
 //
 // # Deliberately deferred
 //
-// MIME, External, and chunked records — the URI / Text / Smart Poster RTDs
-// cover the overwhelming majority of tag-writing use; the rest can be added
-// when there's a verified need. ID fields are omitted (IL=0).
+// Chunked records and the Empty / Unknown / Absolute-URI / Unchanged TNFs —
+// the supported set covers the overwhelming majority of tag-writing use; the
+// rest can be added when there's a verified need. ID fields are omitted (IL=0).
 func Encode(records []EncodeRecord) ([]byte, error) {
 	if len(records) == 0 {
 		return nil, fmt.Errorf("ndef: no records to encode")
 	}
 	var out []byte
 	for i, r := range records {
+		tnf := TNFWellKnown
 		var typeStr string
 		var payload []byte
 		var err error
@@ -63,22 +74,55 @@ func Encode(records []EncodeRecord) ([]byte, error) {
 		case "smartposter", "sp":
 			typeStr = "Sp"
 			payload, err = buildSmartPosterPayload(r)
+		case "mime":
+			if strings.TrimSpace(r.Type) == "" {
+				return nil, fmt.Errorf("ndef: record %d: mime requires a type (e.g. text/vcard)", i)
+			}
+			tnf, typeStr = TNFMIME, r.Type
+			payload, err = recordPayload(r)
+		case "external", "aar":
+			if !strings.Contains(r.Type, ":") {
+				return nil, fmt.Errorf("ndef: record %d: external requires a domain:type (e.g. android.com:pkg)", i)
+			}
+			tnf, typeStr = TNFExternal, r.Type
+			payload, err = recordPayload(r)
 		default:
-			return nil, fmt.Errorf("ndef: record %d: unsupported kind %q (supported: uri, text, smartposter)", i, r.Kind)
+			return nil, fmt.Errorf("ndef: record %d: unsupported kind %q (supported: uri, text, smartposter, mime, external)", i, r.Kind)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("ndef: record %d: %w", i, err)
 		}
-		out = append(out, encodeWellKnownRecord(typeStr, payload, i == 0, i == len(records)-1)...)
+		out = append(out, encodeRecord(tnf, typeStr, payload, i == 0, i == len(records)-1)...)
 	}
 	return out, nil
 }
 
-// encodeWellKnownRecord assembles a single TNF=WellKnown record: header byte
-// (MB/ME/SR + TNF=1), 1-byte type length, payload length (1 byte short or 4
-// bytes), the type, and the payload. IL=0 (no ID), CF=0 (not chunked).
+// recordPayload returns the payload bytes for a mime/external record: the
+// hex-decoded Payload if set, otherwise the UTF-8 Text (the common case for
+// vCard bodies and AAR package names).
+func recordPayload(r EncodeRecord) ([]byte, error) {
+	if s := strings.TrimSpace(r.Payload); s != "" {
+		clean := strings.NewReplacer(" ", "", ":", "", "-", "", "_", "").Replace(s)
+		b, err := hex.DecodeString(clean)
+		if err != nil {
+			return nil, fmt.Errorf("payload is not valid hex: %w", err)
+		}
+		return b, nil
+	}
+	return []byte(r.Text), nil
+}
+
+// encodeWellKnownRecord assembles a single TNF=WellKnown record (used for the
+// nested URI/Text/Action records inside a Smart Poster).
 func encodeWellKnownRecord(typeStr string, payload []byte, mb, me bool) []byte {
-	hdr := byte(TNFWellKnown) // TNF in low 3 bits
+	return encodeRecord(TNFWellKnown, typeStr, payload, mb, me)
+}
+
+// encodeRecord assembles one NDEF record: header byte (MB/ME/SR + TNF in the
+// low 3 bits), 1-byte type length, payload length (1 byte short or 4 bytes),
+// the type, and the payload. IL=0 (no ID), CF=0 (not chunked).
+func encodeRecord(tnf TNF, typeStr string, payload []byte, mb, me bool) []byte {
+	hdr := byte(tnf) // TNF in low 3 bits
 	if mb {
 		hdr |= 0x80
 	}

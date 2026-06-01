@@ -128,6 +128,51 @@ func TestEncode_SmartPosterRejectsBad(t *testing.T) {
 	}
 }
 
+// TestEncode_MIMEAndExternalRoundTrip builds a MIME record and an External
+// record (an Android Application Record) and confirms Decode recovers their
+// TNF, type, and payload.
+func TestEncode_MIMEAndExternalRoundTrip(t *testing.T) {
+	b, err := Encode([]EncodeRecord{
+		{Kind: "mime", Type: "text/vcard", Text: "BEGIN:VCARD\nEND:VCARD"},
+		{Kind: "external", Type: "android.com:pkg", Text: "com.evil.app"},
+	})
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	// First record (MIME, TNF 2) gets MB+SR (not ME): 0x80|0x10|0x02 = 0x92.
+	if b[0] != 0x92 {
+		t.Errorf("MIME header = 0x%02X, want 0x92 (MB+SR+TNF2)", b[0])
+	}
+	msg, err := DecodeBytes(b)
+	if err != nil {
+		t.Fatalf("DecodeBytes: %v", err)
+	}
+	if msg.Count != 2 {
+		t.Fatalf("decoded %d records, want 2", msg.Count)
+	}
+	if msg.Records[0].TNF != int(TNFMIME) || msg.Records[0].Type != "text/vcard" {
+		t.Errorf("MIME record = TNF %d type %q", msg.Records[0].TNF, msg.Records[0].Type)
+	}
+	if want := strings.ToUpper(hex.EncodeToString([]byte("BEGIN:VCARD\nEND:VCARD"))); msg.Records[0].PayloadHex != want {
+		t.Errorf("MIME payload hex = %q, want %q", msg.Records[0].PayloadHex, want)
+	}
+	if msg.Records[1].TNF != int(TNFExternal) || msg.Records[1].Type != "android.com:pkg" {
+		t.Errorf("External record = TNF %d type %q", msg.Records[1].TNF, msg.Records[1].Type)
+	}
+	if want := strings.ToUpper(hex.EncodeToString([]byte("com.evil.app"))); msg.Records[1].PayloadHex != want {
+		t.Errorf("AAR payload hex = %q, want %q (com.evil.app)", msg.Records[1].PayloadHex, want)
+	}
+}
+
+func TestEncode_MIMEExternalRejectBad(t *testing.T) {
+	if _, err := Encode([]EncodeRecord{{Kind: "mime", Text: "x"}}); err == nil {
+		t.Error("expected error: mime without type")
+	}
+	if _, err := Encode([]EncodeRecord{{Kind: "external", Type: "nopackagename", Text: "x"}}); err == nil {
+		t.Error("expected error: external type without domain:type colon")
+	}
+}
+
 func TestEncode_RejectsBadInput(t *testing.T) {
 	if _, err := Encode(nil); err == nil {
 		t.Error("expected error for empty records")
