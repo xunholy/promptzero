@@ -1803,7 +1803,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.381.0 added em4100_encode (offline EM4100 64-bit wire-frame builder —
 	// header + row/column parity + stop, companion to em4100_decode; verified
 	// by independent parity re-derivation; generation only / no write).
-	const expected = 447
+	//
+	// v0.382.0 added nfc_emv_encode (offline EMV BER-TLV builder —
+	// tag/length/value assembly inverse of nfc_emv_decode, round-trip-
+	// verified; generation only / no card I/O).
+	const expected = 448
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

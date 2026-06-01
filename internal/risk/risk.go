@@ -84,6 +84,11 @@ var toolLevels = func() map[string]Level {
 		// decoder for contactless-card APDU responses. Pure offline
 		// parser; no card crypto verification (deliberately scoped out).
 		"nfc_emv_decode",
+		// nfc_emv_encode is the offline inverse — assembles EMV BER-TLV bytes
+		// (tag/length/value, constructed recursion) from a tag tree,
+		// round-trip-verified against nfc_emv_decode. Generation only; no card
+		// I/O, no TX, so it stays Low.
+		"nfc_emv_encode",
 		// v0.208 (NATIVE-fit gap from top-30 rank 8): Apple Continuity
 		// dissector — pure offline parser over a manufacturer-data hex
 		// blob. Pairs with the existing defense_classify_advertisement
