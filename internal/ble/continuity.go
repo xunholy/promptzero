@@ -153,8 +153,10 @@ func stripPrefix(b []byte) ([]byte, string) {
 	// Full AD structure: <len> FF 4C 00 ...
 	if len(b) >= 4 && b[1] == 0xFF && b[2] == 0x4C && b[3] == 0x00 {
 		declared := int(b[0])
-		if 1+declared <= len(b) {
-			return b[4 : 1+declared], "ad_structure"
+		// end must reach the body start (>=4) and stay within the buffer;
+		// a bogus short length would otherwise slice b[4:<4] and panic.
+		if end := 1 + declared; end >= 4 && end <= len(b) {
+			return b[4:end], "ad_structure"
 		}
 	}
 	// Manufacturer ID only: 4C 00 ...

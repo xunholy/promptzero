@@ -110,8 +110,10 @@ func stripEddystonePrefix(b []byte) []byte {
 	// Full AD structure: <len> 16 AA FE ...
 	if len(b) >= 4 && b[1] == 0x16 && b[2] == 0xAA && b[3] == 0xFE {
 		declared := int(b[0])
-		if 1+declared <= len(b) {
-			return b[4 : 1+declared]
+		// end must reach the body start (>=4) and stay within the buffer;
+		// a bogus short length would otherwise slice b[4:<4] and panic.
+		if end := 1 + declared; end >= 4 && end <= len(b) {
+			return b[4:end]
 		}
 	}
 	// UUID only: AA FE ...

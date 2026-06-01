@@ -271,11 +271,14 @@ func stripOuter(b []byte) (tlvs []byte, format string, err error) {
 	// 0x00 (Apple Company ID).
 	if len(b) >= 4 && b[1] == 0xFF && b[2] == 0x4C && b[3] == 0x00 {
 		declaredLen := int(b[0])
-		if 1+declaredLen > len(b) {
-			return nil, "", fmt.Errorf("advertising-data length %d exceeds buffer %d",
-				declaredLen, len(b)-1)
+		end := 1 + declaredLen
+		// end must reach the body start (>=4) and stay within the buffer;
+		// a bogus short length would otherwise slice b[4:<4] and panic.
+		if end < 4 || end > len(b) {
+			return nil, "", fmt.Errorf("advertising-data length %d inconsistent with a %d-byte buffer",
+				declaredLen, len(b))
 		}
-		return b[4 : 1+declaredLen], "ad_record", nil
+		return b[4:end], "ad_record", nil
 	}
 	// (b) post-AdvType manufacturer data: 0x4C 0x00 + TLVs.
 	if len(b) >= 2 && b[0] == 0x4C && b[1] == 0x00 {
