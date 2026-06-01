@@ -95,7 +95,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | NFC relay (two-Flipper proxy) | apps top-20 #13 | ❌ | — | — | **NEW vs audit** ⟶ `nfc_relay_start/stop` |
 | ULC / SEOS BLE-tunnel relay | apps `ulc_relay` | ❌ | — | — | New gap |
 | ISO15693-3 writer | firmware §4.2 #4 | ❌ | — | — | **NEW** small gap |
-| EMV parse (visa/mc) | firmware §4.2 #3 | ✅ `nfc_emv_decode` (+ `nfc_emv_encode`) — BER-TLV walker + ~80-tag dictionary; `nfc_emv_track2_decode` v0.414 cracks tag 57 (PAN/expiry/service code, Luhn-gated); `nfc_emv_dol_decode` v0.415 walks PDOL/CDOL/DDOL/TDOL (tag,length) lists | — | — | shipped — BER-TLV + Track-2 + DOL field decode. Cryptogram/online-auth flow deliberately out of scope (needs issuer keys). |
+| EMV parse (visa/mc) | firmware §4.2 #3 | ✅ `nfc_emv_decode` (+ `nfc_emv_encode`) — BER-TLV walker + ~80-tag dictionary; `nfc_emv_track2_decode` v0.414 cracks tag 57 (PAN/expiry/service code, Luhn-gated); `nfc_emv_dol_decode` v0.415 walks PDOL/CDOL/DDOL/TDOL (tag,length) lists; `nfc_emv_afl_decode` v0.416 expands tag 94 (SFI/record ranges → READ RECORD list) | — | — | shipped — BER-TLV + Track-2 + DOL + AFL field decode. Cryptogram/online-auth flow deliberately out of scope (needs issuer keys). |
 | Wiegand D0/D1 capture + replay | apps top-20 #6 + attacks #6 | ❌ | — | — | **§2b** ⟶ `gpio_wiegand_capture/replay` |
 | HID Prox / EM4xxx PACS decode | apps top-20 #15 | ⚠️ `rfid_raw_analyze` | — | ✅ pm3 | **NEW** ⟶ `rfid_pacs_decode` |
 | LF EM4100 / T5577 read+write | baseline | ✅ `rfid_*`, `loader_t5577_multiwriter` | — | — | — |

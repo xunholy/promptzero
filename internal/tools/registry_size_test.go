@@ -1948,7 +1948,11 @@ func TestRegistrySize(t *testing.T) {
 	// PDOL/CDOL1/CDOL2/DDOL/TDOL; walks the (tag,length) pairs the BER-TLV
 	// walker can't parse, summing total_length. Structural reuse of the EMV
 	// tag table; offline read; extends internal/emv).
-	const expected = 477
+	// v0.416.0 added nfc_emv_afl_decode (EMV Application File Locator decoder
+	// — tag 94; expands the 4-byte [SFI, first, last, ODA] entries into the
+	// implied READ RECORD command list, gated structurally (4-byte groups,
+	// SFI 1-30, ascending ranges). Offline read; extends internal/emv).
+	const expected = 478
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
