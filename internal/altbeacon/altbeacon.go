@@ -102,10 +102,13 @@ func stripOuter(b []byte) (mfgID uint16, body []byte, format string, err error) 
 	// (a) advertising-data record: <len> FF <mfgid:2 LE> BE AC ...
 	if len(b) >= 6 && b[1] == 0xFF && b[4] == 0xBE && b[5] == 0xAC {
 		declaredLen := int(b[0])
-		if 1+declaredLen > len(b) {
-			return 0, nil, "", fmt.Errorf("altbeacon: advertising-data length %d exceeds buffer %d", declaredLen, len(b)-1)
+		end := 1 + declaredLen
+		// end must reach past the matched beacon code (>=6) and stay within
+		// the buffer; a bogus short length would otherwise slice b[4:<4].
+		if end < 6 || end > len(b) {
+			return 0, nil, "", fmt.Errorf("altbeacon: advertising-data length %d inconsistent with a %d-byte buffer", declaredLen, len(b))
 		}
-		return binary.LittleEndian.Uint16(b[2:4]), b[4 : 1+declaredLen], "ad_record", nil
+		return binary.LittleEndian.Uint16(b[2:4]), b[4:end], "ad_record", nil
 	}
 	// (b) manufacturer data: <mfgid:2 LE> BE AC ...
 	if len(b) >= 4 && b[2] == 0xBE && b[3] == 0xAC {

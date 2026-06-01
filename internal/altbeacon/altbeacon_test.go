@@ -146,3 +146,19 @@ func TestEncode_Errors(t *testing.T) {
 		}
 	}
 }
+
+// TestDecode_ShortADLengthNoPanic is a regression for a fuzz-found slice
+// panic: an AD record (byte[1]=0xFF) with the BE AC marker at [4:6] but a
+// declared length < 5 sliced b[4:<4]. It must now error cleanly.
+func TestDecode_ShortADLengthNoPanic(t *testing.T) {
+	// 00 FF 18 01 BE AC ... : declared length 0 -> end=1 -> would slice b[4:1].
+	for _, in := range []string{
+		"00FF1801BEAC0000000000",
+		"01FF1801BEAC0000000000",
+		"03FF1801BEAC0000000000",
+	} {
+		if _, err := Decode(in); err == nil {
+			t.Errorf("Decode(%q): expected a clean error, got nil", in)
+		}
+	}
+}
