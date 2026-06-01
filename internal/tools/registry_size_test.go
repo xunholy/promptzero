@@ -1790,7 +1790,12 @@ func TestRegistrySize(t *testing.T) {
 	// v0.378.0 added subghz_weather_synth (offline 433 MHz weather-station
 	// frame generator — LaCrosse/Acurite field-packing + checksum inverse of
 	// subghz_weather_decode, round-trip-verified; generation only / no TX).
-	const expected = 444
+	//
+	// v0.379.0 added subghz_pocsag_synth (offline POCSAG paging transmission
+	// generator — BCH(31,21) + parity + batch framing inverse of
+	// subghz_pocsag_decode, BCH-verified vs the idle codeword + round-trip;
+	// generation only / no TX).
+	const expected = 445
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

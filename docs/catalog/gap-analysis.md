@@ -118,7 +118,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | TPMS synth | attacks + apps | ✅ `subghz_tpms_synth` | — | — | shipped v0.377 — offline inverse of `subghz_tpms_decode` ([sensor ID][payload][CRC-8] Manchester frame, round-trip-verified; generation only, no TX). Per-model pressure/temp scaling left to the caller (unverifiable). |
 | Tesla VCSEC TPMS anomaly detect | attacks #15 | ⚠️ partial | — | — | `tpms_anomaly_detect` shipped v0.367 — Sub-GHz-side sequence analyser (excess unique sensor IDs vs wheel count + CRC-invalid frames, observation-not-verdict framing). The Tesla VCSEC **BLE-side** malformed-cert angle (CVE-2025-2082) is a separate, still-unshipped primitive. |
 | Weather-station 433 MHz decode (LaCrosse/Acurite/Oregon) | apps `weather_station` | ✅ `subghz_weather_decode` (+ `subghz_weather_synth` v0.378, the inverse generator, round-trip-verified) | — | — | shipped v0.361 — LaCrosse TX141TH-Bv2 + Acurite 609TXC (fixed-40-bit, checksum-gated); Oregon/5n1 deferred |
-| POCSAG paging decode | apps top-20 #11 | ❌ | — | — | **NEW vs audit** ⟶ `subghz_pocsag_decode` |
+| POCSAG paging decode | apps top-20 #11 | ✅ `subghz_pocsag_decode` (+ `subghz_pocsag_synth` v0.379, the inverse generator with real BCH(31,21), round-trip + idle-codeword verified) | — | — | shipped — sync/idle framing, numeric + alphanumeric, parity check |
 | Sub-GHz playlist / scheduler / remote | apps | ✅ `loader_subghz_playlist` | — | — | — (`subghz_scheduler` low-priority) |
 | Spectrum analyzer / freq sweep | baseline + apps | ✅ `subghz_freq_sweep`, `loader_spectrum_analyzer` | — | — | — |
 | Sub-GHz signal generator | apps | ✅ `loader_signal_generator` | — | — | — |

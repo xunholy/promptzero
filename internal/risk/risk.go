@@ -90,6 +90,12 @@ var toolLevels = func() map[string]Level {
 		// transmit, no Flipper, no SDR. Pairs with the loader_pocsag_pager
 		// FAP wrapper which covers the live-device flow.
 		"subghz_pocsag_decode",
+		// subghz_pocsag_synth is the offline inverse — builds the full
+		// POCSAG transmission (BCH(31,21) + parity + batch framing) from a
+		// RIC + function + message, round-trip-verified against
+		// subghz_pocsag_decode. Generation only; it transmits nothing (the
+		// Sub-GHz TX is a separate risk-gated step), so it stays Low.
+		"subghz_pocsag_synth",
 		// v0.210 (NATIVE-fit gap adjacent to top-30 rank 8): Google
 		// Eddystone BLE-beacon dissector — pure offline walker over a
 		// service-data payload (UID / URL / TLM / EID frame types).
