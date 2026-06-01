@@ -112,6 +112,13 @@ var toolLevels = func() map[string]Level {
 		// Receive-only / parse-only. Complements ble_continuity_decode
 		// in the Google service-data space.
 		"ble_eddystone_decode",
+		// v0.387 (offline inverse of ble_eddystone_decode): builds an
+		// Eddystone service-data payload (UID / URL / TLM / EID) from
+		// parameters, with the URL scheme/expansion table abbreviation.
+		// Generation only — advertises nothing, touches no radio (the
+		// BLE TX is a separate step) — round-trip-verified against the
+		// decoder. Low like the decoder.
+		"ble_eddystone_encode",
 		// v0.211 (NATIVE-fit gap in the NFC decode space): Mifare
 		// Classic block + dump dissector — manufacturer block / sector
 		// trailer (with access-bit decode per NXP AN10833) / value

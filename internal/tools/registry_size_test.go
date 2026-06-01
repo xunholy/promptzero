@@ -1818,7 +1818,12 @@ func TestRegistrySize(t *testing.T) {
 	// duplicate codes (key-free replay/RollBack signature) + counter
 	// regressions when decrypted counters are supplied; observation-not-
 	// verdict; no RF/TX).
-	const expected = 450
+	//
+	// v0.387.0 added ble_eddystone_encode (offline Eddystone beacon builder —
+	// UID/URL/TLM/EID service-data assembly inverse of ble_eddystone_decode,
+	// with URL scheme/expansion abbreviation; round-trip + spec-vector
+	// verified; generation only / no BLE TX).
+	const expected = 451
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
