@@ -503,6 +503,12 @@ var toolLevels = func() map[string]Level {
 		// bytes. Pure offline transform, transport-independent; unknown
 		// PIDs surfaced raw, never guessed.
 		"obd2_pid_decode",
+		// v0.396 (companion to obd2_pid_decode): obd2_dtc_decode unpacks
+		// an OBD-II Mode-03/07/0A trouble-code response into the canonical
+		// SAE J2012 codes (P/C/B/U + 4 digits) — the values the j1850
+		// decoder left raw. Deterministic bit-unpack; padding skipped,
+		// no guessed fault descriptions.
+		"obd2_dtc_decode",
 		// v0.367 (gap-analysis §3 rank 6): tpms_anomaly_detect is a pure
 		// offline, defensive analyser over a sequence of decoded TPMS
 		// frames — flags excess unique sensor IDs vs the vehicle wheel

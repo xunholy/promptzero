@@ -1866,7 +1866,12 @@ func TestRegistrySize(t *testing.T) {
 	// decoder — computes RPM / speed / temps / MAF / … from the public
 	// per-PID formulas, the value the j1850/canbus decoders left as raw
 	// bytes; transport-independent, unknown PIDs surfaced raw).
-	const expected = 460
+	//
+	// v0.396.0 added obd2_dtc_decode (OBD-II Mode-03/07/0A trouble-code
+	// decoder — unpacks 2-byte DTCs into canonical SAE J2012 codes
+	// (P/C/B/U + 4 digits); deterministic bit-unpack, padding skipped,
+	// no guessed fault descriptions).
+	const expected = 461
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
