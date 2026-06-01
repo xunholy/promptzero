@@ -1931,7 +1931,12 @@ func TestRegistrySize(t *testing.T) {
 	// uds_decode; SID + sub-function + suppressPosRsp + DID + payload, the
 	// application-layer top of the inject chain. Generation only / no TX;
 	// round-trip-verified against the decoder).
-	const expected = 473
+	//
+	// v0.412.0 added kwp_encode (KWP2000 / ISO 14230 message builder —
+	// inverse of kwp_decode; SID + param byte + payload, the legacy-vehicle
+	// counterpart of uds_encode. Generation only / no TX; round-trip-
+	// verified against the decoder).
+	const expected = 474
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

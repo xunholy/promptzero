@@ -572,6 +572,11 @@ var toolLevels = func() map[string]Level {
 		// comms-control services UDS lacks), so uds_decode would mislabel
 		// KWP traffic. Pure offline parser; unknown values surfaced raw.
 		"kwp_decode",
+		// v0.412 (application-layer inverse of kwp_decode): kwp_encode
+		// builds a KWP2000 request/response PDU (SID + param byte + payload)
+		// — the legacy-vehicle counterpart of uds_encode, completing the
+		// KWP inject chain. Generation only; round-trip-verified.
+		"kwp_encode",
 		// v0.406 (defensive LoRaWAN analyser): lorawan_replay_detect flags
 		// frame-counter reuse / regression over a sequence of decoded
 		// LoRaWAN frames — the replay the spec's FCnt check exists to stop.
