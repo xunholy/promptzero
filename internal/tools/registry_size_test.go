@@ -1907,7 +1907,11 @@ func TestRegistrySize(t *testing.T) {
 	// frame-counter-reuse analyser over a sequence of decoded frames —
 	// key-free FCnt reuse/regression, direction-aware; observation-not-
 	// verdict, no RF/TX).
-	const expected = 468
+	//
+	// v0.407.0 added subghz_debruijn (de Bruijn optimal fixed-code brute
+	// sequence generator — OpenSesame technique; all 2^n codes in ~2^n bits.
+	// Generation only / no TX; self-verifiable de Bruijn property).
+	const expected = 469
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -554,6 +554,12 @@ var toolLevels = func() map[string]Level {
 		// Key-free (FCnt is cleartext FHDR), direction-aware (independent
 		// up/down counters), observation-not-verdict. No RF/TX.
 		"lorawan_replay_detect",
+		// v0.407 (OpenSesame primitive): subghz_debruijn generates the
+		// optimal de Bruijn brute-force bit sequence for an n-bit fixed-code
+		// receiver — all 2^n codes in ~2^n bits (an n-fold speedup over a
+		// naive sweep). Generation only — emits a bit stream, transmits
+		// nothing (pair with an OOK/TX stage). Self-verifiable.
+		"subghz_debruijn",
 		// v0.367 (gap-analysis §3 rank 6): tpms_anomaly_detect is a pure
 		// offline, defensive analyser over a sequence of decoded TPMS
 		// frames — flags excess unique sensor IDs vs the vehicle wheel
