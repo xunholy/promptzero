@@ -115,7 +115,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | RollBack capture-only detect | attacks #5 | ❌ | — | — | **§2a** ⟶ `subghz_rollback_detect` |
 | Sub-GHz `chat` verb | firmware §4.2 #2 | ✅ `subghz_chat` | — | — | **researcher claim was stale** |
 | TPMS decode (Schrader/Citroën/Renault/Toyota/Ford) | attacks #1 + apps top-20 #2 | ✅ `subghz_tpms_decode` | — | — | shipped v0.360 — Manchester (both conventions/alignments) + CRC-8 disambiguation + 32-bit sensor ID |
-| TPMS synth | attacks + apps | ❌ | — | — | **§2b** ⟶ `subghz_tpms_synth` |
+| TPMS synth | attacks + apps | ✅ `subghz_tpms_synth` | — | — | shipped v0.377 — offline inverse of `subghz_tpms_decode` ([sensor ID][payload][CRC-8] Manchester frame, round-trip-verified; generation only, no TX). Per-model pressure/temp scaling left to the caller (unverifiable). |
 | Tesla VCSEC TPMS anomaly detect | attacks #15 | ⚠️ partial | — | — | `tpms_anomaly_detect` shipped v0.367 — Sub-GHz-side sequence analyser (excess unique sensor IDs vs wheel count + CRC-invalid frames, observation-not-verdict framing). The Tesla VCSEC **BLE-side** malformed-cert angle (CVE-2025-2082) is a separate, still-unshipped primitive. |
 | Weather-station 433 MHz decode (LaCrosse/Acurite/Oregon) | apps `weather_station` | ✅ `subghz_weather_decode` | — | — | shipped v0.361 — LaCrosse TX141TH-Bv2 + Acurite 609TXC (fixed-40-bit, checksum-gated); Oregon/5n1 deferred |
 | POCSAG paging decode | apps top-20 #11 | ❌ | — | — | **NEW vs audit** ⟶ `subghz_pocsag_decode` |

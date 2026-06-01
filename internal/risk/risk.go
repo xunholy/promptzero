@@ -385,6 +385,11 @@ var toolLevels = func() map[string]Level {
 		// Manufacturer pressure/temp scaling NOT decoded (raw bytes
 		// surfaced) — unverifiable without per-model captures.
 		"subghz_tpms_decode",
+		// subghz_tpms_synth is the offline inverse — builds the Manchester
+		// + CRC-8 TPMS frame from a sensor ID + payload, round-trip-verified
+		// against subghz_tpms_decode. Generation only; it transmits nothing
+		// (the Sub-GHz TX is a separate risk-gated step), so it stays Low.
+		"subghz_tpms_synth",
 		// v0.361 (gap-analysis §3 rank 5): subghz_weather_decode is a
 		// pure offline 433 MHz weather-station decoder for the
 		// fixed-40-bit LaCrosse TX141TH-Bv2 + Acurite 609TXC families.

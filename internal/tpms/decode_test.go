@@ -7,30 +7,8 @@ import (
 	"testing"
 )
 
-// encodeManchester encodes payload bytes (MSB-first) to a '0'/'1' bit
-// string under the IEEE 802.3 convention (data 0 = "10", data 1 =
-// "01") or G.E. Thomas (the inverse). It is the inverse of the
-// decoder's line stage, so a round trip verifies the decode path
-// without needing a real sensor capture.
-func encodeManchester(payload []byte, ieee bool) string {
-	var sb strings.Builder
-	for _, b := range payload {
-		for j := 7; j >= 0; j-- {
-			bit := (b >> uint(j)) & 1
-			switch {
-			case bit == 0 && ieee:
-				sb.WriteString("10")
-			case bit == 0 && !ieee:
-				sb.WriteString("01")
-			case bit == 1 && ieee:
-				sb.WriteString("01")
-			default: // bit == 1 && !ieee
-				sb.WriteString("10")
-			}
-		}
-	}
-	return sb.String()
-}
+// encodeManchester now lives in synth.go (production) — the decode and
+// analyze round-trip tests share that single implementation.
 
 // TestDecode_RoundTripIEEE encodes a payload whose last byte is a valid
 // CRC-8/0x07 and asserts the decoder recovers the bytes, sensor ID,
