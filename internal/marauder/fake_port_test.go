@@ -349,8 +349,14 @@ func TestExecNoNewlinePrompt(t *testing.T) {
 // turn-cancellation cases.
 func TestExecCtx_HonoursCancellation(t *testing.T) {
 	fp := newFakePort()
-	// No respond() call — the fake won't supply a prompt for
-	// "freeze", so readUntilPromptCtx would otherwise time out.
+	// Suppress the prompt for "freeze" so the fake never terminates the
+	// response. Without this the fake echoes "#freeze\r\n> " for any
+	// unscripted command, and the prompt is in the read buffer immediately
+	// after Write — so the first read could complete (returning nil) before
+	// the 100 ms cancel fires, racing the cancellation (the cause of a CI
+	// flake). Suppressing the prompt makes the read loop genuinely wait, so
+	// the cancel deterministically wins and ExecCtx returns the ctx error.
+	fp.suppressPrompt("freeze")
 	m := newMarauderWithPort(fp)
 	t.Cleanup(func() { _ = m.Close() })
 
