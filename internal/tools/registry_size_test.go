@@ -1851,7 +1851,12 @@ func TestRegistrySize(t *testing.T) {
 	// derives the security posture: WPA2-Personal / WPA3-SAE / transition /
 	// Enterprise / OWE. Completes the suite-naming the wifi_80211 decoder
 	// deferred; pure offline parser, vendor suites surfaced raw).
-	const expected = 457
+	//
+	// v0.393.0 added wifi_deauth_detect (defensive 802.11 deauth/disassoc-
+	// flood analyser over a sequence of decoded frames — broadcast-deauth /
+	// volume-flood / targeted-client signals + reason-code histogram;
+	// observation-not-verdict, no RF/TX).
+	const expected = 458
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

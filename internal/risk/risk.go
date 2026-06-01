@@ -178,6 +178,13 @@ var toolLevels = func() map[string]Level {
 		// The wifi_80211 decoder left suite naming + PMF to a follow-on;
 		// this is it. Pure offline parser; vendor suites surfaced raw.
 		"wifi_rsn_decode",
+		// v0.393 (defensive WiFi analyser): deauth/disassoc-flood
+		// detector over a sequence of decoded 802.11 frames — flags
+		// broadcast deauths (mass-disconnect), volume floods, and
+		// targeted-client disconnects, with a named reason-code
+		// histogram. Observation-not-verdict; no RF/TX. Sibling of
+		// tpms_anomaly_detect / subghz_rollback_detect.
+		"wifi_deauth_detect",
 		// v0.214 (NATIVE-fit gap in the Sub-GHz decode space):
 		// LoRaWAN PHYPayload dissector — MAC-layer structural decode
 		// for LoRaWAN 1.0.x / 1.1 captures. MHDR + FHDR + FCtrl
