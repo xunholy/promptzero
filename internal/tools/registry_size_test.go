@@ -1896,7 +1896,12 @@ func TestRegistrySize(t *testing.T) {
 	// decoder — UDS predecessor with a DISTINCT service-ID table (local-
 	// identifier + comms-control services UDS lacks) that uds_decode would
 	// mislabel; pure offline parser, unknown values surfaced raw).
-	const expected = 466
+	//
+	// v0.404.0 added nfc_t2t_decode (NFC Forum Type 2 Tag structure decoder —
+	// NTAG21x / Ultralight 7-byte UID + BCC validation + static lock bytes +
+	// Capability Container; distinct from mifare (Classic) and ndef (the
+	// message). Pure offline, BCC-checksum-anchored).
+	const expected = 467
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

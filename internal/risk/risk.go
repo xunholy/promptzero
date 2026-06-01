@@ -80,6 +80,13 @@ var toolLevels = func() map[string]Level {
 		// write/TX (the Flipper firmware does this for `rfid write EM4100`),
 		// so it stays Low like the decoder.
 		"em4100_encode",
+		// v0.404 (NATIVE-fit NFC gap): nfc_t2t_decode dissects the NFC
+		// Forum Type 2 Tag structure (NTAG21x / Ultralight) from a dump —
+		// 7-byte UID + BCC0/BCC1 validation (hand-computable XOR), static
+		// lock bytes -> locked pages, and the Capability Container. Pure
+		// offline parser; per-variant config pages deliberately not
+		// guessed. Distinct from mifare (Classic) and ndef (the message).
+		"nfc_t2t_decode",
 		// v0.207 (NATIVE-fit gap from top-30 rank 21): EMV BER-TLV
 		// decoder for contactless-card APDU responses. Pure offline
 		// parser; no card crypto verification (deliberately scoped out).
