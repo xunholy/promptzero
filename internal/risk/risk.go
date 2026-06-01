@@ -158,6 +158,12 @@ var toolLevels = func() map[string]Level {
 		// KDE walker for RSN IE / GTK / MAC address etc. Pure offline
 		// parser. Pairs with marauder_handoff_hashcat.
 		"wifi_eapol_decode",
+		// v0.390 (native replacement for the hcxpcapngtool shell-out in
+		// the PMKID case): builds a hashcat mode-22000 PMKID line
+		// (WPA*01*pmkid*ap*sta*essid***) in pure Go from fields the
+		// operator already holds. Pure host-side string assembly — no
+		// capture, no radio — anchored on hashcat's published example.
+		"wifi_pmkid_hc22000",
 		// v0.214 (NATIVE-fit gap in the Sub-GHz decode space):
 		// LoRaWAN PHYPayload dissector — MAC-layer structural decode
 		// for LoRaWAN 1.0.x / 1.1 captures. MHDR + FHDR + FCtrl

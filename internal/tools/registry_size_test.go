@@ -1834,7 +1834,12 @@ func TestRegistrySize(t *testing.T) {
 	// + reserved; the third major beacon format alongside Apple iBeacon and
 	// Google Eddystone. Round-trip + canonical spec-example verified;
 	// generation only / no BLE TX). +2 tools.
-	const expected = 454
+	//
+	// v0.390.0 added wifi_pmkid_hc22000 (native hashcat mode-22000 PMKID line
+	// builder — WPA*01*pmkid*ap*sta*essid***; removes the hcxpcapngtool
+	// shell-out for the clientless-PMKID case. Anchored on hashcat's
+	// published example hash; pure host-side, no capture/radio).
+	const expected = 455
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
