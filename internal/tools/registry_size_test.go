@@ -1828,7 +1828,13 @@ func TestRegistrySize(t *testing.T) {
 	// UUID + major + minor + measured-power manufacturer-data assembly,
 	// inverse of the iBeacon decode in ble_continuity_classify; round-trip +
 	// fixed-layout vector verified; generation only / no BLE TX).
-	const expected = 452
+	//
+	// v0.389.0 added ble_altbeacon_decode + ble_altbeacon_encode (the open
+	// AltBeacon standard codec — company ID + 0xBEAC + 20-byte ID + ref RSSI
+	// + reserved; the third major beacon format alongside Apple iBeacon and
+	// Google Eddystone. Round-trip + canonical spec-example verified;
+	// generation only / no BLE TX). +2 tools.
+	const expected = 454
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

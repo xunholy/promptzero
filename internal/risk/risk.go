@@ -126,6 +126,13 @@ var toolLevels = func() map[string]Level {
 		// touches no radio — round-trip-verified against the decoder.
 		// Low like the decoder.
 		"ble_ibeacon_encode",
+		// v0.389 — AltBeacon (the open, vendor-neutral beacon standard)
+		// codec. ble_altbeacon_decode is a pure offline parser over the
+		// company ID + 0xBEAC + 20-byte ID + ref RSSI + reserved layout;
+		// ble_altbeacon_encode is its generation-only inverse (advertises
+		// nothing, no radio). Both round-trip + spec-example verified.
+		"ble_altbeacon_decode",
+		"ble_altbeacon_encode",
 		// v0.211 (NATIVE-fit gap in the NFC decode space): Mifare
 		// Classic block + dump dissector — manufacturer block / sector
 		// trailer (with access-bit decode per NXP AN10833) / value
