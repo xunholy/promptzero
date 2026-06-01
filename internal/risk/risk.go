@@ -192,6 +192,14 @@ var toolLevels = func() map[string]Level {
 		// BSSIDs. Observation-not-verdict; no RF/TX. Composes with
 		// wifi_rsn_decode.
 		"wifi_rogue_ap_detect",
+		// v0.399 (defensive BLE analyser): ble_spam_detect runs the
+		// stateless advertisement classifier over a captured batch and
+		// flags an active BLE-spam flood — many distinct (rotating) source
+		// MACs emitting one spam signature (Apple Continuity / Swift Pair /
+		// Fast Pair). Surfaces the cross-advertisement signal the single-
+		// advert defense_classify_advertisement cannot. Observation-not-
+		// verdict; no RF/TX.
+		"ble_spam_detect",
 		// v0.214 (NATIVE-fit gap in the Sub-GHz decode space):
 		// LoRaWAN PHYPayload dissector — MAC-layer structural decode
 		// for LoRaWAN 1.0.x / 1.1 captures. MHDR + FHDR + FCtrl

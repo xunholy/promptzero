@@ -1881,7 +1881,12 @@ func TestRegistrySize(t *testing.T) {
 	// reassembler — decodes SF/FF/CF/FC PCI and reassembles the multi-frame
 	// UDS/OBD-II PDU off a CAN capture; the link between canbus_fd_decode and
 	// uds_decode/obd2_*. Pure offline transform, sequence gaps noted).
-	const expected = 463
+	//
+	// v0.399.0 added ble_spam_detect (defensive BLE-spam flood analyser —
+	// runs the stateless advert classifier over a batch and flags many
+	// distinct rotating MACs emitting one spam signature; surfaces the
+	// cross-advert signal defense_classify_advertisement cannot. No RF/TX).
+	const expected = 464
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
