@@ -98,6 +98,7 @@ var toolLevels = func() map[string]Level {
 		// parser; no card crypto verification (deliberately scoped out).
 		"nfc_emv_decode",
 		"nfc_emv_track2_decode",
+		"nfc_emv_dol_decode",
 		// nfc_emv_encode is the offline inverse — assembles EMV BER-TLV bytes
 		// (tag/length/value, constructed recursion) from a tag tree,
 		// round-trip-verified against nfc_emv_decode. Generation only; no card

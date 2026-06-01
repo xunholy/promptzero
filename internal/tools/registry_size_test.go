@@ -1944,7 +1944,11 @@ func TestRegistrySize(t *testing.T) {
 	// Equivalent Data decoder — cracks the nibble-packed PAN / expiry /
 	// service code / discretionary the BER-TLV walker leaves raw, gated on
 	// the PAN's Luhn check digit. Offline read; extends internal/emv).
-	const expected = 476
+	// v0.415.0 added nfc_emv_dol_decode (EMV Data Object List decoder —
+	// PDOL/CDOL1/CDOL2/DDOL/TDOL; walks the (tag,length) pairs the BER-TLV
+	// walker can't parse, summing total_length. Structural reuse of the EMV
+	// tag table; offline read; extends internal/emv).
+	const expected = 477
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
