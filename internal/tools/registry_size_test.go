@@ -1886,7 +1886,12 @@ func TestRegistrySize(t *testing.T) {
 	// runs the stateless advert classifier over a batch and flags many
 	// distinct rotating MACs emitting one spam signature; surfaces the
 	// cross-advert signal defense_classify_advertisement cannot. No RF/TX).
-	const expected = 464
+	//
+	// v0.400.0 added wifi_wps_pin (WPS PIN checksum validator/completer —
+	// validates an 8-digit PIN or completes a 7-digit prefix via the
+	// reaver/bully wps_pin_checksum; pairs with wifi_wps_decode. Pure
+	// offline math; vendor default-PIN databases deliberately not embedded).
+	const expected = 465
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

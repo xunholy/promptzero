@@ -171,6 +171,11 @@ var toolLevels = func() map[string]Level {
 		// read. Pure offline parser; unknown attributes surfaced as raw
 		// hex, never guessed. Pairs with wifi_80211.
 		"wifi_wps_decode",
+		// v0.400 (companion to wifi_wps_decode): wifi_wps_pin validates an
+		// 8-digit WPS PIN's checksum or completes a 7-digit prefix with its
+		// check digit (the reaver/bully wps_pin_checksum). Pure offline
+		// math; vendor default-PIN databases deliberately not embedded.
+		"wifi_wps_pin",
 		// v0.392 (NATIVE-fit WiFi security-recon gap): RSN (WPA2/WPA3)
 		// IE dissector — names the cipher + AKM suites, decodes the PMF
 		// (MFPR/MFPC) capability bits, and derives the security posture
