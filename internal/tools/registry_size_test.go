@@ -1871,7 +1871,12 @@ func TestRegistrySize(t *testing.T) {
 	// decoder — unpacks 2-byte DTCs into canonical SAE J2012 codes
 	// (P/C/B/U + 4 digits); deterministic bit-unpack, padding skipped,
 	// no guessed fault descriptions).
-	const expected = 461
+	//
+	// v0.397.0 added uds_decode (UDS / ISO 14229 diagnostic-message decoder —
+	// names the service, classifies request/positive/negative response,
+	// decodes the NRC + sub-function + data identifier. The protocol behind
+	// modern ECU attacks; pure offline parser, unknown values surfaced raw).
+	const expected = 462
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

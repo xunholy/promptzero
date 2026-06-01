@@ -192,7 +192,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 |---|---|:---:|:---:|:---:|:---:|
 | CAN init/sniff/inject/replay/info | baseline | ✅ `canbus_*` family | — | — | Phase 0 hotfix #3 (input validation) |
 | CAN-FD sniff | apps top-20 #18 | ❌ | — | — | **NEW** ⟶ `canbus_fd_sniff` |
-| UDS-on-DoIP attacks | attacks Auto | ⚠️ via `canbus_replay` | ✅ python-uds | — | Workflow extension |
+| UDS-on-DoIP attacks | attacks Auto | ⚠️ via `canbus_replay`; native `uds_decode` (v0.397 — ISO 14229 service / NRC / sub-function / DID decode, offline) | ✅ python-uds | — | Workflow extension (transport/ISO-TP still external) |
 | ISO 15118 EVCC / PLC | attacks Auto | ❌ | — | — | Out of scope (PLC HW) |
 | DroneID receive | attacks #12 + audit §2a #5 | ❌ | — | — | **§2a + §2c** (blocked on HackRF) |
 

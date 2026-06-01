@@ -509,6 +509,13 @@ var toolLevels = func() map[string]Level {
 		// decoder left raw. Deterministic bit-unpack; padding skipped,
 		// no guessed fault descriptions.
 		"obd2_dtc_decode",
+		// v0.397 (NATIVE-fit automotive gap): uds_decode parses a UDS
+		// (ISO 14229) diagnostic message — names the service, classifies
+		// request / positive / negative response, decodes the NRC, the
+		// sub-function (+ suppressPosRsp), and the data identifier. The
+		// protocol behind modern ECU attacks; pure offline parser,
+		// unknown values surfaced raw.
+		"uds_decode",
 		// v0.367 (gap-analysis §3 rank 6): tpms_anomaly_detect is a pure
 		// offline, defensive analyser over a sequence of decoded TPMS
 		// frames — flags excess unique sensor IDs vs the vehicle wheel
