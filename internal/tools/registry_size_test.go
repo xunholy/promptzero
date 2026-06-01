@@ -1936,7 +1936,11 @@ func TestRegistrySize(t *testing.T) {
 	// inverse of kwp_decode; SID + param byte + payload, the legacy-vehicle
 	// counterpart of uds_encode. Generation only / no TX; round-trip-
 	// verified against the decoder).
-	const expected = 474
+	// v0.413.0 added ir_raw_decode (raw infrared timing-capture decoder —
+	// NEC family: standard / extended / repeat, gated on NEC's address &
+	// command bitwise-inverse checksum. Offline read; the IR analogue of
+	// subghz_decode, complement to ir_decode_file).
+	const expected = 475
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
