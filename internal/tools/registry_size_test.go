@@ -1952,7 +1952,11 @@ func TestRegistrySize(t *testing.T) {
 	// — tag 94; expands the 4-byte [SFI, first, last, ODA] entries into the
 	// implied READ RECORD command list, gated structurally (4-byte groups,
 	// SFI 1-30, ascending ranges). Offline read; extends internal/emv).
-	const expected = 478
+	// v0.417.0 added em4100_frame_decode (EM4100 64-bit wire-frame decoder —
+	// the parity-validating inverse of em4100_encode: checks the 9-bit
+	// header, 10 row parities, 4 column parities, stop bit; recovers the
+	// 5-byte ID. Round-trip-verified against the encoder. Offline read).
+	const expected = 479
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -98,7 +98,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | EMV parse (visa/mc) | firmware §4.2 #3 | ✅ `nfc_emv_decode` (+ `nfc_emv_encode`) — BER-TLV walker + ~80-tag dictionary; `nfc_emv_track2_decode` v0.414 cracks tag 57 (PAN/expiry/service code, Luhn-gated); `nfc_emv_dol_decode` v0.415 walks PDOL/CDOL/DDOL/TDOL (tag,length) lists; `nfc_emv_afl_decode` v0.416 expands tag 94 (SFI/record ranges → READ RECORD list) | — | — | shipped — BER-TLV + Track-2 + DOL + AFL field decode. Cryptogram/online-auth flow deliberately out of scope (needs issuer keys). |
 | Wiegand D0/D1 capture + replay | apps top-20 #6 + attacks #6 | ❌ | — | — | **§2b** ⟶ `gpio_wiegand_capture/replay` |
 | HID Prox / EM4xxx PACS decode | apps top-20 #15 | ⚠️ `rfid_raw_analyze` | — | ✅ pm3 | **NEW** ⟶ `rfid_pacs_decode` |
-| LF EM4100 / T5577 read+write | baseline | ✅ `rfid_*`, `loader_t5577_multiwriter` | — | — | — |
+| LF EM4100 / T5577 read+write | baseline | ✅ `rfid_*`, `loader_t5577_multiwriter`; offline `em4100_decode` (ID forms) + `em4100_encode` (64-bit frame) + `em4100_frame_decode` v0.417 (parity-validating frame→ID inverse) | — | — | — |
 | FDX-B / DCF77 / niche LF synth | apps NFC | ⚠️ `rfid_build` covers EM4100 only | — | — | Low-priority gaps |
 | UHF EPC Gen2 (M6E-Nano) | apps `uhf_rfid` | ❌ | — | — | Adjacent-HW gap |
 | Mag-stripe wireless emulation (MagSpoof) | apps top-20 #9 | ❌ | — | — | **NEW vs audit** ⟶ `magspoof_emulate` |

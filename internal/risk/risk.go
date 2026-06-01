@@ -75,6 +75,7 @@ var toolLevels = func() map[string]Level {
 		// decoder. Pure offline parser, no Flipper required, host-side
 		// only. Same risk band as the existing wiegand_decode.
 		"em4100_decode",
+		"em4100_frame_decode",
 		// em4100_encode builds the 64-bit EM4100 wire frame (header + row/
 		// column parity + stop) from the 5-byte ID — generation only, no
 		// write/TX (the Flipper firmware does this for `rfid write EM4100`),
