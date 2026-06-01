@@ -1876,7 +1876,12 @@ func TestRegistrySize(t *testing.T) {
 	// names the service, classifies request/positive/negative response,
 	// decodes the NRC + sub-function + data identifier. The protocol behind
 	// modern ECU attacks; pure offline parser, unknown values surfaced raw).
-	const expected = 462
+	//
+	// v0.398.0 added isotp_decode (ISO-TP / ISO 15765-2 transport decoder +
+	// reassembler — decodes SF/FF/CF/FC PCI and reassembles the multi-frame
+	// UDS/OBD-II PDU off a CAN capture; the link between canbus_fd_decode and
+	// uds_decode/obd2_*. Pure offline transform, sequence gaps noted).
+	const expected = 463
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -516,6 +516,12 @@ var toolLevels = func() map[string]Level {
 		// protocol behind modern ECU attacks; pure offline parser,
 		// unknown values surfaced raw.
 		"uds_decode",
+		// v0.398 (the missing automotive transport layer): isotp_decode
+		// decodes ISO-TP (ISO 15765-2) PCI (SF/FF/CF/FC) and reassembles
+		// the multi-frame UDS/OBD-II message off a CAN capture — the link
+		// between canbus_fd_decode (frame) and uds_decode/obd2_* (PDU).
+		// Pure offline transform; sequence-number gaps noted.
+		"isotp_decode",
 		// v0.367 (gap-analysis §3 rank 6): tpms_anomaly_detect is a pure
 		// offline, defensive analyser over a sequence of decoded TPMS
 		// frames — flags excess unique sensor IDs vs the vehicle wheel
