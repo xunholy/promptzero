@@ -1916,7 +1916,12 @@ func TestRegistrySize(t *testing.T) {
 	// isotp_decode; splits a PDU into SF or FF+CFs (padded to 8) for
 	// injecting a multi-frame UDS/OBD-II request. Generation only / no TX;
 	// round-trip-verified against the reassembler).
-	const expected = 470
+	//
+	// v0.409.0 added canbus_fd_encode (CAN/CAN-FD candump frame builder —
+	// inverse of canbus_fd_decode; classic/remote/CAN-FD with BRS/ESI, the
+	// frame-layer complement to isotp_encode. Generation only / no TX;
+	// round-trip-verified against the decoder).
+	const expected = 471
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

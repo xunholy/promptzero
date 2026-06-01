@@ -516,6 +516,12 @@ var toolLevels = func() map[string]Level {
 		// brings a captured frame. Companion to the live canbus_* Specs;
 		// signal-level (DBC) decode deliberately not attempted.
 		"canbus_fd_decode",
+		// v0.409 (frame-layer inverse of canbus_fd_decode): canbus_fd_encode
+		// builds a SocketCAN candump frame string (classic ID#data / remote
+		// / CAN-FD ID##flags+data) from fields — the frame-layer complement
+		// to isotp_encode for crafting an injectable request. Generation
+		// only — emits a string, transmits nothing; round-trip-verified.
+		"canbus_fd_encode",
 		// v0.395 (NATIVE-fit automotive gap): obd2_pid_decode computes
 		// the engineering value of an OBD-II / SAE J1979 Mode-01 response
 		// (RPM, speed, coolant temp, MAF, …) from the public per-PID
