@@ -1861,7 +1861,12 @@ func TestRegistrySize(t *testing.T) {
 	// analyser over a set of decoded beacons — security-mismatch (downgrade
 	// lure) / bssid-changed-security / ssid-multiple-bssid signals;
 	// observation-not-verdict, composes with wifi_rsn_decode, no RF/TX).
-	const expected = 459
+	//
+	// v0.395.0 added obd2_pid_decode (OBD-II / SAE J1979 Mode-01 PID value
+	// decoder — computes RPM / speed / temps / MAF / … from the public
+	// per-PID formulas, the value the j1850/canbus decoders left as raw
+	// bytes; transport-independent, unknown PIDs surfaced raw).
+	const expected = 460
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

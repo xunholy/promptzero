@@ -496,6 +496,13 @@ var toolLevels = func() map[string]Level {
 		// brings a captured frame. Companion to the live canbus_* Specs;
 		// signal-level (DBC) decode deliberately not attempted.
 		"canbus_fd_decode",
+		// v0.395 (NATIVE-fit automotive gap): obd2_pid_decode computes
+		// the engineering value of an OBD-II / SAE J1979 Mode-01 response
+		// (RPM, speed, coolant temp, MAF, …) from the public per-PID
+		// formulas — the value the j1850/canbus decoders left as raw
+		// bytes. Pure offline transform, transport-independent; unknown
+		// PIDs surfaced raw, never guessed.
+		"obd2_pid_decode",
 		// v0.367 (gap-analysis §3 rank 6): tpms_anomaly_detect is a pure
 		// offline, defensive analyser over a sequence of decoded TPMS
 		// frames — flags excess unique sensor IDs vs the vehicle wheel
