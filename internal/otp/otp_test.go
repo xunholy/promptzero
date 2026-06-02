@@ -82,3 +82,36 @@ func TestHashFor(t *testing.T) {
 		t.Error("md5 should be unsupported")
 	}
 }
+
+// TestSteamGuard_Vector gates the Steam Guard variant. The vector is anchored to
+// the RFC 4226 truncated value 1284755224 (the RFC publishes HOTP=755224 for
+// counter 0, and 1284755224 % 1e6 = 755224, confirming the truncation), mapped
+// through Steam's 5-character alphabet -> "GG5F5". time.Unix(0,0) gives step 0.
+func TestSteamGuard_Vector(t *testing.T) {
+	if bin := dynamicTruncate(rfcSeed, 0, sha1.New); bin != 1284755224 {
+		t.Fatalf("dynamicTruncate(counter=0) = %d, want 1284755224 (RFC anchor)", bin)
+	}
+	if got := SteamGuard(rfcSeed, time.Unix(0, 0)); got != "GG5F5" {
+		t.Errorf("SteamGuard(rfcSeed, t=0) = %q, want GG5F5", got)
+	}
+}
+
+func TestDecodeSecretBase64(t *testing.T) {
+	b, err := DecodeSecretBase64("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "12345678901234567890" {
+		t.Errorf("decoded %q, want the RFC seed", b)
+	}
+	// Raw (unpadded) base64 must also decode.
+	if _, err := DecodeSecretBase64("MTIzNDU2Nzg5MDEyMzQ1Njc4OTA"); err != nil {
+		t.Errorf("raw base64 should decode: %v", err)
+	}
+	if _, err := DecodeSecretBase64("!!! not base64 !!!"); err == nil {
+		t.Error("invalid base64 should error")
+	}
+	if _, err := DecodeSecretBase64(""); err == nil {
+		t.Error("empty secret should error")
+	}
+}

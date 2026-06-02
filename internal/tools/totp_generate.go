@@ -27,10 +27,14 @@ func init() { //nolint:gochecknoinits
 
 var totpGenerateSpec = Spec{
 	Name: "totp_generate",
-	Description: "Generate an RFC 6238 TOTP (default) or RFC 4226 HOTP one-time password from a base32 " +
-		"2FA seed — the offline post-exploitation step after a seed is recovered from captured loot (a " +
-		"secrets file, a config dump, an otpauth:// URI / QR payload). Complements the credential tooling " +
-		"(hash_identify / jwt_decode / kerberos_decode): you have the seed, this derives the live code.\n\n" +
+	Description: "Generate an RFC 6238 TOTP (default), RFC 4226 HOTP, or Steam Guard one-time password from " +
+		"a recovered 2FA seed — the offline post-exploitation step after a seed is recovered from captured " +
+		"loot (a secrets file, a config dump, an otpauth:// URI / QR payload, a Steam maFile shared_secret). " +
+		"Complements the credential tooling (hash_identify / jwt_decode / kerberos_decode): you have the " +
+		"seed, this derives the live code.\n\n" +
+		"**Steam Guard**: set mode=steam and pass the base64 shared_secret — Steam uses RFC 6238 over " +
+		"HMAC-SHA1 / 30s but maps the result to its own 5-character alphabet (algorithm / digits / period " +
+		"are fixed and ignored).\n\n" +
 		"Fields: **secret** (base32, the Google-Authenticator form — spaces / lowercase / missing padding " +
 		"tolerated), **mode** (totp default, or hotp), **algorithm** (SHA1 default / SHA256 / SHA512), " +
 		"**digits** (6 default, 6-8), **period** (TOTP step seconds, 30 default), **counter** (HOTP), and — alternatively a full **otpauth:// key URI** (captured from a 2FA-enrolment " +
@@ -46,13 +50,14 @@ var totpGenerateSpec = Spec{
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"secret":{"type":"string","description":"Base32 2FA seed (spaces / lowercase / missing padding tolerated)."},
-			"mode":{"type":"string","description":"\"totp\" (default) or \"hotp\".","enum":["totp","hotp"]},
-			"algorithm":{"type":"string","description":"HMAC hash: SHA1 (default), SHA256, SHA512.","enum":["SHA1","SHA256","SHA512"]},
-			"digits":{"type":"integer","description":"Code length 6-8 (default 6)."},
-			"period":{"type":"integer","description":"TOTP time-step seconds (default 30)."},
+			"secret":{"type":"string","description":"2FA seed: base32 (default, the Google-Authenticator form — spaces / lowercase / missing padding tolerated), base64 (set encoding=base64; Steam's shared_secret is base64), OR a full otpauth:// key URI (parameters then come from the URI)."},
+			"mode":{"type":"string","description":"\"totp\" (default), \"hotp\", or \"steam\" (Steam Guard 5-char code).","enum":["totp","hotp","steam"]},
+			"encoding":{"type":"string","description":"Secret encoding: base32 (default) or base64. Steam mode defaults to base64.","enum":["base32","base64"]},
+			"algorithm":{"type":"string","description":"HMAC hash: SHA1 (default), SHA256, SHA512. Ignored for mode=steam (always SHA1).","enum":["SHA1","SHA256","SHA512"]},
+			"digits":{"type":"integer","description":"Code length 6-8 (default 6). Ignored for mode=steam (always 5)."},
+			"period":{"type":"integer","description":"TOTP time-step seconds (default 30). Ignored for mode=steam (always 30)."},
 			"counter":{"type":"integer","description":"HOTP counter (required for mode=hotp)."},
-			"timestamp":{"type":"integer","description":"TOTP unix timestamp (default: current time)."}
+			"timestamp":{"type":"integer","description":"TOTP/Steam unix timestamp (default: current time)."}
 		},
 		"required":["secret"]
 	}`),
@@ -92,20 +97,52 @@ func totpGenerateHandler(_ context.Context, _ *Deps, p map[string]any) (string, 
 		period = u.Period
 	}
 
-	key, err := otp.DecodeSecret(secretStr)
+	if mode == "" {
+		mode = "totp"
+	}
+
+	// Secret encoding: base32 (Google-Authenticator form) by default; base64 for
+	// Steam's shared_secret (the maFile / loot form). otpauth:// secrets are
+	// always base32. An explicit 'encoding' arg overrides everything else.
+	enc := strings.ToLower(strings.TrimSpace(str(p, "encoding")))
+	switch {
+	case uri != nil:
+		enc = "base32"
+	case enc == "" && mode == "steam":
+		enc = "base64"
+	case enc == "":
+		enc = "base32"
+	}
+	key, err := decodeOTPSecret(secretStr, enc)
 	if err != nil {
 		return "", fmt.Errorf("totp_generate: %w", err)
 	}
+
+	// Steam Guard: RFC 6238 over HMAC-SHA1 / 30s mapped to Steam's 5-character
+	// alphabet. The parameters are fixed, so algorithm / digits / period / counter
+	// do not apply — only 'timestamp' (the evaluation moment) is honoured.
+	if mode == "steam" {
+		now := int64(intOr(p, "timestamp", int(time.Now().Unix())))
+		code := otp.SteamGuard(key, time.Unix(now, 0))
+		out, _ := json.MarshalIndent(map[string]any{
+			"mode":              "steam",
+			"code":              code,
+			"digits":            5,
+			"period":            30,
+			"algorithm":         "SHA1",
+			"unix_time":         now,
+			"time_step":         now / 30,
+			"seconds_remaining": int64(30) - (now % 30),
+		}, "", "  ")
+		return string(out), nil
+	}
+
 	h, err := otp.HashFor(algoStr)
 	if err != nil {
 		return "", fmt.Errorf("totp_generate: %w", err)
 	}
 	if digits < 6 || digits > 8 {
 		return "", fmt.Errorf("totp_generate: digits must be 6-8 (got %d)", digits)
-	}
-
-	if mode == "" {
-		mode = "totp"
 	}
 	switch mode {
 	case "hotp":
@@ -151,6 +188,19 @@ func totpGenerateHandler(_ context.Context, _ *Deps, p map[string]any) (string, 
 		return string(out), nil
 	default:
 		return "", fmt.Errorf("totp_generate: mode %q must be \"totp\" or \"hotp\"", mode)
+	}
+}
+
+// decodeOTPSecret decodes the seed using the named encoding (base32 — the
+// Google-Authenticator form — or base64 — Steam's shared_secret form).
+func decodeOTPSecret(secret, encoding string) ([]byte, error) {
+	switch encoding {
+	case "", "base32":
+		return otp.DecodeSecret(secret)
+	case "base64":
+		return otp.DecodeSecretBase64(secret)
+	default:
+		return nil, fmt.Errorf("encoding must be base32 or base64 (got %q)", encoding)
 	}
 }
 

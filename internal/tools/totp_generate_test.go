@@ -78,6 +78,33 @@ func TestTOTPHandler_OtpauthHOTP(t *testing.T) {
 	}
 }
 
+// TestTOTPHandler_Steam exercises the Steam Guard path through the handler. The
+// base64-encoded RFC seed at unix time 0 (step 0) must yield "GG5F5" — the same
+// RFC-anchored vector verified in the otp package.
+func TestTOTPHandler_Steam(t *testing.T) {
+	const seedB64 = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA=" // base64("12345678901234567890")
+	m := runTOTP(t, map[string]any{
+		"secret": seedB64, "mode": "steam", "timestamp": 0,
+	})
+	if m["mode"] != "steam" || m["code"] != "GG5F5" {
+		t.Errorf("steam: mode=%v code=%v, want steam/GG5F5", m["mode"], m["code"])
+	}
+	if m["digits"].(float64) != 5 || m["period"].(float64) != 30 || m["algorithm"] != "SHA1" {
+		t.Errorf("steam fixed params wrong: %+v", m)
+	}
+}
+
+// TestTOTPHandler_Base64Encoding proves encoding=base64 feeds the same key as the
+// base32 default for the same seed (same TOTP code).
+func TestTOTPHandler_Base64Encoding(t *testing.T) {
+	const seedB64 = "MTIzNDU2Nzg5MDEyMzQ1Njc4OTA="
+	b32 := runTOTP(t, map[string]any{"secret": rfcSeedB32, "digits": 8, "timestamp": 59})["code"]
+	b64 := runTOTP(t, map[string]any{"secret": seedB64, "encoding": "base64", "digits": 8, "timestamp": 59})["code"]
+	if b32 != b64 || b64 != "94287082" {
+		t.Errorf("base64 path = %v, base32 = %v, want both 94287082", b64, b32)
+	}
+}
+
 func TestTOTPHandler_BadURI(t *testing.T) {
 	if _, err := totpGenerateHandler(context.Background(), nil, map[string]any{
 		"secret": "otpauth://totp/x?digits=8", // missing secret
