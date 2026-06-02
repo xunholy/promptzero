@@ -65,6 +65,48 @@ var insNames = map[byte]string{
 	0xE2: "APPEND RECORD",
 }
 
+// desfireCommands maps a MIFARE DESFire command code to its name. In ISO 7816
+// wrapping mode (the usual contactless framing) the command is sent as CLA
+// 0x90, INS = the command code, P1=P2=0x00. Bounded and authoritative (NXP
+// MIFARE DESFire datasheet / libfreefare); surfaced alongside the raw INS.
+var desfireCommands = map[byte]string{
+	0x0A: "AUTHENTICATE (legacy DES/2K3DES)",
+	0x1A: "AUTHENTICATE_ISO (3K3DES)",
+	0xAA: "AUTHENTICATE_AES",
+	0x5A: "SELECT_APPLICATION",
+	0xCA: "CREATE_APPLICATION",
+	0xDA: "DELETE_APPLICATION",
+	0x6A: "GET_APPLICATION_IDS",
+	0x6D: "GET_DF_NAMES",
+	0x45: "GET_KEY_SETTINGS",
+	0x54: "CHANGE_KEY_SETTINGS",
+	0xC4: "CHANGE_KEY",
+	0x64: "GET_KEY_VERSION",
+	0x60: "GET_VERSION",
+	0x6E: "FREE_MEMORY",
+	0x51: "GET_CARD_UID",
+	0xF5: "GET_FILE_SETTINGS",
+	0x5F: "CHANGE_FILE_SETTINGS",
+	0x6F: "GET_FILE_IDS",
+	0xCD: "CREATE_STD_DATA_FILE",
+	0xCB: "CREATE_BACKUP_DATA_FILE",
+	0xCC: "CREATE_VALUE_FILE",
+	0xC1: "CREATE_LINEAR_RECORD_FILE",
+	0xC0: "CREATE_CYCLIC_RECORD_FILE",
+	0xDF: "DELETE_FILE",
+	0xBD: "READ_DATA",
+	0x3D: "WRITE_DATA",
+	0x6C: "GET_VALUE",
+	0x0C: "CREDIT",
+	0xDC: "DEBIT",
+	0x1C: "LIMITED_CREDIT",
+	0xBB: "READ_RECORDS",
+	0x3B: "WRITE_RECORD",
+	0xEB: "CLEAR_RECORD_FILE",
+	0xC7: "COMMIT_TRANSACTION",
+	0xA7: "ABORT_TRANSACTION",
+}
+
 // swExact maps fully-specified status words to their meaning.
 var swExact = map[uint16]string{
 	0x9000: "Success — normal processing",
@@ -231,11 +273,18 @@ func DecodeCommandAPDU(b []byte) (*CommandAPDU, error) {
 	}
 	// INS naming only for an interindustry CLA (proprietary CLA, high bit set,
 	// reuses these INS values for its own meanings).
-	if cla&0x80 == 0 {
+	switch {
+	case cla == 0x90:
+		// DESFire ISO 7816 wrapping: CLA 0x90, INS = the DESFire command code.
+		if n, ok := desfireCommands[ins]; ok {
+			ca.INSName = "DESFire: " + n
+		}
+		ca.Notes = append(ca.Notes, "CLA 0x90 is the DESFire ISO-wrapper class (proprietary) — the INS is the DESFire command code; other applets may reuse this CLA")
+	case cla&0x80 == 0:
 		if n, ok := insNames[ins]; ok {
 			ca.INSName = n
 		}
-	} else {
+	default:
 		ca.Notes = append(ca.Notes, "proprietary CLA (high bit set) — INS naming withheld (application-specific)")
 	}
 	if cla&0x10 != 0 {

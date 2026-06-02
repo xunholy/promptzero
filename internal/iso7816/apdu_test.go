@@ -149,6 +149,36 @@ func TestDecodeCommandAPDU_ExtendedAndProprietary(t *testing.T) {
 	}
 }
 
+// TestDecodeCommandAPDU_DESFire: CLA 0x90 names the INS as the DESFire command.
+func TestDecodeCommandAPDU_DESFire(t *testing.T) {
+	// SelectApplication: 90 5A 00 00 03 <AID> 00 (Case 4S).
+	sel, err := DecodeCommandAPDU(mustHex(t, "905A00000301020300"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sel.INSName != "DESFire: SELECT_APPLICATION" || sel.Case != "4S" || sel.DataHex != "010203" {
+		t.Errorf("select = %+v", sel)
+	}
+	if len(sel.Notes) == 0 || !strings.Contains(sel.Notes[0], "DESFire ISO-wrapper") {
+		t.Errorf("expected a DESFire-wrapper note, got %v", sel.Notes)
+	}
+	// GetVersion: 90 60 00 00 00 (Case 2S).
+	gv, err := DecodeCommandAPDU(mustHex(t, "9060000000"))
+	if err != nil || gv.INSName != "DESFire: GET_VERSION" {
+		t.Errorf("getversion: %v / %+v", err, gv)
+	}
+	// AuthenticateAES.
+	au, _ := DecodeCommandAPDU(mustHex(t, "90AA0000010000"))
+	if au.INSName != "DESFire: AUTHENTICATE_AES" {
+		t.Errorf("auth INS name = %q", au.INSName)
+	}
+	// Unmapped DESFire command code is surfaced raw (no name) but still noted.
+	un, _ := DecodeCommandAPDU(mustHex(t, "90FF000000"))
+	if un.INSName != "" {
+		t.Errorf("unmapped DESFire cmd should have no name, got %q", un.INSName)
+	}
+}
+
 func TestDecodeCommandAPDU_Errors(t *testing.T) {
 	bad := []string{"00A404", "00A4040003AB"} // short header; Lc=3 but 1 data byte
 	for _, s := range bad {

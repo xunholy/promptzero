@@ -42,8 +42,10 @@ var iso7816APDUDecodeSpec = Spec{
 		"91F0 FILE_NOT_FOUND, …), since most DESFire exchanges are ISO 7816 wrapped.\n\n" +
 		"**command**: the CLA INS P1 P2 header plus the ISO 7816-4 length case (1 / 2S / 3S / 4S and the " +
 		"extended 2E / 3E / 4E), with Lc, the data field, and Le. The INS is named for an interindustry " +
-		"CLA (SELECT, READ BINARY/RECORD, GET RESPONSE/DATA, VERIFY, …); a proprietary CLA (high bit " +
-		"set) withholds the INS name since it is application-specific. Inconsistent length encodings are " +
+		"CLA (SELECT, READ BINARY/RECORD, GET RESPONSE/DATA, VERIFY, …). For CLA 0x90 — the DESFire ISO " +
+		"wrapper — the INS is named as the DESFire command (SELECT_APPLICATION, AUTHENTICATE_AES, " +
+		"READ_DATA, GET_VERSION, CHANGE_KEY, …); any other proprietary CLA (high bit set) withholds the " +
+		"INS name since it is application-specific. Inconsistent length encodings are " +
 		"rejected, not mis-parsed.\n\n" +
 		"Offline transform — reads hex, transmits nothing, so it is Low risk. Accepts ':' / '-' / '_' / " +
 		"whitespace separators. Wrap-vs-native: native — fixed ISO 7816-4 framing + status-word table.",
