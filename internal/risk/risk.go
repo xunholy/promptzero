@@ -254,6 +254,7 @@ var toolLevels = func() map[string]Level {
 		// + appearance-category lookup tables. Pairs with
 		// ble_continuity_decode / ble_eddystone_decode.
 		"ble_gap_decode",
+		"ble_addr_classify",
 		// v0.218 (NATIVE-fit gap in the contact-smart-card decode
 		// space): ISO/IEC 7816-3 ATR (Answer To Reset) dissector —
 		// what every PC/SC reader returns when a card is inserted.

@@ -1973,7 +1973,11 @@ func TestRegistrySize(t *testing.T) {
 	// Modified-EUI-64 interface identifier — detect FF:FE, strip it, flip the
 	// U/L bit; chains into mac_classify. Offline complement to ndp/dhcpv6
 	// decoders. internal/macaddr).
-	const expected = 483
+	// v0.425.0 added ble_addr_classify (BLE device-address classifier — random
+	// subtype from the top 2 bits: static / resolvable-private (RPA) /
+	// non-resolvable / reserved, or public OUI. The BLE counterpart of
+	// mac_classify; RPA = privacy/tracking-resistant. internal/ble).
+	const expected = 484
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

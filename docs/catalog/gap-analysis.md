@@ -135,6 +135,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | nRootTag advertisement spoof | attacks | ❌ | — | — | Subsumed by `ble_findmy_emulate` |
 | Apple Continuity classifier (defensive) | attacks #8 | ⚠️ `defense_classify_advertisement` | — | — | **NEW vs audit** ⟶ `ble_continuity_classify` |
 | BLE proximity-tracking audit (passive long-running) | attacks BLE | ❌ | — | — | New gap (defensive) |
+| BLE address-type / RPA classification | scan post-processing | ✅ `ble_addr_classify` v0.425 — random subtype from the top 2 bits (static / resolvable-private RPA / non-resolvable / reserved) or public OUI; the BLE counterpart of `mac_classify`, the privacy/tracking-resistance signal over scan-result addresses | — | — | shipped |
 | BLE 5 connection follow (PHY/CSA hops) | hardware §4 (Sniffle) | ❌ | — | — | Needs CatSniffer/Sniffle backend |
 | Stealtooth forced-pairing | attacks | — research-only — | — | — | Out of scope |
 | BadKB (Bluetooth-HID BadUSB) | firmware + apps | ✅ via `badusb_*` + `bruce_badusb_run` | — | — | — |
