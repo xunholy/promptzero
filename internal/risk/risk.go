@@ -676,6 +676,12 @@ var toolLevels = func() map[string]Level {
 		// strings — like md5crypt / nt_hash, derives a value and
 		// transmits nothing, so it is Low.
 		"sha_crypt",
+		// v0.449 — bcrypt ($2a/$2b/$2y) compute + verify, the
+		// dominant web-app password hash. Offline compute /
+		// constant-time verify from operator-supplied strings — like
+		// the other credential computes it derives a value and
+		// transmits nothing, so it is Low.
+		"bcrypt",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question

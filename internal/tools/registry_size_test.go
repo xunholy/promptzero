@@ -2039,7 +2039,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.448.0 added sha_crypt (Unix $6$ sha512crypt / $5$ sha256crypt compute +
 	// verify — the modern Linux /etc/shadow default. Native crypto/sha512+sha256
 	// (Drepper), gated against the OpenSSL `passwd -6`/`-5` oracle. internal/unixcrypt).
-	const expected = 498
+	// v0.449.0 added bcrypt (bcrypt $2a/$2b/$2y compute + verify — the dominant
+	// web-app hash. Wrap of x/crypto/bcrypt (already a dep; native infeasible —
+	// Blowfish S-boxes); gated against the jBCrypt/OpenBSD published vectors).
+	const expected = 499
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
