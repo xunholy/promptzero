@@ -27,11 +27,15 @@
 //
 // # Covered / deferred
 //
-// The NEC family (standard, extended, and the repeat code) is covered — by
-// far the most common consumer-IR protocol. Sony SIRC, RC5/RC6 (Manchester),
-// Samsung, and the Pronto/`ir_build` parsed formats are deliberately not
-// decoded here yet; NEC's checksum makes it the high-confidence starting
-// point, and the others can be added when a verifiable need arises.
+// The NEC family (standard, extended, and the repeat code) and Sony SIRC
+// (12 / 15 / 20-bit) are covered — the two most common consumer-IR
+// pulse-distance protocols. NEC is gated by its address/command inverse-byte
+// checksum; SIRC carries no checksum, so it is gated structurally instead —
+// the distinctive 2400µs leader, an exact 12/15/20-bit count, and a clean
+// per-bit mark classification reject any non-SIRC pulse train. RC5/RC6
+// (Manchester), Samsung, and the Pronto/`ir_build` parsed formats are
+// deliberately not decoded here yet — they need a different (bi-phase)
+// decoder or carry no comparable structural gate.
 package ir
 
 import (
@@ -75,9 +79,19 @@ func DecodeRaw(timings string) (*Result, error) {
 	if len(t) < 2 {
 		return nil, fmt.Errorf("ir: need at least a leader mark + space; got %d timing(s)", len(t))
 	}
-	if !within(t[0], necLeaderMark) {
-		return nil, fmt.Errorf("ir: leader mark %dµs is not NEC (~9000µs); only the NEC family is decoded", t[0])
+	switch {
+	case within(t[0], necLeaderMark):
+		return decodeNEC(t)
+	case within(t[0], sircLeaderMark):
+		return decodeSIRC(t)
+	default:
+		return nil, fmt.Errorf("ir: leader mark %dµs matches neither NEC (~9000µs) nor Sony SIRC (~2400µs)", t[0])
 	}
+}
+
+// decodeNEC decodes a NEC-family frame from its parsed timings (the 9000µs
+// leader mark is at t[0]).
+func decodeNEC(t []int) (*Result, error) {
 	// Repeat code: 9000 mark + 2250 space (+ a 560 mark).
 	if within(t[1], necRepeatSpace) {
 		return &Result{Protocol: "NEC-repeat", Notes: []string{"NEC repeat code (button held) — carries no address/command"}}, nil

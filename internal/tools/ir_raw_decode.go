@@ -30,14 +30,16 @@ var irRawDecodeSpec = Spec{
 		"durations from ir_receive raw, a Flipper RAW .ir entry, or a logic-analyser trace) into its " +
 		"protocol + address/command — the IR analogue of subghz_decode, and the complement to " +
 		"ir_decode_file (which only reads a .ir file's already-parsed entries).\n\n" +
-		"Decodes the NEC family: standard NEC (8-bit address + command, each followed by its bitwise " +
-		"inverse), NEC-extended (16-bit address, command inversion only), and the NEC repeat code. NEC's " +
-		"inverse-byte pairs are a built-in checksum: a frame is reported as standard NEC only when BOTH " +
-		"the address and command inversions hold, as NEC-extended when only the command inversion holds, " +
-		"and otherwise the raw 4 bytes are surfaced with a note rather than a guessed address/command. " +
-		"The leader and every bit are tolerance-matched (±30%), so a non-NEC pulse train is rejected, not " +
-		"mis-decoded. Sony SIRC, RC5/RC6, and Samsung are deliberately not decoded yet (NEC's checksum " +
-		"makes it the high-confidence starting point).\n\n" +
+		"Decodes the NEC family and Sony SIRC, dispatched by the leader pulse. NEC: standard NEC (8-bit " +
+		"address + command, each followed by its bitwise inverse), NEC-extended (16-bit address, command " +
+		"inversion only), and the NEC repeat code — NEC's inverse-byte pairs are a built-in checksum, so " +
+		"a frame is reported as standard NEC only when BOTH inversions hold, as NEC-extended when only " +
+		"the command inversion holds, and otherwise the raw 4 bytes are surfaced with a note rather than " +
+		"a guessed address/command. Sony SIRC (12 / 15 / 20-bit): 7 command bits + address (+ a 20-bit " +
+		"extension), LSB-first — SIRC has no checksum, so it is gated structurally instead (the " +
+		"distinctive 2400µs leader, an exact 12/15/20-bit count, and a clean per-bit mark classification " +
+		"reject any non-SIRC pulse train). The leader and every bit are tolerance-matched (±30%). " +
+		"RC5/RC6 (Manchester) and Samsung are deliberately not decoded yet.\n\n" +
 		"Field: **timings** — space/comma-separated integer microsecond values, alternating mark, space, " +
 		"mark, space… (a leading 9000 4500 NEC leader). Output is the protocol, address, command (decimal " +
 		"+ hex), bit count, checksum validity, and the raw 4 bytes. Offline transform — reads timings and " +
