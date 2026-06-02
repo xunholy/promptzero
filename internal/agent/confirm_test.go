@@ -70,7 +70,6 @@ func TestConfirmDenyShortCircuits(t *testing.T) {
 	got := toolResults[0].OfToolResult
 	if got == nil {
 		t.Fatal("tool_result block has no OfToolResult")
-		return // unreachable after Fatal, but makes the nil-guard explicit for staticcheck SA5011
 	}
 	if got.ToolUseID != "toolu_test" {
 		t.Errorf("tool_use_id mismatch: got %q", got.ToolUseID)

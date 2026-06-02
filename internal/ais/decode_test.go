@@ -60,7 +60,6 @@ func TestDecode_Type1_Moored(t *testing.T) {
 	pa := got.PositionClassA
 	if pa == nil {
 		t.Fatal("PositionClassA nil")
-		return // unreachable after Fatal, but makes the nil-guard explicit for staticcheck SA5011
 	}
 	if pa.NavStatus != 5 {
 		t.Errorf("NavStatus = %d; want 5 (Moored)", pa.NavStatus)
@@ -97,7 +96,6 @@ func TestDecode_Type5_MultiFragment(t *testing.T) {
 	sv := got.StaticAndVoyage
 	if sv == nil {
 		t.Fatal("StaticAndVoyage nil")
-		return // unreachable after Fatal, but makes the nil-guard explicit for staticcheck SA5011
 	}
 	if sv.CallSign != "DA9867" {
 		t.Errorf("CallSign = %q; want 'DA9867'", sv.CallSign)

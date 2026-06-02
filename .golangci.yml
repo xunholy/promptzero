@@ -18,6 +18,18 @@ linters:
     - staticcheck
     - unused
     - ineffassign
+  exclusions:
+    rules:
+      # SA5011 (possible nil pointer dereference) fires a false positive in
+      # tests on the standard `x := f(); if x == nil { t.Fatal(...) }; x.Field`
+      # idiom: under newer Go toolchains the bundled staticcheck stops modelling
+      # testing.T.Fatal as terminating, so it treats the guarded deref as
+      # nil-reachable. t.Fatal does stop the test, so this is benign in *_test.go.
+      # Kept active for non-test code, where a real nil deref matters.
+      - path: _test\.go
+        linters:
+          - staticcheck
+        text: "SA5011"
 
 formatters:
   enable:
