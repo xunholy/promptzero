@@ -200,6 +200,7 @@ var toolLevels = func() map[string]Level {
 		// The wifi_80211 decoder left suite naming + PMF to a follow-on;
 		// this is it. Pure offline parser; vendor suites surfaced raw.
 		"wifi_rsn_decode",
+		"mac_classify",
 		// v0.393 (defensive WiFi analyser): deauth/disassoc-flood
 		// detector over a sequence of decoded 802.11 frames — flags
 		// broadcast deauths (mass-disconnect), volume floods, and

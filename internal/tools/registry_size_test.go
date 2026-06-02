@@ -1965,7 +1965,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.422.0 added imei_decode (GSM IMEI / IMEISV Luhn-check validator + TAC
 	// / serial breakdown — offline complement to gsmtap Identity Response;
 	// Luhn is the anchor, TAC-to-device deliberately not guessed, internal/imei).
-	const expected = 481
+	// v0.423.0 added mac_classify (IEEE 802 MAC administration-bit classifier —
+	// unicast/multicast (I/G), locally/universally administered (U/L →
+	// randomized-MAC signal), broadcast; offline analysis complement to the
+	// WiFi/BLE scans, layering the known-attack-OUI lookup. internal/macaddr).
+	const expected = 482
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

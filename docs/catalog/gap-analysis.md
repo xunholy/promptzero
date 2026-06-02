@@ -145,6 +145,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 |---|---|:---:|:---:|:---:|:---:|
 | WiFi scan / deauth / beacon-spam / probe / evil-portal | baseline | ✅ Marauder `wifi_*` family (≈70 Specs) | — | — | — |
 | WiFi PMKID capture (Marauder) | baseline | ✅ `wifi_sniff_pmkid` | — | — | — |
+| MAC randomization / admin-bit classify | scan post-processing | ✅ `mac_classify` v0.423 — I/G (multicast) + U/L (locally-administered → randomized/privacy-MAC signal) + broadcast, plus the known-attack-OUI cross-check; offline analysis over scan-result MACs | — | — | shipped |
 | WiFi PMKID → hashcat 22000 pipeline | attacks #7 | ✅ native `.hc22000` PMKID writer `wifi_pmkid_hc22000` (v0.390 — pure-Go `WPA*01*…` line builder, anchored on hashcat's published example; removes the hcxpcapngtool shell-out for the clientless-PMKID case) | ✅ hashcat | — | EAPOL (type 02) pcap extraction still via hcxpcapngtool |
 | WiFi SSID Confusion (Vanhoef WiSec'24) | attacks + audit §2a | ❌ | — | — | **§2a** ⟶ `wifi_ssid_confusion` |
 | WiFi PEAP downgrade audit (CVE-2023-52160) | attacks #13 | ❌ | — | — | **NEW vs audit** ⟶ `wifi_peap_downgrade_audit` |
