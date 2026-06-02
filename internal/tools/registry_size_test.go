@@ -2021,7 +2021,13 @@ func TestRegistrySize(t *testing.T) {
 	// keyed-MAC tier / webhook-signature analogue of jwt_verify; verify or
 	// forge a GitHub/Stripe/API HMAC signature. Verified against RFC 4231
 	// vectors. internal/hmacutil).
-	const expected = 494
+	// (v0.442/v0.443 added no tools — otpauth:// URI + Steam Guard enhanced the
+	// existing totp_generate.)
+	// v0.444.0 added wpa_pmk_derive (WPA/WPA2-PSK PMK derivation —
+	// PBKDF2-HMAC-SHA1(passphrase, SSID, 4096, 32) per IEEE 802.11i; the offline
+	// Wi-Fi precompute for hashcat 22000/16800. Verified against RFC 6070 PBKDF2
+	// + IEEE 802.11i PMK vectors. internal/wpa).
+	const expected = 495
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

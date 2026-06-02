@@ -652,6 +652,13 @@ var toolLevels = func() map[string]Level {
 		"checksum_compute",
 		"totp_generate",
 		"hmac_compute",
+		// v0.444 — WPA/WPA2-PSK PMK derivation
+		// (PBKDF2-HMAC-SHA1(passphrase, SSID, 4096, 32) per IEEE
+		// 802.11i). Offline KDF compute from operator-supplied
+		// strings — like totp_generate / hmac_compute it derives a
+		// crypto value and transmits nothing (it is a single
+		// derivation, not a cracking loop), so it is Low.
+		"wpa_pmk_derive",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question
