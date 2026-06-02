@@ -35,6 +35,8 @@ package unixcrypt
 
 import (
 	"crypto/md5" //nolint:gosec // md5crypt is MD5 by the crypt(3) spec; this is the algorithm, not a security choice.
+	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/subtle"
 	"fmt"
 	"strings"
@@ -154,28 +156,44 @@ func Scheme(hash string) string {
 		return "apr1"
 	case strings.HasPrefix(hash, MagicMD5):
 		return "md5crypt"
+	case strings.HasPrefix(hash, MagicSHA512):
+		return "sha512crypt"
+	case strings.HasPrefix(hash, MagicSHA256):
+		return "sha256crypt"
 	default:
 		return ""
 	}
 }
 
-// Verify recomputes the hash of password using the magic and salt parsed from an
-// existing $1$ / $apr1$ hash and constant-time-compares it.
+// Verify recomputes the hash of password from the scheme and salt parsed out of
+// an existing crypt(3) hash ($1$ md5crypt, $apr1$, $5$ sha256crypt, or $6$
+// sha512crypt) and constant-time-compares it.
 func Verify(password, hash string) (bool, error) {
-	var magic string
+	var got string
 	switch {
 	case strings.HasPrefix(hash, MagicAPR1):
-		magic = MagicAPR1
+		got = verifyMD5(password, hash, MagicAPR1)
+	case strings.HasPrefix(hash, MagicSHA512):
+		got = verifySHA(password, hash, MagicSHA512, sha512.New, sha512Perm)
+	case strings.HasPrefix(hash, MagicSHA256):
+		got = verifySHA(password, hash, MagicSHA256, sha256.New, sha256Perm)
 	case strings.HasPrefix(hash, MagicMD5):
-		magic = MagicMD5
+		got = verifyMD5(password, hash, MagicMD5)
 	default:
-		return false, fmt.Errorf("unixcrypt: unrecognised hash (expected a $1$ or $apr1$ prefix)")
+		return false, fmt.Errorf("unixcrypt: unrecognised hash (expected $1$, $apr1$, $5$ or $6$)")
 	}
+	if got == "" {
+		return false, fmt.Errorf("unixcrypt: malformed hash (no salt delimiter)")
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(hash)) == 1, nil
+}
+
+// verifyMD5 recomputes an md5crypt/apr1 hash from its parsed salt.
+func verifyMD5(password, hash, magic string) string {
 	rest := hash[len(magic):]
 	i := strings.IndexByte(rest, '$')
 	if i < 0 {
-		return false, fmt.Errorf("unixcrypt: malformed hash (no salt delimiter)")
+		return ""
 	}
-	got := core(password, rest[:i], magic)
-	return subtle.ConstantTimeCompare([]byte(got), []byte(hash)) == 1, nil
+	return core(password, rest[:i], magic)
 }

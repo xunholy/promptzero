@@ -670,6 +670,12 @@ var toolLevels = func() map[string]Level {
 		// nt_hash / hmac_compute it derives a value and transmits
 		// nothing, so it is Low.
 		"md5crypt",
+		// v0.448 — Unix $6$ sha512crypt / $5$ sha256crypt (the modern
+		// /etc/shadow default) compute + verify. Offline crypto
+		// compute / constant-time verify from operator-supplied
+		// strings — like md5crypt / nt_hash, derives a value and
+		// transmits nothing, so it is Low.
+		"sha_crypt",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question

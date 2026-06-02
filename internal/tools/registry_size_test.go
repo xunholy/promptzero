@@ -2036,7 +2036,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.447.0 added md5crypt (Unix $1$ md5crypt / Apache $apr1$ compute + verify
 	// — also Cisco IOS type 5. Native crypto/md5, gated against the OpenSSL
 	// `passwd -1`/`-apr1` oracle. internal/unixcrypt).
-	const expected = 497
+	// v0.448.0 added sha_crypt (Unix $6$ sha512crypt / $5$ sha256crypt compute +
+	// verify — the modern Linux /etc/shadow default. Native crypto/sha512+sha256
+	// (Drepper), gated against the OpenSSL `passwd -6`/`-5` oracle. internal/unixcrypt).
+	const expected = 498
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
