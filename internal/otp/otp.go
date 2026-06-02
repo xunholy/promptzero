@@ -24,8 +24,10 @@
 // # Covered / deferred
 //
 // Covered: HOTP, TOTP, the SHA-1 / SHA-256 / SHA-512 HMAC variants, 6-8 digit
-// codes, and base32 seed decoding (the Google-Authenticator / otpauth:// form).
-// Steam-Guard's custom alphabet and the otpauth:// URI parser are deferred.
+// codes, base32 seed decoding (the Google-Authenticator form), and the
+// otpauth:// key-URI parser (ParseURI — the 2FA-enrolment QR artifact, carrying
+// the algorithm / digits / period that drive the code). Steam-Guard's custom
+// alphabet is deferred.
 package otp
 
 import (
