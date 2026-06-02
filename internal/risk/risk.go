@@ -1921,6 +1921,7 @@ var toolLevels = func() map[string]Level {
 		// + SDR research + 5G IMSI-catcher
 		// forensics.
 		"gsmtap_decode",
+		"imei_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
