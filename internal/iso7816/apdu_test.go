@@ -45,6 +45,37 @@ func TestDecodeResponseAPDU_StatusWords(t *testing.T) {
 	}
 }
 
+// TestDecodeResponseAPDU_DESFire: the 0x91XX wrapping-mode status family.
+func TestDecodeResponseAPDU_DESFire(t *testing.T) {
+	cases := []struct {
+		hexStr, wantCat, wantContains string
+	}{
+		{"9100", "success", "OPERATION_OK"},
+		{"91AF", "warning", "ADDITIONAL_FRAME"},
+		{"91AE", "error", "AUTHENTICATION_ERROR"},
+		{"919D", "error", "PERMISSION_DENIED"},
+		{"91A0", "error", "APPLICATION_NOT_FOUND"},
+		{"91F0", "error", "FILE_NOT_FOUND"},
+	}
+	for _, c := range cases {
+		r, err := DecodeResponseAPDU(mustHex(t, c.hexStr))
+		if err != nil {
+			t.Fatalf("%s: %v", c.hexStr, err)
+		}
+		if r.Category != c.wantCat || !strings.Contains(r.Status, c.wantContains) {
+			t.Errorf("%s = %s / %q, want %s containing %q", c.hexStr, r.Category, r.Status, c.wantCat, c.wantContains)
+		}
+		if !strings.Contains(r.Status, "DESFire") {
+			t.Errorf("%s: status %q should be marked DESFire", c.hexStr, r.Status)
+		}
+	}
+	// An unmapped 91XX is surfaced raw, not guessed.
+	r, _ := DecodeResponseAPDU(mustHex(t, "9133"))
+	if !strings.Contains(r.Status, "unmapped") || !strings.Contains(r.Status, "0x33") {
+		t.Errorf("9133 should be DESFire unmapped-raw, got %q", r.Status)
+	}
+}
+
 // TestDecodeResponseAPDU_PINRetries: the 63CX family — X retry attempts left.
 func TestDecodeResponseAPDU_PINRetries(t *testing.T) {
 	r, err := DecodeResponseAPDU(mustHex(t, "63C3"))

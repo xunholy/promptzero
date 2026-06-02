@@ -36,7 +36,10 @@ var iso7816APDUDecodeSpec = Spec{
 		"status not satisfied', 6983 'authentication method blocked', 6A82 'file/application not found', " +
 		"6D00 'INS not supported', 6E00 'CLA not supported', and the rest of the ISO 7816-4 table. The " +
 		"parameterised families (61/6C/63CX) are computed, and a status word outside the table is " +
-		"surfaced raw with its warning/error class rather than guessed.\n\n" +
+		"surfaced raw with its warning/error class rather than guessed. The DESFire wrapping-mode family " +
+		"is decoded too — SW1 0x91 + SW2 = the NXP DESFire status (9100 OPERATION_OK, 91AF " +
+		"ADDITIONAL_FRAME, 91AE AUTHENTICATION_ERROR, 919D PERMISSION_DENIED, 91A0 APPLICATION_NOT_FOUND, " +
+		"91F0 FILE_NOT_FOUND, …), since most DESFire exchanges are ISO 7816 wrapped.\n\n" +
 		"**command**: the CLA INS P1 P2 header plus the ISO 7816-4 length case (1 / 2S / 3S / 4S and the " +
 		"extended 2E / 3E / 4E), with Lc, the data field, and Le. The INS is named for an interindustry " +
 		"CLA (SELECT, READ BINARY/RECORD, GET RESPONSE/DATA, VERIFY, …); a proprietary CLA (high bit " +

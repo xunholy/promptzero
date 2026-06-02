@@ -112,8 +112,38 @@ var swExact = map[uint16]string{
 	0x6F00: "Error — no precise diagnosis",
 }
 
+// desfireStatus maps the DESFire status byte (carried as SW2 when SW1 = 0x91
+// in ISO 7816 wrapping mode, which is how most DESFire exchanges are framed)
+// to its NXP-documented name. Bounded, authoritative (NXP MIFARE DESFire
+// datasheet / libfreefare), and surfaced alongside the raw bytes.
+var desfireStatus = map[byte]string{
+	0x00: "OPERATION_OK",
+	0x0C: "NO_CHANGES",
+	0x0E: "OUT_OF_EEPROM_ERROR",
+	0x1C: "ILLEGAL_COMMAND_CODE",
+	0x1E: "INTEGRITY_ERROR",
+	0x40: "NO_SUCH_KEY",
+	0x7E: "LENGTH_ERROR",
+	0x9D: "PERMISSION_DENIED",
+	0x9E: "PARAMETER_ERROR",
+	0xA0: "APPLICATION_NOT_FOUND",
+	0xA1: "APPL_INTEGRITY_ERROR",
+	0xAE: "AUTHENTICATION_ERROR",
+	0xAF: "ADDITIONAL_FRAME",
+	0xBE: "BOUNDARY_ERROR",
+	0xC1: "CARD_INTEGRITY_ERROR",
+	0xCA: "COMMAND_ABORTED",
+	0xCD: "CARD_DISABLED",
+	0xCE: "COUNT_ERROR",
+	0xDE: "DUPLICATE_ERROR",
+	0xEE: "EEPROM_ERROR",
+	0xF0: "FILE_NOT_FOUND",
+	0xF1: "FILE_INTEGRITY_ERROR",
+}
+
 // lookupSW resolves a status word, handling the parameterised families
-// (61XX / 6CXX / 63CX / 62XX / 64XX / 65XX) before the exact table.
+// (61XX / 6CXX / 63CX) and the DESFire 91XX wrapping-mode family before the
+// exact ISO 7816-4 table.
 func lookupSW(sw1, sw2 byte) (status, category string) {
 	sw := uint16(sw1)<<8 | uint16(sw2)
 	switch sw1 {
@@ -125,6 +155,19 @@ func lookupSW(sw1, sw2 byte) (status, category string) {
 		if sw2&0xF0 == 0xC0 {
 			return fmt.Sprintf("Warning — verification failed, %d PIN/key retry attempt(s) remaining", sw2&0x0F), "warning"
 		}
+	case 0x91:
+		// DESFire (ISO 7816 wrapping mode): SW1 0x91, SW2 = DESFire status.
+		if name, ok := desfireStatus[sw2]; ok {
+			cat := "error"
+			switch sw2 {
+			case 0x00, 0x0C:
+				cat = "success"
+			case 0xAF:
+				cat = "warning" // ADDITIONAL_FRAME — more data; send the next frame
+			}
+			return "DESFire — " + name, cat
+		}
+		return fmt.Sprintf("DESFire — unmapped status 0x%02X (SW 0x91%02X) — surfaced raw", sw2, sw2), "error"
 	}
 	if name, ok := swExact[sw]; ok {
 		cat := "error"
