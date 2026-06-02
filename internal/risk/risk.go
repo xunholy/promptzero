@@ -552,6 +552,7 @@ var toolLevels = func() map[string]Level {
 		// protocol behind modern ECU attacks; pure offline parser,
 		// unknown values surfaced raw.
 		"uds_decode",
+		"vin_decode",
 		// v0.411 (application-layer inverse of uds_decode): uds_encode
 		// builds a UDS request/response PDU (SID + sub-function +
 		// suppressPosRsp bit + DID + payload) — the top of the inject

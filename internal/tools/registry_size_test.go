@@ -1956,7 +1956,13 @@ func TestRegistrySize(t *testing.T) {
 	// the parity-validating inverse of em4100_encode: checks the 9-bit
 	// header, 10 row parities, 4 column parities, stop bit; recovers the
 	// 5-byte ID. Round-trip-verified against the encoder. Offline read).
-	const expected = 479
+	// (v0.418/v0.419 added Sony SIRC + Samsung32 to the existing ir_raw_decode;
+	//  v0.420 added H10304/H10302 to the existing rfid_pacs_encode — no new
+	//  tools, so the count was unchanged for those.)
+	// v0.421.0 added vin_decode (VIN / ISO 3779 check-digit validator + region
+	// / model-year / WMI breakdown — offline complement to UDS DID F190 /
+	// OBD-II Mode 09 PID 02; check digit is the anchor, internal/vin).
+	const expected = 480
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
