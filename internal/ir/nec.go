@@ -82,10 +82,12 @@ func DecodeRaw(timings string) (*Result, error) {
 	switch {
 	case within(t[0], necLeaderMark):
 		return decodeNEC(t)
+	case within(t[0], samsungLeaderMark):
+		return decodeSamsung(t)
 	case within(t[0], sircLeaderMark):
 		return decodeSIRC(t)
 	default:
-		return nil, fmt.Errorf("ir: leader mark %dµs matches neither NEC (~9000µs) nor Sony SIRC (~2400µs)", t[0])
+		return nil, fmt.Errorf("ir: leader mark %dµs matches no supported protocol (NEC ~9000µs, Samsung ~4500µs, Sony SIRC ~2400µs)", t[0])
 	}
 }
 
@@ -100,33 +102,9 @@ func decodeNEC(t []int) (*Result, error) {
 		return nil, fmt.Errorf("ir: leader space %dµs is not NEC (~4500µs)", t[1])
 	}
 
-	// 32 data bits, each a 560µs mark + a 560µs (0) or 1690µs (1) space.
-	bits := make([]int, 0, 32)
-	i := 2
-	for len(bits) < 32 {
-		if i+1 >= len(t) {
-			return nil, fmt.Errorf("ir: NEC frame truncated at bit %d (need 32)", len(bits))
-		}
-		if !within(t[i], necBitMark) {
-			return nil, fmt.Errorf("ir: bit %d mark %dµs not ~560µs", len(bits), t[i])
-		}
-		switch {
-		case within(t[i+1], necOneSpace):
-			bits = append(bits, 1)
-		case within(t[i+1], necZeroSpace):
-			bits = append(bits, 0)
-		default:
-			return nil, fmt.Errorf("ir: bit %d space %dµs is neither ~560µs (0) nor ~1690µs (1)", len(bits), t[i+1])
-		}
-		i += 2
-	}
-
-	// NEC is LSB-first per byte.
-	var b [4]byte
-	for j, bit := range bits {
-		if bit == 1 {
-			b[j/8] |= 1 << uint(j%8)
-		}
+	b, err := readPDC32(t)
+	if err != nil {
+		return nil, err
 	}
 	out := &Result{
 		Bits:        32,
@@ -155,6 +133,33 @@ func decodeNEC(t []int) (*Result, error) {
 	out.AddressHex = fmt.Sprintf("0x%X", out.Address)
 	out.CommandHex = fmt.Sprintf("0x%02X", out.Command)
 	return out, nil
+}
+
+// readPDC32 reads 32 pulse-distance bits from t[2:] (skipping the leader at
+// t[0..1]) and packs them LSB-first into 4 bytes. Each bit is a ~560µs mark
+// followed by a ~560µs (0) or ~1690µs (1) space — the encoding shared by NEC
+// and Samsung.
+func readPDC32(t []int) ([4]byte, error) {
+	var b [4]byte
+	bits := 0
+	for i := 2; bits < 32; i += 2 {
+		if i+1 >= len(t) {
+			return b, fmt.Errorf("ir: frame truncated at bit %d (need 32)", bits)
+		}
+		if !within(t[i], necBitMark) {
+			return b, fmt.Errorf("ir: bit %d mark %dµs not ~560µs", bits, t[i])
+		}
+		switch {
+		case within(t[i+1], necOneSpace):
+			b[bits/8] |= 1 << uint(bits%8) // LSB-first
+		case within(t[i+1], necZeroSpace):
+			// zero bit — nothing to set
+		default:
+			return b, fmt.Errorf("ir: bit %d space %dµs is neither ~560µs (0) nor ~1690µs (1)", bits, t[i+1])
+		}
+		bits++
+	}
+	return b, nil
 }
 
 func within(v, nominal int) bool {
