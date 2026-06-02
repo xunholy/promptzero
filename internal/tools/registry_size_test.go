@@ -1991,7 +1991,11 @@ func TestRegistrySize(t *testing.T) {
 	// catalogue — CRC-8/16/32 models, each verified against its published
 	// check value; identify mode fingerprints an unknown frame's CRC.
 	// Protocol-RE aid, offline. internal/crc).
-	const expected = 487
+	// v0.431.0 added manchester_decode (Manchester line-code RE decoder —
+	// both alignments + both conventions (IEEE 802.3 / Thomas), gated on the
+	// 01/10-pairs validity rule; the raw-bitstream→data-layer step
+	// complementing crc_compute. internal/linecode).
+	const expected = 488
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
