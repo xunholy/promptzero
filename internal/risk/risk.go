@@ -262,6 +262,7 @@ var toolLevels = func() map[string]Level {
 		// TS convention + T0 + TA/TB/TC/TD interface-byte chain +
 		// historical bytes + TCK validation. Pure offline parser.
 		"iso7816_atr_decode",
+		"iso7816_apdu_decode",
 		// v0.219 (NATIVE-fit gap in the hardware-recon decode
 		// space): JTAG IDCODE / SWD DPIDR chip identifier — IEEE
 		// 1149.1 bit walker + JEDEC JEP106 manufacturer lookup +

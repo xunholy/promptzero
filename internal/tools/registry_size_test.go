@@ -1981,7 +1981,11 @@ func TestRegistrySize(t *testing.T) {
 	// 2-byte method/condition rules; structural parse, raw bytes always
 	// surfaced + best-effort EMV names with unknowns flagged. Completes the
 	// EMV field suite alongside track2/dol/afl. internal/emv).
-	const expected = 485
+	// v0.427.0 added iso7816_apdu_decode (ISO 7816-4 APDU decoder — response
+	// SW1SW2 status word (incl. 61XX/6CXX/63CX families) + command CLA/INS/
+	// P1/P2 length-case parsing with INS naming. Offline smart-card analysis
+	// complement to nfc_apdu. internal/iso7816).
+	const expected = 486
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
