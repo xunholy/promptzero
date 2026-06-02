@@ -2013,7 +2013,11 @@ func TestRegistrySize(t *testing.T) {
 	// trio: re-sign claims (HS256/384/512) for claim-escalation / alg:none /
 	// RS->HS alg-confusion. Offline payload builder, round-trip-verified +
 	// reproduces the canonical jwt.io token. internal/jwtsig).
-	const expected = 492
+	// v0.439.0 added cisco_type7_decode (Cisco IOS type-7 reversible password
+	// decode — fixed-key XOR, the service-password-encryption obfuscation;
+	// recovers plaintext directly. Key pinned to published vectors. Complements
+	// hash_identify's type 8/9 detection. internal/ciscopw).
+	const expected = 493
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

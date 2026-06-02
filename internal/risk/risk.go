@@ -646,6 +646,7 @@ var toolLevels = func() map[string]Level {
 		"jwt_decode",
 		"jwt_verify",
 		"jwt_forge",
+		"cisco_type7_decode",
 		"crc_compute",
 		"manchester_decode",
 		"checksum_compute",
