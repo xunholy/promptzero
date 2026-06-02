@@ -645,6 +645,7 @@ var toolLevels = func() map[string]Level {
 		// no signature verification.
 		"jwt_decode",
 		"jwt_verify",
+		"jwt_forge",
 		"crc_compute",
 		"manchester_decode",
 		"checksum_compute",

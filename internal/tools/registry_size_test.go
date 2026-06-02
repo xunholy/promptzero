@@ -2009,7 +2009,11 @@ func TestRegistrySize(t *testing.T) {
 	// counterpart to jwt_decode: HS256/384/512 against a secret or candidate
 	// list (weak-secret test), alg:none + asymmetric classified. Verified
 	// against the canonical jwt.io token. internal/jwtsig).
-	const expected = 491
+	// v0.438.0 added jwt_forge (JWS forging — completes the decode/verify/forge
+	// trio: re-sign claims (HS256/384/512) for claim-escalation / alg:none /
+	// RS->HS alg-confusion. Offline payload builder, round-trip-verified +
+	// reproduces the canonical jwt.io token. internal/jwtsig).
+	const expected = 492
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
