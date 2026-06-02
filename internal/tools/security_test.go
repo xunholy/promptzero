@@ -1081,3 +1081,26 @@ func TestHashCrack_MySQL(t *testing.T) {
 		t.Errorf("plaintext = %v, want password", entry["plaintext"])
 	}
 }
+
+// TestHashCrack_Argon2 cracks an argon2id hash (reference vector from
+// argon2-cffi for "password") via the memory-hard "argon2" algorithm.
+func TestHashCrack_Argon2(t *testing.T) {
+	const h = "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQwMTIzNDU2Nw$JQsxRb/1mbOwOljowhJTfc/GbikYS7t/8Ku8D1WluS8"
+	wl := writeTempWordlist(t, "wrong", "password", "other")
+	out, err := invokeSpec(t, "hash_crack_dictionary", map[string]any{
+		"hashes":    []any{h},
+		"algorithm": "argon2",
+		"wordlist":  wl,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustJSON(t, out)
+	cracked, _ := m["cracked"].([]any)
+	if len(cracked) != 1 {
+		t.Fatalf("cracked = %d, want 1; out: %s", len(cracked), out)
+	}
+	if entry, _ := cracked[0].(map[string]any); entry["plaintext"] != "password" {
+		t.Errorf("plaintext = %v, want password", entry["plaintext"])
+	}
+}

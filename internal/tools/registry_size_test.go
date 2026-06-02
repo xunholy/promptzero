@@ -2045,7 +2045,11 @@ func TestRegistrySize(t *testing.T) {
 	// (v0.450 added no tool — hash_crack_dictionary gained the 'mysql' and
 	// 'crypt' ($1$/$apr1$/$5$/$6$ via unixcrypt.Verify) algorithms, so it can
 	// now crack the modern /etc/shadow + MySQL hashes hash_identify detects.)
-	const expected = 499
+	// v0.451.0 added argon2 (Argon2id/Argon2i compute + verify — the OWASP-
+	// recommended modern hash. Wrap of x/crypto/argon2 (already a dep; native
+	// infeasible — memory-hard BLAKE2b), our own PHC parse/encode, gated against
+	// argon2-cffi reference vectors. hash_crack also gained the 'argon2' algo.)
+	const expected = 500
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
