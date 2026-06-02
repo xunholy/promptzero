@@ -33,8 +33,10 @@ var jwtVerifySpec = Spec{
 		"Provide **token** and either **secret** (one candidate) or **secrets** (a list — the tool reports " +
 		"which, if any, validates: the weak-secret test). For an HMAC alg the signature is recomputed and " +
 		"constant-time-compared. For alg:none the token is reported as unsigned/vulnerable (no secret can " +
-		"verify it). For an asymmetric alg (RS*/ES*/PS*/EdDSA) the tool reports that a public key is " +
-		"required, not a shared secret — it is not guessed. A 'Bearer ' prefix is tolerated.\n\n" +
+		"verify it). For an **RS256/RS384/RS512** token (the dominant production algorithm — Auth0/Okta/" +
+		"most IdPs) supply **public_key** (a PEM RSA public key — PKIX/SPKI, PKCS#1, or an X.509 cert, e.g. " +
+		"from /.well-known/jwks.json) and the RSA-PKCS1v15 signature is verified. ES*/PS*/EdDSA remain out " +
+		"of scope. A 'Bearer ' prefix is tolerated.\n\n" +
 		"Offline compute against operator-supplied secrets — no network, no device, transmits nothing, so " +
 		"it is Low risk. Verified in-tree against the canonical jwt.io HS256 token. Wrap-vs-native: " +
 		"native — HMAC-SHA* + base64url, standard library only.",
@@ -43,7 +45,8 @@ var jwtVerifySpec = Spec{
 		"properties":{
 			"token":{"type":"string","description":"The JWT/JWS compact token (3 dot-separated segments). 'Bearer ' prefix tolerated."},
 			"secret":{"type":"string","description":"A single candidate HMAC secret to verify against."},
-			"secrets":{"type":"array","items":{"type":"string"},"description":"A list of candidate secrets — the tool reports which (if any) validates."}
+			"secrets":{"type":"array","items":{"type":"string"},"description":"A list of candidate secrets — the tool reports which (if any) validates."},
+			"public_key":{"type":"string","description":"PEM RSA public key (PKIX/SPKI, PKCS#1, or an X.509 cert) for an RS256/384/512 token — e.g. the issuer's key from /.well-known/jwks.json."}
 		},
 		"required":["token"]
 	}`),
@@ -58,6 +61,20 @@ func jwtVerifyHandler(_ context.Context, _ *Deps, p map[string]any) (string, err
 	token := strings.TrimSpace(str(p, "token"))
 	if token == "" {
 		return "", fmt.Errorf("jwt_verify: 'token' is required")
+	}
+
+	// Peek the algorithm to route RS* tokens to public-key verification.
+	if peek, perr := jwtsig.Verify(token, ""); perr == nil && strings.HasPrefix(strings.ToUpper(peek.Algorithm), "RS") {
+		pub := str(p, "public_key")
+		if strings.TrimSpace(pub) == "" {
+			return "", fmt.Errorf("jwt_verify: token uses %s (RSA) — supply 'public_key' (PEM) to verify (HMAC secrets do not apply)", peek.Algorithm)
+		}
+		res, err := jwtsig.VerifyRSA(token, pub)
+		if err != nil {
+			return "", fmt.Errorf("jwt_verify: %w", err)
+		}
+		out, _ := json.MarshalIndent(map[string]any{"verified": res.Verified, "result": res}, "", "  ")
+		return string(out), nil
 	}
 
 	// Collect candidate secrets from 'secret' and/or 'secrets'.
