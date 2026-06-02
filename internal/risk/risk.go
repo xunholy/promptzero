@@ -1832,6 +1832,7 @@ var toolLevels = func() map[string]Level {
 		// IPv6 protocol; canonical mitm6 +
 		// suddensix + fake_router6 pentest target.
 		"ndp_decode",
+		"ipv6_eui64_recover",
 		// v0.321 native-fit gap: llmnr_decode is a
 		// pure offline dissector for LLMNR (Link-
 		// Local Multicast Name Resolution) per RFC

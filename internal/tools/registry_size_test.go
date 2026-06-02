@@ -1969,7 +1969,11 @@ func TestRegistrySize(t *testing.T) {
 	// unicast/multicast (I/G), locally/universally administered (U/L →
 	// randomized-MAC signal), broadcast; offline analysis complement to the
 	// WiFi/BLE scans, layering the known-attack-OUI lookup. internal/macaddr).
-	const expected = 482
+	// v0.424.0 added ipv6_eui64_recover (recover the MAC embedded in an IPv6
+	// Modified-EUI-64 interface identifier — detect FF:FE, strip it, flip the
+	// U/L bit; chains into mac_classify. Offline complement to ndp/dhcpv6
+	// decoders. internal/macaddr).
+	const expected = 483
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
