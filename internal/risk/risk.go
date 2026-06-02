@@ -659,6 +659,11 @@ var toolLevels = func() map[string]Level {
 		// crypto value and transmits nothing (it is a single
 		// derivation, not a cracking loop), so it is Low.
 		"wpa_pmk_derive",
+		// v0.445 — Windows NT (NTLM) hash compute
+		// (MD4(UTF-16LE(password))). Offline crypto compute from an
+		// operator-supplied string — like hmac_compute / totp_generate
+		// it derives a value and transmits nothing, so it is Low.
+		"nt_hash",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question

@@ -2027,7 +2027,10 @@ func TestRegistrySize(t *testing.T) {
 	// PBKDF2-HMAC-SHA1(passphrase, SSID, 4096, 32) per IEEE 802.11i; the offline
 	// Wi-Fi precompute for hashcat 22000/16800. Verified against RFC 6070 PBKDF2
 	// + IEEE 802.11i PMK vectors. internal/wpa).
-	const expected = 495
+	// v0.445.0 added nt_hash (Windows NT/NTLM hash compute — MD4(UTF-16LE(pw));
+	// the compute side of hash_identify/hash_crack. Native MD4 verified against
+	// the full RFC 1320 suite + the published NTLM vector. internal/nthash).
+	const expected = 496
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
