@@ -2,7 +2,7 @@ module github.com/xunholy/promptzero
 
 go 1.25.0
 
-toolchain go1.25.10
+toolchain go1.25.11
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.36.0
