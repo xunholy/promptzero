@@ -2005,7 +2005,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.436.0 added totp_generate (RFC 6238 TOTP / RFC 4226 HOTP generator —
 	// offline OTP derivation from a recovered 2FA seed; SHA1/256/512, 6-8
 	// digits; verified against the RFC published test vectors. internal/otp).
-	const expected = 490
+	// v0.437.0 added jwt_verify (JWS HMAC signature verifier — the verify
+	// counterpart to jwt_decode: HS256/384/512 against a secret or candidate
+	// list (weak-secret test), alg:none + asymmetric classified. Verified
+	// against the canonical jwt.io token. internal/jwtsig).
+	const expected = 491
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

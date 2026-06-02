@@ -644,6 +644,7 @@ var toolLevels = func() map[string]Level {
 		// expired/not-yet-valid, hours_until_expiry. Pure decode,
 		// no signature verification.
 		"jwt_decode",
+		"jwt_verify",
 		"crc_compute",
 		"manchester_decode",
 		"checksum_compute",
