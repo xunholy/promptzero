@@ -664,6 +664,12 @@ var toolLevels = func() map[string]Level {
 		// operator-supplied string — like hmac_compute / totp_generate
 		// it derives a value and transmits nothing, so it is Low.
 		"nt_hash",
+		// v0.447 — Unix md5crypt ($1$, also Cisco type 5) / Apache
+		// apr1 ($apr1$) compute + verify. Offline crypto compute /
+		// constant-time verify from operator-supplied strings — like
+		// nt_hash / hmac_compute it derives a value and transmits
+		// nothing, so it is Low.
+		"md5crypt",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question
