@@ -2017,7 +2017,11 @@ func TestRegistrySize(t *testing.T) {
 	// decode — fixed-key XOR, the service-password-encryption obfuscation;
 	// recovers plaintext directly. Key pinned to published vectors. Complements
 	// hash_identify's type 8/9 detection. internal/ciscopw).
-	const expected = 493
+	// v0.440.0 added hmac_compute (HMAC-SHA1/256/512 compute + verify — the
+	// keyed-MAC tier / webhook-signature analogue of jwt_verify; verify or
+	// forge a GitHub/Stripe/API HMAC signature. Verified against RFC 4231
+	// vectors. internal/hmacutil).
+	const expected = 494
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
