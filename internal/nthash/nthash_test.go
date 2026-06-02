@@ -39,6 +39,35 @@ func TestNTHash(t *testing.T) {
 	}
 }
 
+// TestLMHash gates the LM hash against three cross-confirming references — the
+// universal empty-LM, the published LM("password") pair, and the hashcat -m 3000
+// example (password "HASHCAT" -> first half 299bd128c1101fd6) — every value
+// independently reproduced via an OpenSSL DES oracle.
+func TestLMHash(t *testing.T) {
+	cases := []struct{ pw, want string }{
+		{"", "aad3b435b51404eeaad3b435b51404ee"},
+		{"password", "e52cac67419a9a224a3b108f3fa6cb6d"},
+		{"ADMIN", "f0d412bd764ffe81aad3b435b51404ee"},
+		{"hashcat", "299bd128c1101fd6aad3b435b51404ee"},  // -> HASHCAT
+		{"PASSWORD", "e52cac67419a9a224a3b108f3fa6cb6d"}, // uppercasing: same as "password"
+	}
+	for _, c := range cases {
+		got, err := LMHash(c.pw)
+		if err != nil {
+			t.Fatalf("LMHash(%q): %v", c.pw, err)
+		}
+		if hex.EncodeToString(got) != c.want {
+			t.Errorf("LMHash(%q) = %s, want %s", c.pw, hex.EncodeToString(got), c.want)
+		}
+	}
+}
+
+func TestLMHash_NonASCII(t *testing.T) {
+	if _, err := LMHash("pässwörd"); err == nil {
+		t.Error("non-ASCII password should be rejected (OEM-codepage dependent)")
+	}
+}
+
 // TestMD4_NoMutate confirms MD4 does not mutate the caller's slice via padding.
 func TestMD4_NoMutate(t *testing.T) {
 	in := make([]byte, 3, 128) // spare capacity: a naive append would overwrite

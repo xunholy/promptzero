@@ -29,14 +29,21 @@
 // # Covered / deferred
 //
 // Covered: the NT (NTLM) hash for any Unicode password (encoded UTF-16LE per the
-// Windows convention). Deferred: the legacy LM hash (DES-based, uppercased,
-// 14-character truncated) — held back until it can be gated against a
-// confidently-sourced non-trivial vector, since a wrong hash is worse than none.
+// Windows convention), and the legacy LM hash (LMHash — DES of "KGS!@#$%" under
+// each 7-byte half of the uppercased, 14-character password, the LANMAN
+// algorithm). LM is gated against three cross-confirming references (the
+// universal empty-LM, the published LM("password") pair, and the hashcat -m 3000
+// example), all reproduced via an independent DES oracle. Nothing is deferred —
+// LM for non-ASCII passwords is OEM-codepage dependent and is rejected rather
+// than guessed.
 package nthash
 
 import (
+	"crypto/des" //nolint:gosec // the LM hash is DES by the LANMAN spec; this is the algorithm, not a security choice.
 	"encoding/binary"
+	"fmt"
 	"math/bits"
+	"strings"
 	"unicode/utf16"
 )
 
@@ -111,4 +118,67 @@ func NTHash(password string) []byte {
 		binary.LittleEndian.PutUint16(b[i*2:], u)
 	}
 	return MD4(b)
+}
+
+// lmMagic is the constant LANMAN plaintext DES-encrypted under each password
+// half to form the LM hash.
+var lmMagic = []byte("KGS!@#$%")
+
+// strToKey expands a 7-byte (56-bit) value into an 8-byte DES key by spreading
+// the bits seven-per-byte and leaving the low bit of each byte as the (ignored)
+// parity bit — the SMB/LANMAN str_to_key transform.
+func strToKey(s []byte) []byte {
+	k := make([]byte, 8)
+	k[0] = s[0] >> 1
+	k[1] = ((s[0] & 0x01) << 6) | (s[1] >> 2)
+	k[2] = ((s[1] & 0x03) << 5) | (s[2] >> 3)
+	k[3] = ((s[2] & 0x07) << 4) | (s[3] >> 4)
+	k[4] = ((s[3] & 0x0F) << 3) | (s[4] >> 5)
+	k[5] = ((s[4] & 0x1F) << 2) | (s[5] >> 6)
+	k[6] = ((s[5] & 0x3F) << 1) | (s[6] >> 7)
+	k[7] = s[6] & 0x7F
+	for i := range k {
+		k[i] <<= 1
+	}
+	return k
+}
+
+// lmHalf DES-encrypts the LANMAN magic constant under the key derived from one
+// 7-byte password half.
+func lmHalf(half []byte) ([]byte, error) {
+	block, err := des.NewCipher(strToKey(half))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 8)
+	block.Encrypt(out, lmMagic)
+	return out, nil
+}
+
+// LMHash returns the 16-byte legacy LM (LANMAN) hash of password: the password
+// is uppercased and truncated/padded to 14 bytes, split into two 7-byte halves,
+// and each half keys a DES encryption of the constant "KGS!@#$%". LM is defined
+// only for ASCII passwords (the uppercasing and byte mapping are OEM-codepage
+// dependent otherwise), so a non-ASCII password is rejected rather than guessed.
+func LMHash(password string) ([]byte, error) {
+	for _, r := range password {
+		if r > 127 {
+			return nil, fmt.Errorf("nthash: LM hash is defined only for ASCII passwords (non-ASCII %q is OEM-codepage dependent)", r)
+		}
+	}
+	b := []byte(strings.ToUpper(password))
+	if len(b) > 14 {
+		b = b[:14]
+	}
+	buf := make([]byte, 14) // null-padded to 14
+	copy(buf, b)
+	h1, err := lmHalf(buf[:7])
+	if err != nil {
+		return nil, err
+	}
+	h2, err := lmHalf(buf[7:])
+	if err != nil {
+		return nil, err
+	}
+	return append(h1, h2...), nil
 }

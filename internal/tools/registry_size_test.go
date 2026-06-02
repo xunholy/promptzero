@@ -2030,6 +2030,9 @@ func TestRegistrySize(t *testing.T) {
 	// v0.445.0 added nt_hash (Windows NT/NTLM hash compute — MD4(UTF-16LE(pw));
 	// the compute side of hash_identify/hash_crack. Native MD4 verified against
 	// the full RFC 1320 suite + the published NTLM vector. internal/nthash).
+	// (v0.446 added no tool — nt_hash now also computes the legacy LM hash via
+	// crypto/des, completing the pwdump LM:NT line; gated against three
+	// cross-confirming LM vectors.)
 	const expected = 496
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
