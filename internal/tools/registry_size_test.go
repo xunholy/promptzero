@@ -2000,7 +2000,12 @@ func TestRegistrySize(t *testing.T) {
 	// XOR/LRC, Modbus LRC, Fletcher-16/32; compute + identify. Companion to
 	// crc_compute for trailers that aren't CRCs. Fletcher verified against
 	// published vectors. internal/checksum).
-	const expected = 489
+	// (v0.434/v0.435 extended hash_identify with AD-roasting + WPA/Cisco — no
+	//  new tools, count unchanged.)
+	// v0.436.0 added totp_generate (RFC 6238 TOTP / RFC 4226 HOTP generator —
+	// offline OTP derivation from a recovered 2FA seed; SHA1/256/512, 6-8
+	// digits; verified against the RFC published test vectors. internal/otp).
+	const expected = 490
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
