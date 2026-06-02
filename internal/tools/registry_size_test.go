@@ -1977,7 +1977,11 @@ func TestRegistrySize(t *testing.T) {
 	// subtype from the top 2 bits: static / resolvable-private (RPA) /
 	// non-resolvable / reserved, or public OUI. The BLE counterpart of
 	// mac_classify; RPA = privacy/tracking-resistant. internal/ble).
-	const expected = 484
+	// v0.426.0 added nfc_emv_cvm_decode (EMV CVM List / tag 8E — X/Y amounts +
+	// 2-byte method/condition rules; structural parse, raw bytes always
+	// surfaced + best-effort EMV names with unknowns flagged. Completes the
+	// EMV field suite alongside track2/dol/afl. internal/emv).
+	const expected = 485
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
