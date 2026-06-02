@@ -1995,7 +1995,12 @@ func TestRegistrySize(t *testing.T) {
 	// both alignments + both conventions (IEEE 802.3 / Thomas), gated on the
 	// 01/10-pairs validity rule; the raw-bitstream→data-layer step
 	// complementing crc_compute. internal/linecode).
-	const expected = 488
+	// (v0.432 added CRC-24 models to crc_compute — no new tool, count unchanged.)
+	// v0.433.0 added checksum_compute (non-CRC frame checksums — SUM-8/16,
+	// XOR/LRC, Modbus LRC, Fletcher-16/32; compute + identify. Companion to
+	// crc_compute for trailers that aren't CRCs. Fletcher verified against
+	// published vectors. internal/checksum).
+	const expected = 489
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

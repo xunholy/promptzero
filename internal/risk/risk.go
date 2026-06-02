@@ -646,6 +646,7 @@ var toolLevels = func() map[string]Level {
 		"jwt_decode",
 		"crc_compute",
 		"manchester_decode",
+		"checksum_compute",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question
