@@ -29,23 +29,63 @@ import (
 //     Even parity over the top 12 data bits, odd over the bottom 12.
 //   - "H10306" — 34-bit: even parity + 16-bit FC + 16-bit CN + odd parity.
 //     Even parity over the FC, odd over the CN.
+//   - "H10304" — 37-bit: even parity + 16-bit FC + 19-bit CN + odd parity.
+//     Even parity over the top 18 data bits, odd over the bottom 18 (the two
+//     ranges overlap at the 18th bit — both are still clean functions of the
+//     data, so the frame round-trips parity-valid).
+//   - "H10302" — 37-bit, no facility code: even parity + 35-bit CN + odd
+//     parity. Identical parity ranges to H10304; pass facility code 0.
 //
 // # Deliberately deferred
 //
-// The 37-bit (H10304/H10302) and Corporate 1000 (35/48-bit) formats have
-// overlapping / proprietary parity ranges that the decoder treats as
-// best-effort. Encoding them without an external reference vector risks a
-// confidently-wrong frame, so they are not offered here (decode still
-// surfaces them as candidates).
+// The HID Corporate 1000 (35/48-bit) formats use a self-referential /
+// proprietary parity scheme that the decoder validates only best-effort
+// (the parity bits fall inside their own coverage range). Encoding them to a
+// guaranteed-valid frame is not reliable without an external reference
+// vector, so they are not offered here (decode still surfaces them as
+// candidates).
 func EncodeWiegand(format string, facilityCode, cardNumber uint64) (string, error) {
 	switch strings.ToUpper(strings.TrimSpace(format)) {
 	case "H10301", "H10301 26-BIT", "26":
 		return encodeStandard(facilityCode, cardNumber, 8, 16, "H10301")
 	case "H10306", "H10306 34-BIT", "34":
 		return encodeStandard(facilityCode, cardNumber, 16, 16, "H10306")
+	case "H10304", "H10304 37-BIT", "37":
+		return encode37(facilityCode, cardNumber, false)
+	case "H10302", "H10302 37-BIT":
+		return encode37(facilityCode, cardNumber, true)
 	default:
-		return "", fmt.Errorf("pacs: unsupported encode format %q (supported: H10301 (26-bit), H10306 (34-bit))", format)
+		return "", fmt.Errorf("pacs: unsupported encode format %q (supported: H10301 (26-bit), H10306 (34-bit), H10304 (37-bit), H10302 (37-bit, no FC))", format)
 	}
+}
+
+// encode37 builds a 37-bit Wiegand frame whose parity ranges mirror
+// decodeH10304 / decodeH10302 exactly: a leading even-parity bit over the top
+// 18 data bits and a trailing odd-parity bit over the bottom 18 (the ranges
+// overlap at the 18th data bit). H10304 carries a 16-bit FC + 19-bit CN;
+// H10302 (noFC) carries a 35-bit CN and no facility code.
+func encode37(fc, cn uint64, noFC bool) (string, error) {
+	var data string
+	if noFC {
+		if fc != 0 {
+			return "", fmt.Errorf("pacs H10302: format has no facility code (got %d); pass 0", fc)
+		}
+		if maxFor(35) < cn {
+			return "", fmt.Errorf("pacs H10302: card number %d does not fit in 35 bits (max %d)", cn, maxFor(35))
+		}
+		data = uintToBits(cn, 35)
+	} else {
+		if maxFor(16) < fc {
+			return "", fmt.Errorf("pacs H10304: facility code %d does not fit in 16 bits (max %d)", fc, maxFor(16))
+		}
+		if maxFor(19) < cn {
+			return "", fmt.Errorf("pacs H10304: card number %d does not fit in 19 bits (max %d)", cn, maxFor(19))
+		}
+		data = uintToBits(fc, 16) + uintToBits(cn, 19) // 35 data bits
+	}
+	leading := parityEven(data[:18]) // even over the top 18 data bits (frame bits 1-18)
+	trailing := parityOdd(data[17:]) // odd over the bottom 18 data bits (frame bits 18-35)
+	return fmt.Sprintf("%d%s%d", leading, data, trailing), nil
 }
 
 // encodeStandard builds a "[Pe][FC:fcBits][CN:cnBits][Po]" Wiegand frame:

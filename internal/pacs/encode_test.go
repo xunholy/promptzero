@@ -22,6 +22,12 @@ func TestEncodeWiegand_RoundTrip(t *testing.T) {
 		{"H10306", 1, 0, "H10306"},
 		{"H10306", 65535, 65535, "H10306"},
 		{"H10306", 4660, 22136, "H10306"},
+		{"H10304", 0, 1, "H10304"},
+		{"H10304", 1, 0, "H10304"},
+		{"H10304", 65535, 524287, "H10304"}, // max 16-bit FC, max 19-bit CN
+		{"H10304", 4660, 305419, "H10304"},
+		{"H10302", 0, 1, "H10302"},
+		{"H10302", 0, 34359738367, "H10302"}, // max 35-bit CN
 	}
 	for _, c := range cases {
 		bits, err := EncodeWiegand(c.format, c.fc, c.cn)
@@ -79,15 +85,36 @@ func TestEncodeWiegand_FixedVectors(t *testing.T) {
 	}
 }
 
+// TestEncode37_FixedVector hand-verifies the 37-bit frame for FC=0 CN=0:
+// even parity over 18 zero bits = 0 (leading), odd parity over 18 zero bits
+// = 1 (trailing), with 35 zero data bits between.
+func TestEncode37_FixedVector(t *testing.T) {
+	got, err := EncodeWiegand("H10304", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "0" + strings.Repeat("0", 35) + "1"
+	if got != want {
+		t.Errorf("EncodeWiegand(H10304,0,0) = %q, want %q", got, want)
+	}
+	if len(got) != 37 {
+		t.Errorf("H10304 frame length = %d, want 37", len(got))
+	}
+}
+
 func TestEncodeWiegand_RejectsBadInput(t *testing.T) {
 	cases := []struct {
 		format string
 		fc, cn uint64
 	}{
-		{"H10301", 256, 0},   // FC > 8 bits
-		{"H10301", 0, 65536}, // CN > 16 bits
-		{"H10306", 65536, 0}, // FC > 16 bits
-		{"NOPE", 1, 1},       // unknown format
+		{"H10301", 256, 0},     // FC > 8 bits
+		{"H10301", 0, 65536},   // CN > 16 bits
+		{"H10306", 65536, 0},   // FC > 16 bits
+		{"H10304", 65536, 0},   // FC > 16 bits
+		{"H10304", 0, 524288},  // CN > 19 bits
+		{"H10302", 1, 0},       // H10302 has no facility code
+		{"H10302", 0, 1 << 35}, // CN > 35 bits
+		{"NOPE", 1, 1},         // unknown format
 	}
 	for _, c := range cases {
 		if _, err := EncodeWiegand(c.format, c.fc, c.cn); err == nil {
