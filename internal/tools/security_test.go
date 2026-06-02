@@ -1028,3 +1028,56 @@ func TestSecuritySpecRegistration(t *testing.T) {
 		})
 	}
 }
+
+// TestHashCrack_Crypt cracks shadow-style crypt(3) hashes via the auto-detecting
+// "crypt" algorithm — md5crypt ($1$), sha256crypt ($5$) and sha512crypt ($6$),
+// each from the OpenSSL-oracle-verified unixcrypt vectors for "password".
+func TestHashCrack_Crypt(t *testing.T) {
+	cases := []struct{ name, hash string }{
+		{"md5crypt", "$1$abcdefgh$G//4keteveJp0qb8z2DxG/"},
+		{"sha256crypt", "$5$abcdefgh$ZLdkj8mkc2XVSrPVjskDAgZPGjtj1VGVaa1aUkrMTU/"},
+		{"sha512crypt", "$6$abcdefgh$yVfUwsw5T.JApa8POvClA1pQ5peiq97DUNyXCZN5IrF.BMSkiaLQ5kvpuEm/VQ1Tvh/KV2TcaWh8qinoW5dhA1"},
+	}
+	wl := writeTempWordlist(t, "wrong", "password", "other")
+	for _, c := range cases {
+		out, err := invokeSpec(t, "hash_crack_dictionary", map[string]any{
+			"hashes":    []any{c.hash},
+			"algorithm": "crypt",
+			"wordlist":  wl,
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		m := mustJSON(t, out)
+		cracked, _ := m["cracked"].([]any)
+		if len(cracked) != 1 {
+			t.Fatalf("%s: cracked = %d, want 1; out: %s", c.name, len(cracked), out)
+		}
+		entry, _ := cracked[0].(map[string]any)
+		if entry["plaintext"] != "password" {
+			t.Errorf("%s: plaintext = %q, want password", c.name, entry["plaintext"])
+		}
+	}
+}
+
+// TestHashCrack_MySQL cracks a mysql_native_password (SHA1(SHA1(pw))) hash.
+func TestHashCrack_MySQL(t *testing.T) {
+	const h = "*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19" // mysql_native of "password"
+	wl := writeTempWordlist(t, "wrong", "password", "other")
+	out, err := invokeSpec(t, "hash_crack_dictionary", map[string]any{
+		"hashes":    []any{h},
+		"algorithm": "mysql",
+		"wordlist":  wl,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustJSON(t, out)
+	cracked, _ := m["cracked"].([]any)
+	if len(cracked) != 1 {
+		t.Fatalf("cracked = %d, want 1; out: %s", len(cracked), out)
+	}
+	if entry, _ := cracked[0].(map[string]any); entry["plaintext"] != "password" {
+		t.Errorf("plaintext = %v, want password", entry["plaintext"])
+	}
+}

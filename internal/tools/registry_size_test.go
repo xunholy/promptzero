@@ -2042,6 +2042,9 @@ func TestRegistrySize(t *testing.T) {
 	// v0.449.0 added bcrypt (bcrypt $2a/$2b/$2y compute + verify — the dominant
 	// web-app hash. Wrap of x/crypto/bcrypt (already a dep; native infeasible —
 	// Blowfish S-boxes); gated against the jBCrypt/OpenBSD published vectors).
+	// (v0.450 added no tool — hash_crack_dictionary gained the 'mysql' and
+	// 'crypt' ($1$/$apr1$/$5$/$6$ via unixcrypt.Verify) algorithms, so it can
+	// now crack the modern /etc/shadow + MySQL hashes hash_identify detects.)
 	const expected = 499
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

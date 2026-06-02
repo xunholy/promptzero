@@ -63,6 +63,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/risk"
+	"github.com/xunholy/promptzero/internal/unixcrypt"
 	"github.com/xunholy/promptzero/internal/wordlists"
 )
 
@@ -297,10 +298,13 @@ func identifyHash(h string) []hashCandidate {
 var hashCrackDictionarySpec = Spec{
 	Name: "hash_crack_dictionary",
 	Description: "Offline dictionary attack against a hash corpus. " +
-		"Pure-Go implementation (MD5, SHA-1, SHA-256, SHA-512, NTLM, bcrypt). " +
-		"No GPU, no rules engine. Reads the wordlist as a stream (memory-efficient " +
-		"for large files such as rockyou.txt). Use hash_identify first to determine " +
-		"the algorithm. Supported wordlists: operator-provided file path, or " +
+		"Pure-Go implementation (MD5, SHA-1, SHA-256, SHA-512, NTLM, bcrypt, " +
+		"mysql (mysql_native_password / MySQL4.1+), and the crypt(3) family — " +
+		"md5crypt $1$ / apr1 / sha256crypt $5$ / sha512crypt $6$, i.e. modern Linux " +
+		"/etc/shadow — via the 'crypt' algorithm, which auto-detects the scheme from " +
+		"the hash prefix). No GPU, no rules engine. Reads the wordlist as a stream " +
+		"(memory-efficient for large files such as rockyou.txt). Use hash_identify first " +
+		"to determine the algorithm. Supported wordlists: operator-provided file path, or " +
 		"'promptzero://wordlists/passwords.txt' for the built-in list.",
 	Schema: json.RawMessage(`{
 		"type":"object",
@@ -308,8 +312,9 @@ var hashCrackDictionarySpec = Spec{
 			"hashes":{"type":"array","items":{"type":"string"},
 				"description":"Hash strings to crack"},
 			"algorithm":{"type":"string","enum":[
-				"md5","sha1","sha256","sha512","ntlm","bcrypt"],
-				"description":"Hash algorithm (output of hash_identify)"},
+				"md5","sha1","sha256","sha512","ntlm","bcrypt",
+				"mysql","crypt","md5crypt","apr1","sha256crypt","sha512crypt"],
+				"description":"Hash algorithm (output of hash_identify). Use 'crypt' for any $1$/$apr1$/$5$/$6$ shadow hash (auto-detected); 'mysql' for mysql_native_password."},
 			"wordlist":{"type":"string",
 				"description":"Path to a newline-separated wordlist file, or 'promptzero://wordlists/passwords.txt' for the built-in list"},
 			"max_words":{"type":"integer","minimum":0,
@@ -369,7 +374,7 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 
 	algo := strings.ToLower(strings.TrimSpace(str(p, "algorithm")))
 	if !isSupportedAlgo(algo) {
-		return "", fmt.Errorf("hash_crack_dictionary: unsupported algorithm %q; supported: md5 sha1 sha256 sha512 ntlm bcrypt", algo)
+		return "", fmt.Errorf("hash_crack_dictionary: unsupported algorithm %q; supported: md5 sha1 sha256 sha512 ntlm bcrypt mysql crypt (md5crypt/apr1/sha256crypt/sha512crypt)", algo)
 	}
 
 	wordlistPath := strings.TrimSpace(str(p, "wordlist"))
@@ -570,7 +575,8 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 
 func isSupportedAlgo(algo string) bool {
 	switch algo {
-	case "md5", "sha1", "sha256", "sha512", "ntlm", "bcrypt":
+	case "md5", "sha1", "sha256", "sha512", "ntlm", "bcrypt",
+		"mysql", "crypt", "md5crypt", "apr1", "sha256crypt", "sha512crypt":
 		return true
 	}
 	return false
@@ -611,6 +617,20 @@ func checkHash(algo, word, lowerHash, origHash string) bool {
 
 	case "bcrypt":
 		return bcrypt.CompareHashAndPassword([]byte(origHash), []byte(word)) == nil
+
+	case "mysql":
+		// mysql_native_password = UPPER(SHA1(SHA1(password))), optionally
+		// "*"-prefixed (hashcat 300). Hex is case-insensitive after lowering.
+		inner := sha1.Sum([]byte(word)) //nolint:gosec // mysql_native is SHA1-based by spec
+		outer := sha1.Sum(inner[:])     //nolint:gosec
+		return hex.EncodeToString(outer[:]) == strings.TrimPrefix(lowerHash, "*")
+
+	case "crypt", "md5crypt", "apr1", "sha256crypt", "sha512crypt":
+		// crypt(3) family: unixcrypt.Verify auto-detects the scheme from the
+		// hash prefix ($1$/$apr1$/$5$/$6$) and constant-time compares. Uses
+		// origHash (the salt and digest are case-sensitive base64).
+		ok, _ := unixcrypt.Verify(word, origHash)
+		return ok
 	}
 	return false
 }
