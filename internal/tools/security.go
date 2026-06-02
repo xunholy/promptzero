@@ -88,7 +88,8 @@ var hashIdentifySpec = Spec{
 		"MySQL4.1+ (* + 40 hex), LDAP ({SSHA}/{SHA}/{MD5}), and the Active Directory roasting loot — " +
 		"Kerberos TGS-REP ($krb5tgs$, Kerberoast → 13100/19600/19700), AS-REP ($krb5asrep$ → 18200), " +
 		"AS-REQ pre-auth ($krb5pa$ → 7500), DCC2/mscash2 ($DCC2$ → 2100), and NetNTLMv1/v2 (the " +
-		"user::domain:… Responder format → 5500/5600).",
+		"user::domain:… Responder format → 5500/5600); WPA hashcat-22000 lines (WPA*01* PMKID / WPA*02* " +
+		"EAPOL — what wifi_pmkid_hc22000 emits); and Cisco-IOS type 8 ($8$ → 9200) / type 9 ($9$ → 9300).",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
@@ -205,6 +206,19 @@ func identifyHash(h string) []hashCandidate {
 		return []hashCandidate{{Name: "Kerberos 5 AS-REQ Pre-Auth", Mode: 7500, Confidence: 0.95}}
 	case strings.HasPrefix(h, "$DCC2$") || strings.HasPrefix(h, "$DCC2#"):
 		return []hashCandidate{{Name: "Domain Cached Credentials 2 (mscash2)", Mode: 2100, Confidence: 0.99}}
+
+	// WPA hashcat-22000 line (what wifi_pmkid_hc22000 emits): WPA*01*=PMKID,
+	// WPA*02*=EAPOL.
+	case strings.HasPrefix(h, "WPA*01*"):
+		return []hashCandidate{{Name: "WPA PMKID (hashcat 22000)", Mode: 22000, Confidence: 0.99}}
+	case strings.HasPrefix(h, "WPA*02*"):
+		return []hashCandidate{{Name: "WPA EAPOL handshake (hashcat 22000)", Mode: 22000, Confidence: 0.99}}
+
+	// Cisco IOS modern password types (definitive $8$/$9$ prefixes).
+	case strings.HasPrefix(h, "$8$"):
+		return []hashCandidate{{Name: "Cisco-IOS type 8 (PBKDF2-SHA256)", Mode: 9200, Confidence: 0.99}}
+	case strings.HasPrefix(h, "$9$"):
+		return []hashCandidate{{Name: "Cisco-IOS type 9 (scrypt)", Mode: 9300, Confidence: 0.99}}
 	}
 
 	// NetNTLM (Responder / SMB-relay loot): user::domain:...:...:... — colon-

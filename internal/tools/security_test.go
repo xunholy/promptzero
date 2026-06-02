@@ -351,6 +351,44 @@ func TestHashIdentify_NetNTLMv2(t *testing.T) {
 	}
 }
 
+func TestHashIdentify_WPA22000(t *testing.T) {
+	// WPA*01* PMKID line (the form wifi_pmkid_hc22000 emits) -> hashcat 22000.
+	out, err := invokeSpec(t, "hash_identify", map[string]any{
+		"hash": "WPA*01*0123456789abcdef0123456789abcdef*001122334455*66778899aabb*6861736863617421***",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustJSON(t, out)
+	candidates, _ := m["candidates"].([]any)
+	top, _ := candidates[0].(map[string]any)
+	if mode, _ := top["mode"].(float64); int(mode) != 22000 {
+		t.Errorf("WPA PMKID mode = %v, want 22000", top["mode"])
+	}
+}
+
+func TestHashIdentify_CiscoType8And9(t *testing.T) {
+	cases := []struct {
+		hash string
+		mode int
+	}{
+		{"$8$mTj4emkDp7sIxQ$bd5XaSjV0VgqVF6Bni4DLABYQRBhJSr/2Wmpoxe8VME", 9200},
+		{"$9$2MJBozw/9R3UsU$2lFhcKvpghcyw8deP25GOfyZaagyUOGBymkryvOdfo6", 9300},
+	}
+	for _, c := range cases {
+		out, err := invokeSpec(t, "hash_identify", map[string]any{"hash": c.hash})
+		if err != nil {
+			t.Fatalf("%s: %v", c.hash, err)
+		}
+		m := mustJSON(t, out)
+		candidates, _ := m["candidates"].([]any)
+		top, _ := candidates[0].(map[string]any)
+		if mode, _ := top["mode"].(float64); int(mode) != c.mode {
+			t.Errorf("Cisco hash mode = %v, want %d", top["mode"], c.mode)
+		}
+	}
+}
+
 func TestHashIdentify_EmptyHash_Error(t *testing.T) {
 	_, err := invokeSpec(t, "hash_identify", map[string]any{"hash": ""})
 	if err == nil {
