@@ -1985,7 +1985,13 @@ func TestRegistrySize(t *testing.T) {
 	// SW1SW2 status word (incl. 61XX/6CXX/63CX families) + command CLA/INS/
 	// P1/P2 length-case parsing with INS naming. Offline smart-card analysis
 	// complement to nfc_apdu. internal/iso7816).
-	const expected = 486
+	// (v0.428/v0.429 extended iso7816_apdu_decode with the DESFire 91XX status
+	//  family + CLA-0x90 command naming — no new tools, count unchanged.)
+	// v0.430.0 added crc_compute (CRC compute/identify over the reveng
+	// catalogue — CRC-8/16/32 models, each verified against its published
+	// check value; identify mode fingerprints an unknown frame's CRC.
+	// Protocol-RE aid, offline. internal/crc).
+	const expected = 487
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
