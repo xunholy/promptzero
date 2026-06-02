@@ -85,7 +85,10 @@ var hashIdentifySpec = Spec{
 		"to determine the algorithm. Supported families: MD5, NTLM, MD4 (32 hex), SHA-1 (40 hex), " +
 		"SHA-256 (64 hex), SHA-512 (128 hex), bcrypt ($2a/$2b/$2y), md5crypt ($1$), sha256crypt ($5$), " +
 		"sha512crypt ($6$), Argon2 ($argon2id/$argon2i/$argon2d), MySQL323 (16 hex), " +
-		"MySQL4.1+ (* + 40 hex), LDAP ({SSHA}/{SHA}/{MD5}).",
+		"MySQL4.1+ (* + 40 hex), LDAP ({SSHA}/{SHA}/{MD5}), and the Active Directory roasting loot — " +
+		"Kerberos TGS-REP ($krb5tgs$, Kerberoast → 13100/19600/19700), AS-REP ($krb5asrep$ → 18200), " +
+		"AS-REQ pre-auth ($krb5pa$ → 7500), DCC2/mscash2 ($DCC2$ → 2100), and NetNTLMv1/v2 (the " +
+		"user::domain:… Responder format → 5500/5600).",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
@@ -124,10 +127,16 @@ func hashIdentifyHandler(_ context.Context, _ *Deps, p map[string]any) (string, 
 		return "", fmt.Errorf("hash_identify: 'hash' argument is empty")
 	}
 
-	// Strip user:hash colon-separated prefix if present.
-	if idx := strings.LastIndex(input, ":"); idx != -1 {
-		if candidate := input[idx+1:]; len(candidate) > 0 {
-			input = candidate
+	// Strip a user:hash colon-separated prefix if present — but NOT for a
+	// structured hash that uses its own delimiters and carries internal colons:
+	// a "$"-prefixed format (krb5 / crypt / DCC2 — e.g. $krb5asrep$…REALM:hash)
+	// or a NetNTLM hash (the distinctive user::domain:… "::" separator). Those
+	// must reach the identifier intact.
+	if !strings.HasPrefix(input, "$") && !strings.Contains(input, "::") {
+		if idx := strings.LastIndex(input, ":"); idx != -1 {
+			if candidate := input[idx+1:]; len(candidate) > 0 {
+				input = candidate
+			}
 		}
 	}
 
@@ -180,6 +189,31 @@ func identifyHash(h string) []hashCandidate {
 
 	case strings.HasPrefix(h, "*") && len(h) == 41 && reHexOnly.MatchString(h[1:]):
 		return []hashCandidate{{Name: "MySQL4.1+", Mode: 300, Confidence: 0.99}}
+
+	// Active Directory roasting loot — exact $krb5*/$DCC2$ prefixes.
+	case strings.HasPrefix(h, "$krb5tgs$23$"):
+		return []hashCandidate{{Name: "Kerberos 5 TGS-REP etype 23 RC4 (Kerberoast)", Mode: 13100, Confidence: 0.99}}
+	case strings.HasPrefix(h, "$krb5tgs$17$"):
+		return []hashCandidate{{Name: "Kerberos 5 TGS-REP etype 17 AES128 (Kerberoast)", Mode: 19600, Confidence: 0.99}}
+	case strings.HasPrefix(h, "$krb5tgs$18$"):
+		return []hashCandidate{{Name: "Kerberos 5 TGS-REP etype 18 AES256 (Kerberoast)", Mode: 19700, Confidence: 0.99}}
+	case strings.HasPrefix(h, "$krb5tgs$"):
+		return []hashCandidate{{Name: "Kerberos 5 TGS-REP (Kerberoast, etype unspecified)", Mode: 13100, Confidence: 0.80}}
+	case strings.HasPrefix(h, "$krb5asrep$"):
+		return []hashCandidate{{Name: "Kerberos 5 AS-REP (AS-REP roast, RC4)", Mode: 18200, Confidence: 0.95}}
+	case strings.HasPrefix(h, "$krb5pa$"):
+		return []hashCandidate{{Name: "Kerberos 5 AS-REQ Pre-Auth", Mode: 7500, Confidence: 0.95}}
+	case strings.HasPrefix(h, "$DCC2$") || strings.HasPrefix(h, "$DCC2#"):
+		return []hashCandidate{{Name: "Domain Cached Credentials 2 (mscash2)", Mode: 2100, Confidence: 0.99}}
+	}
+
+	// NetNTLM (Responder / SMB-relay loot): user::domain:...:...:... — colon-
+	// delimited with a "::" separator. Heuristic, so reported as candidates.
+	if strings.Contains(h, "::") && strings.Count(h, ":") >= 4 {
+		return []hashCandidate{
+			{Name: "NetNTLMv2", Mode: 5600, Confidence: 0.70},
+			{Name: "NetNTLMv1", Mode: 5500, Confidence: 0.25},
+		}
 	}
 
 	hexLen := len(h)

@@ -282,6 +282,75 @@ func TestHashIdentify_ColonSeparated(t *testing.T) {
 	}
 }
 
+func TestHashIdentify_Kerberoast(t *testing.T) {
+	// $krb5tgs$23$ → Kerberoast (hashcat 13100).
+	out, err := invokeSpec(t, "hash_identify", map[string]any{
+		"hash": "$krb5tgs$23$*svc$EXAMPLE.COM$svc/host*$abcdef0123456789$0011223344556677",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := mustJSON(t, out)
+	candidates, _ := m["candidates"].([]any)
+	if len(candidates) == 0 {
+		t.Fatal("expected a candidate")
+	}
+	top, _ := candidates[0].(map[string]any)
+	if mode, _ := top["mode"].(float64); int(mode) != 13100 {
+		t.Errorf("Kerberoast mode = %v, want 13100", top["mode"])
+	}
+}
+
+func TestHashIdentify_ASREPRoast(t *testing.T) {
+	out, err := invokeSpec(t, "hash_identify", map[string]any{
+		"hash": "$krb5asrep$23$user@EXAMPLE.COM:abcdef0011223344$0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := mustJSON(t, out)
+	candidates, _ := m["candidates"].([]any)
+	top, _ := candidates[0].(map[string]any)
+	if mode, _ := top["mode"].(float64); int(mode) != 18200 {
+		t.Errorf("AS-REP roast mode = %v, want 18200", top["mode"])
+	}
+}
+
+func TestHashIdentify_DCC2(t *testing.T) {
+	out, err := invokeSpec(t, "hash_identify", map[string]any{
+		"hash": "$DCC2$10240#user#0123456789abcdef0123456789abcdef",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustJSON(t, out)
+	candidates, _ := m["candidates"].([]any)
+	top, _ := candidates[0].(map[string]any)
+	if mode, _ := top["mode"].(float64); int(mode) != 2100 {
+		t.Errorf("DCC2 mode = %v, want 2100", top["mode"])
+	}
+}
+
+func TestHashIdentify_NetNTLMv2(t *testing.T) {
+	// Responder-style NetNTLMv2: user::domain:challenge:NTproof:blob — the
+	// "::" must survive the prefix-strip and yield NetNTLM candidates.
+	out, err := invokeSpec(t, "hash_identify", map[string]any{
+		"hash": "admin::CORP:1122334455667788:0123456789abcdef0123456789abcdef:0101000000000000abcdef",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustJSON(t, out)
+	candidates, _ := m["candidates"].([]any)
+	if len(candidates) == 0 {
+		t.Fatal("expected NetNTLM candidates")
+	}
+	top, _ := candidates[0].(map[string]any)
+	if name, _ := top["name"].(string); name != "NetNTLMv2" {
+		t.Errorf("top candidate = %q, want NetNTLMv2", name)
+	}
+}
+
 func TestHashIdentify_EmptyHash_Error(t *testing.T) {
 	_, err := invokeSpec(t, "hash_identify", map[string]any{"hash": ""})
 	if err == nil {
