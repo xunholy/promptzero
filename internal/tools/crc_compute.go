@@ -36,8 +36,9 @@ var crcComputeSpec = Spec{
 		"reproduce it over the data — reveng's core trick for fingerprinting an unknown frame's CRC. An " +
 		"empty identify result is an honest 'no catalogue model matches', never a guess.\n\n" +
 		"Models covered: CRC-8/SMBUS, CRC-8/MAXIM-DOW (Dallas 1-Wire), CRC-16/ARC, CRC-16/CCITT-FALSE, " +
-		"CRC-16/XMODEM, CRC-16/MODBUS, CRC-16/KERMIT, CRC-32/ISO-HDLC (zip/Ethernet/PNG), CRC-32/BZIP2, " +
-		"CRC-32/MPEG-2 — each verified in-tree against its published check value (the CRC of " +
+		"CRC-16/XMODEM, CRC-16/MODBUS, CRC-16/KERMIT, CRC-24/OPENPGP, CRC-24/BLE (Bluetooth LE PDU), " +
+		"CRC-24/FLEXRAY-A, CRC-32/ISO-HDLC (zip/Ethernet/PNG), CRC-32/BZIP2, CRC-32/MPEG-2 — each " +
+		"verified in-tree against its published check value (the CRC of " +
 		"'123456789'). Offline compute — reads hex, transmits nothing, so it is Low risk. Wrap-vs-native: " +
 		"native — parameterised bit-walk over a byte slice.",
 	Schema: json.RawMessage(`{

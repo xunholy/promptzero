@@ -53,6 +53,32 @@ func TestIdentify(t *testing.T) {
 	}
 }
 
+// TestCRC24 covers the 24-bit width: check value, 6-hex formatting, and
+// identify on the BLE model.
+func TestCRC24(t *testing.T) {
+	m, ok := Lookup("CRC-24/BLE")
+	if !ok {
+		t.Fatal("CRC-24/BLE missing")
+	}
+	got := m.Compute([]byte("123456789"))
+	if got != 0xC25A56 {
+		t.Errorf("CRC-24/BLE check = 0x%06X, want 0xC25A56", got)
+	}
+	if m.Format(got) != "0xC25A56" {
+		t.Errorf("CRC-24 format = %s, want 0xC25A56", m.Format(got))
+	}
+	matches := Identify([]byte("123456789"), 0xC25A56)
+	found := false
+	for _, mm := range matches {
+		if mm.Model == "CRC-24/BLE" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Identify did not include CRC-24/BLE; got %+v", matches)
+	}
+}
+
 func TestFormat(t *testing.T) {
 	m8, _ := Lookup("CRC-8/SMBUS")
 	if m8.Format(0xF4) != "0xF4" {

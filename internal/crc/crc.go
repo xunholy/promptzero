@@ -29,9 +29,10 @@
 // # Covered / deferred
 //
 // Covered: the common CRC-8 / CRC-16 / CRC-32 models seen in embedded, RF, and
-// fieldbus protocols (each with a published check value). Wider/rarer widths
-// (CRC-5/USB, CRC-24, CRC-64) and the full reveng search (brute-forcing
-// unknown polynomials) are deliberately out of scope here.
+// fieldbus protocols, plus CRC-24 (OpenPGP, Bluetooth LE PDU, FlexRay) — each
+// with a published check value. Rarer widths (CRC-5/USB, CRC-64) and the full
+// reveng search (brute-forcing unknown polynomials) are deliberately out of
+// scope here.
 package crc
 
 import "fmt"
@@ -58,6 +59,9 @@ var Catalogue = []Model{
 	{"CRC-16/XMODEM", 16, 0x1021, 0x0000, false, false, 0x0000, 0x31C3},
 	{"CRC-16/MODBUS", 16, 0x8005, 0xFFFF, true, true, 0x0000, 0x4B37},
 	{"CRC-16/KERMIT", 16, 0x1021, 0x0000, true, true, 0x0000, 0x2189},
+	{"CRC-24/OPENPGP", 24, 0x864CFB, 0xB704CE, false, false, 0x000000, 0x21CF02},
+	{"CRC-24/BLE", 24, 0x00065B, 0x555555, true, true, 0x000000, 0xC25A56},              // Bluetooth LE PDU
+	{"CRC-24/FLEXRAY-A", 24, 0x5D6DCB, 0xFEDCBA, false, false, 0x000000, 0x7979BD},      // FlexRay automotive bus
 	{"CRC-32/ISO-HDLC", 32, 0x04C11DB7, 0xFFFFFFFF, true, true, 0xFFFFFFFF, 0xCBF43926}, // zip, Ethernet, PNG
 	{"CRC-32/BZIP2", 32, 0x04C11DB7, 0xFFFFFFFF, false, false, 0xFFFFFFFF, 0xFC891918},
 	{"CRC-32/MPEG-2", 32, 0x04C11DB7, 0xFFFFFFFF, false, false, 0x00000000, 0x0376E6E7},
