@@ -84,12 +84,20 @@
 //   - **Flow Record types** (most common):
 //
 //   - **1 Raw Packet Header** — Header Protocol (uint32
-//     BE; **6-entry name table**: 1 Ethernet / 11
-//     802.11 / 12 IPv4 / 13 IPv6 / 21 PPP / 22 PPPoE) +
-//     Frame Length on wire (uint32 BE) + Stripped octets
-//     (uint32 BE; bytes trimmed from start, typically the
-//     L2 framing) + Original Sampled Header Length
-//     (uint32 BE) + Header Bytes (capped hex preview).
+//     BE; name table per the sFlow v5 spec: 1 Ethernet /
+//     7 PPP / 11 IPv4 / 12 IPv6 / 13 MPLS / 14 POS /
+//     15-17 802.11) + Frame Length on wire (uint32 BE) +
+//     Stripped octets (uint32 BE; bytes trimmed from start,
+//     typically the L2 framing) + Original Sampled Header
+//     Length (uint32 BE) + Header Bytes (capped hex preview).
+//     When the header protocol is Ethernet (1, IP after the
+//     14-byte L2 header) or IPv4/IPv6 (11/12, directly), the
+//     sampled L3 packet is decoded in place via
+//     internal/ipdecode — so the sampled flow's addresses /
+//     protocol / ports surface. The capture is truncated to
+//     the sampled header length, so the decode may be partial;
+//     a header that does not parse as IP is reported with an
+//     error and left as hex.
 //
 //   - **2 Ethernet Frame Data** — Length + 6-byte src
 //     MAC + 6-byte dst MAC + EtherType.
@@ -133,10 +141,11 @@
 //     VG / VLAN / Processor / Radio counters) — surfaced
 //     as raw hex; a future iteration could add them.
 //
-//   - Raw Packet Header inner dissection — the captured
-//     header bytes are surfaced as hex; the operator feeds
-//     them into the appropriate `*_decode` Spec (e.g.
-//     `ip_packet_decode`) based on the Header Protocol.
+//   - Raw Packet Header non-IP inner dissection — for an
+//     Ethernet header protocol carrying a non-IP EtherType
+//     (ARP, …) or a non-Ethernet/non-IP header protocol, the
+//     captured header bytes are left as hex; only IP payloads
+//     are decoded in place.
 //
 //   - sFlow agent state-machine reasoning (sampling-rate
 //     drift, polling-interval skew) — higher-level analysis.
@@ -148,6 +157,8 @@ import (
 	"fmt"
 	"net"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the top-level decoded view of an sFlow v5 datagram.
@@ -214,13 +225,15 @@ type FlowRecord struct {
 
 // RawPacketHeader is the decoded body of Flow Record Format 1.
 type RawPacketHeader struct {
-	HeaderProtocol      uint32 `json:"header_protocol"`
-	HeaderProtocolName  string `json:"header_protocol_name"`
-	FrameLengthOnWire   uint32 `json:"frame_length_on_wire"`
-	StrippedBytes       uint32 `json:"stripped_bytes"`
-	SampledHeaderLength uint32 `json:"sampled_header_length"`
-	HeaderBytesShown    int    `json:"header_bytes_shown,omitempty"`
-	HeaderHex           string `json:"header_hex,omitempty"`
+	HeaderProtocol      uint32           `json:"header_protocol"`
+	HeaderProtocolName  string           `json:"header_protocol_name"`
+	FrameLengthOnWire   uint32           `json:"frame_length_on_wire"`
+	StrippedBytes       uint32           `json:"stripped_bytes"`
+	SampledHeaderLength uint32           `json:"sampled_header_length"`
+	HeaderBytesShown    int              `json:"header_bytes_shown,omitempty"`
+	HeaderHex           string           `json:"header_hex,omitempty"`
+	InnerPacket         *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError    string           `json:"inner_decode_error,omitempty"`
 }
 
 // EthernetFrame is the decoded body of Flow Record Format 2.
@@ -492,8 +505,37 @@ func decodeRawPacketHeader(b []byte, opts DecodeOpts) *RawPacketHeader {
 		}
 		h.HeaderHex = strings.ToUpper(hex.EncodeToString(hdr[:show]))
 		h.HeaderBytesShown = show
+		// Decode the sampled L3 packet in place via internal/ipdecode. The
+		// captured header is truncated to sampled_header_length, so the decode
+		// may be partial (ipdecode surfaces what fits / an error). An Ethernet
+		// header protocol (1) carries an IP packet after the 14-byte L2 header
+		// when its EtherType is IP; protocols 11/12 are IPv4/IPv6 directly.
+		decodeSampledInner(h, hdr)
 	}
 	return h
+}
+
+func decodeSampledInner(h *RawPacketHeader, hdr []byte) {
+	var l3 []byte
+	switch h.HeaderProtocol {
+	case 1: // Ethernet — strip the 14-byte L2 header when it carries IP
+		if len(hdr) >= 14 {
+			et := binary.BigEndian.Uint16(hdr[12:14])
+			if et == 0x0800 || et == 0x86DD {
+				l3 = hdr[14:]
+			}
+		}
+	case 11, 12: // IPv4 / IPv6 directly
+		l3 = hdr
+	}
+	if len(l3) == 0 {
+		return
+	}
+	if pkt, err := ipdecode.DecodeBytes(l3); err == nil {
+		h.InnerPacket = pkt
+	} else {
+		h.InnerDecodeError = err.Error()
+	}
 }
 
 func decodeEthernetFrame(b []byte) *EthernetFrame {

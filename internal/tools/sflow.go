@@ -42,9 +42,12 @@ var sflowV5DecodeSpec = Spec{
 		"Discarded / Multiple destinations / Unknown — surfaced as a Note) + " +
 		"flow_records walker.\n" +
 		"- **Flow Record types** (most common): 1 Raw Packet Header (Header " +
-		"Protocol with **17-entry name table** — Ethernet / 802.11 MAC / IPv4 / " +
-		"IPv6 / MPLS / etc. — + Frame Length on wire + Stripped octets + Sampled " +
-		"Header Length + Header Bytes hex preview); 2 Ethernet Frame Data (length " +
+		"Protocol with **17-entry name table** — Ethernet / IPv4 / IPv6 / MPLS / " +
+		"802.11 / etc. — + Frame Length on wire + Stripped octets + Sampled " +
+		"Header Length + Header Bytes hex preview; when the header protocol is " +
+		"Ethernet or IPv4/IPv6 the sampled L3 packet is **decoded in place** — the " +
+		"sampled flow's addresses / protocol / ports — possibly partial since the " +
+		"capture is truncated, with a non-IP header left as hex); 2 Ethernet Frame Data (length " +
 		"+ src/dst MAC + EtherType); 3 IPv4 Data (length + IP protocol + src/dst " +
 		"+ src/dst port + TCP flags + ToS); 4 IPv6 Data.\n" +
 		"- **Counter Sample body** (Format 2): Sequence + Source ID + counter_" +
@@ -65,9 +68,9 @@ var sflowV5DecodeSpec = Spec{
 		"since 2003); per-Counter-Record dissection beyond Generic Interface " +
 		"Counters (Ethernet / Token Ring / 802.11 / VG / VLAN / Processor / Radio " +
 		"counters — surfaced as raw hex; a future iteration could add them); Raw " +
-		"Packet Header inner dissection (the captured header bytes are surfaced " +
-		"as hex; the operator feeds them into the appropriate `*_decode` Spec — " +
-		"e.g. `ip_packet_decode` — based on the Header Protocol); sFlow agent " +
+		"Packet Header non-IP inner dissection (a non-IP EtherType or non-Ethernet/" +
+		"non-IP header protocol is left as hex; only IP payloads are decoded in " +
+		"place); sFlow agent " +
 		"state-machine reasoning (sampling-rate drift, polling-interval skew — " +
 		"higher-level analysis).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (packet-sampling counterpart to " +
