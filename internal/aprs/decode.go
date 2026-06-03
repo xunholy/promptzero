@@ -54,6 +54,17 @@
 //     spaces) decode to a nil field, not a zero. Anchored to
 //     the APRS101 §12 canonical example
 //     `_10090556c220s004g005t077r000p000P000h50b09900wRSW`.
+//   - Complete weather report decode (APRS101 §12): a
+//     position report (with or without timestamp) whose
+//     symbol code is '_' carries weather data in place of a
+//     free-text comment. The 7-byte "ddd/sss" Wind
+//     Direction/Speed Data Extension replaces the positionless
+//     cccc/ssss fields; gust, temperature and the optional
+//     fields then follow identically. Gated on the ddd/sss
+//     pattern so a plain '_'-symbol position carrying a comment
+//     is not mis-parsed. Anchored to the APRS101 §12 examples
+//     `!4903.50N/07201.75W_220/004g005t077...` and the
+//     timestamped `@092345z...W_220/004g005t-07...`.
 //
 // # What this package does NOT cover (deliberately out of scope)
 //
@@ -64,11 +75,6 @@
 //   - Compressed position format ('/') — 12-byte base-91
 //     encoding; not as common as uncompressed and decoded
 //     identically to uncompressed once parsed.
-//   - Complete Weather Report (a position report whose
-//     symbol code is '_') — the same weather-data string
-//     appended after a decoded position rather than after a
-//     timestamp; the positionless '_' form is decoded (see
-//     above), the position-attached form is a follow-up.
 //   - Snowfall (tail 's'), the '#' raw rain counter, and the
 //     trailing APRS-software / WX-unit code are under-specified
 //     in APRS101 (no fixed width / scaling), so they are left
@@ -419,6 +425,14 @@ func decodePosition(f *Frame, payload string, _ bool) error {
 		SymbolName:   symbolName(symTable, symCode),
 	}
 	rest := strings.TrimSpace(payload[19:])
+	// Complete Weather Report (APRS101 §12): a position report whose symbol
+	// code is '_' carries weather data (a "ddd/sss" wind extension + the
+	// gust/temp/optional fields) in place of a free-text comment. Gated on
+	// the ddd/sss pattern so a plain '_'-symbol position with a comment is
+	// not mis-parsed.
+	if symCode == "_" && decodeCompleteWeather(f, rest) {
+		return nil
+	}
 	if rest != "" {
 		f.Comment = rest
 		// PHG appears at the start of the comment as "PHGnnnn".

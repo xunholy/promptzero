@@ -100,6 +100,75 @@ func TestWeatherSnowfallLeftRaw(t *testing.T) {
 	}
 }
 
+// TestCompleteWeatherCanonicalExample decodes the exact APRS101 §12
+// "Complete Weather Report — Lat/Long, no Timestamp" example, anchoring the
+// ddd/sss wind extension + position + weather fields:
+//
+//	!4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900wRSW
+func TestCompleteWeatherCanonicalExample(t *testing.T) {
+	f, err := Decode("WX>APRS:!4903.50N/07201.75W_220/004g005t077r000p000P000h50b09900wRSW")
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if f.Position == nil || f.Position.SymbolCode != "_" {
+		t.Fatalf("expected weather-station position, got %+v", f.Position)
+	}
+	w := f.Weather
+	if w == nil {
+		t.Fatal("Weather is nil for a '_'-symbol position report")
+	}
+	checkInt(t, "wind_direction_deg", w.WindDirectionDeg, iptr(220))
+	checkInt(t, "wind_speed_mph", w.WindSpeedMph, iptr(4))
+	checkInt(t, "gust_mph", w.GustMph, iptr(5))
+	checkInt(t, "temperature_f", w.TemperatureF, iptr(77))
+	checkFloat(t, "rain_last_hour_in", w.RainLastHourIn, fptr(0))
+	checkInt(t, "humidity_pct", w.HumidityPct, iptr(50))
+	checkFloat(t, "pressure_hpa", w.PressureHpa, fptr(990.0))
+	if w.Raw != "wRSW" {
+		t.Errorf("Raw = %q, want wRSW", w.Raw)
+	}
+	// The weather data must not leak into the free-text comment.
+	if f.Comment != "" {
+		t.Errorf("Comment should be empty for a complete weather report, got %q", f.Comment)
+	}
+}
+
+// TestCompleteWeatherTimestamped decodes the APRS101 §12 timestamped example
+// (with a below-zero temperature):
+//
+//	@092345z4903.50N/07201.75W_220/004g005t-07r000p000P000h50b09900wRSW
+func TestCompleteWeatherTimestamped(t *testing.T) {
+	f, err := Decode("WX>APRS:@092345z4903.50N/07201.75W_220/004g005t-07r000p000P000h50b09900wRSW")
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if f.Position == nil || f.Position.Timestamp != "092345z" {
+		t.Fatalf("timestamp not preserved: %+v", f.Position)
+	}
+	w := f.Weather
+	if w == nil {
+		t.Fatal("Weather is nil")
+	}
+	checkInt(t, "wind_direction_deg", w.WindDirectionDeg, iptr(220))
+	checkInt(t, "temperature_f", w.TemperatureF, iptr(-7))
+	checkFloat(t, "pressure_hpa", w.PressureHpa, fptr(990.0))
+}
+
+// TestCompleteWeatherGate confirms a '_'-symbol position carrying a free-text
+// comment (no ddd/sss wind extension) is NOT mis-parsed as weather.
+func TestCompleteWeatherGate(t *testing.T) {
+	f, err := Decode("WX>APRS:!4903.50N/07201.75W_Just a comment")
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if f.Weather != nil {
+		t.Errorf("non-weather '_' position must not produce Weather, got %+v", f.Weather)
+	}
+	if f.Comment != "Just a comment" {
+		t.Errorf("Comment = %q, want 'Just a comment'", f.Comment)
+	}
+}
+
 // TestWeatherShortTrailingField pins the fix for a recognised field code
 // whose value is too short to consume (e.g. "L3"): the decoder must surface
 // it raw and terminate, not spin forever re-reading the same code byte

@@ -57,9 +57,79 @@ func decodeWeatherPositionless(f *Frame, body string) error {
 		return nil
 	}
 
-	// Mandatory head, fixed order: c<dir> s<spd> g<gust> t<temp>.
+	// Mandatory head, fixed order: c<dir> s<spd>, then the shared
+	// gust/temp/optional tail.
 	body = consumeIntField(body, 'c', 3, func(v *int) { w.WindDirectionDeg = v })
 	body = consumeIntField(body, 's', 3, func(v *int) { w.WindSpeedMph = v })
+	parseWeatherTail(w, body)
+	return nil
+}
+
+// decodeCompleteWeather parses the weather data of a Complete Weather Report
+// (APRS101 §12) — the bytes after a position report's '_' symbol code. The
+// spec replaces the positionless cccc/ssss fields with a 7-byte
+// "ddd/sss" Wind Direction/Speed Data Extension; gust, temperature and the
+// optional fields then follow exactly as in the positionless form. It returns
+// false (consuming nothing) when the data does not begin with the ddd/sss
+// extension, so a plain '_'-symbol position carrying a free-text comment is
+// not mis-parsed as weather.
+func decodeCompleteWeather(f *Frame, data string) bool {
+	dir, spd, rest, ok := splitWindExtension(data)
+	if !ok {
+		return false
+	}
+	w := &Weather{
+		WindDirectionDeg: numericOrNil(dir),
+		WindSpeedMph:     numericOrNil(spd),
+	}
+	parseWeatherTail(w, rest)
+	f.Weather = w
+	return true
+}
+
+// splitWindExtension matches the 7-byte "ddd/sss" wind direction/speed data
+// extension at the start of data (each of ddd and sss being 3 digits, or dots
+// / spaces for an absent sensor). It returns the dir and speed value chars and
+// the remaining bytes.
+func splitWindExtension(data string) (dir, spd, rest string, ok bool) {
+	if len(data) < 7 || data[3] != '/' {
+		return "", "", data, false
+	}
+	d, s := data[:3], data[4:7]
+	if !looksLikeWindField(d) || !looksLikeWindField(s) {
+		return "", "", data, false
+	}
+	return d, s, data[7:], true
+}
+
+// looksLikeWindField reports whether a 3-char field is either all digits or an
+// absent-sensor placeholder (dots/spaces) — the only forms the spec allows for
+// the ddd/sss extension. This keeps a course/speed on a non-weather symbol
+// from being misread as wind data.
+func looksLikeWindField(s string) bool {
+	if len(s) != 3 {
+		return false
+	}
+	digits, placeholder := 0, 0
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] >= '0' && s[i] <= '9':
+			digits++
+		case s[i] == '.' || s[i] == ' ':
+			placeholder++
+		default:
+			return false
+		}
+	}
+	return digits == 3 || placeholder == 3
+}
+
+// parseWeatherTail parses the portion of a weather report common to both the
+// positionless and complete forms: the mandatory gust (g) and temperature (t)
+// fields, then the optional r/p/P/h/b/L/l fields in any order, with the
+// remainder (software/WX-unit trailer, snowfall, '#' counter, comment)
+// surfaced verbatim in w.Raw.
+func parseWeatherTail(w *Weather, body string) {
 	body = consumeIntField(body, 'g', 3, func(v *int) { w.GustMph = v })
 	body = consumeTempField(body, w)
 
@@ -88,10 +158,9 @@ func decodeWeatherPositionless(f *Frame, body string) error {
 		// remainder verbatim and stop, rather than guessing or looping.
 		if len(body) == before {
 			w.Raw = body
-			return nil
+			return
 		}
 	}
-	return nil
 }
 
 // splitField returns the n value chars following a leading code byte, the
