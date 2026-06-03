@@ -56,20 +56,14 @@ func TestGS1CheckDigit(t *testing.T) {
 	}
 }
 
-func TestDecode_OtherSchemesIdentifiedNotDecoded(t *testing.T) {
-	// SGLN-96 header 0x32 — recognised, not field-decoded.
-	r, err := DecodeHex("320000000000000000000000")
+func TestDecode_198BitUnsupported(t *testing.T) {
+	// A 198-bit SGTIN header (0x36) is recognised as out-of-scope, not decoded.
+	r, err := DecodeHex("360000000000000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Scheme != "SGLN-96" {
-		t.Errorf("scheme = %s, want SGLN-96", r.Scheme)
-	}
-	if r.SGTIN != nil || r.SSCC != nil {
-		t.Errorf("SGLN should not be field-decoded")
-	}
-	if len(r.Notes) == 0 {
-		t.Errorf("deferred scheme should carry a note")
+	if r.Scheme != "unsupported" || len(r.Notes) == 0 {
+		t.Errorf("0x36 should be unsupported with a note: %+v", r)
 	}
 }
 

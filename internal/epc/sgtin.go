@@ -21,16 +21,15 @@
 // 3074257BF7194E4000001A85 → urn:epc:tag:sgtin-96:3.0614141.812345.6789
 // (company prefix 0614141, item reference 812345, serial 6789) — not recalled.
 //
-// Covered: SGTIN-96 (header 0x30, dominant retail item-level scheme), SSCC-96
-// (header 0x31, logistics-unit scheme), and GID-96 (header 0x35, the General
-// Identifier with no GS1 key) — all fully decoded and each verified against a
-// worked vector (SGTIN/SSCC reconstruct the GTIN-14 / SSCC-18 with a recomputed
-// mod-10 check digit; GID has no GS1 key, just three fixed-width fields).
-// Deferred (no confidently-wrong output): the GS1-keyed schemes that still need
-// their own partition tables (SGLN-96 0x32, GRAI-96 0x33, GIAI-96 0x34) are
-// identified by scheme name but not field-decoded — their layouts are not yet
-// verified against worked vectors, so the raw bits are surfaced with a note
-// rather than guessed; 198-bit and other variants are reported as unsupported.
+// Covered: the complete set of 96-bit schemes — SGTIN-96 (0x30, retail item),
+// SSCC-96 (0x31, logistics unit), SGLN-96 (0x32, location), GRAI-96 (0x33,
+// returnable asset), GIAI-96 (0x34, individual asset), and GID-96 (0x35, the
+// General Identifier with no GS1 key). Each is fully field-decoded and verified
+// against a worked vector (SGTIN/SSCC additionally reconstruct the GTIN-14 /
+// SSCC-18 with a recomputed mod-10 check digit; the partition-based schemes are
+// anchored against the epc-encoding-utils library used as an oracle).
+// Unsupported (reported, not guessed): 198-bit variants and any header outside
+// 0x30-0x35.
 package epc
 
 import (
@@ -81,6 +80,9 @@ type Result struct {
 	SchemeHeader string   `json:"scheme_header"`
 	SGTIN        *SGTIN   `json:"sgtin,omitempty"`
 	SSCC         *SSCC    `json:"sscc,omitempty"`
+	SGLN         *SGLN    `json:"sgln,omitempty"`
+	GRAI         *GRAI    `json:"grai,omitempty"`
+	GIAI         *GIAI    `json:"giai,omitempty"`
 	GID          *GID     `json:"gid,omitempty"`
 	Notes        []string `json:"notes,omitempty"`
 }
@@ -124,11 +126,20 @@ func Decode(b []byte) (*Result, error) {
 	case 0x31:
 		decodeSSCC96(bits, res)
 		return res, nil
+	case 0x32:
+		decodeSGLN96(bits, res)
+		return res, nil
+	case 0x33:
+		decodeGRAI96(bits, res)
+		return res, nil
+	case 0x34:
+		decodeGIAI96(bits, res)
+		return res, nil
 	case 0x35:
 		decodeGID96(bits, res)
 		return res, nil
 	default: // recognised but not yet field-decoded
-		res.Notes = append(res.Notes, fmt.Sprintf("%s recognised by header; full field decode is not yet implemented (only SGTIN-96, SSCC-96 and GID-96 are decoded) — raw bits not interpreted to avoid a confidently-wrong result", name))
+		res.Notes = append(res.Notes, fmt.Sprintf("%s recognised by header; full field decode is not yet implemented — raw bits not interpreted to avoid a confidently-wrong result", name))
 		return res, nil
 	}
 
