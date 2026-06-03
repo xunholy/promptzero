@@ -2104,7 +2104,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.468.0 added epc_decode (GS1 EPC UHF RAIN RFID — SGTIN-96 fully decoded:
 	// company prefix / item ref / serial / EPC URIs / GTIN-14; partition table +
 	// layout verified vs the GS1 TDS canonical vector. internal/epc).
-	const expected = 514
+	// v0.485.0 added ldap_password (LDAP RFC 2307 userPassword compute + verify —
+	// {SHA}/{SSHA}/{MD5}/{SMD5} + pw-sha2 {SHA256}…{SSHA512}; H(pw‖salt)‖salt
+	// base64, salt recovered from the blob on verify; gated vs the OpenLDAP
+	// slappasswd oracle + definitional pw-sha2 vectors. internal/ldappw).
+	const expected = 515
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

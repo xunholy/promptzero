@@ -752,6 +752,14 @@ var toolLevels = func() map[string]Level {
 		// the other credential computes it derives a value and
 		// transmits nothing, so it is Low.
 		"argon2",
+		// v0.485 — LDAP RFC 2307 userPassword schemes ({SHA}/{SSHA}
+		// /{MD5}/{SMD5} + pw-sha2 {SHA256}…{SSHA512}) compute +
+		// verify, the OpenLDAP / 389-DS / Dovecot directory-server
+		// credential format. Offline compute / constant-time verify
+		// from operator-supplied strings — like the other credential
+		// computes it derives a value and transmits nothing, so it
+		// is Low.
+		"ldap_password",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question
