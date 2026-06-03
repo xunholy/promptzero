@@ -21,27 +21,34 @@
 //     on '-' for SSID, the path is comma-separated, and
 //     digipeated entries are marked with a trailing '*' per
 //     APRS101 §10.
+//
 //   - AX.25 hex byte parsing (alternative input form):
 //     7-byte shifted-ASCII addresses (callsign << 1 + SSID
 //     byte with end-of-address flag), control byte (0x03 =
 //     UI frame), PID (0xF0 = no layer 3), and the info
 //     field as the remaining bytes.
+//
 //   - Info field type dispatch via the first-byte prefix
 //     table (APRS101 §5): '!', '=' position without
 //     timestamp; '/', '@' position with timestamp; ':'
 //     message; '>' status; ';' object; ')' item; '_'
 //     weather; 'T' telemetry; '?' query; '<' station
 //     capabilities; etc.
+//
 //   - Uncompressed position decode (APRS101 §8): lat in
 //     "DDMM.MMN" + lon in "DDDMM.MME" with hemisphere
 //     conversion to signed decimal degrees, symbol table
 //     and symbol code extraction.
+//
 //   - PHG extension parse (APRS101 §7) — antenna
 //     Power-Height-Gain-Directivity for fixed-station
 //     coverage analysis.
+//
 //   - Status report ('>') text extraction.
+//
 //   - Message format (':') addressee + body + optional
 //     message number suffix.
+//
 //   - Positionless weather report ('_') decode (APRS101
 //     §12): the 8-char MDHM timestamp followed by the
 //     fully-specified weather fields — wind direction
@@ -54,6 +61,7 @@
 //     spaces) decode to a nil field, not a zero. Anchored to
 //     the APRS101 §12 canonical example
 //     `_10090556c220s004g005t077r000p000P000h50b09900wRSW`.
+//
 //   - Complete weather report decode (APRS101 §12): a
 //     position report (with or without timestamp) whose
 //     symbol code is '_' carries weather data in place of a
@@ -66,12 +74,24 @@
 //     `!4903.50N/07201.75W_220/004g005t077...` and the
 //     timestamped `@092345z...W_220/004g005t-07...`.
 //
+//   - Mic-E decode (APRS101 §10): the dominant tracker /
+//     mobile-radio compressed-position format. Latitude +
+//     message bits + N/S + longitude-offset + W/E are packed
+//     into the 6-character destination address; longitude +
+//     speed + course + symbol into the information field
+//     (data type identifiers: backtick = current GPS,
+//     apostrophe = old GPS, plus the 0x1c/0x1d beta IDs).
+//     Decodes lat/lon, speed (knots),
+//     course, the 15 standard/custom/emergency message types,
+//     symbol, latitude ambiguity, and surfaces the trailing
+//     status text raw. Anchored byte-for-byte to the two
+//     APRS101 §10 worked examples (destination S32U6T →
+//     33°25.64'N / M3; info field `(_fn"Oj/ → 112°7.74'W /
+//     20 kt / 251°). Mic-E telemetry fields are surfaced as
+//     part of the raw status text rather than parsed.
+//
 // # What this package does NOT cover (deliberately out of scope)
 //
-//   - Mic-E compressed position decode — the 7-bit
-//     destination address encodes lat + status, the info
-//     field carries the lon + course + speed; ~150 LoC of
-//     bit-twiddling that warrants its own iteration.
 //   - Compressed position format ('/') — 12-byte base-91
 //     encoding; not as common as uncompressed and decoded
 //     identically to uncompressed once parsed.
@@ -112,6 +132,7 @@ type Frame struct {
 	Telemetry    *Telemetry `json:"telemetry,omitempty"`
 	PHG          *PHG       `json:"phg,omitempty"`
 	Weather      *Weather   `json:"weather,omitempty"`
+	MicE         *MicE      `json:"mic_e,omitempty"`
 	Comment      string     `json:"comment,omitempty"`
 }
 
@@ -383,6 +404,10 @@ func decodeInfoField(f *Frame, info string) error {
 		return nil
 	case "_":
 		return decodeWeatherPositionless(f, info[1:])
+	case "`", "'", "\x1c", "\x1d":
+		// Mic-E: the data type identifier; latitude is in the
+		// destination address, the rest in this info field.
+		return decodeMicE(f, info)
 	}
 	return nil
 }
@@ -623,6 +648,14 @@ func infoTypeName(p string) string {
 		return "User-defined APRS packet"
 	case "}":
 		return "Third-party traffic"
+	case "`":
+		return "Mic-E (current GPS data)"
+	case "'":
+		return "Mic-E (old GPS data)"
+	case "\x1c":
+		return "Mic-E (current GPS data, Rev. 0 beta)"
+	case "\x1d":
+		return "Mic-E (old GPS data, Rev. 0 beta)"
 	}
 	return fmt.Sprintf("Reserved (prefix %q)", p)
 }

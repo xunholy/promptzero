@@ -61,13 +61,21 @@ var aprsPacketDecodeSpec = Spec{
 		"free-text comment — the 7-byte 'ddd/sss' wind direction/speed extension replaces the " +
 		"positionless cccc/ssss fields, then gust / temperature / optional fields follow " +
 		"identically. Gated on the ddd/sss pattern so a plain '_'-symbol position with a comment " +
-		"is not mis-parsed. Anchored to the APRS101 §12 examples.\n\n" +
+		"is not mis-parsed. Anchored to the APRS101 §12 examples.\n" +
+		"- **Mic-E** ('`' / '\\'' data-type IDs, APRS101 §10): the dominant tracker / mobile-radio " +
+		"compressed-position format. Latitude + message bits + N/S + longitude-offset + W/E are " +
+		"packed into the 6-char destination address; longitude + speed + course + symbol into the " +
+		"information field. Decodes `latitude_deg` / `longitude_deg`, `speed_knots`, `course_deg`, " +
+		"the 15 standard / custom / emergency `message_type`s, symbol, latitude `ambiguity`, and " +
+		"surfaces trailing status text raw. Anchored byte-for-byte to the two APRS101 §10 worked " +
+		"examples (destination S32U6T → 33°25.64'N / M3 Returning; info field decoding to " +
+		"112°7.74'W / 20 kt / 251°).\n\n" +
 		"Pure offline parser — operators paste a TNC2 string from any APRS feed (or a hex " +
 		"blob from a KISS-modem capture) and inspect the decoded packet without re-connecting " +
 		"to the air. Complements the existing subghz_* coverage by extending decode to the " +
 		"VHF + UHF ham bands where APRS lives.\n\n" +
 		"Out of scope for this Spec (deferred to future iterations as separate sub-decoders): " +
-		"Mic-E compressed position (encoded in the destination address + info field), " +
+		"Mic-E telemetry channels (surfaced as part of the raw status text rather than parsed), " +
 		"compressed position format ('/' or '\\' leading char of 13-byte base-91 form, including " +
 		"the compressed-position complete weather report), telemetry parameter " +
 		"definitions (#PARM / #UNIT / #EQNS / #BITS), and AX.25 connection-mode frames " +
