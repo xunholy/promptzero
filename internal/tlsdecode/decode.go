@@ -69,12 +69,18 @@
 //     identifies the TLS client stack (browser, library,
 //     malware family) across thousands of distinct signatures.
 //
+// # Certificate handshake message
+//
+// The TLS 1.2 (and earlier) Certificate handshake message is decoded: the
+// certificate_list is walked and each DER certificate is chained through
+// internal/x509decode to surface subject / issuer / validity / SAN /
+// fingerprints / CA flag — so a captured handshake yields the server's cert
+// chain in one decode. In TLS 1.3 the Certificate message is encrypted, so the
+// plaintext form seen in a passive capture is the pre-1.3 layout decoded here;
+// a body that doesn't match it is reported with a note, never mis-parsed.
+//
 // # What this package does NOT cover (deliberately out of scope)
 //
-//   - Certificate body decode (X.509 ASN.1 — that's a
-//     separate ~600 LoC walker that warrants its own
-//     iteration). The Certificate handshake message is
-//     labeled but the cert bytes are surfaced as raw hex.
 //   - Encrypted ApplicationData / CCS / Alert bodies: the
 //     record envelope is decoded but the post-handshake
 //     ciphertext is opaque without key material.
@@ -94,6 +100,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/x509decode"
 )
 
 // Frame is a list of decoded TLS records — TCP segments often
@@ -122,7 +130,30 @@ type Handshake struct {
 	Length      int          `json:"length"`
 	ClientHello *ClientHello `json:"client_hello,omitempty"`
 	ServerHello *ServerHello `json:"server_hello,omitempty"`
+	Certificate *Certificate `json:"certificate,omitempty"`
 	BodyHex     string       `json:"body_hex,omitempty"`
+}
+
+// Certificate is a decoded TLS Certificate handshake message (the
+// TLS 1.2 / TLS 1.0-1.1 form: a 3-byte certificate_list length followed by
+// 3-byte-length-prefixed DER certificates). In TLS 1.3 the Certificate
+// message is encrypted (sent after the handshake keys are derived), so the
+// plaintext form visible in a passive capture is the pre-1.3 layout decoded
+// here; a body that does not match it (e.g. a decrypted 1.3 message with its
+// request-context prefix and per-certificate extensions) is reported with a
+// note rather than mis-parsed.
+type Certificate struct {
+	CertificateCount int          `json:"certificate_count"`
+	Certificates     []*CertEntry `json:"certificates,omitempty"`
+	Notes            []string     `json:"notes,omitempty"`
+}
+
+// CertEntry is one certificate from the chain, decoded via internal/x509decode.
+type CertEntry struct {
+	Length      int                     `json:"length"`
+	Certificate *x509decode.Certificate `json:"x509,omitempty"`
+	DERHex      string                  `json:"der_hex,omitempty"`
+	DecodeError string                  `json:"decode_error,omitempty"`
 }
 
 // ClientHello is the decoded TLS ClientHello body.
@@ -273,10 +304,57 @@ func decodeHandshake(b []byte) (*Handshake, int, error) {
 			return nil, 0, fmt.Errorf("ServerHello: %w", err)
 		}
 		h.ServerHello = sh
+	case 11: // Certificate
+		h.Certificate = decodeCertificate(body)
+		if len(h.Certificate.Certificates) == 0 {
+			// Surface the raw body too when nothing parsed (e.g. an
+			// encrypted/contextual TLS 1.3 Certificate message).
+			h.BodyHex = strings.ToUpper(hex.EncodeToString(body))
+		}
 	default:
 		h.BodyHex = strings.ToUpper(hex.EncodeToString(body))
 	}
 	return h, 4 + length, nil
+}
+
+// decodeCertificate parses a TLS 1.2 (and earlier) Certificate handshake
+// message body — a 3-byte certificate_list length followed by 3-byte-length-
+// prefixed DER certificates — and decodes each certificate via
+// internal/x509decode. A body whose certificate_list length does not match is
+// reported with a note rather than mis-parsed (no confidently-wrong output).
+func decodeCertificate(body []byte) *Certificate {
+	m := &Certificate{}
+	if len(body) < 3 {
+		m.Notes = append(m.Notes, "Certificate message too short for a certificate_list length")
+		return m
+	}
+	listLen := int(body[0])<<16 | int(body[1])<<8 | int(body[2])
+	if 3+listLen != len(body) {
+		m.Notes = append(m.Notes,
+			fmt.Sprintf("certificate_list length %d does not match the %d-byte body; if this is a TLS 1.3 Certificate message it carries a request-context prefix and per-certificate extensions and is not parsed here", listLen, len(body)-3))
+		return m
+	}
+	off := 3
+	for off+3 <= len(body) {
+		cl := int(body[off])<<16 | int(body[off+1])<<8 | int(body[off+2])
+		off += 3
+		if off+cl > len(body) {
+			m.Notes = append(m.Notes, fmt.Sprintf("certificate length %d at offset %d overruns the body", cl, off-3))
+			break
+		}
+		der := body[off : off+cl]
+		off += cl
+		entry := &CertEntry{Length: cl}
+		if c, err := x509decode.Decode(hex.EncodeToString(der)); err == nil {
+			entry.Certificate = c
+		} else {
+			entry.DecodeError = err.Error()
+			entry.DERHex = strings.ToUpper(hex.EncodeToString(der))
+		}
+		m.Certificates = append(m.Certificates, entry)
+	}
+	m.CertificateCount = len(m.Certificates)
+	return m
 }
 
 func decodeClientHello(b []byte) (*ClientHello, error) {

@@ -68,8 +68,11 @@ var tlsHandshakeDecodeSpec = Spec{
 		"every plaintext field without re-attaching to the network. Complements the " +
 		"existing ieee80211_* and dns coverage with the missing read-side primitive for " +
 		"the most-traffic-bearing application-layer protocol on the internet.\n\n" +
-		"Out of scope (deferred to future iterations): Certificate body decode (X.509 " +
-		"ASN.1 walker is a separate ~600 LoC effort), JA4 / JA4S / JA4H / JA4X fingerprinting " +
+		"The TLS 1.2 Certificate handshake message is decoded: each DER cert in the chain " +
+		"is run through the X.509 decoder, surfacing subject / issuer / validity / SAN / " +
+		"fingerprints (the TLS 1.3 Certificate message is encrypted on the wire and so is " +
+		"not present in a passive capture).\n\n" +
+		"Out of scope (deferred to future iterations): JA4 / JA4S / JA4H / JA4X fingerprinting " +
 		"(newer FoxIO scheme), TLS 1.3 inner-handshake (encrypted on the wire without " +
 		"session keys), DTLS (Datagram TLS over UDP).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (network-protocol decode space — TLS is the " +
