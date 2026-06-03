@@ -28,8 +28,10 @@
 // against a worked vector (SGTIN/SSCC additionally reconstruct the GTIN-14 /
 // SSCC-18 with a recomputed mod-10 check digit; the partition-based schemes are
 // anchored against the epc-encoding-utils library used as an oracle).
-// Unsupported (reported, not guessed): 198-bit variants and any header outside
-// 0x30-0x35.
+// Plus SGTIN-198 (header 0x36): the 198-bit SGTIN whose serial is an
+// alphanumeric 7-bit-ASCII string rather than a numeric value (internal/
+// sgtin198.go). Unsupported (reported, not guessed): the other 198-bit
+// variants (GRAI-170 / GIAI-202 / SGLN-195) and any header outside 0x30-0x36.
 package epc
 
 import (
@@ -62,13 +64,19 @@ var sgtinPartition = map[int]struct {
 	6: {20, 6, 24, 7},
 }
 
-// SGTIN is a decoded SGTIN-96 EPC (Serialised Global Trade Item Number).
+// SGTIN is a decoded SGTIN EPC (Serialised Global Trade Item Number), either
+// the 96-bit form (numeric serial) or the 198-bit form (alphanumeric serial).
 type SGTIN struct {
-	Filter          int    `json:"filter"`
-	Partition       int    `json:"partition"`
-	CompanyPrefix   string `json:"company_prefix"`
-	ItemReference   string `json:"item_reference"`
-	SerialNumber    uint64 `json:"serial_number"`
+	TagSize       int    `json:"tag_size"` // 96 or 198
+	Filter        int    `json:"filter"`
+	Partition     int    `json:"partition"`
+	CompanyPrefix string `json:"company_prefix"`
+	ItemReference string `json:"item_reference"`
+	// SerialNumber is the numeric serial of an SGTIN-96. SerialString is the
+	// 7-bit-ASCII serial of an SGTIN-198; exactly one is meaningful per the
+	// tag size.
+	SerialNumber    uint64 `json:"serial_number,omitempty"`
+	SerialString    string `json:"serial_string,omitempty"`
 	GTIN14          string `json:"gtin14"`
 	TagURI          string `json:"tag_uri"`
 	PureIdentityURI string `json:"pure_identity_uri"`
@@ -87,9 +95,9 @@ type Result struct {
 	Notes        []string `json:"notes,omitempty"`
 }
 
-// DecodeHex decodes a hex-encoded 96-bit EPC (24 hex digits; ':' / '-' / '_' /
-// whitespace and an optional 0x / urn:epc:tag: prefix not required — just the
-// hex). Separators are ignored.
+// DecodeHex decodes a hex-encoded EPC: a 96-bit EPC (24 hex digits) or a
+// 198-bit SGTIN-198 (the word-aligned 50/52 hex-digit form). ':' / '-' / '_' /
+// whitespace separators and an optional 0x prefix are tolerated.
 func DecodeHex(s string) (*Result, error) {
 	clean := strings.NewReplacer(":", "", "-", "", "_", "", " ", "", "\n", "", "\t", "").Replace(s)
 	clean = strings.TrimPrefix(strings.TrimPrefix(clean, "0x"), "0X")
@@ -103,11 +111,20 @@ func DecodeHex(s string) (*Result, error) {
 	return Decode(b)
 }
 
-// Decode decodes a 96-bit (12-byte) EPC binary.
+// Decode decodes an EPC binary: a 96-bit (12-byte) EPC, or a 198-bit EPC
+// (the word-aligned 25/26-byte form a RAIN reader emits) for SGTIN-198.
 func Decode(b []byte) (*Result, error) {
-	if len(b) != 12 {
-		return nil, fmt.Errorf("epc: a 96-bit EPC is 12 bytes (24 hex digits), got %d bytes", len(b))
+	switch len(b) {
+	case 12:
+		return decode96(b)
+	case 25, 26:
+		return decode198(b)
+	default:
+		return nil, fmt.Errorf("epc: expected 12 bytes (96-bit EPC) or 25-26 bytes (198-bit EPC), got %d bytes", len(b))
 	}
+}
+
+func decode96(b []byte) (*Result, error) {
 	bits := toBits(b)
 	header := b[0]
 
@@ -162,6 +179,7 @@ func Decode(b []byte) (*Result, error) {
 	irStr := fmt.Sprintf("%0*d", pt.irDigits, ir)
 
 	s := &SGTIN{
+		TagSize:         96,
 		Filter:          filter,
 		Partition:       partition,
 		CompanyPrefix:   cpStr,
