@@ -2101,7 +2101,10 @@ func TestRegistrySize(t *testing.T) {
 	// NULL/Lock/Memory/NDEF/Proprietary/Terminator blocks; locates + decodes the
 	// NDEF Message TLV via internal/ndef. Bridges a raw T2T dump to ndef_decode.
 	// internal/t2t).
-	const expected = 513
+	// v0.468.0 added epc_decode (GS1 EPC UHF RAIN RFID — SGTIN-96 fully decoded:
+	// company prefix / item ref / serial / EPC URIs / GTIN-14; partition table +
+	// layout verified vs the GS1 TDS canonical vector. internal/epc).
+	const expected = 514
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

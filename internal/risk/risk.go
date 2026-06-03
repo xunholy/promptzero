@@ -138,6 +138,10 @@ var toolLevels = func() map[string]Level {
 		// NDEF Message TLV). Offline deterministic parse of an
 		// operator-supplied dump; transmits nothing, so it is Low.
 		"nfc_t2t_tlv_decode",
+		// GS1 EPC (UHF RAIN RFID) SGTIN-96 decode (company prefix /
+		// item ref / serial / GTIN-14). Offline deterministic bit-field
+		// parse of an operator-supplied EPC; transmits nothing, Low.
+		"epc_decode",
 		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
 		// from a reader/skimmer dump). Offline deterministic decode of
 		// an operator-supplied string, Luhn-anchored; transmits
