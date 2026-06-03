@@ -62,6 +62,7 @@ import (
 	"golang.org/x/crypto/md4" //nolint:staticcheck // NTLM (MD4 of UTF-16LE) is the explicit legacy-compat use case for hash_crack_dictionary; the security warning is acknowledged.
 
 	"github.com/xunholy/promptzero/internal/obs"
+	"github.com/xunholy/promptzero/internal/phpass"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/unixcrypt"
 	"github.com/xunholy/promptzero/internal/webpass"
@@ -305,7 +306,8 @@ var hashCrackDictionarySpec = Spec{
 		"/etc/shadow — via the 'crypt' algorithm, which auto-detects the scheme from " +
 		"the hash prefix; argon2 ($argon2id/$argon2i), memory-hard so workers are " +
 		"capped; and django (pbkdf2_sha256$…) / werkzeug (pbkdf2:sha256:…) Python " +
-		"web-app password hashes). No GPU, no rules engine. Reads the wordlist as a stream " +
+		"web-app password hashes; and phpass — WordPress $P$ / phpBB $H$). " +
+		"No GPU, no rules engine. Reads the wordlist as a stream " +
 		"(memory-efficient for large files such as rockyou.txt). Use hash_identify first " +
 		"to determine the algorithm. Supported wordlists: operator-provided file path, or " +
 		"'promptzero://wordlists/passwords.txt' for the built-in list.",
@@ -316,8 +318,8 @@ var hashCrackDictionarySpec = Spec{
 				"description":"Hash strings to crack"},
 			"algorithm":{"type":"string","enum":[
 				"md5","sha1","sha256","sha512","ntlm","bcrypt",
-				"mysql","crypt","md5crypt","apr1","sha256crypt","sha512crypt","argon2","django","werkzeug"],
-				"description":"Hash algorithm (output of hash_identify). Use 'crypt' for any $1$/$apr1$/$5$/$6$ shadow hash (auto-detected); 'mysql' for mysql_native_password; 'argon2' for $argon2id$/$argon2i$; 'django' (pbkdf2_sha256$…) / 'werkzeug' (pbkdf2:sha256:…) for Python web-app password DBs (high-iteration, slow)."},
+				"mysql","crypt","md5crypt","apr1","sha256crypt","sha512crypt","argon2","django","werkzeug","phpass"],
+				"description":"Hash algorithm (output of hash_identify). Use 'crypt' for any $1$/$apr1$/$5$/$6$ shadow hash (auto-detected); 'mysql' for mysql_native_password; 'argon2' for $argon2id$/$argon2i$; 'django'/'werkzeug' for Python web-app PBKDF2 DBs; 'phpass' for WordPress $P$ / phpBB $H$ hashes."},
 			"wordlist":{"type":"string",
 				"description":"Path to a newline-separated wordlist file, or 'promptzero://wordlists/passwords.txt' for the built-in list"},
 			"max_words":{"type":"integer","minimum":0,
@@ -377,7 +379,7 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 
 	algo := strings.ToLower(strings.TrimSpace(str(p, "algorithm")))
 	if !isSupportedAlgo(algo) {
-		return "", fmt.Errorf("hash_crack_dictionary: unsupported algorithm %q; supported: md5 sha1 sha256 sha512 ntlm bcrypt mysql crypt (md5crypt/apr1/sha256crypt/sha512crypt) argon2 django werkzeug", algo)
+		return "", fmt.Errorf("hash_crack_dictionary: unsupported algorithm %q; supported: md5 sha1 sha256 sha512 ntlm bcrypt mysql crypt (md5crypt/apr1/sha256crypt/sha512crypt) argon2 django werkzeug phpass", algo)
 	}
 
 	wordlistPath := strings.TrimSpace(str(p, "wordlist"))
@@ -586,7 +588,7 @@ func isSupportedAlgo(algo string) bool {
 	switch algo {
 	case "md5", "sha1", "sha256", "sha512", "ntlm", "bcrypt",
 		"mysql", "crypt", "md5crypt", "apr1", "sha256crypt", "sha512crypt",
-		"argon2", "django", "werkzeug":
+		"argon2", "django", "werkzeug", "phpass":
 		return true
 	}
 	return false
@@ -652,6 +654,11 @@ func checkHash(algo, word, lowerHash, origHash string) bool {
 		// Django (pbkdf2_sha256$…) / Werkzeug (pbkdf2:sha256:…) password hashes —
 		// PBKDF2-HMAC, framework auto-detected from origHash (case-sensitive).
 		ok, _ := webpass.Verify(origHash, word)
+		return ok
+
+	case "phpass":
+		// phpass portable hash — WordPress ($P$…) / phpBB3 ($H$…), iterated MD5.
+		ok, _ := phpass.Verify(origHash, word)
 		return ok
 	}
 	return false

@@ -1140,3 +1140,24 @@ func TestHashCrack_Werkzeug(t *testing.T) {
 		t.Fatalf("werkzeug crack = %d, want 1; out: %s", len(cracked), out)
 	}
 }
+
+// TestHashCrack_Phpass cracks a WordPress phpass ($P$) hash (passlib reference
+// for "password") via the phpass dictionary mode.
+func TestHashCrack_Phpass(t *testing.T) {
+	const h = "$P$9abcdefghreUCnbbQX76dJT2aHvsT6."
+	wl := writeTempWordlist(t, "wrong", "password", "other")
+	out, err := invokeSpec(t, "hash_crack_dictionary", map[string]any{
+		"hashes": []any{h}, "algorithm": "phpass", "wordlist": wl,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustJSON(t, out)
+	cracked, _ := m["cracked"].([]any)
+	if len(cracked) != 1 {
+		t.Fatalf("phpass crack = %d, want 1; out: %s", len(cracked), out)
+	}
+	if e, _ := cracked[0].(map[string]any); e["plaintext"] != "password" {
+		t.Errorf("plaintext = %v, want password", e["plaintext"])
+	}
+}

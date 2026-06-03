@@ -665,6 +665,10 @@ var toolLevels = func() map[string]Level {
 		// (Python web-app user DBs). Offline crypto compute /
 		// constant-time verify; transmits nothing, so it is Low.
 		"pbkdf2_password",
+		// phpass (WordPress $P$ / phpBB $H$) password hash verify +
+		// compute. Offline crypto compute / constant-time verify;
+		// transmits nothing, so it is Low.
+		"phpass_password",
 		// JWK/JWKS -> PEM converter (the /.well-known/jwks.json form
 		// into the PEM jwt_verify wants). Offline JSON->PEM transform,
 		// transmits nothing, so it is Low.

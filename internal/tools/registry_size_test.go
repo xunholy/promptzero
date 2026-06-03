@@ -2066,7 +2066,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.457.0 added pbkdf2_password (Django pbkdf2_sha256$ / Werkzeug pbkdf2:sha256:
 	// password verify + compute — Python web-app user DBs. hash_crack also gained
 	// 'django'/'werkzeug' modes. Verified vs Django/Werkzeug. internal/webpass).
-	const expected = 505
+	// v0.458.0 added phpass_password (WordPress $P$ / phpBB $H$ portable hash verify
+	// + compute — iterated MD5. hash_crack also gained the 'phpass' mode. Verified
+	// byte-for-byte vs passlib. internal/phpass).
+	const expected = 506
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
