@@ -43,12 +43,14 @@ var mplsDecodeSpec = Spec{
 		"  - 13 Generic Associated Channel Label (GAL, RFC 5586)\n" +
 		"  - 14 OAM Alert Label (RFC 3429)\n" +
 		"  - 15 Extension Label (RFC 7274)\n" +
-		"- **Inner payload heuristic** — after the bottom-of-stack label, the payload " +
+		"- **Inner payload decode** — after the bottom-of-stack label, the payload " +
 		"protocol isn't explicitly encoded. The decoder applies the canonical " +
-		"convention: first nibble 4 → IPv4; first nibble 6 → IPv6; bottom label 0 → " +
-		"IPv4 (Explicit NULL); bottom label 2 → IPv6; first nibble 0 → EoMPLS / " +
-		"pseudowire control word (RFC 4385); otherwise → likely Ethernet for EoMPLS " +
-		"/ VPLS pseudowires.\n" +
+		"convention (first nibble 4 → IPv4; 6 → IPv6; bottom label 0 → IPv4 Explicit " +
+		"NULL; bottom label 2 → IPv6; first nibble 0 → EoMPLS / pseudowire control " +
+		"word; otherwise likely Ethernet) and, when the payload is IP, **decodes the " +
+		"inner packet in place** (the label-switched flow's addresses / protocol / " +
+		"ports; a payload that doesn't parse as IP is reported with an error, raw hex " +
+		"preserved). EoMPLS / pseudowire payloads stay raw hex.\n" +
 		"- **Conformance check** — Router Alert label (1) at the bottom of stack " +
 		"surfaces a Note flagging the RFC 3032 §2.1 violation.\n\n" +
 		"Pure offline parser — operators paste MPLS frame bytes (after the EtherType " +
@@ -58,9 +60,8 @@ var mplsDecodeSpec = Spec{
 		"IOS `show mpls forwarding-table` capture, or any MPLS-emitting tool and get " +
 		"the documented label stack plus inner-payload heuristic.\n\n" +
 		"Out of scope (deferred): Ethernet framing (feed the MPLS bytes after the " +
-		"EtherType strip); inner payload decoding (operators pipe the payload to " +
-		"`ip_packet_decode` for IPv4/IPv6, or a future Ethernet decoder for EoMPLS " +
-		"pseudowires); MPLS Control Word (RFC 4385) and Pseudowire Type dispatch " +
+		"EtherType strip); non-IP inner payloads (EoMPLS / pseudowire Ethernet — left " +
+		"for a future Ethernet decoder); MPLS Control Word (RFC 4385) and Pseudowire Type dispatch " +
 		"(detected as leading-0-nibble payload but the operator decides what " +
 		"pseudowire type it is); LDP / RSVP-TE / BGP-LU label-distribution protocols " +
 		"(these are control-plane — separate Spec).\n\n" +

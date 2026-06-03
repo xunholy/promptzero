@@ -77,9 +77,15 @@
 //     For MPLS-over-UDP (RFC 7510) or MPLS-over-GRE, strip
 //     those outer headers first.
 //
-//   - Inner payload decoding — operators pipe the payload
-//     to `ip_packet_decode` for IPv4/IPv6, or to a future
-//     Ethernet decoder for EoMPLS pseudowires.
+//   - Inner payload decode — when the payload is IP (an
+//     IPv4/IPv6 Explicit NULL bottom label, or a first nibble
+//     of 4/6) the inner packet is decoded in place via
+//     internal/ipdecode, so the label-switched flow's
+//     addresses / protocol / ports surface directly; a payload
+//     that does not parse as IP is reported with an error and
+//     left as hex. EoMPLS / pseudowire payloads (0-nibble
+//     control word, Ethernet) are left as hex for a future
+//     Ethernet decoder.
 //
 //   - MPLS Control Word (RFC 4385) and Pseudowire Type
 //     dispatch — when EoMPLS pseudowires use a control
@@ -96,18 +102,22 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the top-level decoded view.
 type Result struct {
-	Labels        []Label  `json:"labels"`
-	LabelCount    int      `json:"label_count"`
-	HeaderBytes   int      `json:"header_bytes"`
-	PayloadGuess  string   `json:"payload_guess"`
-	PayloadLength int      `json:"payload_length"`
-	PayloadHex    string   `json:"payload_hex,omitempty"`
-	TotalBytes    int      `json:"total_bytes"`
-	Notes         []string `json:"notes,omitempty"`
+	Labels           []Label          `json:"labels"`
+	LabelCount       int              `json:"label_count"`
+	HeaderBytes      int              `json:"header_bytes"`
+	PayloadGuess     string           `json:"payload_guess"`
+	PayloadLength    int              `json:"payload_length"`
+	PayloadHex       string           `json:"payload_hex,omitempty"`
+	InnerPacket      *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError string           `json:"inner_decode_error,omitempty"`
+	TotalBytes       int              `json:"total_bytes"`
+	Notes            []string         `json:"notes,omitempty"`
 }
 
 // Label is one entry in the MPLS label stack.
@@ -185,6 +195,18 @@ func Decode(hexStr string) (*Result, error) {
 		} else {
 			r.PayloadHex = strings.ToUpper(hex.EncodeToString(payload))
 		}
+		// When the payload is IP (an Explicit NULL bottom label, or a
+		// first nibble of 4/6), decode it in place via internal/ipdecode so
+		// the label-switched flow's addresses / protocol / ports surface.
+		// EoMPLS / pseudowire payloads (0-nibble control word, Ethernet) are
+		// left as hex — no confidently-wrong output.
+		if innerIsIP(bottom.Label, payload) {
+			if pkt, err := ipdecode.DecodeBytes(payload); err == nil {
+				r.InnerPacket = pkt
+			} else {
+				r.InnerDecodeError = err.Error()
+			}
+		}
 	}
 
 	return r, nil
@@ -213,6 +235,23 @@ func reservedLabelName(label int) string {
 		return fmt.Sprintf("reserved (label %d)", label)
 	}
 	return ""
+}
+
+// innerIsIP reports whether the MPLS payload should be decoded as an IP
+// packet: an IPv4/IPv6 Explicit NULL bottom label, or a first nibble of 4/6.
+// The 0-nibble (EoMPLS / pseudowire control word) and other cases are not IP.
+func innerIsIP(bottomLabel int, b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+	if bottomLabel == 0 || bottomLabel == 2 { // IPv4 / IPv6 Explicit NULL
+		return true
+	}
+	switch b[0] >> 4 {
+	case 4, 6:
+		return true
+	}
+	return false
 }
 
 func guessPayload(bottomLabel int, b []byte) string {
