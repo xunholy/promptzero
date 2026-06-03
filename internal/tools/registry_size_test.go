@@ -2090,7 +2090,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.464.0 added fdxb_decode (ISO 11784/11785 FDX-B animal/pet-microchip LF
 	// transponder data-block decode — national + country code, flags, CRC-16
 	// gated; verified vs two real Proxmark3 vectors. internal/fdxb).
-	const expected = 510
+	// v0.465.0 added t5577_config_decode (T5577 / ATA5577 config-register block-0
+	// decode — modulation / bit rate / max block / AOR / PWD / ST; bit layout +
+	// modulation table verified vs Proxmark3 + EM4100 0x00148040 & HID 0x00107060
+	// config words. internal/t55xx).
+	const expected = 511
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

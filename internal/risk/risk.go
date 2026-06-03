@@ -124,6 +124,11 @@ var toolLevels = func() map[string]Level {
 		// Offline deterministic parse of an operator-supplied block;
 		// transmits nothing, so it is Low.
 		"fdxb_decode",
+		// T5577 / ATA5577 configuration-register (block 0) decode
+		// (modulation / bit rate / flags). Offline deterministic
+		// bit-field parse of an operator-supplied word; transmits
+		// nothing, so it is Low.
+		"t5577_config_decode",
 		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
 		// from a reader/skimmer dump). Offline deterministic decode of
 		// an operator-supplied string, Luhn-anchored; transmits
