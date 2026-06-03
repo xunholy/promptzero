@@ -651,6 +651,10 @@ var toolLevels = func() map[string]Level {
 		"jwt_decode",
 		"jwt_verify",
 		"jwt_forge",
+		// JWK/JWKS -> PEM converter (the /.well-known/jwks.json form
+		// into the PEM jwt_verify wants). Offline JSON->PEM transform,
+		// transmits nothing, so it is Low.
+		"jwk_to_pem",
 		"cisco_type7_decode",
 		"crc_compute",
 		"manchester_decode",

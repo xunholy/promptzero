@@ -12,6 +12,7 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -48,7 +49,7 @@ var jwtVerifySpec = Spec{
 			"token":{"type":"string","description":"The JWT/JWS compact token (3 dot-separated segments). 'Bearer ' prefix tolerated."},
 			"secret":{"type":"string","description":"A single candidate HMAC secret to verify against."},
 			"secrets":{"type":"array","items":{"type":"string"},"description":"A list of candidate secrets — the tool reports which (if any) validates."},
-			"public_key":{"type":"string","description":"PEM public key (PKIX/SPKI, PKCS#1, or an X.509 cert) for an asymmetric token — RSA for RS*/PS*, ECDSA for ES*, Ed25519 for EdDSA; e.g. the issuer's key from /.well-known/jwks.json."}
+			"public_key":{"type":"string","description":"Public key for an asymmetric token: a PEM (PKIX/SPKI, PKCS#1, or X.509 cert) OR a JWK / JWKS JSON (e.g. pasted straight from /.well-known/jwks.json — the token's kid selects the key). RSA for RS*/PS*, ECDSA for ES*, Ed25519 for EdDSA."}
 		},
 		"required":["token"]
 	}`),
@@ -57,6 +58,23 @@ var jwtVerifySpec = Spec{
 	Group:     GroupHostTools,
 	AgentOnly: false,
 	Handler:   jwtVerifyHandler,
+}
+
+// tokenKID returns the "kid" from a compact JWS header (empty if absent/unparseable).
+func tokenKID(token string) string {
+	token = strings.TrimSpace(token)
+	token = strings.TrimPrefix(token, "Bearer ")
+	token = strings.TrimPrefix(token, "bearer ")
+	parts := strings.SplitN(token, ".", 2)
+	hdr, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return ""
+	}
+	var h struct {
+		Kid string `json:"kid"`
+	}
+	_ = json.Unmarshal(hdr, &h)
+	return h.Kid
 }
 
 // isAsymmetricAlg reports whether a JWS alg is public-key (RS*/PS*/ES*/EdDSA).
@@ -75,9 +93,18 @@ func jwtVerifyHandler(_ context.Context, _ *Deps, p map[string]any) (string, err
 	// Peek the algorithm to route asymmetric tokens (RS*/PS*/ES*/EdDSA) to
 	// public-key verification.
 	if peek, perr := jwtsig.Verify(token, ""); perr == nil && isAsymmetricAlg(peek.Algorithm) {
-		pub := str(p, "public_key")
-		if strings.TrimSpace(pub) == "" {
-			return "", fmt.Errorf("jwt_verify: token uses %s (asymmetric) — supply 'public_key' (PEM) to verify (HMAC secrets do not apply)", peek.Algorithm)
+		pub := strings.TrimSpace(str(p, "public_key"))
+		if pub == "" {
+			return "", fmt.Errorf("jwt_verify: token uses %s (asymmetric) — supply 'public_key' (PEM or JWK/JWKS) to verify (HMAC secrets do not apply)", peek.Algorithm)
+		}
+		// Accept a published JWK / JWKS directly: convert to PEM, matching the
+		// token's kid when the set has several keys.
+		if strings.HasPrefix(pub, "{") {
+			pem, jerr := jwtsig.SelectJWKPEM(pub, tokenKID(token))
+			if jerr != nil {
+				return "", fmt.Errorf("jwt_verify: %w", jerr)
+			}
+			pub = pem
 		}
 		res, err := jwtsig.VerifyPublicKey(token, pub)
 		if err != nil {
