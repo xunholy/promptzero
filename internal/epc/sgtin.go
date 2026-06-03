@@ -21,15 +21,16 @@
 // 3074257BF7194E4000001A85 → urn:epc:tag:sgtin-96:3.0614141.812345.6789
 // (company prefix 0614141, item reference 812345, serial 6789) — not recalled.
 //
-// Covered: SGTIN-96 (header 0x30), the dominant retail item-level scheme,
-// fully decoded (filter, partition, company prefix, item reference, serial,
-// EPC tag + pure-identity URIs, and the GTIN-14 with a recomputed mod-10 check
-// digit). Deferred (no confidently-wrong output): the other 96-bit schemes
-// (SSCC-96 0x31, SGLN-96 0x32, GRAI-96 0x33, GIAI-96 0x34, GID-96 0x35) are
-// identified by scheme name but not field-decoded — their layouts are not yet
-// verified against worked vectors, so the raw bits are surfaced with a note
-// rather than guessed; 198-bit and other variants are reported as
-// unsupported.
+// Covered: SGTIN-96 (header 0x30), the dominant retail item-level scheme, and
+// SSCC-96 (header 0x31), the logistics-unit scheme — both fully decoded
+// (filter, partition, company prefix, item/serial reference, and the
+// reconstructed GTIN-14 / SSCC-18 with a recomputed mod-10 check digit), each
+// verified against a worked vector. Deferred (no confidently-wrong output):
+// the remaining 96-bit schemes (SGLN-96 0x32, GRAI-96 0x33, GIAI-96 0x34,
+// GID-96 0x35) are identified by scheme name but not field-decoded — their
+// layouts are not yet verified against worked vectors, so the raw bits are
+// surfaced with a note rather than guessed; 198-bit and other variants are
+// reported as unsupported.
 package epc
 
 import (
@@ -79,6 +80,7 @@ type Result struct {
 	Scheme       string   `json:"scheme"`
 	SchemeHeader string   `json:"scheme_header"`
 	SGTIN        *SGTIN   `json:"sgtin,omitempty"`
+	SSCC         *SSCC    `json:"sscc,omitempty"`
 	Notes        []string `json:"notes,omitempty"`
 }
 
@@ -115,8 +117,14 @@ func Decode(b []byte) (*Result, error) {
 	}
 	res.Scheme = name
 
-	if header != 0x30 { // recognised but not yet field-decoded
-		res.Notes = append(res.Notes, fmt.Sprintf("%s recognised by header; full field decode is not yet implemented (only SGTIN-96 is decoded) — raw bits not interpreted to avoid a confidently-wrong result", name))
+	switch header {
+	case 0x30:
+		// fall through to SGTIN-96 decode below
+	case 0x31:
+		decodeSSCC96(bits, res)
+		return res, nil
+	default: // recognised but not yet field-decoded
+		res.Notes = append(res.Notes, fmt.Sprintf("%s recognised by header; full field decode is not yet implemented (only SGTIN-96 and SSCC-96 are decoded) — raw bits not interpreted to avoid a confidently-wrong result", name))
 		return res, nil
 	}
 

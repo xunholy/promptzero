@@ -57,16 +57,16 @@ func TestGS1CheckDigit(t *testing.T) {
 }
 
 func TestDecode_OtherSchemesIdentifiedNotDecoded(t *testing.T) {
-	// SSCC-96 header 0x31 — recognised, not field-decoded.
-	r, err := DecodeHex("310000000000000000000000")
+	// SGLN-96 header 0x32 — recognised, not field-decoded.
+	r, err := DecodeHex("320000000000000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Scheme != "SSCC-96" {
-		t.Errorf("scheme = %s, want SSCC-96", r.Scheme)
+	if r.Scheme != "SGLN-96" {
+		t.Errorf("scheme = %s, want SGLN-96", r.Scheme)
 	}
-	if r.SGTIN != nil {
-		t.Errorf("SSCC should not be field-decoded as SGTIN")
+	if r.SGTIN != nil || r.SSCC != nil {
+		t.Errorf("SGLN should not be field-decoded")
 	}
 	if len(r.Notes) == 0 {
 		t.Errorf("deferred scheme should carry a note")

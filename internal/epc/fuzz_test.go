@@ -6,7 +6,9 @@ import "testing"
 
 func FuzzDecodeHex(f *testing.F) {
 	f.Add("3074257BF7194E4000001A85")
+	f.Add("3134257BF4499602D2000000")
 	f.Add("310000000000000000000000")
+	f.Add("320000000000000000000000")
 	f.Add("FF0000000000000000000000")
 	f.Add("3074")
 	f.Add("")
