@@ -105,6 +105,10 @@ var toolLevels = func() map[string]Level {
 		// NFC standard). Offline deterministic read of an
 		// operator-supplied UID; transmits nothing, so it is Low.
 		"nfc_iso15693_decode",
+		// ISO 14443 Type B ATQB decode (ePassport / eID proximity
+		// standard). Offline deterministic read of an operator-supplied
+		// ATQB; transmits nothing, so it is Low.
+		"nfc_iso14443b_decode",
 		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
 		// from a reader/skimmer dump). Offline deterministic decode of
 		// an operator-supplied string, Luhn-anchored; transmits

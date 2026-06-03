@@ -2072,7 +2072,10 @@ func TestRegistrySize(t *testing.T) {
 	// (v0.459 added no tool — Werkzeug scrypt (scrypt:N:r:p, the modern Flask
 	// default) verify/compute added to internal/webpass; pbkdf2_password and the
 	// hash_crack 'werkzeug' mode now cover it. Verified vs Werkzeug + x/crypto/scrypt.)
-	const expected = 506
+	// v0.460.0 added nfc_iso14443b_decode (ISO 14443 Type B ATQB decode — the
+	// ePassport/eID proximity standard; 0x50-anchored PUPI + protocol-info bit
+	// fields. internal/iso14443b).
+	const expected = 507
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
