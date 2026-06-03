@@ -2079,7 +2079,12 @@ func TestRegistrySize(t *testing.T) {
 	// — the tap-to-connect Wi-Fi NFC tag / WPS M7-M8 Credential; SSID + auth/encr
 	// + network-key TLVs, attribute IDs per hostap wps_defs.h. internal/wsc; also
 	// wired into ndef_decode's application/vnd.wfa.wsc MIME path).
-	const expected = 508
+	// v0.462.0 added bluetooth_oob_decode (Bluetooth OOB pairing record — the
+	// tap-to-pair NFC handover tag; BR/EDR Easy Pairing length+BD_ADDR framing +
+	// LE OOB AD structures, with LE Role / LE device address / Class-of-Device
+	// value decode added to the shared internal/ble EIR walker. internal/btoob;
+	// also wired into ndef_decode's application/vnd.bluetooth.{ep,le}.oob paths).
+	const expected = 509
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

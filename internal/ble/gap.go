@@ -49,6 +49,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"strings"
 )
 
 // reverseBytes returns a fresh slice with the bytes reversed —
@@ -181,10 +182,107 @@ func decodeADTypeData(adType byte, data []byte) map[string]any {
 		return decodeServiceData16(data)
 	case 0x19:
 		return decodeAppearance(data)
+	case 0x0D:
+		return decodeClassOfDevice(data)
+	case 0x1B:
+		return decodeLEDeviceAddress(data)
+	case 0x1C:
+		return decodeLERole(data)
 	case 0xFF:
 		return decodeManufacturerData(data)
 	}
 	return nil
+}
+
+// majorDeviceClass maps the 5-bit Major Device Class field of a
+// Class-of-Device value (Bluetooth Assigned Numbers, Baseband).
+var majorDeviceClass = map[uint32]string{
+	0x00: "Miscellaneous",
+	0x01: "Computer",
+	0x02: "Phone",
+	0x03: "LAN / Network Access Point",
+	0x04: "Audio / Video",
+	0x05: "Peripheral",
+	0x06: "Imaging",
+	0x07: "Wearable",
+	0x08: "Toy",
+	0x09: "Health",
+	0x1F: "Uncategorized",
+}
+
+// decodeClassOfDevice decodes the 3-byte (24-bit, little-endian)
+// Class of Device. The full minor-class / service-class tables are
+// device-major-specific; we surface the raw 24-bit value and the
+// well-defined Major Device Class field (bits 8-12) by name.
+func decodeClassOfDevice(b []byte) map[string]any {
+	if len(b) < 3 {
+		return map[string]any{"error": "Class of Device needs 3 bytes"}
+	}
+	cod := uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16
+	out := map[string]any{
+		"class_of_device":     int(cod),
+		"class_of_device_hex": fmt.Sprintf("%06X", cod),
+		"major_device_class":  int((cod >> 8) & 0x1F),
+		"minor_device_class":  int((cod >> 2) & 0x3F),
+		"major_service_class": int((cod >> 13) & 0x7FF),
+	}
+	if name, ok := majorDeviceClass[(cod>>8)&0x1F]; ok {
+		out["major_device_class_name"] = name
+	}
+	return out
+}
+
+// leAddressType names the address-type flags octet of an LE
+// Bluetooth Device Address (bit 0: 0 = public, 1 = random).
+func leAddressType(flags byte) string {
+	if flags&0x01 != 0 {
+		return "random"
+	}
+	return "public"
+}
+
+// decodeLEDeviceAddress decodes the LE Bluetooth Device Address AD
+// type (0x1B): 6 address octets (little-endian) + 1 flags octet
+// (bit 0 = public/random).
+func decodeLEDeviceAddress(b []byte) map[string]any {
+	if len(b) < 7 {
+		return map[string]any{"error": fmt.Sprintf("LE Bluetooth Device Address needs 7 bytes, got %d", len(b))}
+	}
+	addr := make([]byte, 6)
+	for i := 0; i < 6; i++ {
+		addr[i] = b[5-i] // stored little-endian, display MSB-first
+	}
+	parts := make([]string, 6)
+	for i, x := range addr {
+		parts[i] = fmt.Sprintf("%02X", x)
+	}
+	return map[string]any{
+		"address":      strings.Join(parts, ":"),
+		"address_type": leAddressType(b[6]),
+	}
+}
+
+// leRoles maps the LE Role AD-type value (0x1C) to its meaning
+// (Bluetooth Core Specification Supplement, Part A §1.17).
+var leRoles = map[byte]string{
+	0x00: "Peripheral",
+	0x01: "Central",
+	0x02: "Peripheral/Central (Peripheral preferred for connection)",
+	0x03: "Central/Peripheral (Central preferred for connection)",
+}
+
+// decodeLERole decodes the LE Role AD type (0x1C): 1 byte.
+func decodeLERole(b []byte) map[string]any {
+	if len(b) < 1 {
+		return map[string]any{"error": "LE Role needs 1 byte"}
+	}
+	out := map[string]any{"role_raw": int(b[0])}
+	if name, ok := leRoles[b[0]]; ok {
+		out["role"] = name
+	} else {
+		out["role"] = fmt.Sprintf("reserved (0x%02X)", b[0])
+	}
+	return out
 }
 
 // decodeFlags parses the LE Flags bitfield (AD type 0x01).

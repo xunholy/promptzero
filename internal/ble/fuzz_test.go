@@ -16,6 +16,20 @@ func FuzzDecodeEddystone(f *testing.F) {
 	f.Fuzz(func(t *testing.T, s string) { _, _ = DecodeEddystone(s) })
 }
 
+func FuzzDecodeGAP(f *testing.F) {
+	for _, s := range []string{
+		"020106",                                  // Flags
+		"08 1B 06 05 04 03 02 01 01",              // LE Bluetooth Device Address
+		"02 1C 02",                                // LE Role
+		"04 0D 04 04 24",                          // Class of Device
+		"05 09 48 64 73 74",                       // Complete Local Name
+		"03 1B 00", "01 1C", "02 0D 00", "", "FF", // truncated value-decoder inputs
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) { _, _ = DecodeGAP(s) })
+}
+
 // TestRegression_ADLengthPanic covers the fuzz-found slice panic in the
 // <len> FF 4C 00 / <len> 16 AA FE prefix strippers (declared length < 3).
 func TestRegression_ADLengthPanic(t *testing.T) {

@@ -114,6 +114,11 @@ var toolLevels = func() map[string]Level {
 		// deterministic TLV parse of an operator-supplied blob;
 		// transmits nothing, so it is Low.
 		"wifi_wsc_decode",
+		// Bluetooth OOB pairing record decode (tap-to-pair NFC handover
+		// tag → peer address + EIR + SSP OOB key material). Offline
+		// deterministic parse of an operator-supplied blob; transmits
+		// nothing, so it is Low.
+		"bluetooth_oob_decode",
 		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
 		// from a reader/skimmer dump). Offline deterministic decode of
 		// an operator-supplied string, Luhn-anchored; transmits

@@ -22,7 +22,9 @@
 //     Smart Poster (recursive nested message)
 //   - MIME-type pass-through (TNF=2) with MIME-type field + raw
 //     payload; the application/vnd.wfa.wsc Wi-Fi credential payload
-//     ("tap-to-connect" tag) is decoded via internal/wsc
+//     ("tap-to-connect" tag) is decoded via internal/wsc, and the
+//     application/vnd.bluetooth.{ep,le}.oob pairing records
+//     ("tap-to-pair" tag) via internal/btoob
 //   - External-type pass-through (TNF=4) with vendor:name field
 //   - raw payload
 //   - Empty / Absolute URI / Unknown / Unchanged record kinds
@@ -43,6 +45,7 @@ import (
 	"strings"
 	"unicode/utf16"
 
+	"github.com/xunholy/promptzero/internal/btoob"
 	"github.com/xunholy/promptzero/internal/wsc"
 )
 
@@ -273,6 +276,18 @@ func decodePayload(tnf int, typeStr string, payload []byte) map[string]any {
 		if typeStr == "application/vnd.wfa.wsc" {
 			if cred, err := wsc.Decode(payload); err == nil {
 				out["wsc"] = cred
+			}
+		}
+		// Bluetooth OOB pairing record ("tap-to-pair" tag): BR/EDR Easy
+		// Pairing and Bluetooth LE OOB carry the peer address + EIR.
+		switch typeStr {
+		case "application/vnd.bluetooth.ep.oob":
+			if oob, err := btoob.DecodeBREDR(payload); err == nil {
+				out["bluetooth_oob"] = oob
+			}
+		case "application/vnd.bluetooth.le.oob":
+			if oob, err := btoob.DecodeLE(payload); err == nil {
+				out["bluetooth_oob"] = oob
 			}
 		}
 		return out
