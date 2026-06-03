@@ -230,6 +230,104 @@ func TestFaultStatusNameTable(t *testing.T) {
 	}
 }
 
+// ntlmChallenge is a minimal NTLMSSP CHALLENGE (Type 2): signature +
+// type 2 + empty target-name + flags + 8-byte server challenge + reserved
+// + empty target-info.
+func ntlmChallenge() []byte {
+	b, _ := hex.DecodeString(
+		"4E544C4D53535000" + // "NTLMSSP\0"
+			"02000000" + //         MessageType = 2 (CHALLENGE)
+			"0000000000000000" + // TargetName len/maxlen/offset
+			"00000000" + //         NegotiateFlags
+			"1122334455667788" + // ServerChallenge
+			"0000000000000000" + // Reserved
+			"0000000000000000") //  TargetInfo len/maxlen/offset
+	return b
+}
+
+// secTrailer builds an 8-byte sec_trailer header (auth_type / auth_level /
+// pad_length / reserved / auth_context_id) followed by the auth_value.
+func secTrailer(authType, authLevel byte, authValue []byte) []byte {
+	t := []byte{authType, authLevel, 0, 0, 0, 0, 0, 0}
+	return append(t, authValue...)
+}
+
+// TestDecodeAuthTrailerNTLM pins the NTLMSSP auth_value decode chain: a
+// BIND_ACK carrying an NTLMSSP CHALLENGE in the sec_trailer auth_value.
+func TestDecodeAuthTrailerNTLM(t *testing.T) {
+	uuid := uuidBytes(0x12345678, 0x1234, 0xabcd,
+		[8]byte{0xef, 0x00, 0x01, 0x23, 0x45, 0x67, 0xcf, 0xfb})
+	body := bindBody(uuid, 1, 0)
+	authValue := ntlmChallenge()
+	trailer := secTrailer(0x0A, 0x06, authValue) // NTLMSSP, packet-privacy
+	full := append(append(dcerpcHeader(12, 0x03,
+		uint16(headerSize+len(body)+len(trailer)), uint16(len(authValue)), 7),
+		body...), trailer...)
+	r, err := Decode(hex.EncodeToString(full))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if r.AuthLength != len(authValue) {
+		t.Errorf("AuthLength: got %d want %d", r.AuthLength, len(authValue))
+	}
+	if r.AuthType != 0x0A || r.AuthTypeName != "NTLMSSP" {
+		t.Errorf("AuthType: got %d %q want 10 NTLMSSP", r.AuthType, r.AuthTypeName)
+	}
+	if r.AuthLevel != 0x06 {
+		t.Errorf("AuthLevel: got %d want 6", r.AuthLevel)
+	}
+	if r.NTLMMessage == nil {
+		t.Fatal("NTLMMessage not decoded from sec_trailer auth_value")
+	}
+	if r.NTLMMessage.MessageType != 2 {
+		t.Errorf("NTLM MessageType: got %d want 2 (CHALLENGE)",
+			r.NTLMMessage.MessageType)
+	}
+}
+
+// TestDecodeAuthTrailerSPNEGO pins that an NTLMSSP message wrapped in
+// SPNEGO/GSS framing (signature not at offset 0) is still located + decoded.
+func TestDecodeAuthTrailerSPNEGO(t *testing.T) {
+	authValue := append([]byte{0xA1, 0x82, 0x01, 0x00, 0x30}, ntlmChallenge()...)
+	trailer := secTrailer(0x09, 0x06, authValue) // SPNEGO
+	full := append(dcerpcHeader(19, 0x03,
+		uint16(headerSize+len(trailer)), uint16(len(authValue)), 8), trailer...)
+	r, err := Decode(hex.EncodeToString(full))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if r.PTypeName != "AUTH3" {
+		t.Errorf("PTypeName: got %q want AUTH3", r.PTypeName)
+	}
+	if r.AuthTypeName != "SPNEGO" {
+		t.Errorf("AuthTypeName: got %q want SPNEGO", r.AuthTypeName)
+	}
+	if r.NTLMMessage == nil || r.NTLMMessage.MessageType != 2 {
+		t.Fatalf("SPNEGO-wrapped NTLMSSP not decoded: %+v", r.NTLMMessage)
+	}
+}
+
+// TestDecodeAuthTrailerKerberos pins that a Kerberos (GSS) auth_value — no
+// NTLMSSP signature — surfaces the auth_type but leaves the token for
+// kerberos_decode rather than mis-decoding it.
+func TestDecodeAuthTrailerKerberos(t *testing.T) {
+	authValue := []byte{0x60, 0x82, 0x02, 0x00, 0x06, 0x09, 0x2A, 0x86} // GSS-API/Kerberos-ish
+	trailer := secTrailer(0x10, 0x06, authValue)                        // Kerberos (GSS)
+	full := append(dcerpcHeader(19, 0x03,
+		uint16(headerSize+len(trailer)), uint16(len(authValue)), 9), trailer...)
+	r, err := Decode(hex.EncodeToString(full))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if r.AuthTypeName != "Kerberos (GSS)" {
+		t.Errorf("AuthTypeName: got %q want Kerberos (GSS)", r.AuthTypeName)
+	}
+	if r.NTLMMessage != nil {
+		t.Errorf("Kerberos token must not be decoded as NTLM, got %+v",
+			r.NTLMMessage)
+	}
+}
+
 func TestDecodeRejectsEmpty(t *testing.T) {
 	if _, err := Decode(""); err == nil {
 		t.Fatal("want error for empty input")

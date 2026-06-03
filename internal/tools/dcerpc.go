@@ -87,7 +87,19 @@ var dcerpcDecodeSpec = Spec{
 		"nca_s_fault_out_of_resources / nca_s_fault_unspec_reject / " +
 		"nca_s_fault_invalid_pres_context_id / nca_s_fault_unsupported_" +
 		"type / RPC_X_BAD_STUB_DATA (0x6BD) / RPC_S_SERVER_UNAVAILABLE " +
-		"(0x6F7).\n\n" +
+		"(0x6F7).\n" +
+		"- **sec_trailer authentication trailer** (§2.2.2.11): when " +
+		"auth_length > 0 the last auth_length+8 bytes are the 8-byte " +
+		"sec_trailer header (auth_type / auth_level / pad_length / " +
+		"reserved / auth_context_id) + the auth_value token. Surfaces " +
+		"`auth_type` + `auth_type_name` (NTLMSSP / SPNEGO / Kerberos / " +
+		"NETLOGON / Schannel) + `auth_level`. When the auth_value carries " +
+		"an NTLMSSP message (found by the 8-byte `NTLMSSP\\0` signature, " +
+		"so SPNEGO-wrapped blobs work too) it is **decoded in place** as " +
+		"`ntlm_message` — the NTLM-over-RPC relay / Pass-the-Hash capture " +
+		"(server challenge, target-info AV pairs, domain / user / " +
+		"workstation). A Kerberos auth_value (no NTLMSSP signature) is " +
+		"left for kerberos_decode.\n\n" +
 		"Pure offline parser — operators paste DCE/RPC bytes (the TCP-" +
 		"segment payload as hex; default ports TCP/135 EPM + TCP/49152+ " +
 		"ephemeral; OR the SMB2 named-pipe payload after smb2_decode " +
@@ -101,11 +113,11 @@ var dcerpcDecodeSpec = Spec{
 		"but does NOT decode the parameters); DCOM ORPCTHIS / ORPCTHAT " +
 		"(extra header onto DCE/RPC requests for the OXID/OID/IPID DCOM " +
 		"addressing layer); connectionless DCE/RPC (UDP/135 — different " +
-		"PTYPE values, rarely seen in modern Windows AD); sec_trailer " +
-		"parsing (when auth_length > 0 the last auth_length+8 bytes carry " +
-		"the auth trailer; surfaced as auth_length only; per-mechanism " +
-		"NTLM / Kerberos / Negotiate auth_value decode handled by " +
-		"ntlm_decode / kerberos_decode); interface-specific opnum name " +
+		"PTYPE values, rarely seen in modern Windows AD); non-NTLMSSP " +
+		"auth_value bodies (a Kerberos AP-REQ or Schannel TLS record in " +
+		"the sec_trailer surfaces auth_type / auth_level but its token " +
+		"body is left for kerberos_decode — only the NTLMSSP mechanism is " +
+		"decoded in place); interface-specific opnum name " +
 		"tables (per-interface opnum-to-function name mapping is out of " +
 		"scope — 1000+ interfaces with 30+ opnums each).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (Windows-protocol " +

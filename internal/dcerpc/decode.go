@@ -88,9 +88,10 @@
 //	representation is byte-order-flagged via drep[0] (bit 4
 //	= little-endian; Windows is always LE on the wire).
 //	BIND / REQUEST / FAULT body decoding is straightforward.
-//	NDR parameter marshalling, IDL interface inner-decode,
-//	DCOM ORPCTHIS chains, and sec_trailer parsing beyond
-//	auth-length surfacing are out of scope.
+//	The sec_trailer (auth_type / auth_level + NTLMSSP
+//	auth_value) is parsed in place; NDR parameter marshalling,
+//	IDL interface inner-decode, and DCOM ORPCTHIS chains are
+//	out of scope.
 //
 // What this package covers
 //
@@ -155,6 +156,21 @@
 //     `nca_s_fault_unsupported_type` / 0x6BD `RPC_X_BAD_STUB
 //     _DATA` / 0x6F7 `RPC_S_SERVER_UNAVAILABLE`.
 //
+//   - **sec_trailer authentication trailer** ([MS-RPCE]
+//     §2.2.2.11) — when auth_length > 0 the last
+//     `auth_length + 8` bytes are the 8-byte sec_trailer
+//     header (auth_type / auth_level / pad_length / reserved
+//     / auth_context_id) followed by the auth_value token.
+//     auth_type is named (NTLMSSP / SPNEGO / Kerberos /
+//     NETLOGON / Schannel). When the auth_value carries an
+//     NTLMSSP message — located by the 8-byte `NTLMSSP\0`
+//     signature, so SPNEGO-wrapped blobs are handled too — it
+//     is **decoded in place** as `ntlm_message` (the
+//     NTLM-over-RPC relay / Pass-the-Hash capture path; the
+//     drsuapi / netlogon CHALLENGE carries the server
+//     challenge + target-info AV pairs). A Kerberos auth_value
+//     (no NTLMSSP signature) is left for kerberos_decode.
+//
 // What this package does NOT cover (deliberately out of scope)
 //
 //   - **NDR (Network Data Representation) parameter
@@ -171,12 +187,11 @@
 //     focuses on connection-oriented DCE/RPC (TCP); the
 //     CL variant uses different PTYPE values and is rarely
 //     seen in modern Windows AD environments.
-//   - **sec_trailer parsing** — when auth_length > 0, the
-//     last `auth_length + 8` bytes of the fragment carry an
-//     authentication trailer (sec_trailer + auth_value).
-//     Surfaced as `auth_length` only; per-mechanism (NTLM /
-//     Kerberos / Negotiate) auth_value decode is handled by
-//     ntlm_decode / kerberos_decode.
+//   - **Kerberos / Schannel auth_value bodies** — a
+//     non-NTLMSSP auth_value (Kerberos AP-REQ, Schannel TLS
+//     record) surfaces auth_type / auth_level but its token
+//     body is left for kerberos_decode; only the NTLMSSP
+//     mechanism is decoded in place.
 //   - **Interface-specific opnum name tables** — the
 //     decoder surfaces the raw opnum integer; per-interface
 //     opnum-to-function name mapping (netlogon opnum 30 =
@@ -186,10 +201,13 @@
 package dcerpc
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ntlm"
 )
 
 const headerSize = 16
@@ -227,6 +245,15 @@ type Result struct {
 	// FAULT body
 	FaultStatus     uint32 `json:"fault_status,omitempty"`
 	FaultStatusName string `json:"fault_status_name,omitempty"`
+
+	// sec_trailer (when auth_length > 0)
+	AuthType     int    `json:"auth_type,omitempty"`
+	AuthTypeName string `json:"auth_type_name,omitempty"`
+	AuthLevel    int    `json:"auth_level,omitempty"`
+	// NTLMMessage is the decoded NTLMSSP auth_value (NEGOTIATE in a bind,
+	// CHALLENGE in a bind_ack, AUTHENTICATE in an auth3 / alter_context),
+	// when the auth_value carries one.
+	NTLMMessage *ntlm.Result `json:"ntlm_message,omitempty"`
 }
 
 // Decode parses a DCE/RPC message from a hex string.
@@ -276,7 +303,55 @@ func Decode(hexStr string) (*Result, error) {
 	case 3:
 		decodeFaultBody(r, body, bo)
 	}
+	decodeAuthTrailer(r, b)
 	return r, nil
+}
+
+// decodeAuthTrailer parses the DCE/RPC authentication trailer present when
+// auth_length > 0: the last auth_length+8 bytes are the 8-byte sec_trailer
+// header (auth_type / auth_level / pad_length / reserved / context_id)
+// followed by the auth_length-byte auth_value (the security mechanism's
+// token). When the auth_value carries an NTLMSSP message — located by the
+// 8-byte "NTLMSSP\0" signature, so it does not depend on the SPNEGO/auth_type
+// framing — it is decoded in place via internal/ntlm. A Kerberos auth_value
+// (no NTLMSSP signature) is left for kerberos_decode.
+func decodeAuthTrailer(r *Result, b []byte) {
+	if r.AuthLength <= 0 {
+		return
+	}
+	if len(b) < r.AuthLength+8 {
+		return
+	}
+	trailer := b[len(b)-r.AuthLength-8:]
+	r.AuthType = int(trailer[0])
+	r.AuthTypeName = authTypeName(trailer[0])
+	r.AuthLevel = int(trailer[1])
+	authValue := b[len(b)-r.AuthLength:]
+	if idx := bytes.Index(authValue, []byte("NTLMSSP\x00")); idx >= 0 {
+		if msg, err := ntlm.Decode(hex.EncodeToString(authValue[idx:])); err == nil {
+			r.NTLMMessage = msg
+		}
+	}
+}
+
+// authTypeName names the well-known DCE/RPC authentication services
+// (MS-RPCE 2.2.1.1.7). Values outside this set are surfaced numerically.
+func authTypeName(t byte) string {
+	switch t {
+	case 0x00:
+		return "None"
+	case 0x09:
+		return "SPNEGO"
+	case 0x0A:
+		return "NTLMSSP"
+	case 0x10:
+		return "Kerberos (GSS)"
+	case 0x44:
+		return "NETLOGON"
+	case 0x68:
+		return "Schannel (GSS)"
+	}
+	return ""
 }
 
 func decodeBindBody(r *Result, body []byte, bo binary.ByteOrder) {
