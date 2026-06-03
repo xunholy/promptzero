@@ -129,6 +129,11 @@ var toolLevels = func() map[string]Level {
 		// bit-field parse of an operator-supplied word; transmits
 		// nothing, so it is Low.
 		"t5577_config_decode",
+		// NTAG21x (NTAG213/215/216) configuration-page decode
+		// (password protection / lock / NFC counter / mirror). Offline
+		// deterministic bit-field parse of operator-supplied pages;
+		// transmits nothing, so it is Low.
+		"ntag_config_decode",
 		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
 		// from a reader/skimmer dump). Offline deterministic decode of
 		// an operator-supplied string, Luhn-anchored; transmits

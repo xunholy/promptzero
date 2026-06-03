@@ -2094,7 +2094,10 @@ func TestRegistrySize(t *testing.T) {
 	// decode — modulation / bit rate / max block / AOR / PWD / ST; bit layout +
 	// modulation table verified vs Proxmark3 + EM4100 0x00148040 & HID 0x00107060
 	// config words. internal/t55xx).
-	const expected = 511
+	// v0.466.0 added ntag_config_decode (NTAG213/215/216 config-page decode —
+	// AUTH0 / ACCESS (PROT/CFGLCK/NFC_CNT/AUTHLIM) / MIRROR; layout verified
+	// byte-for-byte vs the NXP NTAG213/215/216 data sheet §8.5.7. internal/ntag).
+	const expected = 512
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
