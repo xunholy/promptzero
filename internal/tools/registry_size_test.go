@@ -2049,6 +2049,8 @@ func TestRegistrySize(t *testing.T) {
 	// recommended modern hash. Wrap of x/crypto/argon2 (already a dep; native
 	// infeasible — memory-hard BLAKE2b), our own PHC parse/encode, gated against
 	// argon2-cffi reference vectors. hash_crack also gained the 'argon2' algo.)
+	// (v0.452 added no tool — jwt_verify completed asymmetric coverage: PS*/ES*/
+	// EdDSA via jwtsig.VerifyPublicKey, round-trip-verified vs the stdlib signers.)
 	const expected = 500
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

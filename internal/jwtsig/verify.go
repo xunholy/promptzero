@@ -22,9 +22,9 @@
 // # Covered / deferred
 //
 // Covered: HS256 / HS384 / HS512 verification and the alg:none / asymmetric
-// classifications. RS*/ES*/PS*/EdDSA public-key verification and JWE
-// decryption are deliberately deferred (they need a key/cert, a different
-// input than a shared secret).
+// classifications. Public-key verification — RS*/PS* (RSA), ES* (ECDSA) and
+// EdDSA (Ed25519) — lives in VerifyPublicKey (verify_asym.go), which takes a
+// PEM key/cert rather than a shared secret. JWE decryption remains out of scope.
 package jwtsig
 
 import (
