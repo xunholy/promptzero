@@ -77,9 +77,10 @@ var dtlsRecordDecodeSpec = Spec{
 		"records (RFC 9147 §4 — ultra-compact 8-bit-tag variant; future Spec); full " +
 		"TLS extension dissection (SNI / ALPN / supported_groups / signature_" +
 		"algorithms / key_share — extension bodies surfaced as hex; the catalogue is " +
-		"in `tls_handshake_decode`); X.509 certificate decoding inside Certificate " +
-		"handshake messages (surfaced as hex; `x509_certificate_decode` can be fed " +
-		"each ASN.1 cert blob); UDP / IP framing.\n\n" +
+		"in `tls_handshake_decode`); UDP / IP framing.\n\n" +
+		"The Certificate handshake message is decoded: each DER cert in the chain is " +
+		"run through the X.509 decoder (subject / issuer / validity / SAN / " +
+		"fingerprints), when the handshake message is unfragmented.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (foundational security protocol — " +
 		"DTLS is the UDP equivalent of TLS, used by WebRTC / OpenVPN / CoAP / IoT " +
 		"deployments). Wrap-vs-native: native — both DTLS RFCs are fully public; " +

@@ -140,10 +140,6 @@
 //     for cleartext TCP records; the same table would apply
 //     once cleartext bytes have been extracted from DTLS.
 //
-//   - X.509 certificate decoding inside Certificate handshake
-//     messages — surfaced as hex; `x509_certificate_decode`
-//     can be fed each ASN.1 cert blob.
-//
 //   - UDP / IP framing — feed the UDP payload bytes.
 package dtls
 
@@ -152,6 +148,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/x509decode"
 )
 
 // Result is the top-level decoded view.
@@ -196,6 +194,26 @@ type Handshake struct {
 	ClientHello        *ClientHello        `json:"client_hello,omitempty"`
 	ServerHello        *ServerHello        `json:"server_hello,omitempty"`
 	HelloVerifyRequest *HelloVerifyRequest `json:"hello_verify_request,omitempty"`
+	Certificate        *Certificate        `json:"certificate,omitempty"`
+}
+
+// Certificate is a decoded DTLS Certificate handshake message. Its body uses
+// the same layout as TLS 1.2 (a 3-byte certificate_list length followed by
+// 3-byte-length-prefixed DER certificates); each DER certificate is decoded
+// via internal/x509decode. Only attempted on an unfragmented handshake
+// message (the dispatch above returns early when IsFragmented).
+type Certificate struct {
+	CertificateCount int          `json:"certificate_count"`
+	Certificates     []*CertEntry `json:"certificates,omitempty"`
+	Notes            []string     `json:"notes,omitempty"`
+}
+
+// CertEntry is one certificate from the chain, decoded via internal/x509decode.
+type CertEntry struct {
+	Length      int                     `json:"length"`
+	Certificate *x509decode.Certificate `json:"x509,omitempty"`
+	DERHex      string                  `json:"der_hex,omitempty"`
+	DecodeError string                  `json:"decode_error,omitempty"`
 }
 
 // ClientHello body fields.
@@ -442,8 +460,51 @@ func decodeHandshake(frag []byte) (*Handshake, error) {
 		h.ServerHello = decodeServerHello(body)
 	case 3:
 		h.HelloVerifyRequest = decodeHelloVerifyRequest(body)
+	case 11:
+		h.Certificate = decodeCertificate(body)
 	}
 	return h, nil
+}
+
+// decodeCertificate parses a DTLS Certificate handshake body (same layout as
+// TLS 1.2: a 3-byte certificate_list length + 3-byte-length-prefixed DER
+// certificates) and decodes each certificate via internal/x509decode. A body
+// whose certificate_list length does not match is reported with a note rather
+// than mis-parsed; a certificate whose DER fails to parse is surfaced raw with
+// a decode_error.
+func decodeCertificate(body []byte) *Certificate {
+	m := &Certificate{}
+	if len(body) < 3 {
+		m.Notes = append(m.Notes, "Certificate message too short for a certificate_list length")
+		return m
+	}
+	listLen := int(body[0])<<16 | int(body[1])<<8 | int(body[2])
+	if 3+listLen != len(body) {
+		m.Notes = append(m.Notes,
+			fmt.Sprintf("certificate_list length %d does not match the %d-byte body", listLen, len(body)-3))
+		return m
+	}
+	off := 3
+	for off+3 <= len(body) {
+		cl := int(body[off])<<16 | int(body[off+1])<<8 | int(body[off+2])
+		off += 3
+		if off+cl > len(body) {
+			m.Notes = append(m.Notes, fmt.Sprintf("certificate length %d at offset %d overruns the body", cl, off-3))
+			break
+		}
+		der := body[off : off+cl]
+		off += cl
+		entry := &CertEntry{Length: cl}
+		if c, err := x509decode.Decode(hex.EncodeToString(der)); err == nil {
+			entry.Certificate = c
+		} else {
+			entry.DecodeError = err.Error()
+			entry.DERHex = strings.ToUpper(hex.EncodeToString(der))
+		}
+		m.Certificates = append(m.Certificates, entry)
+	}
+	m.CertificateCount = len(m.Certificates)
+	return m
 }
 
 func decodeClientHello(b []byte) *ClientHello {
