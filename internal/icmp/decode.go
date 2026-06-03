@@ -56,10 +56,15 @@
 //     correlates request/reply pairs.
 //
 //   - Destination Unreachable / Time Exceeded / Parameter
-//     Problem (v4 type 3/11/12): "unused" field surfaced as
-//     hex; the embedded original-IP+8-bytes-of-payload is
-//     surfaced as hex for the operator to feed back into
-//     `ip_packet_decode`.
+//     Problem (v4 type 3/11/12; plus v6 Destination Unreachable
+//     type 1 and Time Exceeded type 3): "unused" field surfaced
+//     as hex; the embedded original IP packet (the IP header + at
+//     least the first 8 bytes of its payload that the error
+//     quotes) is decoded in place via internal/ipdecode — so the
+//     offending flow's addresses, protocol and (for UDP, or a
+//     long-enough TCP quote) ports are surfaced directly. A quote
+//     that does not parse as IP is reported with an error and the
+//     raw hex is preserved.
 //
 //   - Redirect (v4 type 5): Gateway IPv4 address + embedded
 //     original packet.
@@ -101,6 +106,8 @@ import (
 	"fmt"
 	"net"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the top-level decoded view.
@@ -139,20 +146,26 @@ type Echo struct {
 // 32-bit field plus the embedded original IP header + 8 bytes
 // of payload (per RFC 792 §3).
 type EmbeddedPacket struct {
-	UnusedHex           string `json:"unused_hex"`
-	EmbeddedOriginalHex string `json:"embedded_original_ip_packet_hex"`
+	UnusedHex           string           `json:"unused_hex"`
+	EmbeddedOriginalHex string           `json:"embedded_original_ip_packet_hex"`
+	EmbeddedDecoded     *ipdecode.Packet `json:"embedded_decoded,omitempty"`
+	EmbeddedDecodeError string           `json:"embedded_decode_error,omitempty"`
 }
 
 // RedirectV4 is ICMPv4 Redirect (type 5).
 type RedirectV4 struct {
-	GatewayIP           string `json:"gateway_ip"`
-	EmbeddedOriginalHex string `json:"embedded_original_ip_packet_hex"`
+	GatewayIP           string           `json:"gateway_ip"`
+	EmbeddedOriginalHex string           `json:"embedded_original_ip_packet_hex"`
+	EmbeddedDecoded     *ipdecode.Packet `json:"embedded_decoded,omitempty"`
+	EmbeddedDecodeError string           `json:"embedded_decode_error,omitempty"`
 }
 
 // PacketTooBig is ICMPv6 type 2.
 type PacketTooBig struct {
-	MTU                 uint32 `json:"mtu"`
-	EmbeddedOriginalHex string `json:"embedded_original_ip_packet_hex,omitempty"`
+	MTU                 uint32           `json:"mtu"`
+	EmbeddedOriginalHex string           `json:"embedded_original_ip_packet_hex,omitempty"`
+	EmbeddedDecoded     *ipdecode.Packet `json:"embedded_decoded,omitempty"`
+	EmbeddedDecodeError string           `json:"embedded_decode_error,omitempty"`
 }
 
 // NDPNeighbor is Neighbor Solicit / Advertise (v6 type 135 / 136).
@@ -232,12 +245,18 @@ func Decode(hexStr, version string) (*Result, error) {
 		r.TimeExceeded = decodeEmbedded(body)
 	case r.Version == "v4" && r.Type == 12:
 		r.ParameterProblem = decodeEmbedded(body)
+	case r.Version == "v6" && r.Type == 1: // Dest Unreachable (v6)
+		r.DestUnreachable = decodeEmbedded(body)
+	case r.Version == "v6" && r.Type == 3: // Time Exceeded (v6)
+		r.TimeExceeded = decodeEmbedded(body)
 	case r.Version == "v4" && r.Type == 5: // Redirect
 		if len(body) >= 4 {
-			r.Redirect = &RedirectV4{
+			rd := &RedirectV4{
 				GatewayIP:           ipv4String(body[0:4]),
 				EmbeddedOriginalHex: strings.ToUpper(hex.EncodeToString(body[4:])),
 			}
+			rd.EmbeddedDecoded, rd.EmbeddedDecodeError = decodeInnerPacket(body[4:])
+			r.Redirect = rd
 		}
 	case r.Version == "v6" && r.Type == 2: // Packet Too Big
 		if len(body) >= 4 {
@@ -246,6 +265,7 @@ func Decode(hexStr, version string) (*Result, error) {
 			}
 			if len(body) > 4 {
 				p.EmbeddedOriginalHex = strings.ToUpper(hex.EncodeToString(body[4:]))
+				p.EmbeddedDecoded, p.EmbeddedDecodeError = decodeInnerPacket(body[4:])
 			}
 			r.PacketTooBig = p
 		}
@@ -299,10 +319,28 @@ func decodeEmbedded(b []byte) *EmbeddedPacket {
 	if len(b) < 4 {
 		return nil
 	}
-	return &EmbeddedPacket{
+	ep := &EmbeddedPacket{
 		UnusedHex:           strings.ToUpper(hex.EncodeToString(b[0:4])),
 		EmbeddedOriginalHex: strings.ToUpper(hex.EncodeToString(b[4:])),
 	}
+	ep.EmbeddedDecoded, ep.EmbeddedDecodeError = decodeInnerPacket(b[4:])
+	return ep
+}
+
+// decodeInnerPacket decodes the IP packet quoted inside an ICMP error message
+// via internal/ipdecode. The quote is truncated (the original IP header + at
+// least the first 8 bytes of its payload), so the IP layer and a UDP header
+// decode fully while a TCP header degrades gracefully; a decode failure is
+// returned as a message rather than asserted — no confidently-wrong output.
+func decodeInnerPacket(b []byte) (*ipdecode.Packet, string) {
+	if len(b) == 0 {
+		return nil, ""
+	}
+	pkt, err := ipdecode.DecodeBytes(b)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return pkt, ""
 }
 
 func decodeRouterAdv(b []byte) *NDPRouterAdv {

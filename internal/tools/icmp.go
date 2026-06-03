@@ -52,7 +52,10 @@ var icmpPacketDecodeSpec = Spec{
 		"`ping` correlates request/reply pairs.\n" +
 		"  - **Destination Unreachable / Time Exceeded / Parameter Problem** (v4): " +
 		"'unused' field + embedded original IP packet (header + 8 bytes of payload) " +
-		"surfaced as hex for re-feed into `ip_packet_decode`.\n" +
+		"decoded in place via the IP decoder (the offending flow's addresses / protocol / " +
+		"ports; a quote that doesn't parse as IP is reported with an error, raw hex " +
+		"preserved). Now also covers v6 Destination Unreachable (type 1) / Time " +
+		"Exceeded (type 3).\n" +
 		"  - **Redirect** (v4 type 5): Gateway IPv4 address + embedded original " +
 		"packet.\n" +
 		"  - **Packet Too Big** (v6 type 2): MTU (uint32) + embedded original IPv6 " +
