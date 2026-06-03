@@ -655,6 +655,12 @@ var toolLevels = func() map[string]Level {
 		"jwt_decode",
 		"jwt_verify",
 		"jwt_forge",
+		// Flask/itsdangerous session cookie decode / verify / forge —
+		// the web analogue of the JWT trio. Offline compute over
+		// operator-supplied strings (decode is signed-not-encrypted,
+		// verify is a constant-time secret test, forge is an offline
+		// payload builder like jwt_forge); transmits nothing, so Low.
+		"flask_session",
 		// JWK/JWKS -> PEM converter (the /.well-known/jwks.json form
 		// into the PEM jwt_verify wants). Offline JSON->PEM transform,
 		// transmits nothing, so it is Low.

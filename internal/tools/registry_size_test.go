@@ -2060,7 +2060,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.455.0 added nfc_iso15693_decode (ISO 15693 vicinity-card UID + AFI decode
 	// — the second major HF NFC standard; 0xE0-prefix-anchored, manufacturer from
 	// the shared ISO 7816-6 table. internal/iso15693).
-	const expected = 503
+	// v0.456.0 added flask_session (Flask/itsdangerous session cookie decode /
+	// verify / forge — the web analogue of the JWT trio, the flask-unsign
+	// weak-SECRET_KEY attack. Verified byte-for-byte vs itsdangerous. internal/flasksession).
+	const expected = 504
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
