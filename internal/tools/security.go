@@ -64,6 +64,7 @@ import (
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/unixcrypt"
+	"github.com/xunholy/promptzero/internal/webpass"
 	"github.com/xunholy/promptzero/internal/wordlists"
 )
 
@@ -302,8 +303,9 @@ var hashCrackDictionarySpec = Spec{
 		"mysql (mysql_native_password / MySQL4.1+), and the crypt(3) family — " +
 		"md5crypt $1$ / apr1 / sha256crypt $5$ / sha512crypt $6$, i.e. modern Linux " +
 		"/etc/shadow — via the 'crypt' algorithm, which auto-detects the scheme from " +
-		"the hash prefix; and argon2 ($argon2id/$argon2i), memory-hard so workers are " +
-		"capped). No GPU, no rules engine. Reads the wordlist as a stream " +
+		"the hash prefix; argon2 ($argon2id/$argon2i), memory-hard so workers are " +
+		"capped; and django (pbkdf2_sha256$…) / werkzeug (pbkdf2:sha256:…) Python " +
+		"web-app password hashes). No GPU, no rules engine. Reads the wordlist as a stream " +
 		"(memory-efficient for large files such as rockyou.txt). Use hash_identify first " +
 		"to determine the algorithm. Supported wordlists: operator-provided file path, or " +
 		"'promptzero://wordlists/passwords.txt' for the built-in list.",
@@ -314,8 +316,8 @@ var hashCrackDictionarySpec = Spec{
 				"description":"Hash strings to crack"},
 			"algorithm":{"type":"string","enum":[
 				"md5","sha1","sha256","sha512","ntlm","bcrypt",
-				"mysql","crypt","md5crypt","apr1","sha256crypt","sha512crypt","argon2"],
-				"description":"Hash algorithm (output of hash_identify). Use 'crypt' for any $1$/$apr1$/$5$/$6$ shadow hash (auto-detected); 'mysql' for mysql_native_password; 'argon2' for $argon2id$/$argon2i$ (memory-hard, slow)."},
+				"mysql","crypt","md5crypt","apr1","sha256crypt","sha512crypt","argon2","django","werkzeug"],
+				"description":"Hash algorithm (output of hash_identify). Use 'crypt' for any $1$/$apr1$/$5$/$6$ shadow hash (auto-detected); 'mysql' for mysql_native_password; 'argon2' for $argon2id$/$argon2i$; 'django' (pbkdf2_sha256$…) / 'werkzeug' (pbkdf2:sha256:…) for Python web-app password DBs (high-iteration, slow)."},
 			"wordlist":{"type":"string",
 				"description":"Path to a newline-separated wordlist file, or 'promptzero://wordlists/passwords.txt' for the built-in list"},
 			"max_words":{"type":"integer","minimum":0,
@@ -375,7 +377,7 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 
 	algo := strings.ToLower(strings.TrimSpace(str(p, "algorithm")))
 	if !isSupportedAlgo(algo) {
-		return "", fmt.Errorf("hash_crack_dictionary: unsupported algorithm %q; supported: md5 sha1 sha256 sha512 ntlm bcrypt mysql crypt (md5crypt/apr1/sha256crypt/sha512crypt) argon2", algo)
+		return "", fmt.Errorf("hash_crack_dictionary: unsupported algorithm %q; supported: md5 sha1 sha256 sha512 ntlm bcrypt mysql crypt (md5crypt/apr1/sha256crypt/sha512crypt) argon2 django werkzeug", algo)
 	}
 
 	wordlistPath := strings.TrimSpace(str(p, "wordlist"))
@@ -386,10 +388,14 @@ func hashCrackDictionaryHandler(ctx context.Context, _ *Deps, p map[string]any) 
 	maxWords := intOr(p, "max_words", 0)
 	timeoutMS := intOr(p, "timeout_ms", 60000)
 	workers := intOr(p, "workers", runtime.NumCPU())
-	if (algo == "bcrypt" || algo == "argon2") && workers > 4 {
-		// bcrypt is slow; argon2 is memory-hard (each attempt allocates the
-		// hash's m= KiB) — cap parallelism to avoid CPU/RAM saturation.
-		workers = 4
+	switch algo {
+	case "bcrypt", "argon2", "django", "werkzeug":
+		// bcrypt / argon2 / high-iteration PBKDF2 (Django defaults to ~1.2M
+		// iterations) are deliberately slow — cap parallelism to avoid
+		// CPU/RAM saturation.
+		if workers > 4 {
+			workers = 4
+		}
 	}
 	if workers < 1 {
 		workers = 1
@@ -580,7 +586,7 @@ func isSupportedAlgo(algo string) bool {
 	switch algo {
 	case "md5", "sha1", "sha256", "sha512", "ntlm", "bcrypt",
 		"mysql", "crypt", "md5crypt", "apr1", "sha256crypt", "sha512crypt",
-		"argon2":
+		"argon2", "django", "werkzeug":
 		return true
 	}
 	return false
@@ -640,6 +646,12 @@ func checkHash(algo, word, lowerHash, origHash string) bool {
 		// Argon2 (argon2id/argon2i): parse the PHC params from the hash and
 		// recompute via x/crypto/argon2. origHash is the case-sensitive PHC string.
 		ok, _ := verifyArgon2(word, origHash)
+		return ok
+
+	case "django", "werkzeug":
+		// Django (pbkdf2_sha256$…) / Werkzeug (pbkdf2:sha256:…) password hashes —
+		// PBKDF2-HMAC, framework auto-detected from origHash (case-sensitive).
+		ok, _ := webpass.Verify(origHash, word)
 		return ok
 	}
 	return false

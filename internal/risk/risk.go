@@ -661,6 +661,10 @@ var toolLevels = func() map[string]Level {
 		// verify is a constant-time secret test, forge is an offline
 		// payload builder like jwt_forge); transmits nothing, so Low.
 		"flask_session",
+		// Django / Werkzeug PBKDF2 password hash verify + compute
+		// (Python web-app user DBs). Offline crypto compute /
+		// constant-time verify; transmits nothing, so it is Low.
+		"pbkdf2_password",
 		// JWK/JWKS -> PEM converter (the /.well-known/jwks.json form
 		// into the PEM jwt_verify wants). Offline JSON->PEM transform,
 		// transmits nothing, so it is Low.

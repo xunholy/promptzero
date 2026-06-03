@@ -1104,3 +1104,39 @@ func TestHashCrack_Argon2(t *testing.T) {
 		t.Errorf("plaintext = %v, want password", entry["plaintext"])
 	}
 }
+
+// TestHashCrack_Django cracks a Django pbkdf2_sha256 hash (reference Django
+// library hash for "password") via the django dictionary mode.
+func TestHashCrack_Django(t *testing.T) {
+	const h = "pbkdf2_sha256$1200000$saltsalt$ixcAVOgO1rOjuLHwUbM7+4k4ePLglGvBvsA2GWsip3Y="
+	wl := writeTempWordlist(t, "wrong", "password", "other")
+	out, err := invokeSpec(t, "hash_crack_dictionary", map[string]any{
+		"hashes": []any{h}, "algorithm": "django", "wordlist": wl,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := mustJSON(t, out)
+	cracked, _ := m["cracked"].([]any)
+	if len(cracked) != 1 {
+		t.Fatalf("django crack = %d, want 1; out: %s", len(cracked), out)
+	}
+	if e, _ := cracked[0].(map[string]any); e["plaintext"] != "password" {
+		t.Errorf("plaintext = %v, want password", e["plaintext"])
+	}
+}
+
+// TestHashCrack_Werkzeug cracks a Werkzeug pbkdf2:sha256 hash via the werkzeug mode.
+func TestHashCrack_Werkzeug(t *testing.T) {
+	const h = "pbkdf2:sha256:600000$AIev4LSg$7a3fee5aaefe578e6195d2c3c82400f06e48e980e4eb613e3c695c639124cff0"
+	wl := writeTempWordlist(t, "wrong", "password", "other")
+	out, err := invokeSpec(t, "hash_crack_dictionary", map[string]any{
+		"hashes": []any{h}, "algorithm": "werkzeug", "wordlist": wl,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cracked, _ := mustJSON(t, out)["cracked"].([]any); len(cracked) != 1 {
+		t.Fatalf("werkzeug crack = %d, want 1; out: %s", len(cracked), out)
+	}
+}

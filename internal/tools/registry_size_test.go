@@ -2063,7 +2063,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.456.0 added flask_session (Flask/itsdangerous session cookie decode /
 	// verify / forge — the web analogue of the JWT trio, the flask-unsign
 	// weak-SECRET_KEY attack. Verified byte-for-byte vs itsdangerous. internal/flasksession).
-	const expected = 504
+	// v0.457.0 added pbkdf2_password (Django pbkdf2_sha256$ / Werkzeug pbkdf2:sha256:
+	// password verify + compute — Python web-app user DBs. hash_crack also gained
+	// 'django'/'werkzeug' modes. Verified vs Django/Werkzeug. internal/webpass).
+	const expected = 505
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
