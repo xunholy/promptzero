@@ -70,9 +70,14 @@
 //     (RFC 2784)' for V=0 or 'PPTP Enhanced GRE (RFC 2637)'
 //     for V=1.
 //
-//   - **Encapsulated payload bytes** are surfaced as hex with
-//     a header-offset hint for the operator to feed into the
-//     appropriate downstream decoder.
+//   - **Encapsulated payload bytes** are surfaced as hex. When the
+//     protocol type marks the payload as IPv4 (0x0800) or IPv6
+//     (0x86DD), the inner packet is decoded in place via
+//     internal/ipdecode, so the tunnelled flow's addresses /
+//     protocol / ports surface directly (a payload that does not
+//     parse as IP is reported with an error and left as hex). Other
+//     payload kinds (Transparent Ethernet, PPP, MPLS, …) are left as
+//     hex for the appropriate downstream decoder.
 //
 // What this package does NOT cover (deliberately out of scope)
 //
@@ -97,6 +102,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the top-level decoded view.
@@ -126,11 +133,13 @@ type Result struct {
 	PPTPPayloadLen *uint16 `json:"pptp_payload_length,omitempty"`
 	PPTPCallID     *uint16 `json:"pptp_call_id,omitempty"`
 
-	HeaderBytes   int      `json:"header_bytes"`
-	PayloadLength int      `json:"payload_length"`
-	PayloadHex    string   `json:"payload_hex,omitempty"`
-	TotalBytes    int      `json:"total_bytes"`
-	Notes         []string `json:"notes,omitempty"`
+	HeaderBytes      int              `json:"header_bytes"`
+	PayloadLength    int              `json:"payload_length"`
+	PayloadHex       string           `json:"payload_hex,omitempty"`
+	InnerPacket      *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError string           `json:"inner_decode_error,omitempty"`
+	TotalBytes       int              `json:"total_bytes"`
+	Notes            []string         `json:"notes,omitempty"`
 }
 
 // Decode parses a GRE packet from hex.
@@ -242,6 +251,18 @@ func Decode(hexStr string) (*Result, error) {
 			r.PayloadHex = strings.ToUpper(hex.EncodeToString(payload[:256])) + "..."
 		} else {
 			r.PayloadHex = strings.ToUpper(hex.EncodeToString(payload))
+		}
+		// When the protocol type marks the encapsulated payload as IP,
+		// decode it in place via internal/ipdecode so the inner flow's
+		// addresses / protocol / ports surface directly. Other payload
+		// kinds (Transparent Ethernet, PPP, MPLS, …) are left as hex —
+		// no confidently-wrong output.
+		if r.ProtocolType == 0x0800 || r.ProtocolType == 0x86DD {
+			if pkt, err := ipdecode.DecodeBytes(payload); err == nil {
+				r.InnerPacket = pkt
+			} else {
+				r.InnerDecodeError = err.Error()
+			}
 		}
 	}
 	return r, nil

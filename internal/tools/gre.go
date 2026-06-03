@@ -59,19 +59,19 @@ var greDecodeSpec = Spec{
 		"V=0 or 'PPTP Enhanced GRE (RFC 2637)' for V=1.\n" +
 		"- **Deprecation notes** — surfaces a Note when R (Routing Present) or s " +
 		"(Strict Source Route) is set, flagging the RFC 1701 deprecation.\n" +
-		"- **Encapsulated payload bytes** are surfaced as hex with a header-bytes " +
-		"hint, so operators can pipe the post-GRE bytes to the appropriate decoder " +
-		"(`ip_packet_decode` for IPv4/IPv6, a future Ethernet decoder for TEB " +
-		"payloads, `arp_decode` for ARP, etc.).\n\n" +
+		"- **Encapsulated payload bytes** are surfaced as hex; when the protocol type " +
+		"marks the payload as IPv4 (0x0800) or IPv6 (0x86DD) the inner packet is " +
+		"**decoded in place** (the tunnelled flow's addresses / protocol / ports; a " +
+		"payload that doesn't parse as IP is reported with an error, raw hex preserved). " +
+		"Other payload kinds (Transparent Ethernet, ARP, MPLS, …) are left as hex.\n\n" +
 		"Pure offline parser — operators paste IP-payload bytes (IP protocol number " +
 		"47 in the outer IP header) from a `tcpdump -X proto 47` line, a Wireshark " +
 		"Follow-IP-Stream view, a Cisco IOS `debug tunnel` trace, an OpenStack " +
 		"Octavia HM-tunnel capture, or any GRE-emitting tool and get the documented " +
 		"header plus encapsulated protocol identification.\n\n" +
 		"Out of scope (deferred): IP framing (feed the IP-payload bytes after the " +
-		"outer IPv4 / IPv6 header strip — IP protocol number 47 for GRE); inner " +
-		"payload decoding (operators pipe the post-GRE bytes to `ip_packet_decode`, " +
-		"a future Ethernet decoder for TEB payloads, etc.); Routing field (R bit) " +
+		"outer IPv4 / IPv6 header strip — IP protocol number 47 for GRE); non-IP inner " +
+		"payloads (Transparent Ethernet for a future Ethernet decoder, etc.); Routing field (R bit) " +
 		"body (the RFC 1701 routing entries are deprecated and we only surface the " +
 		"Checksum + Offset bytes); PPP frame dissection inside PPTP (post-Ack PPP " +
 		"frame is a separate Spec).\n\n" +
