@@ -2084,7 +2084,13 @@ func TestRegistrySize(t *testing.T) {
 	// LE OOB AD structures, with LE Role / LE device address / Class-of-Device
 	// value decode added to the shared internal/ble EIR walker. internal/btoob;
 	// also wired into ndef_decode's application/vnd.bluetooth.{ep,le}.oob paths).
-	const expected = 509
+	// (v0.463 added no tool — NDEF Connection Handover Hs/Hr/ac/cr/err decode +
+	// nested-recursion depth guard, both inside the existing ndef_decode.)
+	// v0.463.x: no registry change.
+	// v0.464.0 added fdxb_decode (ISO 11784/11785 FDX-B animal/pet-microchip LF
+	// transponder data-block decode — national + country code, flags, CRC-16
+	// gated; verified vs two real Proxmark3 vectors. internal/fdxb).
+	const expected = 510
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

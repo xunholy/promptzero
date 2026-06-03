@@ -119,6 +119,11 @@ var toolLevels = func() map[string]Level {
 		// deterministic parse of an operator-supplied blob; transmits
 		// nothing, so it is Low.
 		"bluetooth_oob_decode",
+		// FDX-B (ISO 11784/11785) animal/pet-microchip LF transponder
+		// data-block decode (national + country code, CRC-16 gated).
+		// Offline deterministic parse of an operator-supplied block;
+		// transmits nothing, so it is Low.
+		"fdxb_decode",
 		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
 		// from a reader/skimmer dump). Offline deterministic decode of
 		// an operator-supplied string, Luhn-anchored; transmits
