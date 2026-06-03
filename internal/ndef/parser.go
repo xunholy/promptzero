@@ -20,6 +20,13 @@
 //   - Well-known type decoders: URI (with the 36-entry NFC Forum
 //     prefix table), Text (UTF-8 / UTF-16 with language code),
 //     Smart Poster (recursive nested message)
+//   - Connection Handover records: Handover Select / Request
+//     (Hs / Hr — version + recursive nested message), Alternative
+//     Carrier (ac — power state + carrier/auxiliary references),
+//     Collision Resolution (cr), Error (err). The nested message is
+//     recursed so the referenced Wi-Fi WSC / Bluetooth OOB carrier
+//     records are decoded in place — the full tap-to-pair /
+//     tap-to-connect tree
 //   - MIME-type pass-through (TNF=2) with MIME-type field + raw
 //     payload; the application/vnd.wfa.wsc Wi-Fi credential payload
 //     ("tap-to-connect" tag) is decoded via internal/wsc, and the
@@ -151,13 +158,22 @@ func Decode(hexBlob string) (Message, error) {
 	return DecodeBytes(b)
 }
 
+// maxNestDepth caps recursion through nested NDEF messages (Smart
+// Poster, Handover Select/Request). Real tags nest 2-3 levels; the cap
+// stops a maliciously self-nesting record from exhausting the stack.
+const maxNestDepth = 16
+
 // DecodeBytes is the byte-slice variant for callers that already
 // have raw NDEF bytes (e.g. from a tag-format walker).
 func DecodeBytes(b []byte) (Message, error) {
+	return decodeBytes(b, 0)
+}
+
+func decodeBytes(b []byte, depth int) (Message, error) {
 	msg := Message{}
 	off := 0
 	for off < len(b) {
-		rec, consumed, err := parseRecord(b[off:])
+		rec, consumed, err := parseRecord(b[off:], depth)
 		if err != nil {
 			return msg, fmt.Errorf("ndef: at offset %d: %w", off, err)
 		}
@@ -182,8 +198,8 @@ func DecodeBytes(b []byte) (Message, error) {
 }
 
 // parseRecord parses one NDEF record at b[0]. Returns the record
-// + bytes consumed.
-func parseRecord(b []byte) (Record, int, error) {
+// + bytes consumed. depth tracks nested-message recursion.
+func parseRecord(b []byte, depth int) (Record, int, error) {
 	if len(b) == 0 {
 		return Record{}, 0, fmt.Errorf("unexpected end of input")
 	}
@@ -246,7 +262,7 @@ func parseRecord(b []byte) (Record, int, error) {
 		rec.TypeHex = strings.ToUpper(hex.EncodeToString(typeBytes))
 	}
 	rec.PayloadHex = strings.ToUpper(hex.EncodeToString(payload))
-	rec.Decoded = decodePayload(rec.TNF, rec.Type, payload)
+	rec.Decoded = decodePayload(rec.TNF, rec.Type, payload, depth)
 
 	return rec, off, nil
 }
@@ -255,7 +271,7 @@ func parseRecord(b []byte) (Record, int, error) {
 // decoders, returning the structured fields the operator most
 // often wants to read. Returns nil for kinds where the raw hex
 // is already the most useful view.
-func decodePayload(tnf int, typeStr string, payload []byte) map[string]any {
+func decodePayload(tnf int, typeStr string, payload []byte, depth int) map[string]any {
 	switch TNF(tnf) {
 	case TNFWellKnown:
 		switch typeStr {
@@ -264,7 +280,17 @@ func decodePayload(tnf int, typeStr string, payload []byte) map[string]any {
 		case "T":
 			return decodeTextRecord(payload)
 		case "Sp":
-			return decodeSmartPosterRecord(payload)
+			return decodeSmartPosterRecord(payload, depth)
+		case "Hs":
+			return decodeHandoverRecord("Select", payload, depth)
+		case "Hr":
+			return decodeHandoverRecord("Request", payload, depth)
+		case "ac":
+			return decodeAlternativeCarrier(payload)
+		case "cr":
+			return decodeCollisionResolution(payload)
+		case "err":
+			return decodeHandoverError(payload)
 		}
 	case TNFMIME:
 		out := map[string]any{
@@ -412,8 +438,11 @@ func decodeTextRecord(p []byte) map[string]any {
 // itself an NDEF message containing nested URI / Text / Action /
 // Size / Type records. We recurse via DecodeBytes and surface
 // the nested records under "nested".
-func decodeSmartPosterRecord(p []byte) map[string]any {
-	nested, err := DecodeBytes(p)
+func decodeSmartPosterRecord(p []byte, depth int) map[string]any {
+	if depth >= maxNestDepth {
+		return map[string]any{"warning": "nested NDEF recursion depth limit reached; payload left raw"}
+	}
+	nested, err := decodeBytes(p, depth+1)
 	if err != nil {
 		return map[string]any{
 			"error": fmt.Sprintf("nested NDEF parse failed: %v", err),
@@ -422,6 +451,128 @@ func decodeSmartPosterRecord(p []byte) map[string]any {
 	return map[string]any{
 		"nested": nested,
 	}
+}
+
+// carrierPowerStates maps the 2-bit Carrier Power State (CPS) of an
+// Alternative Carrier record (NFC Forum Connection Handover, verified
+// against the ndeflib reference: index 0..3).
+var carrierPowerStates = []string{"inactive", "active", "activating", "unknown"}
+
+// handoverErrorReasons names the error reason byte of a handover Error
+// ("err") record (NFC Forum Connection Handover §7.3.1).
+var handoverErrorReasons = map[byte]string{
+	0x01: "temporary memory constraints",
+	0x02: "permanent memory constraints",
+	0x03: "carrier-specific constraints",
+}
+
+// decodeHandoverRecord decodes a Handover Select ("Hs") or Handover
+// Request ("Hr") record: a 1-byte version (major in the high nibble,
+// minor in the low nibble) followed by a nested NDEF message holding the
+// Alternative Carrier records (and, for a Request, a Collision Resolution
+// record). The nested message is recursed so the carrier-config records
+// it references (Wi-Fi WSC / Bluetooth OOB) are decoded in place.
+func decodeHandoverRecord(kind string, p []byte, depth int) map[string]any {
+	if len(p) < 1 {
+		return map[string]any{"error": "handover record needs at least a version byte"}
+	}
+	out := map[string]any{
+		"handover_type": kind,
+		"version":       fmt.Sprintf("%d.%d", p[0]>>4, p[0]&0x0F),
+		"version_hex":   fmt.Sprintf("%02X", p[0]),
+	}
+	if len(p) > 1 {
+		if depth >= maxNestDepth {
+			out["warning"] = "nested NDEF recursion depth limit reached; message left raw"
+			return out
+		}
+		nested, err := decodeBytes(p[1:], depth+1)
+		if err != nil {
+			out["nested_error"] = err.Error()
+		} else {
+			out["nested"] = nested
+		}
+	}
+	return out
+}
+
+// decodeAlternativeCarrier decodes an Alternative Carrier ("ac") record:
+// a flags byte (Carrier Power State in the low 2 bits), a 1-byte Carrier
+// Data Reference length + the reference (the ID of the carrier-config
+// record), then a 1-byte Auxiliary Data Reference count and each
+// (1-byte length + reference).
+func decodeAlternativeCarrier(p []byte) map[string]any {
+	if len(p) < 2 {
+		return map[string]any{"error": "Alternative Carrier record too short"}
+	}
+	cps := p[0] & 0x03
+	out := map[string]any{
+		"carrier_power_state":     carrierPowerStates[cps],
+		"carrier_power_state_raw": int(cps),
+	}
+	off := 1
+	cdrLen := int(p[off])
+	off++
+	if off+cdrLen > len(p) {
+		out["error"] = "carrier data reference length runs past payload"
+		return out
+	}
+	out["carrier_data_reference"] = string(p[off : off+cdrLen])
+	off += cdrLen
+	if off >= len(p) {
+		return out
+	}
+	adrCount := int(p[off])
+	off++
+	adrs := make([]string, 0, adrCount)
+	for i := 0; i < adrCount; i++ {
+		if off >= len(p) {
+			out["warning"] = "auxiliary data reference count exceeds payload"
+			break
+		}
+		l := int(p[off])
+		off++
+		if off+l > len(p) {
+			out["warning"] = "auxiliary data reference length runs past payload"
+			break
+		}
+		adrs = append(adrs, string(p[off:off+l]))
+		off += l
+	}
+	if len(adrs) > 0 {
+		out["auxiliary_data_references"] = adrs
+	}
+	return out
+}
+
+// decodeCollisionResolution decodes a Collision Resolution ("cr") record
+// carried in a Handover Request: a 2-byte big-endian random number.
+func decodeCollisionResolution(p []byte) map[string]any {
+	if len(p) < 2 {
+		return map[string]any{"error": "Collision Resolution record needs 2 bytes"}
+	}
+	return map[string]any{
+		"random_number": int(binary.BigEndian.Uint16(p[0:2])),
+	}
+}
+
+// decodeHandoverError decodes a handover Error ("err") record: a 1-byte
+// error reason + reason-specific data (surfaced raw — its meaning is
+// reason-dependent).
+func decodeHandoverError(p []byte) map[string]any {
+	if len(p) < 1 {
+		return map[string]any{"error": "Error record needs at least a reason byte"}
+	}
+	out := map[string]any{"error_reason_raw": int(p[0])}
+	if name, ok := handoverErrorReasons[p[0]]; ok {
+		out["error_reason"] = name
+	} else {
+		out["error_reason"] = fmt.Sprintf("reserved (0x%02X)", p[0])
+	}
+	if len(p) > 1 {
+		out["error_data_hex"] = strings.ToUpper(hex.EncodeToString(p[1:]))
+	}
+	return out
 }
 
 // decodeUTF16 turns big-endian UTF-16 bytes into a Go string.
