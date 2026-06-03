@@ -101,6 +101,11 @@ var toolLevels = func() map[string]Level {
 		"nfc_emv_track2_decode",
 		"nfc_emv_dol_decode",
 		"nfc_emv_afl_decode",
+		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
+		// from a reader/skimmer dump). Offline deterministic decode of
+		// an operator-supplied string, Luhn-anchored; transmits
+		// nothing, so it is Low.
+		"magstripe_decode",
 		"nfc_emv_cvm_decode",
 		// nfc_emv_encode is the offline inverse — assembles EMV BER-TLV bytes
 		// (tag/length/value, constructed recursion) from a tag tree,

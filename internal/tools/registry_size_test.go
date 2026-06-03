@@ -2051,7 +2051,10 @@ func TestRegistrySize(t *testing.T) {
 	// argon2-cffi reference vectors. hash_crack also gained the 'argon2' algo.)
 	// (v0.452 added no tool — jwt_verify completed asymmetric coverage: PS*/ES*/
 	// EdDSA via jwtsig.VerifyPublicKey, round-trip-verified vs the stdlib signers.)
-	const expected = 500
+	// v0.453.0 added magstripe_decode (raw ISO 7813 Track 1/2 ASCII swipe parser
+	// — the offline half of magspoof; PAN/name/expiry/service-code, Luhn-anchored.
+	// internal/emv.DecodeMagstripe).
+	const expected = 501
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
