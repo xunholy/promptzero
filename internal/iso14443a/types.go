@@ -101,3 +101,11 @@ var manufacturers = map[byte]string{
 	0x49: "Synaptics",
 	0x88: "Cascade Tag (UID continues in next round)",
 }
+
+// ManufacturerName returns the IC manufacturer for an ISO/IEC 7816-6 vendor
+// code (the registry shared by ISO 14443 and ISO 15693 UIDs). The bool reports
+// whether the code is known rather than guessed.
+func ManufacturerName(code byte) (string, bool) {
+	name, ok := manufacturers[code]
+	return name, ok
+}

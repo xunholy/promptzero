@@ -2057,7 +2057,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.454.0 added jwk_to_pem (JWK/JWKS -> PKIX PEM for RSA/EC/Ed25519; closes
 	// the /.well-known/jwks.json -> jwt_verify workflow. jwt_verify also now
 	// accepts a JWK/JWKS directly. Round-trip-verified vs the stdlib. internal/jwtsig).
-	const expected = 502
+	// v0.455.0 added nfc_iso15693_decode (ISO 15693 vicinity-card UID + AFI decode
+	// — the second major HF NFC standard; 0xE0-prefix-anchored, manufacturer from
+	// the shared ISO 7816-6 table. internal/iso15693).
+	const expected = 503
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
