@@ -83,7 +83,12 @@
 //   - **Inner payload heuristic** — for G-PDU (0xFF), the
 //     payload is a user IP packet. First-nibble version
 //     detection: 4 → IPv4, 6 → IPv6, 0 → control word /
-//     unknown.
+//     unknown. For a G-PDU (0xFF) the subscriber's IP packet is
+//     decoded in place via internal/ipdecode (the version nibble
+//     is self-describing — GTP-U has no protocol-type field), so
+//     the tunnelled flow's addresses / protocol / ports surface
+//     directly. A payload that does not parse as IP is reported
+//     with an error and left as hex — no confidently-wrong output.
 //
 // What this package does NOT cover (deliberately out of scope)
 //
@@ -98,9 +103,6 @@
 //     QFI + RQI bits) — the extension is recognised by name
 //     and surfaced as raw hex.
 //
-//   - Inner-IP payload decoding — operators pipe the bytes
-//     to `ip_packet_decode` for IPv4/IPv6.
-//
 //   - UDP / IP framing — feed the UDP payload bytes (after
 //     the outer IP + UDP headers; standard UDP dest port
 //     2152).
@@ -111,6 +113,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the top-level decoded view.
@@ -138,12 +142,14 @@ type Result struct {
 
 	ExtensionHeaders []ExtensionHeader `json:"extension_headers,omitempty"`
 
-	HeaderBytes   int      `json:"header_bytes"`
-	PayloadLength int      `json:"payload_length"`
-	PayloadGuess  string   `json:"payload_guess,omitempty"`
-	PayloadHex    string   `json:"payload_hex,omitempty"`
-	TotalBytes    int      `json:"total_bytes"`
-	Notes         []string `json:"notes,omitempty"`
+	HeaderBytes      int              `json:"header_bytes"`
+	PayloadLength    int              `json:"payload_length"`
+	PayloadGuess     string           `json:"payload_guess,omitempty"`
+	PayloadHex       string           `json:"payload_hex,omitempty"`
+	InnerPacket      *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError string           `json:"inner_decode_error,omitempty"`
+	TotalBytes       int              `json:"total_bytes"`
+	Notes            []string         `json:"notes,omitempty"`
 }
 
 // ExtensionHeader is one entry in the extension header chain.
@@ -266,8 +272,16 @@ func Decode(hexStr string) (*Result, error) {
 	payload := b[off:]
 	r.PayloadLength = len(payload)
 	if len(payload) > 0 {
-		if r.MessageType == 0xFF { // G-PDU
+		if r.MessageType == 0xFF { // G-PDU — payload is the subscriber's IP packet
 			r.PayloadGuess = guessInnerIP(payload)
+			// Decode the tunnelled IP packet in place (its version nibble is
+			// self-describing — no protocol-type field in GTP-U). A payload
+			// that does not parse as IP is reported, not asserted.
+			if pkt, err := ipdecode.DecodeBytes(payload); err == nil {
+				r.InnerPacket = pkt
+			} else {
+				r.InnerDecodeError = err.Error()
+			}
 		}
 		if len(payload) > 256 {
 			r.PayloadHex = strings.ToUpper(hex.EncodeToString(payload[:256])) + "..."

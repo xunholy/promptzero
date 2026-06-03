@@ -53,10 +53,11 @@ var gtpUDecodeSpec = Spec{
 		"    - 0x83 Xw RAN Container\n" +
 		"    - 0x84 NR RAN Container (5G NG-U)\n" +
 		"    - 0x85 PDU Session Container (5G N3 / N9)\n" +
-		"- **Inner payload heuristic** — for G-PDU (message type 0xFF), the payload is " +
-		"a subscriber IP packet. First-nibble version detection: 4 → IPv4, 6 → IPv6, " +
-		"0 → padding / control word / unknown. Operators pipe the bytes to " +
-		"`ip_packet_decode` for the full inner-IP breakdown.\n\n" +
+		"- **Inner subscriber IP packet** — for G-PDU (message type 0xFF), the payload " +
+		"is the subscriber's IP packet and is **decoded in place** (first-nibble " +
+		"version detection 4 → IPv4 / 6 → IPv6; the tunnelled flow's addresses / " +
+		"protocol / ports surface directly). A payload that doesn't parse as IP is " +
+		"reported with an error and left as hex.\n\n" +
 		"Pure offline parser — operators paste UDP-payload bytes (standard outer UDP " +
 		"dest port 2152) from a Wireshark Follow-UDP-Stream view, a `tcpdump -X udp " +
 		"port 2152` line, an Open5GS / free5GC / Magma debug capture, an Ericsson / " +
@@ -65,9 +66,8 @@ var gtpUDecodeSpec = Spec{
 		"Out of scope (deferred): GTP-C (control plane, TS 29.274 — Create Session " +
 		"Request / Modify Bearer / etc.; future Spec); GTPv0 / GTPv1' (charging " +
 		"variant — older / charging-specific protocols); PDU Session Container deep " +
-		"dissection (5G N3 / N9 QFI + RQI bits — surfaced as raw hex); inner-IP " +
-		"payload decoding (pipe to `ip_packet_decode`); UDP / IP framing (feed the " +
-		"UDP payload after the outer IP + UDP headers).\n\n" +
+		"dissection (5G N3 / N9 QFI + RQI bits — surfaced as raw hex); UDP / IP framing " +
+		"(feed the UDP payload after the outer IP + UDP headers).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (foundational cellular telco protocol — " +
 		"S1-U / N3 / N9 user-plane wrapping). Wrap-vs-native: native — 3GPP TS 29.281 " +
 		"is fully public; wire format is a tight 8-byte mandatory header with flag-" +
