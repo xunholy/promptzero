@@ -169,13 +169,19 @@
 //     NBSS header (type=0x00 SESSION_MESSAGE, flags=0x00,
 //     length 17-bit BE). Strip the 4-byte NBSS header before
 //     feeding the decoder. TCP/445 has no NBSS prefix.
-//   - **NTLMSSP / Kerberos inner blob** — SESSION_SETUP_
-//     REQUEST carries the security-mechanism blob in the
-//     SecurityBuffer (typically SPNEGO-wrapped NTLM
-//     NEGOTIATE / CHALLENGE / AUTHENTICATE OR Kerberos
-//     AP-REQ). Already handled by `ntlm_decode` and
-//     `kerberos_decode` — surfaced here as
-//     `security_buffer_bytes` length only.
+//   - **SESSION_SETUP NTLMSSP inner blob** — the SESSION_SETUP
+//     request/response SecurityBuffer carries the auth token
+//     (typically SPNEGO-wrapped NTLM NEGOTIATE / CHALLENGE /
+//     AUTHENTICATE or a Kerberos AP-REQ). When it contains an
+//     NTLMSSP message — located by the unambiguous 8-byte
+//     "NTLMSSP\0" signature, so a raw blob and a SPNEGO-wrapped
+//     one are both handled without parsing the SPNEGO ASN.1 — it
+//     is decoded in place via internal/ntlm (the NTLM-over-SMB
+//     relay / Responder / pass-the-hash capture: server
+//     challenge, target-info AV pairs, domain / user /
+//     workstation). A Kerberos (GSS-API) token has no such
+//     signature and is left for `kerberos_decode` after a SPNEGO
+//     strip; the SecurityBuffer length is surfaced either way.
 //   - **Compound message chain** — NextCommand pointer
 //     chains multiple SMB2 commands in one packet; the
 //     decoder reports the first command only.
@@ -191,11 +197,14 @@
 package smb2
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"strings"
 	"unicode/utf16"
+
+	"github.com/xunholy/promptzero/internal/ntlm"
 )
 
 const headerSize = 64
@@ -232,6 +241,11 @@ type Result struct {
 	SigningRequired     bool     `json:"signing_required"`
 	SMB1Offered         bool     `json:"smb1_offered"`
 	SecurityBufferBytes int      `json:"security_buffer_bytes,omitempty"`
+
+	// SESSION_SETUP — the SPNEGO/GSS-API security buffer. When it carries an
+	// NTLMSSP message (raw or SPNEGO-wrapped — the signature is found either
+	// way) it is decoded in place via internal/ntlm.
+	NTLMMessage *ntlm.Result `json:"ntlm_message,omitempty"`
 
 	// TREE_CONNECT
 	TreeConnectPath string `json:"tree_connect_path,omitempty"`
@@ -309,6 +323,8 @@ func Decode(hexStr string) (*Result, error) {
 		} else {
 			decodeNegotiateRequest(r, body)
 		}
+	case 0x01:
+		decodeSessionSetup(r, body, b)
 	case 0x03:
 		if !r.IsResponse {
 			decodeTreeConnectRequest(r, body, b)
@@ -357,6 +373,41 @@ func decodeNegotiateResponse(r *Result, body []byte) {
 	// SecurityBufferOffset (2) at body[56], SecurityBufferLength
 	// (2) at body[58].
 	r.SecurityBufferBytes = int(binary.LittleEndian.Uint16(body[58:60]))
+}
+
+// decodeSessionSetup extracts the SESSION_SETUP security buffer (the
+// SPNEGO/GSS-API authentication token) and, when it carries an NTLMSSP
+// message, decodes it in place via internal/ntlm. The NTLMSSP 8-byte ASCII
+// signature is located within the buffer, so both a raw NTLMSSP blob and a
+// SPNEGO-wrapped one are handled without parsing the SPNEGO ASN.1; a Kerberos
+// (GSS-API) token has no such signature and is left for the operator. The
+// request layout puts SecurityBufferOffset/Length at body[12:16], the response
+// at body[4:8]; the offset is from the start of the SMB2 header (full).
+func decodeSessionSetup(r *Result, body, full []byte) {
+	var secOff, secLen int
+	if r.IsResponse {
+		if len(body) < 8 {
+			return
+		}
+		secOff = int(binary.LittleEndian.Uint16(body[4:6]))
+		secLen = int(binary.LittleEndian.Uint16(body[6:8]))
+	} else {
+		if len(body) < 16 {
+			return
+		}
+		secOff = int(binary.LittleEndian.Uint16(body[12:14]))
+		secLen = int(binary.LittleEndian.Uint16(body[14:16]))
+	}
+	r.SecurityBufferBytes = secLen
+	if secLen == 0 || secOff < headerSize || secOff+secLen > len(full) {
+		return
+	}
+	buf := full[secOff : secOff+secLen]
+	if idx := bytes.Index(buf, []byte("NTLMSSP\x00")); idx >= 0 {
+		if msg, err := ntlm.Decode(hex.EncodeToString(buf[idx:])); err == nil {
+			r.NTLMMessage = msg
+		}
+	}
 }
 
 func decodeTreeConnectRequest(r *Result, body []byte, full []byte) {

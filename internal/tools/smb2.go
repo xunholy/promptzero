@@ -70,6 +70,12 @@ var smb2DecodeSpec = Spec{
 		"`dialect_chosen` + `dialect_chosen_name` + `signing_required` " +
 		"+ `signing_enabled` + `security_buffer_bytes` (length of " +
 		"GSS-API / SPNEGO blob).\n" +
+		"- **SESSION_SETUP body** (§2.2.5/6): the SecurityBuffer auth " +
+		"token. When it carries an NTLMSSP message (found by the 8-byte " +
+		"`NTLMSSP\\0` signature, so SPNEGO-wrapped blobs work too) it is " +
+		"**decoded in place** as `ntlm_message` — the NTLM-over-SMB relay " +
+		"/ Responder / pass-the-hash capture (server challenge, target-info " +
+		"AV pairs, domain / user / workstation).\n" +
 		"- **TREE_CONNECT_REQUEST body** (§2.2.9): UNC path (UTF-16LE) " +
 		"surfaced as `tree_connect_path`.\n" +
 		"- **CREATE_REQUEST body** (§2.2.13): file/pipe name (UTF-16LE) " +
@@ -90,11 +96,9 @@ var smb2DecodeSpec = Spec{
 		"Out of scope (deferred): NetBIOS Session Service framing (when " +
 		"riding TCP/139, each PDU has a 4-byte NBSS header type=0x00 " +
 		"SESSION_MESSAGE — strip first; TCP/445 has no NBSS prefix); " +
-		"NTLMSSP / Kerberos inner blob (SESSION_SETUP_REQUEST carries " +
-		"SPNEGO-wrapped NTLM NEGOTIATE/CHALLENGE/AUTHENTICATE OR " +
-		"Kerberos AP-REQ; already handled by `ntlm_decode` and " +
-		"`kerberos_decode` — surfaced here as `security_buffer_bytes` " +
-		"length only); compound message chain (NextCommand pointer " +
+		"Kerberos inner blob (a SESSION_SETUP GSS-API/Kerberos AP-REQ " +
+		"is left for `kerberos_decode` after a SPNEGO strip — it has no " +
+		"NTLMSSP signature to anchor on); compound message chain (NextCommand pointer " +
 		"chains multiple commands — decoder reports first only); SMB3 " +
 		"encryption Transform header (`0xFD` 'S' 'M' 'B' — §2.2.41 — " +
 		"surfaced as `transform_header_present` flag only; encrypted " +
