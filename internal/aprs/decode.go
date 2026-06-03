@@ -42,6 +42,18 @@
 //   - Status report ('>') text extraction.
 //   - Message format (':') addressee + body + optional
 //     message number suffix.
+//   - Positionless weather report ('_') decode (APRS101
+//     §12): the 8-char MDHM timestamp followed by the
+//     fully-specified weather fields — wind direction
+//     (c), sustained wind speed (s), gust (g), temperature
+//     (t, incl. the -01..-99 below-zero form), rainfall last
+//     hour / 24 h / since midnight (r/p/P, hundredths of an
+//     inch → inches), humidity (h, 00 = 100%), barometric
+//     pressure (b, tenths of hPa → hPa) and luminosity
+//     (L ≤ 999 / l ≥ 1000 W/m²). Unknown sensors ('...' or
+//     spaces) decode to a nil field, not a zero. Anchored to
+//     the APRS101 §12 canonical example
+//     `_10090556c220s004g005t077r000p000P000h50b09900wRSW`.
 //
 // # What this package does NOT cover (deliberately out of scope)
 //
@@ -52,10 +64,16 @@
 //   - Compressed position format ('/') — 12-byte base-91
 //     encoding; not as common as uncompressed and decoded
 //     identically to uncompressed once parsed.
-//   - Full weather-report decoding ('_') — wind speed +
-//     direction + temperature + rain accumulation + barometric
-//     pressure across ~30 ASCII tokens; deferred until real
-//     captures surface.
+//   - Complete Weather Report (a position report whose
+//     symbol code is '_') — the same weather-data string
+//     appended after a decoded position rather than after a
+//     timestamp; the positionless '_' form is decoded (see
+//     above), the position-attached form is a follow-up.
+//   - Snowfall (tail 's'), the '#' raw rain counter, and the
+//     trailing APRS-software / WX-unit code are under-specified
+//     in APRS101 (no fixed width / scaling), so they are left
+//     in the weather report's raw remainder rather than
+//     decoded into a possibly-wrong value.
 //   - Telemetry parameters / equations / units / bits names
 //     (#PARM / #UNIT / #EQNS / #BITS) — only the basic
 //     'T#nnn,a1,a2,...' parametric form is recognised here.
@@ -87,6 +105,7 @@ type Frame struct {
 	Message      *Message   `json:"message,omitempty"`
 	Telemetry    *Telemetry `json:"telemetry,omitempty"`
 	PHG          *PHG       `json:"phg,omitempty"`
+	Weather      *Weather   `json:"weather,omitempty"`
 	Comment      string     `json:"comment,omitempty"`
 }
 
@@ -356,6 +375,8 @@ func decodeInfoField(f *Frame, info string) error {
 			return decodeTelemetry(f, info[2:])
 		}
 		return nil
+	case "_":
+		return decodeWeatherPositionless(f, info[1:])
 	}
 	return nil
 }

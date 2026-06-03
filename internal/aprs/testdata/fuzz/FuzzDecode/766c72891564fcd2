@@ -1,0 +1,2 @@
+go test fuzz v1
+string("S>APRS:_01010000c000s000g000t050L3")

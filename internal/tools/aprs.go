@@ -47,15 +47,24 @@ var aprsPacketDecodeSpec = Spec{
 		"- **Message format** (':'): 9-character addressee + body + optional '{message-" +
 		"number}' suffix.\n" +
 		"- **Telemetry** ('T#'): basic 'T#seq,a1,a2,a3,a4,a5,bits' parametric form (5 analog " +
-		"channels + digital bits).\n\n" +
+		"channels + digital bits).\n" +
+		"- **Positionless weather report** ('_', APRS101 §12): the 8-char MDHM timestamp + the " +
+		"fully-specified weather fields — wind direction (c), sustained wind speed (s), gust (g), " +
+		"temperature (t, incl. the -01..-99 below-zero form), rainfall last hour / 24 h / since " +
+		"midnight (r/p/P, hundredths-inch → inches), humidity (h, 00 = 100%), barometric pressure " +
+		"(b, tenths-hPa → hPa) and luminosity (L ≤ 999 / l ≥ 1000 W/m²). An absent sensor ('...' " +
+		"or spaces) decodes to a null field, not a zero; snowfall, the '#' raw rain counter and " +
+		"the trailing software / WX-unit code are under-specified in APRS101 and surfaced raw " +
+		"rather than guessed. Anchored to the APRS101 §12 canonical example.\n\n" +
 		"Pure offline parser — operators paste a TNC2 string from any APRS feed (or a hex " +
 		"blob from a KISS-modem capture) and inspect the decoded packet without re-connecting " +
 		"to the air. Complements the existing subghz_* coverage by extending decode to the " +
 		"VHF + UHF ham bands where APRS lives.\n\n" +
 		"Out of scope for this Spec (deferred to future iterations as separate sub-decoders): " +
 		"Mic-E compressed position (encoded in the destination address + info field), " +
-		"compressed position format ('/' or '\\' leading char of 13-byte base-91 form), full " +
-		"weather report parsing (wind / temp / rain / barometric), telemetry parameter " +
+		"compressed position format ('/' or '\\' leading char of 13-byte base-91 form), the " +
+		"complete weather report (weather data appended to a position report whose symbol code is " +
+		"'_', vs the positionless '_' form decoded here), telemetry parameter " +
 		"definitions (#PARM / #UNIT / #EQNS / #BITS), and AX.25 connection-mode frames " +
 		"(SABM / DISC / RR / I-frames).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (ham-radio decode space — APRS is the high-" +
