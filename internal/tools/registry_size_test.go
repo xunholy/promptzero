@@ -2108,7 +2108,11 @@ func TestRegistrySize(t *testing.T) {
 	// {SHA}/{SSHA}/{MD5}/{SMD5} + pw-sha2 {SHA256}…{SSHA512}; H(pw‖salt)‖salt
 	// base64, salt recovered from the blob on verify; gated vs the OpenLDAP
 	// slappasswd oracle + definitional pw-sha2 vectors. internal/ldappw).
-	const expected = 515
+	// v0.486.0 added mysql_password (MySQL/MariaDB mysql_native_password compute +
+	// verify — "*"+UPPER(hex(SHA1(SHA1(pw)))), hashcat 300; gated vs the published
+	// PASSWORD('password') vector; the compute/verify complement to the existing
+	// hash_crack mysql branch. internal/mysqlpw).
+	const expected = 516
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

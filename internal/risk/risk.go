@@ -760,6 +760,13 @@ var toolLevels = func() map[string]Level {
 		// computes it derives a value and transmits nothing, so it
 		// is Low.
 		"ldap_password",
+		// v0.486 — MySQL / MariaDB mysql_native_password (the
+		// PASSWORD() "4.1+" double-SHA1, hashcat 300) compute +
+		// verify, the value stored in mysql.user. Offline compute /
+		// constant-time verify from operator-supplied strings — like
+		// the other credential computes it derives a value and
+		// transmits nothing, so it is Low.
+		"mysql_password",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question
