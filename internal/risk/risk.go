@@ -767,6 +767,14 @@ var toolLevels = func() map[string]Level {
 		// the other credential computes it derives a value and
 		// transmits nothing, so it is Low.
 		"mysql_password",
+		// v0.487 — PostgreSQL md5 password (the value in
+		// pg_authid.rolpassword: "md5"+hex(MD5(password+username)),
+		// hashcat 12) compute + verify, the DB-credential sibling of
+		// mysql_password. Offline compute / constant-time verify from
+		// operator-supplied strings — like the other credential
+		// computes it derives a value and transmits nothing, so it is
+		// Low.
+		"postgres_password",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question

@@ -2112,7 +2112,11 @@ func TestRegistrySize(t *testing.T) {
 	// verify — "*"+UPPER(hex(SHA1(SHA1(pw)))), hashcat 300; gated vs the published
 	// PASSWORD('password') vector; the compute/verify complement to the existing
 	// hash_crack mysql branch. internal/mysqlpw).
-	const expected = 516
+	// v0.487.0 added postgres_password (PostgreSQL md5 password compute + verify —
+	// "md5"+hex(MD5(password+username)), hashcat 12; username-salted; the
+	// DB-credential sibling of mysql_password; gated vs the documented
+	// pg_md5_encrypt construction. internal/pgpassword).
+	const expected = 517
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
