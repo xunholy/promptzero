@@ -46,7 +46,11 @@ var pppoeDecodeSpec = Spec{
 		"- **Session-stage payload** (Code 0x00): the first 2 bytes are the PPP " +
 		"Protocol Identifier (uint16 BE per RFC 1661). **9-entry PPP Protocol name " +
 		"table**: 0x0021 IPv4, 0x0057 IPv6, 0x8021 IPCP, 0x8057 IPv6CP, 0xC021 LCP, " +
-		"0xC023 PAP, 0xC223 CHAP, 0xC227 EAP-over-PPP (deprecated), 0xC229 EAP.\n" +
+		"0xC023 PAP, 0xC223 CHAP, 0xC227 EAP-over-PPP (deprecated), 0xC229 EAP. When " +
+		"the protocol is 0x0021 (IPv4) / 0x0057 (IPv6) the subscriber's inner IP " +
+		"packet is **decoded in place** (addresses / protocol / ports; a payload that " +
+		"doesn't parse as IP is reported with an error, raw hex preserved); control " +
+		"protocols (LCP / IPCP / PAP / CHAP / EAP) stay raw hex.\n" +
 		"- **Conformance checks**:\n" +
 		"  - Version != 1 or Type != 1 surfaces a Note.\n" +
 		"  - PADI / PADO / PADR with non-zero Session ID surface a Note (only PADS " +
@@ -55,8 +59,8 @@ var pppoeDecodeSpec = Spec{
 		"Pure offline parser — operators paste post-Ethernet bytes (EtherType 0x8863 " +
 		"for Discovery or 0x8864 for Session) from a `tcpdump -X ether proto 0x8863` " +
 		"line, a Wireshark Follow-Frame view, or any PPPoE-emitting tool and get the " +
-		"documented header + per-phase body. Pairs with `ip_packet_decode` for the " +
-		"inner IPv4 / IPv6 subscriber payload after the PPP Protocol ID strip.\n\n" +
+		"documented header + per-phase body, including the decoded inner IP packet " +
+		"for IPv4 / IPv6 PPP payloads.\n\n" +
 		"Out of scope (deferred): Ethernet framing (feed bytes after EtherType " +
 		"0x8863 / 0x8864 strip); PPP frame deep dissection (LCP CONFIG-REQ option " +
 		"TLVs, PAP / CHAP / EAP exchanges, IPCP option TLVs — Protocol ID is " +

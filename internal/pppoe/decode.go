@@ -119,11 +119,15 @@
 //   - Ethernet framing — feed the PPPoE bytes after the
 //     EtherType 0x8863 (Discovery) / 0x8864 (Session) strip.
 //
-//   - PPP frame deep dissection (LCP CONFIG-REQ option TLVs,
-//     PAP / CHAP / EAP protocol exchanges, IPCP option TLVs)
-//     — the Session payload's Protocol ID is recognised but
-//     the body is surfaced as raw hex. Inner IPv4 / IPv6
-//     payloads can be piped to `ip_packet_decode`.
+//   - PPP control-protocol deep dissection (LCP CONFIG-REQ
+//     option TLVs, PAP / CHAP / EAP protocol exchanges, IPCP
+//     option TLVs) — those Protocol IDs are recognised but the
+//     body is surfaced as raw hex. The IP-bearing PPP protocols
+//     (0x0021 IPv4 / 0x0057 IPv6) ARE decoded in place via
+//     internal/ipdecode, so the session's inner flow's
+//     addresses / protocol / ports surface directly (a payload
+//     that does not parse as IP is reported with an error and
+//     left as hex).
 //
 //   - PPPoE Tag Value deep dissection beyond UTF-8 / hex
 //     surface — Vendor-Specific body, Service-Name semantics,
@@ -136,6 +140,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the top-level decoded view.
@@ -153,11 +159,13 @@ type Result struct {
 
 	Tags []Tag `json:"tags,omitempty"`
 
-	PPPProtocol     *uint16 `json:"ppp_protocol,omitempty"`
-	PPPProtocolHex  string  `json:"ppp_protocol_hex,omitempty"`
-	PPPProtocolName string  `json:"ppp_protocol_name,omitempty"`
-	PPPPayloadHex   string  `json:"ppp_payload_hex,omitempty"`
-	PPPPayloadLen   int     `json:"ppp_payload_length,omitempty"`
+	PPPProtocol      *uint16          `json:"ppp_protocol,omitempty"`
+	PPPProtocolHex   string           `json:"ppp_protocol_hex,omitempty"`
+	PPPProtocolName  string           `json:"ppp_protocol_name,omitempty"`
+	PPPPayloadHex    string           `json:"ppp_payload_hex,omitempty"`
+	PPPPayloadLen    int              `json:"ppp_payload_length,omitempty"`
+	InnerPacket      *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError string           `json:"inner_decode_error,omitempty"`
 
 	HeaderBytes int      `json:"header_bytes"`
 	TotalBytes  int      `json:"total_bytes"`
@@ -260,6 +268,18 @@ func Decode(hexStr string) (*Result, error) {
 						strings.ToUpper(hex.EncodeToString(body[:256])) + "..."
 				} else {
 					r.PPPPayloadHex = strings.ToUpper(hex.EncodeToString(body))
+				}
+				// PPP protocol 0x0021 (IPv4) / 0x0057 (IPv6) carries an IP
+				// packet — decode it in place via internal/ipdecode so the
+				// session's inner flow (addresses / protocol / ports) surfaces.
+				// LCP / IPCP / PAP / CHAP / EAP control protocols are left as
+				// hex — no confidently-wrong output.
+				if proto == 0x0021 || proto == 0x0057 {
+					if pkt, err := ipdecode.DecodeBytes(body); err == nil {
+						r.InnerPacket = pkt
+					} else {
+						r.InnerDecodeError = err.Error()
+					}
 				}
 			}
 		}
