@@ -2069,6 +2069,9 @@ func TestRegistrySize(t *testing.T) {
 	// v0.458.0 added phpass_password (WordPress $P$ / phpBB $H$ portable hash verify
 	// + compute — iterated MD5. hash_crack also gained the 'phpass' mode. Verified
 	// byte-for-byte vs passlib. internal/phpass).
+	// (v0.459 added no tool — Werkzeug scrypt (scrypt:N:r:p, the modern Flask
+	// default) verify/compute added to internal/webpass; pbkdf2_password and the
+	// hash_crack 'werkzeug' mode now cover it. Verified vs Werkzeug + x/crypto/scrypt.)
 	const expected = 506
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

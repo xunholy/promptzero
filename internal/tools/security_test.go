@@ -1161,3 +1161,19 @@ func TestHashCrack_Phpass(t *testing.T) {
 		t.Errorf("plaintext = %v, want password", e["plaintext"])
 	}
 }
+
+// TestHashCrack_WerkzeugScrypt cracks a Werkzeug scrypt hash (the modern Flask
+// default) via the 'werkzeug' mode, which auto-detects pbkdf2 vs scrypt.
+func TestHashCrack_WerkzeugScrypt(t *testing.T) {
+	const h = "scrypt:32768:8:1$pqUT1Bmj$f9f4c54fcdbf5dae6446bdfea07c11fb92f593472d94ec7571c18160d6774778d252252f06cadd70a365f14981a8e5901c58bb8822076f2cabf6c03812c02933"
+	wl := writeTempWordlist(t, "wrong", "password", "other")
+	out, err := invokeSpec(t, "hash_crack_dictionary", map[string]any{
+		"hashes": []any{h}, "algorithm": "werkzeug", "wordlist": wl,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cracked, _ := mustJSON(t, out)["cracked"].([]any); len(cracked) != 1 {
+		t.Fatalf("werkzeug scrypt crack = %d, want 1; out: %s", len(cracked), out)
+	}
+}

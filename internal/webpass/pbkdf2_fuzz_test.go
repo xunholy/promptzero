@@ -9,7 +9,7 @@ import "testing"
 func FuzzVerify(f *testing.F) {
 	for _, s := range []string{
 		djangoHash, werkzeugHash, "", "pbkdf2_sha256$", "pbkdf2:sha256:",
-		"pbkdf2_sha256$1$s$!!!", "pbkdf2:sha256:x$s$zz", "plaintext", "pbkdf2_sha256$1$$",
+		"pbkdf2_sha256$1$s$!!!", "pbkdf2:sha256:x$s$zz", "plaintext", "pbkdf2_sha256$1$$", "scrypt:32768:8:1$s$aabb", "scrypt:bad",
 	} {
 		f.Add(s)
 	}

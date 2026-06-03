@@ -319,7 +319,7 @@ var hashCrackDictionarySpec = Spec{
 			"algorithm":{"type":"string","enum":[
 				"md5","sha1","sha256","sha512","ntlm","bcrypt",
 				"mysql","crypt","md5crypt","apr1","sha256crypt","sha512crypt","argon2","django","werkzeug","phpass"],
-				"description":"Hash algorithm (output of hash_identify). Use 'crypt' for any $1$/$apr1$/$5$/$6$ shadow hash (auto-detected); 'mysql' for mysql_native_password; 'argon2' for $argon2id$/$argon2i$; 'django'/'werkzeug' for Python web-app PBKDF2 DBs; 'phpass' for WordPress $P$ / phpBB $H$ hashes."},
+				"description":"Hash algorithm (output of hash_identify). Use 'crypt' for any $1$/$apr1$/$5$/$6$ shadow hash (auto-detected); 'mysql' for mysql_native_password; 'argon2' for $argon2id$/$argon2i$; 'django' (pbkdf2_sha256$…) / 'werkzeug' (pbkdf2:sha256:… and scrypt:… — the modern Flask default) for Python web-app DBs; 'phpass' for WordPress $P$ / phpBB $H$ hashes."},
 			"wordlist":{"type":"string",
 				"description":"Path to a newline-separated wordlist file, or 'promptzero://wordlists/passwords.txt' for the built-in list"},
 			"max_words":{"type":"integer","minimum":0,

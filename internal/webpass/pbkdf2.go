@@ -23,10 +23,10 @@
 //
 // # Covered / deferred
 //
-// Covered: Django pbkdf2_sha256 / pbkdf2_sha1 and Werkzeug pbkdf2:{sha256,sha1,
-// sha512}, verify + compute. Deferred: Werkzeug's newer scrypt:… format and
-// Django's bcrypt/argon2 hasher wrappers (those delegate to the bcrypt/argon2
-// tools).
+// Covered: Django pbkdf2_sha256 / pbkdf2_sha1, Werkzeug pbkdf2:{sha256,sha1,
+// sha512}, and Werkzeug scrypt:N:r:p (the modern Flask default — see scrypt.go),
+// verify + compute. Deferred: Django's bcrypt/argon2 hasher wrappers (those
+// delegate to the bcrypt/argon2 tools).
 package webpass
 
 import (
@@ -62,16 +62,19 @@ func Scheme(stored string) string {
 	switch {
 	case strings.HasPrefix(stored, "pbkdf2_"):
 		return "django"
-	case strings.HasPrefix(stored, "pbkdf2:"):
+	case strings.HasPrefix(stored, "pbkdf2:"), strings.HasPrefix(stored, "scrypt:"):
 		return "werkzeug"
 	default:
 		return ""
 	}
 }
 
-// Verify reports whether password produces the given Django or Werkzeug PBKDF2
-// hash. The framework is auto-detected from the prefix.
+// Verify reports whether password produces the given Django/Werkzeug PBKDF2 or
+// Werkzeug scrypt hash. The format is auto-detected from the prefix.
 func Verify(stored, password string) (bool, error) {
+	if strings.HasPrefix(stored, "scrypt:") {
+		return verifyScrypt(stored, password)
+	}
 	algo, iter, salt, digest, err := parse(stored)
 	if err != nil {
 		return false, err

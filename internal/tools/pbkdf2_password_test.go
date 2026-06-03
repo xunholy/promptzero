@@ -58,3 +58,19 @@ func TestPBKDF2PasswordHandler_Compute(t *testing.T) {
 // (Django/Werkzeug hash_crack tests live in security_test.go — package
 // tools_test — alongside the invokeSpec/writeTempWordlist helpers and the other
 // TestHashCrack_* cases.)
+
+func TestPBKDF2PasswordHandler_Scrypt(t *testing.T) {
+	const h = "scrypt:32768:8:1$pqUT1Bmj$f9f4c54fcdbf5dae6446bdfea07c11fb92f593472d94ec7571c18160d6774778d252252f06cadd70a365f14981a8e5901c58bb8822076f2cabf6c03812c02933"
+	if m := runPBKDF2(t, map[string]any{"password": "password", "hash": h}); m["matched"] != true || m["scheme"] != "werkzeug" {
+		t.Errorf("scrypt verify: %+v", m)
+	}
+	// Compute a werkzeug-scrypt hash (small N for speed) and round-trip.
+	c := runPBKDF2(t, map[string]any{"password": "hunter2", "scheme": "werkzeug-scrypt", "n": 16384, "salt": "saltsalt"})
+	hc, _ := c["hash"].(string)
+	if hc[:7] != "scrypt:" {
+		t.Fatalf("scrypt compute: %v", hc)
+	}
+	if v := runPBKDF2(t, map[string]any{"password": "hunter2", "hash": hc}); v["matched"] != true {
+		t.Errorf("scrypt compute round-trip failed: %+v", v)
+	}
+}
