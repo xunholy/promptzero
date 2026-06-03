@@ -109,6 +109,11 @@ var toolLevels = func() map[string]Level {
 		// standard). Offline deterministic read of an operator-supplied
 		// ATQB; transmits nothing, so it is Low.
 		"nfc_iso14443b_decode",
+		// Wi-Fi Simple Config / WPS credential decode (tap-to-connect
+		// Wi-Fi NFC tag / WPS M7-M8 Credential → SSID + PSK). Offline
+		// deterministic TLV parse of an operator-supplied blob;
+		// transmits nothing, so it is Low.
+		"wifi_wsc_decode",
 		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
 		// from a reader/skimmer dump). Offline deterministic decode of
 		// an operator-supplied string, Luhn-anchored; transmits

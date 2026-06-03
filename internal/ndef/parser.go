@@ -21,7 +21,8 @@
 //     prefix table), Text (UTF-8 / UTF-16 with language code),
 //     Smart Poster (recursive nested message)
 //   - MIME-type pass-through (TNF=2) with MIME-type field + raw
-//     payload
+//     payload; the application/vnd.wfa.wsc Wi-Fi credential payload
+//     ("tap-to-connect" tag) is decoded via internal/wsc
 //   - External-type pass-through (TNF=4) with vendor:name field
 //   - raw payload
 //   - Empty / Absolute URI / Unknown / Unchanged record kinds
@@ -41,6 +42,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf16"
+
+	"github.com/xunholy/promptzero/internal/wsc"
 )
 
 // TNF is the 3-bit Type Name Format field in the record header.
@@ -261,10 +264,18 @@ func decodePayload(tnf int, typeStr string, payload []byte) map[string]any {
 			return decodeSmartPosterRecord(payload)
 		}
 	case TNFMIME:
-		return map[string]any{
+		out := map[string]any{
 			"mime_type":    typeStr,
 			"payload_size": len(payload),
 		}
+		// Wi-Fi Simple Config credential ("tap-to-connect" Wi-Fi tag):
+		// decode the SSID / auth / encryption / network-key TLVs.
+		if typeStr == "application/vnd.wfa.wsc" {
+			if cred, err := wsc.Decode(payload); err == nil {
+				out["wsc"] = cred
+			}
+		}
+		return out
 	case TNFAbsoluteURI:
 		return map[string]any{
 			"uri": typeStr,

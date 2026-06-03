@@ -2075,7 +2075,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.460.0 added nfc_iso14443b_decode (ISO 14443 Type B ATQB decode — the
 	// ePassport/eID proximity standard; 0x50-anchored PUPI + protocol-info bit
 	// fields. internal/iso14443b).
-	const expected = 507
+	// v0.461.0 added wifi_wsc_decode (Wi-Fi Simple Config / WPS credential decode
+	// — the tap-to-connect Wi-Fi NFC tag / WPS M7-M8 Credential; SSID + auth/encr
+	// + network-key TLVs, attribute IDs per hostap wps_defs.h. internal/wsc; also
+	// wired into ndef_decode's application/vnd.wfa.wsc MIME path).
+	const expected = 508
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
