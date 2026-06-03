@@ -55,17 +55,19 @@ var vxlanDecodeSpec = Spec{
 		"encapsulated original Ethernet frame. Surfaces dst MAC + src MAC + " +
 		"EtherType with **13-entry name table** for the EtherType (IPv4 / ARP / " +
 		"IPv6 / RARP / 802.1Q + 802.1ad VLAN tags / MPLS unicast+multicast / PPPoE " +
-		"Discovery+Session / EAPOL / LLDP / MACsec). Operators pipe the post-Ethernet " +
-		"bytes to the appropriate decoder.\n\n" +
+		"Discovery+Session / EAPOL / LLDP / MACsec). When the EtherType is IPv4 / IPv6 " +
+		"the inner L3 packet is **decoded in place** (the overlaid flow's addresses / " +
+		"protocol / ports; a payload that doesn't parse as IP is reported with an " +
+		"error, raw hex preserved). Non-IP inner frames are left for their own " +
+		"decoders.\n\n" +
 		"Pure offline parser — operators paste UDP-payload bytes (standard outer " +
 		"UDP dest port 4789) from a Wireshark Follow-UDP-Stream view, a " +
 		"`tcpdump -X udp port 4789` line, an OpenStack Neutron debug capture, a " +
 		"Kubernetes CNI traffic dump, or any VXLAN-emitting tool and get the " +
 		"documented header plus the inner Ethernet header peek.\n\n" +
 		"Out of scope (deferred): UDP / IP framing (feed the UDP payload bytes); " +
-		"inner Ethernet payload decoding beyond the EtherType identification " +
-		"(operators pipe the post-header bytes to `vlan_decode` / `ip_packet_decode` " +
-		"/ etc.); VXLAN-GPE Next Protocol body dissection (only the Next Protocol " +
+		"non-IP inner Ethernet payloads (802.1Q / ARP / MPLS — left for `vlan_decode` " +
+		"/ their own decoders); VXLAN-GPE Next Protocol body dissection (only the Next Protocol " +
 		"byte is decoded; the body is the encapsulated IPv4 / IPv6 / Ethernet " +
 		"payload); Geneve (RFC 8926 — different overlay with a TLV options block; " +
 		"future Spec); VXLAN flooding / BUM replication semantics (per-packet " +

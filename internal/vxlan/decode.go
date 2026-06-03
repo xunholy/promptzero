@@ -47,12 +47,16 @@
 //     reserved bits are non-zero, attempt to interpret as
 //     VXLAN-GBP or VXLAN-GPE based on the pattern.
 //
-//   - **Inner Ethernet peek**: the bytes after the VXLAN
-//     header are the encapsulated original Ethernet frame.
-//     We surface the dst MAC, src MAC, and EtherType (with
-//     name lookup against the same 10-entry table used by
-//     `vlan_decode`); operators pipe the post-Ethernet bytes
-//     to the appropriate decoder.
+//   - **Inner Ethernet**: the bytes after the VXLAN header are
+//     the encapsulated original Ethernet frame. We surface the
+//     dst MAC, src MAC, and EtherType (with name lookup against
+//     the same 10-entry table used by `vlan_decode`). When the
+//     EtherType is IPv4 (0x0800) or IPv6 (0x86DD) the inner L3
+//     packet is decoded in place via internal/ipdecode, so the
+//     overlaid flow's addresses / protocol / ports surface
+//     directly; a payload that does not parse as IP is reported
+//     with an error and left as hex. Non-IP EtherTypes (ARP,
+//     802.1Q, MPLS, …) are left for their own decoders.
 //
 // What this package does NOT cover (deliberately out of scope)
 //
@@ -60,9 +64,9 @@
 //     the outer IP+UDP headers (standard outer UDP dest port
 //     4789).
 //
-//   - Inner Ethernet payload decoding beyond the EtherType
-//     identification — operators pipe the post-header bytes
-//     to `vlan_decode` / `ip_packet_decode` / etc.
+//   - Inner Ethernet payloads other than IP (802.1Q VLAN tags,
+//     ARP, MPLS, …) — left for `vlan_decode` / their own
+//     decoders; only IPv4 / IPv6 inner frames are decoded here.
 //
 //   - VXLAN-GPE Next Protocol body dissection — only the
 //     Next Protocol byte is decoded; the body is the
@@ -81,6 +85,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the top-level decoded view.
@@ -104,13 +110,15 @@ type Result struct {
 // InnerEthernet is the peek at the encapsulated Ethernet
 // frame's header (dst MAC + src MAC + EtherType).
 type InnerEthernet struct {
-	DstMAC         string `json:"dst_mac"`
-	SrcMAC         string `json:"src_mac"`
-	EtherType      int    `json:"ether_type"`
-	EtherTypeHex   string `json:"ether_type_hex"`
-	EtherTypeName  string `json:"ether_type_name"`
-	PayloadOffset  int    `json:"payload_offset"`
-	RemainingBytes int    `json:"remaining_bytes"`
+	DstMAC           string           `json:"dst_mac"`
+	SrcMAC           string           `json:"src_mac"`
+	EtherType        int              `json:"ether_type"`
+	EtherTypeHex     string           `json:"ether_type_hex"`
+	EtherTypeName    string           `json:"ether_type_name"`
+	PayloadOffset    int              `json:"payload_offset"`
+	RemainingBytes   int              `json:"remaining_bytes"`
+	InnerPacket      *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError string           `json:"inner_decode_error,omitempty"`
 }
 
 // GBPFields is the Cisco Group-Based Policy extension overlay.
@@ -239,6 +247,17 @@ func decodeInnerEthernet(b []byte) *InnerEthernet {
 	}
 	ie.EtherTypeHex = fmt.Sprintf("0x%04X", ie.EtherType)
 	ie.EtherTypeName = etherTypeName(ie.EtherType)
+	// When the inner frame carries IP, decode the L3 packet in place via
+	// internal/ipdecode so the encapsulated flow's addresses / protocol /
+	// ports surface directly. Non-IP EtherTypes (ARP, 802.1Q VLAN tags,
+	// MPLS, …) are left for their own decoders — no confidently-wrong output.
+	if (ie.EtherType == 0x0800 || ie.EtherType == 0x86DD) && len(b) > 14 {
+		if pkt, err := ipdecode.DecodeBytes(b[14:]); err == nil {
+			ie.InnerPacket = pkt
+		} else {
+			ie.InnerDecodeError = err.Error()
+		}
+	}
 	return ie
 }
 
