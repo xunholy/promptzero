@@ -134,6 +134,10 @@ var toolLevels = func() map[string]Level {
 		// deterministic bit-field parse of operator-supplied pages;
 		// transmits nothing, so it is Low.
 		"ntag_config_decode",
+		// NFC Type 2 Tag data-area TLV walker (locates + decodes the
+		// NDEF Message TLV). Offline deterministic parse of an
+		// operator-supplied dump; transmits nothing, so it is Low.
+		"nfc_t2t_tlv_decode",
 		// Raw ISO 7813 magnetic-stripe swipe parser (Track 1/2 ASCII
 		// from a reader/skimmer dump). Offline deterministic decode of
 		// an operator-supplied string, Luhn-anchored; transmits

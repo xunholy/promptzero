@@ -2097,7 +2097,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.466.0 added ntag_config_decode (NTAG213/215/216 config-page decode —
 	// AUTH0 / ACCESS (PROT/CFGLCK/NFC_CNT/AUTHLIM) / MIRROR; layout verified
 	// byte-for-byte vs the NXP NTAG213/215/216 data sheet §8.5.7. internal/ntag).
-	const expected = 512
+	// v0.467.0 added nfc_t2t_tlv_decode (NFC Type 2 Tag data-area TLV walker —
+	// NULL/Lock/Memory/NDEF/Proprietary/Terminator blocks; locates + decodes the
+	// NDEF Message TLV via internal/ndef. Bridges a raw T2T dump to ndef_decode.
+	// internal/t2t).
+	const expected = 513
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
