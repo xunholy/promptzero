@@ -65,11 +65,16 @@
 //
 //   - 0x0104 Oracle
 //
-//   - **Inner payload peek** — for Protocol Type 0x6558
-//     (Transparent Ethernet Bridging), surface the
-//     encapsulated dst MAC + src MAC + inner EtherType (with
-//     13-entry name table). For other Protocol Types, surface
-//     the raw payload bytes for downstream decoding.
+//   - **Inner payload decode** — for Protocol Type 0x6558
+//     (Transparent Ethernet Bridging), surface the encapsulated
+//     dst MAC + src MAC + inner EtherType (13-entry name table),
+//     and when that EtherType is IPv4/IPv6 decode the inner L3
+//     packet in place via internal/ipdecode. For Protocol Type
+//     0x0800 / 0x86DD the inner payload IS an IP packet and is
+//     decoded directly. Either way the encapsulated flow's
+//     addresses / protocol / ports surface; a payload that does
+//     not parse as IP is reported with an error and left as hex.
+//     Other Protocol Types (MPLS, NSH, …) are left as raw hex.
 //
 //   - **Conformance check** — Version != 0 surfaces a Note;
 //     non-zero reserved bits surface a Note; critical option
@@ -82,9 +87,9 @@
 //     the outer IP+UDP headers (standard outer UDP dest port
 //     6081).
 //
-//   - Inner payload decoding beyond the Ethernet peek — pipe
-//     the post-Ethernet bytes to `vlan_decode` /
-//     `ip_packet_decode` / etc.
+//   - Non-IP inner payloads (802.1Q VLAN tags inside a TEB
+//     frame, MPLS, NSH, …) — left for `vlan_decode` / their own
+//     decoders; only IPv4 / IPv6 inner payloads are decoded here.
 //
 //   - Vendor-specific option data dissection — only the
 //     class + type + length are surfaced; the option data
@@ -100,6 +105,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the top-level decoded view.
@@ -120,9 +127,11 @@ type Result struct {
 	Options           []Option `json:"options,omitempty"`
 	OptionCount       int      `json:"option_count"`
 
-	InnerEthernet *InnerEthernet `json:"inner_ethernet,omitempty"`
-	PayloadHex    string         `json:"payload_hex,omitempty"`
-	PayloadLength int            `json:"payload_length"`
+	InnerEthernet    *InnerEthernet   `json:"inner_ethernet,omitempty"`
+	InnerPacket      *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError string           `json:"inner_decode_error,omitempty"`
+	PayloadHex       string           `json:"payload_hex,omitempty"`
+	PayloadLength    int              `json:"payload_length"`
 
 	HeaderBytes int      `json:"header_bytes"`
 	TotalBytes  int      `json:"total_bytes"`
@@ -145,12 +154,14 @@ type Option struct {
 // InnerEthernet is the dst MAC + src MAC + EtherType peek for
 // the canonical Geneve-over-TEB case.
 type InnerEthernet struct {
-	DstMAC         string `json:"dst_mac"`
-	SrcMAC         string `json:"src_mac"`
-	EtherType      int    `json:"ether_type"`
-	EtherTypeHex   string `json:"ether_type_hex"`
-	EtherTypeName  string `json:"ether_type_name"`
-	RemainingBytes int    `json:"remaining_bytes"`
+	DstMAC           string           `json:"dst_mac"`
+	SrcMAC           string           `json:"src_mac"`
+	EtherType        int              `json:"ether_type"`
+	EtherTypeHex     string           `json:"ether_type_hex"`
+	EtherTypeName    string           `json:"ether_type_name"`
+	RemainingBytes   int              `json:"remaining_bytes"`
+	InnerPacket      *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError string           `json:"inner_decode_error,omitempty"`
 }
 
 // Decode parses a Geneve packet from hex.
@@ -248,17 +259,31 @@ func Decode(hexStr string) (*Result, error) {
 	// Inner payload peek.
 	payload := b[off:]
 	r.PayloadLength = len(payload)
-	if r.ProtocolType == 0x6558 && len(payload) >= 14 {
+	switch {
+	case r.ProtocolType == 0x6558 && len(payload) >= 14:
+		// Transparent Ethernet Bridging — inner Ethernet frame.
 		r.InnerEthernet = decodeInnerEthernet(payload)
-	} else if len(payload) > 0 {
-		if len(payload) > 256 {
-			r.PayloadHex = strings.ToUpper(hex.EncodeToString(payload[:256])) + "..."
+	case (r.ProtocolType == 0x0800 || r.ProtocolType == 0x86DD) && len(payload) > 0:
+		// Inner payload is an IP packet directly — decode it in place.
+		setPayloadHex(r, payload)
+		if pkt, err := ipdecode.DecodeBytes(payload); err == nil {
+			r.InnerPacket = pkt
 		} else {
-			r.PayloadHex = strings.ToUpper(hex.EncodeToString(payload))
+			r.InnerDecodeError = err.Error()
 		}
+	case len(payload) > 0:
+		setPayloadHex(r, payload)
 	}
 
 	return r, nil
+}
+
+func setPayloadHex(r *Result, payload []byte) {
+	if len(payload) > 256 {
+		r.PayloadHex = strings.ToUpper(hex.EncodeToString(payload[:256])) + "..."
+	} else {
+		r.PayloadHex = strings.ToUpper(hex.EncodeToString(payload))
+	}
 }
 
 func decodeInnerEthernet(b []byte) *InnerEthernet {
@@ -273,6 +298,14 @@ func decodeInnerEthernet(b []byte) *InnerEthernet {
 	}
 	ie.EtherTypeHex = fmt.Sprintf("0x%04X", ie.EtherType)
 	ie.EtherTypeName = etherTypeName(ie.EtherType)
+	// When the inner frame carries IP, decode the L3 packet in place.
+	if (ie.EtherType == 0x0800 || ie.EtherType == 0x86DD) && len(b) > 14 {
+		if pkt, err := ipdecode.DecodeBytes(b[14:]); err == nil {
+			ie.InnerPacket = pkt
+		} else {
+			ie.InnerDecodeError = err.Error()
+		}
+	}
 	return ie
 }
 

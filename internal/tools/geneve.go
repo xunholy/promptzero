@@ -50,11 +50,15 @@ var geneveDecodeSpec = Spec{
 		"vSwitch / OVN, 0x0101 VMware (NSX-T), 0x0102 Mellanox / NVIDIA, 0x0103 " +
 		"Cisco Systems, 0x0104 Oracle, 0x0105-0xFEFF vendor (PEN-associated), " +
 		"0xFF00+ experimental.\n" +
-		"- **Inner payload peek** — for Protocol Type 0x6558 (TEB), surface the " +
+		"- **Inner payload decode** — for Protocol Type 0x6558 (TEB), surface the " +
 		"encapsulated dst MAC + src MAC + inner EtherType with **13-entry name " +
 		"table** (IPv4 / ARP / IPv6 / RARP / 802.1Q + 802.1ad VLAN tags / MPLS " +
-		"unicast+multicast / PPPoE Discovery+Session / EAPOL / LLDP / MACsec). For " +
-		"other Protocol Types, surface raw payload bytes.\n" +
+		"unicast+multicast / PPPoE Discovery+Session / EAPOL / LLDP / MACsec), and " +
+		"when that EtherType is IPv4/IPv6 **decode the inner L3 packet in place**. " +
+		"For Protocol Type 0x0800 / 0x86DD the payload IS an IP packet and is decoded " +
+		"directly. Either way the encapsulated flow's addresses / protocol / ports " +
+		"surface (a payload that doesn't parse as IP is reported with an error, raw " +
+		"hex preserved). Other Protocol Types (MPLS / NSH) stay raw hex.\n" +
 		"- **Conformance check** — Version != 0 surfaces a Note (RFC 8926 §5 requires " +
 		"dropping); non-zero reserved bits surface a Note; C-flag set surfaces a " +
 		"Note explaining that transit nodes MUST process the critical options or " +
@@ -64,9 +68,9 @@ var geneveDecodeSpec = Spec{
 		"`tcpdump -X udp port 6081` line, an OVS / VMware NSX-T debug capture, a " +
 		"Kubernetes Antrea / Open vSwitch traffic dump, or any Geneve-emitting tool " +
 		"and get the documented header + options + inner protocol identification.\n\n" +
-		"Out of scope (deferred): UDP / IP framing (feed UDP payload bytes); inner " +
-		"payload decoding beyond the Ethernet peek (pipe post-Ethernet bytes to " +
-		"`vlan_decode` / `ip_packet_decode` / etc.); vendor-specific option data " +
+		"Out of scope (deferred): UDP / IP framing (feed UDP payload bytes); non-IP " +
+		"inner payloads (802.1Q VLAN tags / MPLS / NSH — left for `vlan_decode` / " +
+		"their own decoders); vendor-specific option data " +
 		"dissection (only class + type + length surfaced; option data body is hex); " +
 		"VXLAN (handled by `vxlan_decode` — Geneve is the more flexible / modern " +
 		"alternative but VXLAN remains widely deployed).\n\n" +
