@@ -877,6 +877,14 @@ var toolLevels = func() map[string]Level {
 		// msgpack-RPC, API/cache payloads); reads bytes, transmits
 		// nothing, so it is Low.
 		"msgpack_decode",
+		// v0.495 — BSON document dissector (the binary-serialization
+		// sibling of cbor_decode / msgpack_decode; the document-format
+		// complement to mongodb_decode's wire view): full recursive
+		// decode of a mongodump .bson document — all element types,
+		// nested docs/arrays, ObjectId, dates, binary subtypes. Offline
+		// parse of a pasted hex blob; reads bytes, transmits nothing,
+		// so it is Low.
+		"bson_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc

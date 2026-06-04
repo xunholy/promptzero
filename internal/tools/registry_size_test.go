@@ -2128,7 +2128,11 @@ func TestRegistrySize(t *testing.T) {
 	// serialization sibling of cbor_decode: nil/bool, fixint + uint/int widths,
 	// float32/64, str/bin, array/map, ext; gated byte-for-byte vs the reference
 	// msgpack library across every format family. internal/msgpack).
-	const expected = 520
+	// v0.495.0 added bson_decode (BSON document dissector — full recursive decode
+	// of a mongodump .bson document: all element types, nested docs/arrays,
+	// ObjectId, dates, binary subtypes, regex, timestamp, decimal128; gated
+	// byte-for-byte vs the reference PyMongo bson library. internal/bson).
+	const expected = 521
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
