@@ -2140,7 +2140,11 @@ func TestRegistrySize(t *testing.T) {
 	// base64 ± DEFLATE -> XML + issuer/destination/NameID/conditions/audience +
 	// signature-present golden-SAML triage; anchored vs an independent DEFLATE
 	// redirect vector + a POST signed Response. internal/saml).
-	const expected = 523
+	// v0.499.0 added keytab_decode (MIT Kerberos .keytab v0x0502 parser — the
+	// file-format complement to kerberos_decode: principals, KVNO, enctype, raw
+	// key bytes (RC4 = NT hash flagged); anchored vs a keytab confirmed by the
+	// MIT ktutil oracle. internal/keytab).
+	const expected = 524
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -2247,6 +2247,13 @@ var toolLevels = func() map[string]Level {
 		// next step); PAC + PKINIT + GSS-API wrapping out
 		// of scope.
 		"kerberos_decode",
+		// v0.499 — MIT Kerberos keytab (.keytab v0x0502) parser, the
+		// file-format complement to kerberos_decode: principals, KVNO,
+		// enctype, raw key bytes (RC4 = NT hash, flagged) — AD loot for
+		// silver-ticket / pass-the-key triage. Offline parse of a
+		// pasted hex blob; reads bytes, transmits nothing, so it is
+		// Low.
+		"keytab_decode",
 		// v0.331 native-fit gap: ldap_decode is a pure
 		// offline dissector for LDAP v3 per RFC 4511 — the
 		// canonical directory-service protocol used by
