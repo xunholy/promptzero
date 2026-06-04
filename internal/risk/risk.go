@@ -495,6 +495,11 @@ var toolLevels = func() map[string]Level {
 		// Bidirectional, pure fixed-base arithmetic; reads strings/numbers,
 		// transmits nothing, so it is Low.
 		"maidenhead_locator",
+		// v0.516 — geohash <-> lat/lon converter (the geo companion to
+		// redis/mongodb/bson decoders, where geohashes appear in GEO
+		// values / geo fields). Bidirectional, pure base-32 bisection;
+		// reads strings/numbers, transmits nothing, so it is Low.
+		"geohash_decode",
 		// v0.512 — GPS/GNSS NMEA 0183 sentence decode (GGA/RMC/GLL/
 		// VTG/GSA/GSV): the offline complement to the device-side
 		// gps_* / marauder_nmea stream tools — paste a captured NMEA

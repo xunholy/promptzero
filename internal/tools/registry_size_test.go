@@ -2192,7 +2192,12 @@ func TestRegistrySize(t *testing.T) {
 	// <-> lat/lon converter — the ham/geo companion to aprs/ais/nmea; decode
 	// returns center+SW-corner+cell, encode at 1-4 pairs. Anchored vs the
 	// maidenhead reference library. internal/maidenhead).
-	const expected = 534
+	// v0.516.0 added geohash_decode (bidirectional geohash <-> lat/lon converter
+	// — the geo companion to redis/mongodb/bson decoders, where geohashes appear
+	// in GEO values / geo fields; decode returns center + half-cell + bbox,
+	// encode at 1-12 chars. Anchored vs the pygeohash reference library.
+	// internal/geohash).
+	const expected = 535
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
