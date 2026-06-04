@@ -514,6 +514,11 @@ var toolLevels = func() map[string]Level {
 		// is the timestamp). Offline parse of a pasted ID; reads a string,
 		// transmits nothing, so it is Low.
 		"ulid_decode",
+		// v0.520 — Snowflake-ID decoder: 41-bit ms creation timestamp from
+		// a Discord/Twitter-X 64-bit ID (candidate-per-platform, asserts
+		// none). Offline parse of a pasted ID; reads a string, transmits
+		// nothing, so it is Low.
+		"snowflake_decode",
 		// v0.512 — GPS/GNSS NMEA 0183 sentence decode (GGA/RMC/GLL/
 		// VTG/GSA/GSV): the offline complement to the device-side
 		// gps_* / marauder_nmea stream tools — paste a captured NMEA

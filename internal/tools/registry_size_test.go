@@ -2209,7 +2209,11 @@ func TestRegistrySize(t *testing.T) {
 	// 80-bit randomness from a 26-char Crockford-base32 ID; completes the
 	// identifier-timestamp triad with uuid_decode/objectid_decode. Anchored vs
 	// python-ulid + a hand-verified Crockford decode. internal/ulid).
-	const expected = 538
+	// v0.520.0 added snowflake_decode (Snowflake-ID decoder — 41-bit ms creation
+	// timestamp from a Discord/Twitter-X 64-bit ID; the social-media-OSINT
+	// sibling of uuid/objectid/ulid, candidate-per-platform (asserts none).
+	// Anchored vs Discord's documented example. internal/snowflake).
+	const expected = 539
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
