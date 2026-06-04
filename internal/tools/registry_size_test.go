@@ -2124,7 +2124,11 @@ func TestRegistrySize(t *testing.T) {
 	// PBKDF2-HMAC-SHA256 / 20000 iters / Cisco base64, $8$salt$digest, hashcat
 	// 9200; gated vs the canonical hashcat-9200 vector + a second cracked one.
 	// internal/ciscopw type8.go).
-	const expected = 519
+	// v0.493.0 added msgpack_decode (MessagePack dissector — the binary-
+	// serialization sibling of cbor_decode: nil/bool, fixint + uint/int widths,
+	// float32/64, str/bin, array/map, ext; gated byte-for-byte vs the reference
+	// msgpack library across every format family. internal/msgpack).
+	const expected = 520
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

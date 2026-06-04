@@ -870,6 +870,13 @@ var toolLevels = func() map[string]Level {
 		// (RFC 8949 standard tags + COSE + CTAP/WebAuthn).
 		// Used by COSE, WebAuthn/CTAP, Bluetooth Mesh, CoAP.
 		"cbor_decode",
+		// v0.493 — MessagePack dissector (the binary-serialization
+		// sibling of cbor_decode / protobuf_decode): nil/bool,
+		// fixint + uint/int widths, float32/64, str/bin, array/map,
+		// ext. Offline parse of a pasted hex blob (Redis internals,
+		// msgpack-RPC, API/cache payloads); reads bytes, transmits
+		// nothing, so it is Low.
+		"msgpack_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
