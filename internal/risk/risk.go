@@ -2261,6 +2261,13 @@ var toolLevels = func() map[string]Level {
 		// pasted hex blob; reads bytes, transmits nothing, so it is
 		// Low.
 		"keytab_decode",
+		// v0.503 — Kerberoast / AS-REP-roast hashcat crack-line
+		// builder: from a captured AS-REP (-> $krb5asrep$, hashcat
+		// 18200) or TGS-REP (-> $krb5tgs$, hashcat 13100), emit the
+		// ready-to-crack line — the capture->crackable-hash step for
+		// Kerberos, sibling of netntlm_hashcat. Offline transform of
+		// operator-supplied hex; transmits nothing, so it is Low.
+		"krb_roast_hashcat",
 		// v0.500 — MIT Kerberos credential cache (.ccache /
 		// krb5cc_* v0x0504) parser, the credential-cache complement
 		// to keytab_decode + kerberos_decode: default principal +

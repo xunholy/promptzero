@@ -2153,7 +2153,11 @@ func TestRegistrySize(t *testing.T) {
 	// NTLMSSP AUTHENTICATE + server challenge, emit the hashcat 5600 (NTLMv2) /
 	// 5500 (NTLMv1) line; anchored byte-for-byte vs the hashcat 5600 example.
 	// internal/netntlm).
-	const expected = 526
+	// v0.503.0 added krb_roast_hashcat (Kerberoast / AS-REP-roast crack-line
+	// builder — from a captured AS-REP -> $krb5asrep$ (18200) or TGS-REP ->
+	// $krb5tgs$ (13100), emit the hashcat line; anchored vs spec-conformant
+	// AS-REP/TGS-REP vectors. internal/krbroast).
+	const expected = 527
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

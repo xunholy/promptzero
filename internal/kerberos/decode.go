@@ -219,6 +219,11 @@ type Result struct {
 	TicketBytes  int `json:"ticket_bytes,omitempty"`
 	EncPartBytes int `json:"enc_part_bytes,omitempty"`
 
+	// AS-REP / TGS-REP [6] enc-part (encrypted with the client/session key —
+	// the AS-REP-roast blob). etype + cipher are in the clear.
+	EncPartEType     int    `json:"enc_part_etype,omitempty"`
+	EncPartCipherHex string `json:"enc_part_cipher_hex,omitempty"`
+
 	// Decoded cleartext Ticket fields — set for a bare [APPLICATION 1]
 	// Ticket (e.g. a ccache_decode ticket blob) and for the embedded
 	// ticket of an AS-REP / TGS-REP.
@@ -240,6 +245,7 @@ type TicketInfo struct {
 	EncType     int    `json:"enc_type,omitempty"`
 	EncTypeName string `json:"enc_type_name,omitempty"`
 	KVNO        int    `json:"kvno,omitempty"`
+	CipherHex   string `json:"cipher_hex,omitempty"` // the encrypted enc-part (Kerberoast blob)
 	Note        string `json:"note,omitempty"`
 }
 
@@ -351,9 +357,19 @@ func decodeTicketBody(r *Result, body []byte) {
 	r.Ticket = ti
 }
 
-// decodeTicketEncPart walks an EncryptedData SEQUENCE ([0] etype, [1] kvno,
-// [2] cipher) — the cipher is opaque but etype + kvno are in the clear.
+// decodeTicketEncPart fills a TicketInfo's enc-part fields (etype/kvno/cipher).
 func decodeTicketEncPart(ti *TicketInfo, body []byte) {
+	etype, kvno, cipher := decodeEncryptedData(body)
+	ti.EncType = etype
+	ti.EncTypeName = encTypeName(etype)
+	ti.KVNO = kvno
+	ti.CipherHex = hex.EncodeToString(cipher)
+}
+
+// decodeEncryptedData walks an EncryptedData SEQUENCE body ([0] etype, [1] kvno
+// OPTIONAL, [2] cipher OCTET STRING), returning the cleartext etype + kvno and
+// the (opaque) cipher bytes — the roastable blob for an AS-REP / service ticket.
+func decodeEncryptedData(body []byte) (etype, kvno int, cipher []byte) {
 	off := 0
 	for off < len(body) {
 		tag, length, contentStart, next, ok := readTLV(body, off)
@@ -366,14 +382,33 @@ func decodeTicketEncPart(ti *TicketInfo, body []byte) {
 		}
 		content := body[contentStart : contentStart+length]
 		switch int(tag & 0x1F) {
-		case 0: // etype
-			ti.EncType = int(readINTEGER(innerINTEGER(content)))
-			ti.EncTypeName = encTypeName(ti.EncType)
-		case 1: // kvno
-			ti.KVNO = int(readINTEGER(innerINTEGER(content)))
+		case 0:
+			etype = int(readINTEGER(innerINTEGER(content)))
+		case 1:
+			kvno = int(readINTEGER(innerINTEGER(content)))
+		case 2:
+			cipher = innerOctetString(content)
 		}
 		off = next
 	}
+	return etype, kvno, cipher
+}
+
+// innerOctetString strips the leading 0x04 + length from an OCTET STRING.
+func innerOctetString(b []byte) []byte {
+	if len(b) < 2 || b[0] != 0x04 {
+		return b
+	}
+	length, lenSize, err := readDERLength(b[1:])
+	if err != nil {
+		return b
+	}
+	start := 1 + lenSize
+	end := start + length
+	if end > len(b) {
+		end = len(b)
+	}
+	return b[start:end]
 }
 
 // decodeEmbeddedTicket decodes the [APPLICATION 1] Ticket carried in a KDC-REP
@@ -466,8 +501,11 @@ func decodeKDCRep(r *Result, body []byte) {
 		case 5: // ticket [APPLICATION 1]
 			r.TicketBytes = length
 			decodeEmbeddedTicket(r, content)
-		case 6: // enc-part EncryptedData
+		case 6: // enc-part EncryptedData (AS-REP-roast blob)
 			r.EncPartBytes = length
+			etype, _, cipher := decodeEncryptedData(innerSEQUENCE(content))
+			r.EncPartEType = etype
+			r.EncPartCipherHex = hex.EncodeToString(cipher)
 		}
 		off = next
 	}
