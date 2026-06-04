@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package cbordecode
+
+import (
+	"encoding/hex"
+	"testing"
+)
+
+// FuzzDecode asserts the parser never panics on arbitrary input. The
+// fuzzer's raw bytes are hex-encoded so every input reaches the binary
+// parser itself (not the hex-reject path) — the untrusted paste-and-decode
+// surface. Length/count fields, nesting, and offsets must be bounds-checked.
+func FuzzDecode(f *testing.F) {
+	f.Add(mustHex("1B000000E8D4A51000"))
+	f.Add([]byte{})
+	f.Add([]byte{0x00})
+	f.Add([]byte{0xff, 0xff, 0xff, 0xff})
+	f.Fuzz(func(_ *testing.T, b []byte) {
+		_, _ = Decode(hex.EncodeToString(b)) // must not panic
+	})
+}
+
+func mustHex(s string) []byte { b, _ := hex.DecodeString(s); return b }

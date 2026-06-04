@@ -377,11 +377,19 @@ func decodeConnectionStartOk(r *Result, args []byte) {
 	r.SASLMechanism = s
 	off += n
 
-	// response (long-string) — length only
+	// response (long-string) — length only. respLen is an untrusted 32-bit
+	// length from the wire; advancing off by it blindly would let a crafted
+	// value push off past len(args) and panic the locale slice below, so the
+	// skip is gated on the body actually fitting (overflow-safe comparison).
+	respValid := false
 	if off+4 <= len(args) {
 		respLen := int(binary.BigEndian.Uint32(args[off : off+4]))
 		r.ResponseBytes = respLen
-		off += 4 + respLen
+		off += 4
+		if respLen >= 0 && respLen <= len(args)-off {
+			off += respLen
+			respValid = true
+		}
 	}
 
 	if r.SASLMechanism == "PLAIN" {
@@ -389,9 +397,11 @@ func decodeConnectionStartOk(r *Result, args []byte) {
 		r.CleartextAuthFlag = "SASL PLAIN — credentials transmitted as \\0<username>\\0<password> in cleartext; offline capture yields immediate credential access"
 	}
 
-	// locale (short-string)
-	s, _ = readShortString(args[off:])
-	r.Locale = s
+	// locale (short-string) — only when the response body was within bounds.
+	if respValid {
+		s, _ = readShortString(args[off:])
+		r.Locale = s
+	}
 }
 
 func decodeConnectionTune(r *Result, args []byte) {
