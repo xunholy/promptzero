@@ -2176,7 +2176,14 @@ func TestRegistrySize(t *testing.T) {
 	// for the standard DER + a hand-rolled encoding/asn1 walk for the encrypted
 	// params; anchored vs openssl pkey -pubout + openssl asn1parse.
 	// internal/pemkey).
-	const expected = 531
+	// (v0.509-v0.511 added no tool — APRS §9 compressed position + compressed
+	// weather extended aprs_packet_decode; amqp091 DoS-panic fix + 93 fuzz
+	// harnesses across decoder packages.)
+	// v0.512.0 added gps_nmea_decode (GPS/GNSS NMEA 0183 sentence decode —
+	// GGA/RMC/GLL/VTG/GSA/GSV: lat/lon/time/fix/speed/course/altitude with XOR
+	// checksum validation; the offline complement to marauder_nmea. Anchored vs
+	// pynmea2. internal/nmea).
+	const expected = 532
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

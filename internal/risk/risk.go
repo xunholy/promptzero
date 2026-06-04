@@ -490,6 +490,13 @@ var toolLevels = func() map[string]Level {
 		// status + vessel name + IMO + ship type + dimensions
 		// + destination. Companion to adsb_mode_s_decode.
 		"ais_nmea_decode",
+		// v0.512 — GPS/GNSS NMEA 0183 sentence decode (GGA/RMC/GLL/
+		// VTG/GSA/GSV): the offline complement to the device-side
+		// gps_* / marauder_nmea stream tools — paste a captured NMEA
+		// log and get lat/lon/time/fix/speed/course/altitude with the
+		// XOR checksum validated. Anchored to pynmea2. Offline parse of
+		// pasted text; reads a string, transmits nothing, so it is Low.
+		"gps_nmea_decode",
 		// v0.239 (NATIVE-fit gap in the OT / ICS decode space):
 		// Modbus RTU + Modbus TCP dissector — most-deployed
 		// industrial control protocol; per Modbus Application
