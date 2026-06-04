@@ -890,6 +890,14 @@ var toolLevels = func() map[string]Level {
 		// Offline parse of a pasted key; reads a string, transmits
 		// nothing, so it is Low.
 		"ssh_privkey_decode",
+		// v0.507 — PuTTY .ppk private-key triage (the Windows
+		// counterpart to ssh_privkey_decode): from a saved
+		// PuTTY/WinSCP/FileZilla key, surface version / encrypted? /
+		// encryption / key type / SHA256 fingerprint / comment / the
+		// Argon2 KDF params (v3) — the loot-triage step (encrypted ->
+		// putty2john + John). Offline parse of a pasted key; reads a
+		// string, transmits nothing, so it is Low.
+		"putty_privkey_decode",
 		// v0.251 (NATIVE-fit gap — binary JSON for IoT):
 		// CBOR (Concise Binary Object Representation)
 		// dissector per RFC 8949. Recursive walker handling

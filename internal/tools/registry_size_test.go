@@ -2165,7 +2165,12 @@ func TestRegistrySize(t *testing.T) {
 	// triage — encrypted?/cipher/kdf-rounds/key-type/SHA256-fingerprint/comment;
 	// anchored vs ssh-keygen -l for ed25519 + rsa (encrypted and not).
 	// internal/sshkey).
-	const expected = 529
+	// v0.507.0 added putty_privkey_decode (PuTTY .ppk private-key triage — the
+	// Windows counterpart to ssh_privkey_decode: version/encrypted?/encryption/
+	// key-type/SHA256-fingerprint/comment/Argon2 KDF params; the .ppk public
+	// block is the same SSH-wire blob as an OpenSSH .pub, so the fingerprint is
+	// cross-validated vs ssh-keygen -l. internal/puttykey).
+	const expected = 530
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
