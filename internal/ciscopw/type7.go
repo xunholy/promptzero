@@ -22,9 +22,12 @@
 //
 // # Covered / deferred
 //
-// Covered: type 7 decode (and encode, for round-trip / config-crafting). Type 5
-// (md5crypt) and type 8/9 (PBKDF2 / scrypt) are real hashes — out of scope here;
-// hash_identify flags them and they are cracked, not decoded.
+// Covered: type 7 decode + encode (for round-trip / config-crafting), and type
+// 8 compute + verify (PBKDF2-HMAC-SHA256, the modern `secret` algorithm — see
+// type8.go). Type 5 (md5crypt) is covered by internal/unixcrypt. Type 9
+// (scrypt) is deliberately deferred — scrypt is not in the standard library and
+// a wrong parameterisation would be confidently-wrong; hash_identify flags $9$
+// for cracking instead.
 package ciscopw
 
 import (

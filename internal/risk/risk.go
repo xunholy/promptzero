@@ -784,6 +784,15 @@ var toolLevels = func() map[string]Level {
 		// credential computes it derives a value and transmits
 		// nothing, so it is Low.
 		"postgres_scram",
+		// v0.492 — Cisco IOS type-8 secret (the modern enable
+		// secret: PBKDF2-HMAC-SHA256, 20000 iters, Cisco base64,
+		// $8$salt$digest, hashcat 9200) compute + verify, the
+		// compute side of the cisco credential family alongside the
+		// reversible cisco_type7_decode. Offline compute /
+		// constant-time verify from operator-supplied strings — like
+		// the other credential computes it derives a value and
+		// transmits nothing, so it is Low.
+		"cisco_type8",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question

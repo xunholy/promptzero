@@ -2120,7 +2120,11 @@ func TestRegistrySize(t *testing.T) {
 	// verify — SCRAM-SHA-256$iter:salt$StoredKey:ServerKey, hashcat 28600; the
 	// PG 10+ default, modern successor to postgres_password's md5; gated vs the
 	// RFC 7677 §3 worked example. internal/pgscram).
-	const expected = 518
+	// v0.492.0 added cisco_type8 (Cisco IOS type-8 secret compute + verify —
+	// PBKDF2-HMAC-SHA256 / 20000 iters / Cisco base64, $8$salt$digest, hashcat
+	// 9200; gated vs the canonical hashcat-9200 vector + a second cracked one.
+	// internal/ciscopw type8.go).
+	const expected = 519
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
