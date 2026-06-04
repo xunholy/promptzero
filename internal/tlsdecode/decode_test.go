@@ -154,6 +154,13 @@ func TestDecode_ServerHello(t *testing.T) {
 	if sh.NegotiatedVersion != "TLS 1.3" {
 		t.Errorf("NegotiatedVersion = %q", sh.NegotiatedVersion)
 	}
+	// JA4S end-to-end: TLS 1.3 server, cipher 0x1301 -> "t13..._1301_<12hex>".
+	if !strings.HasPrefix(sh.JA4S, "t13") {
+		t.Errorf("JA4S = %q; want t13... prefix", sh.JA4S)
+	}
+	if parts := strings.Split(sh.JA4S, "_"); len(parts) != 3 || parts[1] != "1301" || len(parts[2]) != 12 {
+		t.Errorf("JA4S = %q; want three _-parts with cipher 1301 and a 12-hex hash", sh.JA4S)
+	}
 }
 
 // TestDecode_RecordTooShort rejects buffers smaller than the

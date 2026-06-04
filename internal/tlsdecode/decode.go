@@ -73,9 +73,15 @@
 //     counts + ALPN, then truncated SHA-256 of the sorted cipher
 //     list and of the sorted extensions + signature_algorithms.
 //     GREASE values are ignored throughout. Verified byte-for-byte
-//     against the FoxIO worked example. Only the TLS-over-TCP
-//     client fingerprint (JA4) is computed; the JA4S / JA4H / JA4X
-//     and QUIC/DTLS variants remain out of scope.
+//     against the FoxIO worked example.
+//   - **JA4S fingerprint** (FoxIO, server side): from the
+//     ServerHello — protocol + TLS version + extension count +
+//     chosen ALPN, the negotiated cipher, and the truncated
+//     SHA-256 of the server's extensions in WIRE ORDER (not
+//     sorted — the server's extension order is itself the
+//     fingerprint signal). Pairs with the client JA4 to
+//     fingerprint both ends of a session. Verified byte-for-byte
+//     against FoxIO snapshot outputs.
 //
 // # Certificate handshake message
 //
@@ -92,9 +98,9 @@
 //   - Encrypted ApplicationData / CCS / Alert bodies: the
 //     record envelope is decoded but the post-handshake
 //     ciphertext is opaque without key material.
-//   - JA4S / JA4H / JA4X fingerprinting (the server / HTTP /
-//     X.509 members of the JA4 family) — the client TLS JA4 is
-//     computed (above); the others are deferred.
+//   - JA4H / JA4X (the HTTP / X.509 members of the JA4 family)
+//     remain deferred — FoxIO publishes no inline test vectors
+//     for them and verifying needs tshark + their pcap snapshots.
 //   - TLS 1.3 inner handshake (EncryptedExtensions onward)
 //     is encrypted on the wire and requires session-key
 //     material that this Spec deliberately does not handle.
@@ -201,6 +207,7 @@ type ServerHello struct {
 	Extensions        []*Extension `json:"extensions,omitempty"`
 	NegotiatedALPN    string       `json:"negotiated_alpn,omitempty"`
 	NegotiatedVersion string       `json:"negotiated_version,omitempty"`
+	JA4S              string       `json:"ja4s,omitempty"`
 }
 
 // CipherSuite is one TLS cipher suite reference.
@@ -491,6 +498,7 @@ func decodeServerHello(b []byte) (*ServerHello, error) {
 		if len(ext0.versions) > 0 {
 			sh.NegotiatedVersion = ext0.versions[0]
 		}
+		sh.JA4S = computeJA4S(sh.VersionMajor, sh.VersionMinor, cs, exts, sh.NegotiatedALPN, sh.NegotiatedVersion)
 	}
 	return sh, nil
 }
@@ -831,6 +839,62 @@ func computeJA4(verMajor, verMinor int, suites []CipherSuite, exts []*Extension,
 	c := ja4Hash(cInput)
 
 	return a + "_" + b + "_" + c
+}
+
+// computeJA4S builds the JA4S TLS *server* fingerprint per the FoxIO reference
+// implementation. Format:
+//
+//	JA4S_a _ JA4S_b _ JA4S_c
+//
+// JA4S_a = protocol(t) + 2-char TLS version (the version the server selected) +
+// 2-digit server-extension count + first/last char of the chosen ALPN ("00" if
+// none). JA4S_b = the single negotiated cipher suite as 4-hex lower-case.
+// JA4S_c = first 12 hex of SHA-256 of the server's extension list in WIRE ORDER
+// (4-hex, comma-joined). Unlike JA4 (client), the list is NOT sorted and SNI /
+// ALPN are NOT removed — the server's extension order is itself the fingerprint
+// signal, so it is preserved verbatim.
+//
+// Verified byte-for-byte against two real FoxIO snapshot outputs: a Google-stack
+// TLS 1.3 ServerHello (key_share then supported_versions) ->
+// t130200_1301_234ea6891581, and a LastPass one (supported_versions then
+// key_share) -> t130200_1302_a56c5b993250 — the same two extensions in opposite
+// order yield different hashes, confirming the wire-order rule. As in the
+// reference, the QUIC ("q") variant and GREASE-bearing servers are out of scope.
+func computeJA4S(verMajor, verMinor int, cipher uint16, exts []*Extension, alpn, negotiatedVersion string) string {
+	// The ServerHello's supported_versions extension is a single bare version
+	// (not the client's length-prefixed list), so the negotiated-version string
+	// is the reliable source; fall back to the legacy ClientHello-version field.
+	var vraw []uint16
+	if c := versionStringToCode(negotiatedVersion); c != 0 {
+		vraw = []uint16{c}
+	}
+	alpnCode := "00"
+	if alpn != "" {
+		alpnCode = ja4ALPN([]string{alpn})
+	}
+	extHex := make([]string, len(exts))
+	for i, e := range exts {
+		extHex[i] = fmt.Sprintf("%04x", uint16(e.Type)) // wire order, not sorted
+	}
+	a := fmt.Sprintf("t%s%02d%s", ja4Version(verMajor, verMinor, vraw), minInt(len(exts), 99), alpnCode)
+	return fmt.Sprintf("%s_%04x_%s", a, cipher, ja4Hash(strings.Join(extHex, ",")))
+}
+
+// versionStringToCode inverts versionName for the JA4/JA4S version lookup.
+func versionStringToCode(s string) uint16 {
+	switch s {
+	case "SSL 3.0":
+		return 0x0300
+	case "TLS 1.0":
+		return 0x0301
+	case "TLS 1.1":
+		return 0x0302
+	case "TLS 1.2":
+		return 0x0303
+	case "TLS 1.3", "TLS 1.3 (draft)":
+		return 0x0304
+	}
+	return 0
 }
 
 // ja4Hash returns the first 12 hex chars of SHA-256(s), or twelve zeros when s

@@ -66,3 +66,23 @@ func TestJA4Pieces(t *testing.T) {
 		t.Errorf("ja4ALPN(nil) = %q, want 00", a)
 	}
 }
+
+// TestJA4SFoxIOAnchors anchors computeJA4S byte-for-byte to two real FoxIO
+// snapshot outputs (rust/ja4/src/snapshots/ja4__insta@tls-handshake.pcapng.snap):
+// the same two TLS 1.3 ServerHello extensions (key_share 0x0033, supported_versions
+// 0x002b) in opposite wire order produce different JA4S_c hashes, proving the
+// extensions are kept in wire order (not sorted).
+func TestJA4SFoxIOAnchors(t *testing.T) {
+	// Google stack: key_share THEN supported_versions, cipher 0x1301.
+	google := computeJA4S(0x03, 0x03, 0x1301,
+		[]*Extension{{Type: 0x0033}, {Type: 0x002b}}, "", "TLS 1.3")
+	if google != "t130200_1301_234ea6891581" {
+		t.Errorf("Google JA4S = %q, want t130200_1301_234ea6891581", google)
+	}
+	// LastPass stack: supported_versions THEN key_share, cipher 0x1302.
+	lastpass := computeJA4S(0x03, 0x03, 0x1302,
+		[]*Extension{{Type: 0x002b}, {Type: 0x0033}}, "", "TLS 1.3")
+	if lastpass != "t130200_1302_a56c5b993250" {
+		t.Errorf("LastPass JA4S = %q, want t130200_1302_a56c5b993250", lastpass)
+	}
+}

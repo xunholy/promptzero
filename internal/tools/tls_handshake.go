@@ -68,7 +68,12 @@ var tlsHandshakeDecodeSpec = Spec{
 		"of the sorted cipher list and of the sorted extensions (SNI/ALPN removed) + the " +
 		"signature_algorithms in order — e.g. `t13d1516h2_8daaf6152771_e5627efa2ab1`. Verified " +
 		"byte-for-byte against the FoxIO worked example; it is increasingly the preferred " +
-		"client/C2/malware fingerprint over JA3.\n\n" +
+		"client/C2/malware fingerprint over JA3.\n" +
+		"- **JA4S fingerprint** (FoxIO, server side): from a ServerHello — protocol + version + " +
+		"extension count + chosen ALPN, the negotiated cipher, and the truncated SHA-256 of the " +
+		"server's extensions in **wire order** (not sorted — the server's extension order is itself " +
+		"the fingerprint). Pairs with the client JA4 to fingerprint both ends of a TLS session " +
+		"(server-stack / C2 identification). Verified byte-for-byte against FoxIO snapshot outputs.\n\n" +
 		"Pure offline parser — operators paste a hex blob extracted from a Wireshark TLS " +
 		"frame, a tcpdump-of-443 capture, or a tshark `tls.handshake` field and inspect " +
 		"every plaintext field without re-attaching to the network. Complements the " +
@@ -78,10 +83,9 @@ var tlsHandshakeDecodeSpec = Spec{
 		"is run through the X.509 decoder, surfacing subject / issuer / validity / SAN / " +
 		"fingerprints (the TLS 1.3 Certificate message is encrypted on the wire and so is " +
 		"not present in a passive capture).\n\n" +
-		"Out of scope (deferred to future iterations): the JA4S / JA4H / JA4X members of the " +
-		"JA4 family (server / HTTP / X.509 — the client TLS JA4 is computed above), TLS 1.3 " +
-		"inner-handshake (encrypted on the wire without session keys), DTLS (Datagram TLS over " +
-		"UDP).\n\n" +
+		"Out of scope (deferred to future iterations): the JA4H / JA4X members of the JA4 family " +
+		"(HTTP / X.509 — the client JA4 and server JA4S are computed above), TLS 1.3 inner-handshake " +
+		"(encrypted on the wire without session keys), DTLS (Datagram TLS over UDP).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (network-protocol decode space — TLS is the " +
 		"most-traffic-bearing app-layer protocol). Wrap-vs-native: native — RFC 5246 + RFC " +
 		"8446 + IANA TLS registries are fully public, every field is fixed-format integer " +
