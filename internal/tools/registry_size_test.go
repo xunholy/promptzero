@@ -2205,7 +2205,11 @@ func TestRegistrySize(t *testing.T) {
 	// creation timestamp + random + counter; the MongoDB analogue of uuid_decode
 	// and the completion of the opaque-hex ObjectId in mongodb/bson decoders.
 	// Anchored vs pymongo ObjectId.generation_time. internal/objectid).
-	const expected = 537
+	// v0.519.0 added ulid_decode (ULID decoder — 48-bit ms creation timestamp +
+	// 80-bit randomness from a 26-char Crockford-base32 ID; completes the
+	// identifier-timestamp triad with uuid_decode/objectid_decode. Anchored vs
+	// python-ulid + a hand-verified Crockford decode. internal/ulid).
+	const expected = 538
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
