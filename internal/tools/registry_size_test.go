@@ -2148,7 +2148,12 @@ func TestRegistrySize(t *testing.T) {
 	// default principal + per-credential client/server/key/times/flags + the
 	// embedded ticket (pass-the-ticket loot; krbtgt TGT flagged); anchored vs a
 	// ccache confirmed by the MIT klist -cf oracle. internal/ccache).
-	const expected = 525
+	// (v0.501.0 added no tool — kerberos bare-Ticket decode + ccache chain.)
+	// v0.502.0 added netntlm_hashcat (NetNTLM crack-line builder — from a captured
+	// NTLMSSP AUTHENTICATE + server challenge, emit the hashcat 5600 (NTLMv2) /
+	// 5500 (NTLMv1) line; anchored byte-for-byte vs the hashcat 5600 example.
+	// internal/netntlm).
+	const expected = 526
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

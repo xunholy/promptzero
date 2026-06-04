@@ -1655,6 +1655,13 @@ var toolLevels = func() map[string]Level {
 		// Type 2 + Type 3 messages feed directly into
 		// hashcat for offline password recovery.
 		"ntlm_decode",
+		// v0.502 — NetNTLM hashcat crack-line builder: from a captured
+		// NTLMSSP AUTHENTICATE + server challenge, emit the hashcat
+		// -m 5600 (NetNTLMv2) / -m 5500 (NetNTLMv1) line — the
+		// capture->crackable-hash step of the SMB-relay / Responder
+		// loot workflow, complementing ntlm_decode. Offline transform
+		// of operator-supplied hex; transmits nothing, so it is Low.
+		"netntlm_hashcat",
 		// v0.303 (NATIVE-fit gap — modern NAT/firewall
 		// config protocol): PCP per RFC 6887. Supersedes
 		// NAT-PMP (RFC 6886); adds IPv6 + peer-mapping +
