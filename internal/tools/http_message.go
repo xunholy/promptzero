@@ -54,6 +54,13 @@ var httpMessageDecodeSpec = Spec{
 		"Basic / Bearer / Digest), Cookie (parsed into key=value pairs), Set-Cookie " +
 		"(parsed into name + value + attribute map for Path / Domain / Expires / " +
 		"Max-Age / HttpOnly / Secure / SameSite / etc.).\n" +
+		"- **JA4H fingerprint** (FoxIO, requests only): the HTTP member of the JA4+ threat-intel " +
+		"family — method + version + cookie/referer flags + header count + Accept-Language, then " +
+		"the truncated SHA-256 of the header names (in **wire case + order**, excluding Cookie/" +
+		"Referer/pseudo), the sorted cookie names, and the sorted cookie name=value pairs. " +
+		"Fingerprints the HTTP client stack (browser / library / bot / malware); completes the JA4+ " +
+		"family with JA4 (client TLS) + JA4S (server TLS) + JA4X (cert). Verified byte-for-byte " +
+		"against FoxIO snapshot outputs.\n" +
 		"- **Body handling**:\n" +
 		"  - **Content-Length**: read exactly N bytes, surface as text if printable " +
 		"or hex if binary.\n" +

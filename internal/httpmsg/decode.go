@@ -70,6 +70,15 @@
 //     scheme detection), Cookie (parsed into key=value
 //     pairs), Set-Cookie (parsed into name, value, and
 //     attribute list).
+//   - **JA4H fingerprint** (FoxIO, for requests): the HTTP
+//     member of the JA4+ family — method + version + cookie/
+//     referer flags + header count + Accept-Language, then the
+//     truncated SHA-256 of the header names (in wire case +
+//     order, excluding Cookie/Referer/pseudo), the sorted
+//     cookie names, and the sorted cookie name=value pairs.
+//     Fingerprints the HTTP client stack (browser / library /
+//     bot / malware). Verified byte-for-byte against FoxIO
+//     snapshot outputs.
 //   - **Body handling**:
 //   - Content-Length: read exactly N bytes from the
 //     body block.
@@ -97,8 +106,10 @@
 package httpmsg
 
 import (
+	"crypto/sha256" // JA4H hashes are defined as SHA-256 by the FoxIO spec.
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -127,6 +138,7 @@ type Message struct {
 	BodyRaw          string       `json:"body_raw,omitempty"`
 	BodyHex          string       `json:"body_hex,omitempty"`
 	ChunkedBody      []*Chunk     `json:"chunked_body,omitempty"`
+	JA4H             string       `json:"ja4h,omitempty"`
 }
 
 // Header is one header field.
@@ -199,7 +211,131 @@ func Decode(input string) (*Message, error) {
 			renderBody(m, body)
 		}
 	}
+	if m.IsRequest {
+		m.JA4H = computeJA4H(m)
+	}
 	return m, nil
+}
+
+// computeJA4H builds the JA4H HTTP-client fingerprint per the FoxIO reference
+// implementation (python/ja4h.py). Format:
+//
+//	JA4H = method(2) version(2) cookie(c/n) referer(r/n) header_count(2) lang(4)
+//	       _ hash12(header names) _ hash12(cookie names) _ hash12(cookie name=value)
+//
+// header_count and the header-name hash EXCLUDE the Cookie, Referer, and HTTP/2
+// pseudo (":"-prefixed) headers; header NAMES are hashed in their ON-THE-WIRE
+// case and order (a client fingerprint signal — NOT lower-cased). The cookie
+// name and name=value lists are sorted by cookie name; both default to twelve
+// zeros when there is no Cookie header. lang is the first Accept-Language value
+// with '-' stripped and ';' folded to ',', lower-cased, first token, first 4
+// chars right-padded with '0' ("0000" if absent). hash12 is the first 12 hex
+// chars of SHA-256.
+//
+// Verified byte-for-byte against two FoxIO snapshot outputs: a 1-header
+// HTTP/1.0 GET (User-Agent) -> ge10nn010000_b8bcd45ac095_..., and a curl
+// HTTP/1.1 GET with Referer + two cookies + Accept-Language: da ->
+// ge11cr04da00_8ddaef5d77af_280f366eaa04_c2fb0fe53442.
+func computeJA4H(m *Message) string {
+	method := strings.ToLower(m.Method)
+	if len(method) > 2 {
+		method = method[:2]
+	}
+
+	cookiePresent := len(m.Cookies) > 0
+	refererPresent := false
+	langVal, hasLang := "", false
+	var hdrNames []string
+	for _, h := range m.Headers {
+		if strings.HasPrefix(h.Name, ":") { // HTTP/2 pseudo-header
+			continue
+		}
+		switch ln := strings.ToLower(h.Name); ln {
+		case "cookie":
+			cookiePresent = true
+		case "referer":
+			refererPresent = true
+		default:
+			hdrNames = append(hdrNames, h.Name) // wire case, in order
+			if ln == "accept-language" && !hasLang {
+				langVal, hasLang = h.Value, true
+			}
+		}
+	}
+
+	cookie, referer := "n", "n"
+	if cookiePresent {
+		cookie = "c"
+	}
+	if refererPresent {
+		referer = "r"
+	}
+	lang := "0000"
+	if hasLang {
+		lang = ja4hLang(langVal)
+	}
+	a := fmt.Sprintf("%s%s%s%s%02d%s", method, ja4hVersion(m.Version), cookie, referer, min(len(hdrNames), 99), lang)
+
+	hHdr := ja4hHash(strings.Join(hdrNames, ","))
+	hCk, hCv := "000000000000", "000000000000"
+	if len(m.Cookies) > 0 {
+		cs := append([]Cookie(nil), m.Cookies...)
+		sort.SliceStable(cs, func(i, j int) bool { return cs[i].Name < cs[j].Name })
+		names := make([]string, len(cs))
+		pairs := make([]string, len(cs))
+		for i, c := range cs {
+			names[i] = c.Name
+			if c.Value != "" {
+				pairs[i] = c.Name + "=" + c.Value
+			} else {
+				pairs[i] = c.Name
+			}
+		}
+		hCk = ja4hHash(strings.Join(names, ","))
+		hCv = ja4hHash(strings.Join(pairs, ","))
+	}
+	return a + "_" + hHdr + "_" + hCk + "_" + hCv
+}
+
+// ja4hVersion maps an HTTP version token to its 2-char JA4H code.
+func ja4hVersion(v string) string {
+	switch v {
+	case "HTTP/1.1":
+		return "11"
+	case "HTTP/1.0":
+		return "10"
+	case "HTTP/2", "HTTP/2.0":
+		return "20"
+	case "HTTP/3", "HTTP/3.0":
+		return "30"
+	case "HTTP/0.9":
+		return "09"
+	}
+	if s, ok := strings.CutPrefix(v, "HTTP/"); ok {
+		s = strings.ReplaceAll(s, ".", "")
+		if len(s) >= 2 {
+			return s[:2]
+		}
+	}
+	return "00"
+}
+
+// ja4hLang applies the FoxIO Accept-Language transform: strip '-', fold ';' to
+// ',', lower-case, take the first comma token, first 4 chars, right-pad to 4.
+func ja4hLang(v string) string {
+	s := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(v, "-", ""), ";", ","))
+	first := strings.SplitN(s, ",", 2)[0]
+	if len(first) > 4 {
+		first = first[:4]
+	}
+	return first + strings.Repeat("0", 4-len(first))
+}
+
+// ja4hHash is the first 12 hex chars of SHA-256(s) (the JA4 family's hash12;
+// for the header part an empty list hashes the empty string, not zeros).
+func ja4hHash(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 func parseRequestLine(m *Message, line string) error {

@@ -99,10 +99,9 @@
 //     record envelope is decoded but the post-handshake
 //     ciphertext is opaque without key material.
 //     (The JA4X X.509 fingerprint is computed for each cert in
-//     the chain by internal/x509decode.) JA4H (the HTTP member
-//     of the JA4 family) remains deferred — FoxIO publishes no
-//     inline test vector and verifying it needs tshark + their
-//     pcap snapshots.
+//     the chain by internal/x509decode, and the JA4H HTTP-client
+//     fingerprint by internal/httpmsg — so the whole JA4+ family
+//     JA4 / JA4S / JA4X / JA4H is now covered across the stack.)
 //   - TLS 1.3 inner handshake (EncryptedExtensions onward)
 //     is encrypted on the wire and requires session-key
 //     material that this Spec deliberately does not handle.
