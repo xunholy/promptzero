@@ -2132,7 +2132,11 @@ func TestRegistrySize(t *testing.T) {
 	// of a mongodump .bson document: all element types, nested docs/arrays,
 	// ObjectId, dates, binary subtypes, regex, timestamp, decimal128; gated
 	// byte-for-byte vs the reference PyMongo bson library. internal/bson).
-	const expected = 521
+	// v0.497.0 added paseto_decode (PASETO token decode + Ed25519 verify — the
+	// jwt_decode counterpart: vN.purpose.payload[.footer] structure, public
+	// cleartext claims, v2/v4 Ed25519 signature verify over the PASETO PAE; gated
+	// vs the official PASETO v4 test vectors. internal/paseto).
+	const expected = 522
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

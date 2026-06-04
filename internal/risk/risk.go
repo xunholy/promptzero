@@ -691,6 +691,14 @@ var toolLevels = func() map[string]Level {
 		// no signature verification.
 		"jwt_decode",
 		"jwt_verify",
+		// v0.497 — PASETO token decode + (Ed25519) verify, the
+		// PASETO counterpart of jwt_decode: structural decode of
+		// vN.purpose.payload[.footer], the public (signed) cleartext
+		// claims, and crypto/ed25519 verification of v2/v4 public
+		// signatures over the PASETO PAE. Offline decode / verify of
+		// an operator-supplied token; reads a string, transmits
+		// nothing, so it is Low.
+		"paseto_decode",
 		"jwt_forge",
 		// Flask/itsdangerous session cookie decode / verify / forge —
 		// the web analogue of the JWT trio. Offline compute over
