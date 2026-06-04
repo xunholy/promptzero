@@ -116,6 +116,57 @@ func TestGSV(t *testing.T) {
 	}
 }
 
+func TestGSVSatelliteDetail(t *testing.T) {
+	s := one(t, "$GPGSV,2,1,08,01,40,083,46,02,17,308,41,12,07,344,39,14,22,228,45*75")
+	if s.SatellitesInVie == nil || *s.SatellitesInVie != 8 {
+		t.Fatalf("satellites_in_view = %v, want 8", s.SatellitesInVie)
+	}
+	if len(s.Satellites) != 4 {
+		t.Fatalf("got %d satellites, want 4", len(s.Satellites))
+	}
+	// First satellite: PRN 1, elev 40, azim 83, snr 46 (pynmea2).
+	g := s.Satellites[0]
+	if g.PRN != 1 || g.ElevationDeg == nil || *g.ElevationDeg != 40 ||
+		g.AzimuthDeg == nil || *g.AzimuthDeg != 83 || g.SNR == nil || *g.SNR != 46 {
+		t.Errorf("sat[0] = %+v, want PRN1/40/83/46", g)
+	}
+	// Last: PRN 14, elev 22, azim 228, snr 45.
+	g = s.Satellites[3]
+	if g.PRN != 14 || *g.SNR != 45 {
+		t.Errorf("sat[3] = %+v, want PRN14 snr45", g)
+	}
+}
+
+func TestGST(t *testing.T) {
+	s := one(t, "$GPGST,172814.0,0.006,0.023,0.020,273.6,0.023,0.020,0.031*6A")
+	if !s.ChecksumOK {
+		t.Error("checksum_ok = false")
+	}
+	if s.TimeUTC != "17:28:14" {
+		t.Errorf("time = %q, want 17:28:14", s.TimeUTC)
+	}
+	feq(t, "rms", s.RMS, 0.006)
+	feq(t, "std_dev_major", s.StdDevMajorM, 0.023)
+	feq(t, "std_dev_minor", s.StdDevMinorM, 0.020)
+	feq(t, "orientation", s.OrientationDeg, 273.6)
+	feq(t, "std_dev_lat", s.StdDevLatM, 0.023)
+	feq(t, "std_dev_lon", s.StdDevLonM, 0.020)
+	feq(t, "std_dev_alt", s.StdDevAltM, 0.031)
+}
+
+func TestZDA(t *testing.T) {
+	s := one(t, "$GPZDA,160012.71,11,03,2004,-1,00*7D")
+	if !s.ChecksumOK {
+		t.Error("checksum_ok = false")
+	}
+	if s.TimeUTC != "16:00:12" {
+		t.Errorf("time = %q, want 16:00:12", s.TimeUTC)
+	}
+	if s.Date != "2004-03-11" {
+		t.Errorf("date = %q, want 2004-03-11", s.Date)
+	}
+}
+
 func TestChecksumBadFlagged(t *testing.T) {
 	// Same GGA with a wrong checksum: still parses, but flagged.
 	s := one(t, "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*00")

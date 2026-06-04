@@ -72,8 +72,30 @@ type Sentence struct {
 	CourseMagDeg    *float64 `json:"course_magnetic_deg,omitempty"`
 	MagVariationDeg *float64 `json:"mag_variation_deg,omitempty"`
 
+	// GST pseudorange-error statistics (metres / degrees).
+	RMS            *float64 `json:"rms,omitempty"`
+	StdDevMajorM   *float64 `json:"std_dev_major_m,omitempty"`
+	StdDevMinorM   *float64 `json:"std_dev_minor_m,omitempty"`
+	OrientationDeg *float64 `json:"orientation_deg,omitempty"`
+	StdDevLatM     *float64 `json:"std_dev_lat_m,omitempty"`
+	StdDevLonM     *float64 `json:"std_dev_lon_m,omitempty"`
+	StdDevAltM     *float64 `json:"std_dev_alt_m,omitempty"`
+
+	// Satellites carries the per-satellite detail of a GSV sentence.
+	Satellites []Satellite `json:"satellites,omitempty"`
+
 	Fields []string `json:"fields,omitempty"` // raw comma fields for an unrecognised type
 	Note   string   `json:"note,omitempty"`
+}
+
+// Satellite is one entry of a GSV (satellites-in-view) sentence. SNR is nil when
+// the satellite is tracked but not used (blank SNR field). Useful for GPS
+// signal-quality and spoofing/jamming analysis (anomalous SNR or geometry).
+type Satellite struct {
+	PRN          int  `json:"prn"`
+	ElevationDeg *int `json:"elevation_deg,omitempty"`
+	AzimuthDeg   *int `json:"azimuth_deg,omitempty"`
+	SNR          *int `json:"snr_db,omitempty"`
 }
 
 var talkerNames = map[string]string{
@@ -88,6 +110,8 @@ var typeNames = map[string]string{
 	"VTG": "Track Made Good and Ground Speed",
 	"GSA": "GNSS DOP and Active Satellites",
 	"GSV": "GNSS Satellites in View",
+	"GST": "GNSS Pseudorange Error Statistics",
+	"ZDA": "Time and Date",
 }
 
 var fixQualityNames = map[int]string{
@@ -158,6 +182,10 @@ func decodeLine(line string) *Sentence {
 		decodeGSA(s, fields)
 	case "GSV":
 		decodeGSV(s, fields)
+	case "GST":
+		decodeGST(s, fields)
+	case "ZDA":
+		decodeZDA(s, fields)
 	default:
 		s.Fields = fields[1:]
 		if s.Note == "" {
@@ -245,8 +273,43 @@ func decodeGSA(s *Sentence, f []string) {
 }
 
 func decodeGSV(s *Sentence, f []string) {
-	// num_messages, msg_num, sats_in_view, [PRN,elev,azim,snr]...
+	// num_messages, msg_num, sats_in_view, then groups of 4:
+	// [PRN, elevation_deg, azimuth_deg, SNR_dB] per satellite.
 	s.SatellitesInVie = intPtr(f, 3)
+	for i := 4; i+3 < len(f); i += 4 {
+		prn := intPtr(f, i)
+		if prn == nil {
+			continue // empty slot
+		}
+		s.Satellites = append(s.Satellites, Satellite{
+			PRN:          *prn,
+			ElevationDeg: intPtr(f, i+1),
+			AzimuthDeg:   intPtr(f, i+2),
+			SNR:          intPtr(f, i+3), // nil when tracked-but-unused (blank SNR)
+		})
+	}
+}
+
+func decodeGST(s *Sentence, f []string) {
+	// time, rms, stddev_major, stddev_minor, orientation, stddev_lat,
+	// stddev_lon, stddev_alt
+	s.TimeUTC = field(f, 1, parseTime)
+	s.RMS = floatPtr(f, 2)
+	s.StdDevMajorM = floatPtr(f, 3)
+	s.StdDevMinorM = floatPtr(f, 4)
+	s.OrientationDeg = floatPtr(f, 5)
+	s.StdDevLatM = floatPtr(f, 6)
+	s.StdDevLonM = floatPtr(f, 7)
+	s.StdDevAltM = floatPtr(f, 8)
+}
+
+func decodeZDA(s *Sentence, f []string) {
+	// time, day, month, year, local_zone_hours, local_zone_minutes
+	s.TimeUTC = field(f, 1, parseTime)
+	day, mon, yr := intPtr(f, 2), intPtr(f, 3), intPtr(f, 4)
+	if day != nil && mon != nil && yr != nil {
+		s.Date = fmt.Sprintf("%04d-%02d-%02d", *yr, *mon, *day)
+	}
 }
 
 // latLon converts the ddmm.mmmm / dddmm.mmmm field at index valIdx plus the

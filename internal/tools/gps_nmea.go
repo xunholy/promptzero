@@ -35,7 +35,11 @@ var gpsNMEADecodeSpec = Spec{
 		"- **GLL** — lat/lon, time, status.\n" +
 		"- **VTG** — true + magnetic course, speed (knots + km/h).\n" +
 		"- **GSA** — fix type (no-fix / 2D / 3D), PDOP / HDOP / VDOP.\n" +
-		"- **GSV** — satellites in view.\n\n" +
+		"- **GSV** — satellites in view, with per-satellite PRN / elevation / azimuth / SNR " +
+		"(for GPS signal-quality and spoofing/jamming analysis — anomalous SNR or geometry).\n" +
+		"- **GST** — pseudorange error statistics: RMS, error-ellipse (major/minor/orientation), " +
+		"and lat/lon/altitude standard deviations (fix integrity).\n" +
+		"- **ZDA** — UTC time + date.\n\n" +
 		"Coordinates are converted from `ddmm.mmmm`/hemisphere to signed decimal degrees; the talker ID " +
 		"(GP=GPS, GN=combined GNSS, GL=GLONASS, GA=Galileo, GB/BD=BeiDou, …) is identified. Multiple " +
 		"sentences (newline-separated) decode to an array. Each sentence reports `checksum_ok` (the NMEA " +
