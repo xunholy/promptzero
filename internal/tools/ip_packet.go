@@ -41,7 +41,11 @@ var ipPacketDecodeSpec = Spec{
 		"RST / SYN / FIN) + Wireshark-style flags string + window size + checksum + " +
 		"urgent pointer + TLV options walker with named decode for EOL / NOP / MSS / " +
 		"Window Scale / SACK Permitted / SACK blocks / Timestamps (TSval+TSecr) / TCP " +
-		"Fast Open Cookie + remaining payload hex.\n" +
+		"Fast Open Cookie + remaining payload hex. For SYN packets a **JA4T fingerprint** " +
+		"(FoxIO) is computed — `window_size_option-kinds_MSS_window-scale` (e.g. " +
+		"`65535_2-1-3-1-1-8-4-0-0_1460_6`), the passive OS / TCP-stack fingerprint (the modern " +
+		"p0f analogue) read from the SYN's window size, exact TCP-option-kind sequence, MSS and " +
+		"window scale. Verified byte-for-byte against a FoxIO snapshot.\n" +
 		"- **UDP header**: source/destination port + length + checksum + payload hex.\n" +
 		"- **ICMP**: type + code with name lookup for Echo Reply (0) / Destination " +
 		"Unreachable (3, with 13 sub-codes including Network/Host/Protocol/Port " +

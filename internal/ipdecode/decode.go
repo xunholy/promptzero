@@ -55,6 +55,10 @@
 //   - 5 SACK (block list)
 //   - 8 Timestamps
 //   - 34 TCP Fast Open Cookie
+//     For SYN packets a **JA4T fingerprint** (FoxIO) is also
+//     computed — window_size_option-kinds_MSS_window-scale, the
+//     passive OS / TCP-stack fingerprint (the modern p0f
+//     analogue). Verified byte-for-byte against a FoxIO snapshot.
 //   - **UDP header** (RFC 768): source port, destination
 //     port, length, checksum.
 //   - **ICMP** (RFC 792): type + code with name lookup for
@@ -105,6 +109,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -192,6 +197,7 @@ type TCP struct {
 	UrgentPointer   int          `json:"urgent_pointer"`
 	Options         []*TCPOption `json:"options,omitempty"`
 	PayloadHex      string       `json:"payload_hex,omitempty"`
+	JA4T            string       `json:"ja4t,omitempty"`
 }
 
 // TCPOption is one TCP option in the options list.
@@ -412,7 +418,11 @@ func decodeTCP(b []byte) *TCP {
 	}
 	t.FlagsString = tcpFlagsString(t)
 	if headerLen > 20 && headerLen <= len(b) {
-		t.Options = decodeTCPOptions(b[20:headerLen])
+		opts := b[20:headerLen]
+		t.Options = decodeTCPOptions(opts)
+		if t.FlagSYN {
+			t.JA4T = computeJA4T(t.WindowSize, opts)
+		}
 	}
 	if headerLen < len(b) {
 		t.PayloadHex = strings.ToUpper(hex.EncodeToString(b[headerLen:]))
@@ -452,6 +462,49 @@ func tcpFlagsString(t *TCP) string {
 		flags = append(flags, "NS")
 	}
 	return strings.Join(flags, ", ")
+}
+
+// computeJA4T builds the JA4T TCP-SYN fingerprint per the FoxIO spec:
+//
+//	window_size _ tcp-option-kinds(hyphen-joined) _ MSS _ window-scale
+//
+// e.g. 65535_2-1-3-1-1-8-4-0-0_1460_6. It is a passive OS / TCP-stack
+// fingerprint (the modern p0f analogue), read from a SYN's window size and the
+// exact wire sequence of TCP option kinds — every NOP (1) and EOL/padding (0)
+// byte included, unlike the display Options list which stops at the first EOL —
+// plus the MSS (option 2) and window-scale (option 3) values. No hashing: pure
+// structural extraction, so there is no confidently-wrong hash risk. Verified
+// byte-for-byte against the FoxIO macos_tcp_flags snapshot.
+func computeJA4T(window int, opts []byte) string {
+	var kinds []string
+	mss, wscale := 0, 0
+	for off := 0; off < len(opts); {
+		kind := int(opts[off])
+		kinds = append(kinds, strconv.Itoa(kind))
+		if kind == 0 || kind == 1 { // EOL / NOP — single byte; keep counting padding
+			off++
+			continue
+		}
+		if off+1 >= len(opts) {
+			break
+		}
+		length := int(opts[off+1])
+		if length < 2 || off+length > len(opts) {
+			break
+		}
+		switch kind {
+		case 2:
+			if length == 4 {
+				mss = int(binary.BigEndian.Uint16(opts[off+2 : off+4]))
+			}
+		case 3:
+			if length == 3 {
+				wscale = int(opts[off+2])
+			}
+		}
+		off += length
+	}
+	return fmt.Sprintf("%d_%s_%d_%d", window, strings.Join(kinds, "-"), mss, wscale)
 }
 
 func decodeTCPOptions(opt []byte) []*TCPOption {

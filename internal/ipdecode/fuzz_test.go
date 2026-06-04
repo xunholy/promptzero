@@ -15,6 +15,10 @@ func FuzzDecode(f *testing.F) {
 	for _, s := range [][]byte{{}, {0x00}, {0x01, 0x02, 0x03, 0x04}, {0xff, 0xff, 0xff, 0xff}} {
 		f.Add(s)
 	}
+	// A real TCP SYN over IPv4 (exercises the JA4T option walk).
+	if syn, err := hex.DecodeString("45000040000040004006c50dac100510ac431847ef7f01bbc6a29cd200000000b0c2ffffd2280000020405b4010303060101080a780321b50000000004020000"); err == nil {
+		f.Add(syn)
+	}
 	f.Fuzz(func(_ *testing.T, b []byte) {
 		_, _ = Decode(hex.EncodeToString(b)) // must not panic
 	})
