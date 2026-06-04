@@ -29,9 +29,12 @@ import (
 // `$8$dsYGNam3K1SIJO$7nv/35M/qr6t.dVc7UY9zrJDWRVqncHub1PE9UlMQFs` (password
 // "cisco"); both are reproduced byte-for-byte in the unit tests.
 //
-// Type 9 (scrypt) is deliberately not implemented here: scrypt is not in the
-// standard library and a wrong scrypt parameterisation would be
-// confidently-wrong; hash_identify flags $9$ for cracking instead.
+// Type 9 (scrypt) is deliberately not implemented here. golang.org/x/crypto/
+// scrypt is now a project dependency, but the obvious
+// scrypt(N=16384,r=1,p=1,keylen=32) construction does NOT reproduce the
+// canonical hashcat-9300 example vector — the first 21 of 32 bytes match and
+// then diverge, an unresolved construction subtlety — so emitting a type-9 hash
+// would be confidently-wrong. hash_identify flags $9$ for cracking instead.
 
 const (
 	type8Iterations = 20000

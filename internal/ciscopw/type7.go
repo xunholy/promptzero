@@ -25,9 +25,12 @@
 // Covered: type 7 decode + encode (for round-trip / config-crafting), and type
 // 8 compute + verify (PBKDF2-HMAC-SHA256, the modern `secret` algorithm — see
 // type8.go). Type 5 (md5crypt) is covered by internal/unixcrypt. Type 9
-// (scrypt) is deliberately deferred — scrypt is not in the standard library and
-// a wrong parameterisation would be confidently-wrong; hash_identify flags $9$
-// for cracking instead.
+// (scrypt) is deliberately deferred: even though golang.org/x/crypto/scrypt is
+// now a project dependency, the obvious scrypt(N=16384,r=1,p=1,keylen=32)
+// construction does NOT reproduce the canonical hashcat-9300 example vector
+// (the first 21 of 32 bytes match then diverge — an unresolved construction
+// subtlety), so emitting a type-9 hash would be confidently-wrong. hash_identify
+// flags $9$ for cracking instead.
 package ciscopw
 
 import (
