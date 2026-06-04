@@ -2188,7 +2188,11 @@ func TestRegistrySize(t *testing.T) {
 	// floor + occupancy + dwell heuristic over a captured RSSI sequence, the
 	// host-side complement to the on-device Jammer Detect FAP; observation-not-
 	// verdict like subghz_rollback_detect. internal/subghz AnalyzeJamming).
-	const expected = 533
+	// v0.515.0 added maidenhead_locator (bidirectional Maidenhead grid-locator
+	// <-> lat/lon converter — the ham/geo companion to aprs/ais/nmea; decode
+	// returns center+SW-corner+cell, encode at 1-4 pairs. Anchored vs the
+	// maidenhead reference library. internal/maidenhead).
+	const expected = 534
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

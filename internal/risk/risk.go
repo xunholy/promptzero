@@ -490,6 +490,11 @@ var toolLevels = func() map[string]Level {
 		// status + vessel name + IMO + ship type + dimensions
 		// + destination. Companion to adsb_mode_s_decode.
 		"ais_nmea_decode",
+		// v0.515 — Maidenhead grid-locator <-> lat/lon converter (ham
+		// QTH / grid squares; the geo companion to aprs/ais/nmea).
+		// Bidirectional, pure fixed-base arithmetic; reads strings/numbers,
+		// transmits nothing, so it is Low.
+		"maidenhead_locator",
 		// v0.512 — GPS/GNSS NMEA 0183 sentence decode (GGA/RMC/GLL/
 		// VTG/GSA/GSV): the offline complement to the device-side
 		// gps_* / marauder_nmea stream tools — paste a captured NMEA
