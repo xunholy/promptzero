@@ -219,10 +219,28 @@ type Result struct {
 	TicketBytes  int `json:"ticket_bytes,omitempty"`
 	EncPartBytes int `json:"enc_part_bytes,omitempty"`
 
+	// Decoded cleartext Ticket fields — set for a bare [APPLICATION 1]
+	// Ticket (e.g. a ccache_decode ticket blob) and for the embedded
+	// ticket of an AS-REP / TGS-REP.
+	Ticket *TicketInfo `json:"ticket,omitempty"`
+
 	// KRB-ERROR
 	ErrorCode     int    `json:"error_code,omitempty"`
 	ErrorCodeName string `json:"error_code_name,omitempty"`
 	ErrorText     string `json:"error_text,omitempty"`
+}
+
+// TicketInfo is the decoded cleartext outer structure of a Kerberos Ticket
+// (RFC 4120 §5.3): the encrypted enc-part is opaque, but the tkt-vno, realm,
+// service principal and the enc-part etype/kvno are in the clear.
+type TicketInfo struct {
+	TktVno      int    `json:"tkt_vno,omitempty"`
+	Realm       string `json:"realm,omitempty"`
+	ServiceName string `json:"service_name,omitempty"`
+	EncType     int    `json:"enc_type,omitempty"`
+	EncTypeName string `json:"enc_type_name,omitempty"`
+	KVNO        int    `json:"kvno,omitempty"`
+	Note        string `json:"note,omitempty"`
 }
 
 // Decode parses a Kerberos message from a hex string. Separators
@@ -284,6 +302,10 @@ func Decode(hexStr string) (*Result, error) {
 	innerBody := body[innerStart:innerEnd]
 
 	switch tagNum {
+	case 1:
+		// Bare [APPLICATION 1] Ticket (e.g. a ccache ticket blob) —
+		// innerBody is the Ticket SEQUENCE's items.
+		decodeTicketBody(r, innerBody)
 	case 10, 12:
 		decodeKDCReq(r, innerBody)
 	case 11, 13:
@@ -292,6 +314,76 @@ func Decode(hexStr string) (*Result, error) {
 		decodeKRBError(r, innerBody)
 	}
 	return r, nil
+}
+
+// decodeTicketBody walks a Ticket's SEQUENCE items (RFC 4120 §5.3):
+// [0] tkt-vno / [1] realm / [2] sname / [3] enc-part, decoding the cleartext
+// outer fields. The enc-part etype reveals whether the ticket is
+// RC4-roastable.
+func decodeTicketBody(r *Result, body []byte) {
+	ti := &TicketInfo{}
+	off := 0
+	for off < len(body) {
+		tag, length, contentStart, next, ok := readTLV(body, off)
+		if !ok {
+			break
+		}
+		if tag&0xC0 != 0x80 { // context tag
+			off = next
+			continue
+		}
+		content := body[contentStart : contentStart+length]
+		switch int(tag & 0x1F) {
+		case 0: // tkt-vno
+			ti.TktVno = int(readINTEGER(innerINTEGER(content)))
+		case 1: // realm
+			ti.Realm = decodeGeneralString(innerGeneralString(content))
+		case 2: // sname (PrincipalName)
+			ti.ServiceName = decodePrincipalName(innerSEQUENCE(content))
+		case 3: // enc-part (EncryptedData)
+			decodeTicketEncPart(ti, innerSEQUENCE(content))
+		}
+		off = next
+	}
+	if ti.EncType == 23 {
+		ti.Note = "enc-part etype 23 (RC4) — Kerberoastable / crackable with hashcat 13100"
+	}
+	r.Ticket = ti
+}
+
+// decodeTicketEncPart walks an EncryptedData SEQUENCE ([0] etype, [1] kvno,
+// [2] cipher) — the cipher is opaque but etype + kvno are in the clear.
+func decodeTicketEncPart(ti *TicketInfo, body []byte) {
+	off := 0
+	for off < len(body) {
+		tag, length, contentStart, next, ok := readTLV(body, off)
+		if !ok {
+			break
+		}
+		if tag&0xC0 != 0x80 {
+			off = next
+			continue
+		}
+		content := body[contentStart : contentStart+length]
+		switch int(tag & 0x1F) {
+		case 0: // etype
+			ti.EncType = int(readINTEGER(innerINTEGER(content)))
+			ti.EncTypeName = encTypeName(ti.EncType)
+		case 1: // kvno
+			ti.KVNO = int(readINTEGER(innerINTEGER(content)))
+		}
+		off = next
+	}
+}
+
+// decodeEmbeddedTicket decodes the [APPLICATION 1] Ticket carried in a KDC-REP
+// ticket field, populating r.Ticket with its cleartext outer fields.
+func decodeEmbeddedTicket(r *Result, ticket []byte) {
+	tag, length, contentStart, _, ok := readTLV(ticket, 0)
+	if !ok || tag != 0x61 { // [APPLICATION 1] CONSTRUCTED
+		return
+	}
+	decodeTicketBody(r, innerSEQUENCE(ticket[contentStart:contentStart+length]))
 }
 
 // decodeKDCReq walks AS-REQ / TGS-REQ context-tagged fields:
@@ -373,6 +465,7 @@ func decodeKDCRep(r *Result, body []byte) {
 			r.ClientName = decodePrincipalName(innerSEQUENCE(content))
 		case 5: // ticket [APPLICATION 1]
 			r.TicketBytes = length
+			decodeEmbeddedTicket(r, content)
 		case 6: // enc-part EncryptedData
 			r.EncPartBytes = length
 		}
@@ -620,6 +713,8 @@ var _ = binary.BigEndian
 
 func messageTypeName(t int) string {
 	switch t {
+	case 1:
+		return "Ticket"
 	case 10:
 		return "AS-REQ"
 	case 11:

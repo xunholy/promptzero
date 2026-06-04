@@ -97,7 +97,13 @@ var kerberosDecodeSpec = Spec{
 		"datagram payload OR the TCP record after the 4-byte BE length " +
 		"prefix strip; default ports UDP/88 + TCP/88) from a `tcpdump -X " +
 		"port 88` line or a Wireshark KRB5 dissector view and get the " +
-		"documented per-message-type breakdown.\n\n" +
+		"documented per-message-type breakdown. **Also decodes a bare " +
+		"[APPLICATION 1] Ticket** (a ccache_decode / keytab ticket blob, or a " +
+		"Ticket from a PCAP): the cleartext outer fields — tkt-vno, realm, " +
+		"**service principal** (sname), enc-part **etype** + kvno — are " +
+		"surfaced (etype 23 = RC4 flags it Kerberoastable / hashcat-13100); " +
+		"the same is now decoded for the embedded ticket of an AS-REP / " +
+		"TGS-REP.\n\n" +
 		"Out of scope (deferred): network framing (feed bytes after the " +
 		"UDP datagram OR TCP 4-byte BE length-prefix strip); encrypted " +
 		"ticket + enc-part decryption (surfaced as byte lengths only; " +

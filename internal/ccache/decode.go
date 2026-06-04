@@ -40,6 +40,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/kerberos"
 )
 
 // Result is the parsed credential cache.
@@ -70,6 +72,11 @@ type Credential struct {
 	TicketLength       int    `json:"ticket_length"`
 	TicketHex          string `json:"ticket_hex"`
 	SecondTicketLength int    `json:"second_ticket_length,omitempty"`
+
+	// InnerTicket is the decoded cleartext outer structure of the embedded
+	// [APPLICATION 1] Ticket (service principal + enc-part etype), when it
+	// is a well-formed Ticket DER.
+	InnerTicket *kerberos.TicketInfo `json:"inner_ticket,omitempty"`
 
 	Note string `json:"note,omitempty"`
 }
@@ -225,6 +232,14 @@ func (c *cursor) credential() (*Credential, error) {
 		cred.Note = "TGT (krbtgt) — usable for pass-the-ticket; the golden-ticket / delegation pivot"
 	} else {
 		cred.Note = "service ticket — usable for pass-the-ticket against this service"
+	}
+	// Chain the embedded Ticket DER into the Kerberos Ticket decoder for the
+	// cleartext outer fields (service principal + enc-part etype). A blob that
+	// is not a well-formed Ticket leaves InnerTicket nil.
+	if len(ticket) > 0 {
+		if kr, err := kerberos.Decode(hex.EncodeToString(ticket)); err == nil {
+			cred.InnerTicket = kr.Ticket
+		}
 	}
 	return cred, nil
 }

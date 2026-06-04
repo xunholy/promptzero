@@ -15,7 +15,10 @@ import (
 //	(start 1700000000, end 1700003600, renew 1700086400)
 //
 // keyblock keytype 18, 32-byte key; ticket_flags 0x40e00000.
-const ccHex = "0504000000000001000000010000000b4558414d504c452e434f4d00000005616c69636500000001000000010000000b4558414d504c452e434f4d00000005616c69636500000002000000020000000b4558414d504c452e434f4d000000066b72627467740000000b4558414d504c452e434f4d001200000020000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f6553f1006553f1006553ff10655542800040e0000000000000000000000000000a618201007469636b657400000000"
+// The embedded ticket is a real impacket-built Ticket DER (sname
+// HTTP/web.corp.local@CORP.LOCAL, etype 23) — `klist -cf` lists this same
+// ccache including "Ticket server: HTTP/web.corp.local@CORP.LOCAL".
+const ccHex = "0504000000000001000000010000000b4558414d504c452e434f4d00000005616c69636500000001000000010000000b4558414d504c452e434f4d00000005616c69636500000002000000020000000b4558414d504c452e434f4d000000066b72627467740000000b4558414d504c452e434f4d001200000020000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f6553f1006553f1006553ff10655542800040e0000000000000000000000000005e615c305aa003020105a10c1b0a434f52502e4c4f43414ca221301fa003020103a11830161b04485454501b0e7765622e636f72702e6c6f63616ca3223020a003020117a103020102a214041201020304656e637279707465642d626c6f6200000000"
 
 func TestDecodeKlistVector(t *testing.T) {
 	r, err := Decode(ccHex)
@@ -60,6 +63,16 @@ func TestDecodeKlistVector(t *testing.T) {
 	}
 	if !strings.Contains(c.Note, "TGT") {
 		t.Errorf("krbtgt credential should be flagged as a TGT, note = %q", c.Note)
+	}
+	// The embedded Ticket DER is chained into the Kerberos Ticket decoder.
+	if c.InnerTicket == nil {
+		t.Fatal("inner ticket should be decoded")
+	}
+	if c.InnerTicket.ServiceName != "HTTP/web.corp.local" || c.InnerTicket.Realm != "CORP.LOCAL" {
+		t.Errorf("inner ticket sname/realm = %q / %q", c.InnerTicket.ServiceName, c.InnerTicket.Realm)
+	}
+	if c.InnerTicket.EncType != 23 {
+		t.Errorf("inner ticket etype = %d, want 23", c.InnerTicket.EncType)
 	}
 }
 
