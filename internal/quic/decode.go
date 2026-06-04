@@ -97,14 +97,26 @@
 //     the operator already knows the agreed DCID length, which
 //     varies per connection).
 //
-//   - Payload decryption — requires the TLS handshake
-//     secrets. The protected payload is surfaced as hex.
-//
-//   - Frame-layer dissection (STREAM / CRYPTO / ACK / etc.)
-//     — frames live inside the decrypted payload.
+//   - 0-RTT / Handshake / 1-RTT payload decryption — requires
+//     the TLS-handshake secrets, which are not on the wire.
+//     Those protected payloads are surfaced as hex. (The
+//     **Initial** payload is the exception: its keys are public,
+//     so it IS decrypted — see initial_decrypt.go.)
 //
 //   - UDP / IP framing — feed the UDP payload bytes after the
 //     IP+UDP headers.
+//
+// What this package additionally covers (see initial_decrypt.go)
+//
+//   - **QUIC v1 Initial decryption.** The Initial packet is
+//     protected with keys derived deterministically from the
+//     clear-text Destination Connection ID and a fixed salt
+//     (RFC 9001 §5.2), so it is fully decryptable offline. For
+//     v1 Initials this package removes header protection, runs
+//     AES-128-GCM, dissects the frames (PADDING / PING / ACK /
+//     CRYPTO / CONNECTION_CLOSE) and reassembles the CRYPTO
+//     stream into the TLS ClientHello / ServerHello — the bytes
+//     QUIC otherwise hides, ready for tls_handshake_decode.
 package quic
 
 import (
@@ -148,6 +160,11 @@ type InitialPacket struct {
 	Length              uint64 `json:"length"`
 	ProtectedPayloadLen int    `json:"protected_payload_length"`
 	ProtectedPayloadHex string `json:"protected_payload_hex,omitempty"`
+
+	// Decrypted is populated for QUIC v1 Initials, whose protection
+	// keys are public (derived from the DCID + a fixed salt). nil when
+	// decryption is not applicable or fails authentication.
+	Decrypted *DecryptedInitial `json:"decrypted,omitempty"`
 }
 
 // LengthOnlyPacket covers 0-RTT and Handshake (same body
@@ -265,6 +282,20 @@ func Decode(hexStr string) (*Result, error) {
 		}
 		r.Initial = ip
 		_ = used
+		// QUIC v1 Initial keys are public (RFC 9001 §5.2): try to
+		// decrypt and surface the CRYPTO stream / ClientHello. Try the
+		// client role first, then the server role; nil on failure.
+		if r.Version == 0x00000001 {
+			if dec, derr := DecryptInitial(b, "client"); derr == nil {
+				r.Initial.Decrypted = dec
+			} else if dec, derr := DecryptInitial(b, "server"); derr == nil {
+				r.Initial.Decrypted = dec
+			} else {
+				r.Notes = append(r.Notes,
+					"Initial payload could not be decrypted (truncated capture, "+
+						"non-first-flight packet number, or corrupt packet)")
+			}
+		}
 	case 1: // 0-RTT
 		ln, lo, err := readVLI(b[off:])
 		if err != nil {

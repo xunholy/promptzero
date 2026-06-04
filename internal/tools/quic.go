@@ -36,7 +36,14 @@ var quicLongHeaderDecodeSpec = Spec{
 		"(uint32 BE) + DCID Length (1 byte) + DCID + SCID Length (1 byte) + SCID.\n" +
 		"- **4 Long Packet Types** (RFC 9000 §17.2):\n" +
 		"  - **0 Initial**: Token Length (VLI) + Token + Length (VLI) + Protected " +
-		"Packet Number + Protected Payload.\n" +
+		"Packet Number + Protected Payload. **For QUIC v1 the payload is DECRYPTED** " +
+		"— Initial keys are public (HKDF-derived from the clear-text DCID + a fixed " +
+		"salt, RFC 9001 §5.2), so this Spec removes header protection, runs " +
+		"AES-128-GCM, dissects the frames (PADDING / PING / ACK / CRYPTO / " +
+		"CONNECTION_CLOSE) and reassembles the CRYPTO stream into the TLS " +
+		"ClientHello / ServerHello — the bytes QUIC otherwise hides, ready to paste " +
+		"into `tls_handshake_decode` for the full JA4 / ALPN / SNI view. Verified " +
+		"byte-for-byte against the RFC 9001 Appendix A worked example.\n" +
 		"  - **1 0-RTT**: Length (VLI) + Protected Packet Number + Protected Payload.\n" +
 		"  - **2 Handshake**: Length (VLI) + Protected Packet Number + Protected " +
 		"Payload.\n" +
@@ -66,9 +73,11 @@ var quicLongHeaderDecodeSpec = Spec{
 		"Out of scope (deferred): short-header (1-RTT) packets — the packet number " +
 		"length and key-phase bits are in the header-protected first byte, so without " +
 		"the header-protection key we can't unambiguously parse the packet number; " +
-		"payload decryption (requires TLS handshake secrets; protected payload is " +
-		"surfaced as hex); frame-layer dissection (STREAM / CRYPTO / ACK / MAX_DATA / " +
-		"PING / etc. — frames live inside the decrypted payload); UDP / IP framing " +
+		"0-RTT / Handshake / 1-RTT payload decryption (requires the TLS-handshake " +
+		"secrets, which are not on the wire — protected payload surfaced as hex; the " +
+		"Initial is the exception and IS decrypted); QUIC v2 / draft Initial decryption " +
+		"(different salt + 'quicv2 ' key labels, no published vector to anchor against, " +
+		"so held rather than risk a wrong decode); UDP / IP framing " +
 		"(feed the UDP payload bytes after the IP+UDP headers); HTTP/3 framing layer " +
 		"(future Spec — HTTP/3 frames live in QUIC STREAM frames).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (foundational modern transport protocol " +
