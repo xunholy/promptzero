@@ -68,6 +68,14 @@
 //     plus its MD5 hash. The standard JA3 client fingerprint
 //     identifies the TLS client stack (browser, library,
 //     malware family) across thousands of distinct signatures.
+//   - **JA4 fingerprint** (FoxIO LLC, the modern successor to
+//     JA3): protocol + TLS version + SNI flag + cipher/extension
+//     counts + ALPN, then truncated SHA-256 of the sorted cipher
+//     list and of the sorted extensions + signature_algorithms.
+//     GREASE values are ignored throughout. Verified byte-for-byte
+//     against the FoxIO worked example. Only the TLS-over-TCP
+//     client fingerprint (JA4) is computed; the JA4S / JA4H / JA4X
+//     and QUIC/DTLS variants remain out of scope.
 //
 // # Certificate handshake message
 //
@@ -84,9 +92,9 @@
 //   - Encrypted ApplicationData / CCS / Alert bodies: the
 //     record envelope is decoded but the post-handshake
 //     ciphertext is opaque without key material.
-//   - JA4 / JA4S / JA4H / JA4X fingerprinting: the newer
-//     fingerprint family (FoxIO LLC, 2023) uses a different
-//     scheme; deferred until operators show real demand.
+//   - JA4S / JA4H / JA4X fingerprinting (the server / HTTP /
+//     X.509 members of the JA4 family) — the client TLS JA4 is
+//     computed (above); the others are deferred.
 //   - TLS 1.3 inner handshake (EncryptedExtensions onward)
 //     is encrypted on the wire and requires session-key
 //     material that this Spec deliberately does not handle.
@@ -95,9 +103,11 @@
 package tlsdecode
 
 import (
-	"crypto/md5" //nolint:gosec // JA3 hash is defined as MD5 by spec.
+	"crypto/md5"    //nolint:gosec // JA3 hash is defined as MD5 by spec.
+	"crypto/sha256" // JA4 hash is defined as SHA-256 by spec.
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -174,6 +184,7 @@ type ClientHello struct {
 	KeyShareGroups      []string      `json:"key_share_groups,omitempty"`
 	JA3                 string        `json:"ja3,omitempty"`
 	JA3Hash             string        `json:"ja3_hash,omitempty"`
+	JA4                 string        `json:"ja4,omitempty"`
 }
 
 // ServerHello is the decoded TLS ServerHello body. Same shape
@@ -426,6 +437,9 @@ func decodeClientHello(b []byte) (*ClientHello, error) {
 		ch.JA3, ch.JA3Hash = computeJA3(
 			ch.VersionMajor, ch.VersionMinor, ch.CipherSuites, ch.Extensions,
 			ja3Curves, ja3Formats)
+		ch.JA4 = computeJA4(
+			ch.VersionMajor, ch.VersionMinor, ch.CipherSuites, ch.Extensions,
+			ch.ALPNProtocols, ext0.versionsRaw, ext0.sigAlgsRaw)
 	}
 	return ch, nil
 }
@@ -491,6 +505,8 @@ type extractedExtensions struct {
 	groups         []string
 	sigAlgs        []string
 	keyShareGroups []string
+	sigAlgsRaw     []uint16 // raw signature_algorithm code points, in order (for JA4_c)
+	versionsRaw    []uint16 // raw supported_versions code points (for the JA4 version)
 }
 
 func decodeExtensions(b []byte) ([]*Extension, extractedExtensions, []uint16, []int, error) {
@@ -525,10 +541,12 @@ func decodeExtensions(b []byte) ([]*Extension, extractedExtensions, []uint16, []
 			formats = parseECPointFormats(body)
 		case 13:
 			ex.sigAlgs = parseSignatureAlgorithms(body)
+			ex.sigAlgsRaw = parseU16List(body, 2)
 		case 16:
 			ex.alpn = parseALPN(body)
 		case 43:
 			ex.versions = parseSupportedVersions(body)
+			ex.versionsRaw = parseU16List(body, 1)
 		case 51:
 			ex.keyShareGroups = parseKeyShareGroups(body)
 		}
@@ -743,6 +761,171 @@ func computeJA3(verMajor, verMinor int, suites []CipherSuite, exts []*Extension,
 	ja3 := b.String()
 	sum := md5.Sum([]byte(ja3)) //nolint:gosec // MD5 is the JA3 spec.
 	return ja3, hex.EncodeToString(sum[:])
+}
+
+// computeJA4 builds the JA4 TLS client fingerprint per the FoxIO spec
+// (https://github.com/FoxIO-LLC/ja4), the modern successor to JA3. Format:
+//
+//	JA4_a _ JA4_b _ JA4_c
+//
+// JA4_a = protocol(t) + 2-char TLS version (highest offered) + SNI present(d)/
+// absent(i) + 2-digit non-GREASE cipher count + 2-digit non-GREASE extension
+// count (SNI + ALPN included in the count) + first/last char of the first ALPN.
+// JA4_b = first 12 hex of SHA-256 of the sorted, non-GREASE cipher list
+// (4-hex, lower-case, comma-joined). JA4_c = first 12 hex of SHA-256 of the
+// sorted, non-GREASE extension list with SNI(0x0000) and ALPN(0x0010) removed,
+// then "_" and the signature_algorithms in their original order. An empty hash
+// input yields twelve zeros, per the spec.
+//
+// Verified byte-for-byte against the FoxIO worked example
+// t13d1516h2_8daaf6152771_e5627efa2ab1. The protocol is fixed to "t" (this
+// decoder handles TLS-over-TCP records; the QUIC "q" / DTLS "d" variants are
+// out of scope), and the rare non-alphanumeric-ALPN fallback follows the spec's
+// hex rule but is not exercised by any IANA-registered ALPN.
+func computeJA4(verMajor, verMinor int, suites []CipherSuite, exts []*Extension,
+	alpn []string, versionsRaw, sigAlgsRaw []uint16) string {
+	sni := "i"
+	for _, e := range exts {
+		if e.Type == 0 {
+			sni = "d"
+			break
+		}
+	}
+
+	var cipherHex []string
+	for _, c := range suites {
+		if isGREASE(c.Value) {
+			continue
+		}
+		cipherHex = append(cipherHex, fmt.Sprintf("%04x", c.Value))
+	}
+	extCount := 0
+	var extHex []string
+	for _, e := range exts {
+		if isGREASE(uint16(e.Type)) {
+			continue
+		}
+		extCount++ // the JA4_a count includes SNI + ALPN
+		if e.Type == 0 || e.Type == 16 {
+			continue // ...but they are removed from the JA4_c hash
+		}
+		extHex = append(extHex, fmt.Sprintf("%04x", e.Type))
+	}
+
+	a := fmt.Sprintf("t%s%s%02d%02d%s",
+		ja4Version(verMajor, verMinor, versionsRaw), sni,
+		minInt(len(cipherHex), 99), minInt(extCount, 99), ja4ALPN(alpn))
+
+	sort.Strings(cipherHex)
+	b := ja4Hash(strings.Join(cipherHex, ","))
+
+	sort.Strings(extHex)
+	cInput := strings.Join(extHex, ",")
+	if len(sigAlgsRaw) > 0 {
+		sigHex := make([]string, len(sigAlgsRaw))
+		for i, s := range sigAlgsRaw {
+			sigHex[i] = fmt.Sprintf("%04x", s) // original order, NOT sorted
+		}
+		cInput += "_" + strings.Join(sigHex, ",")
+	}
+	c := ja4Hash(cInput)
+
+	return a + "_" + b + "_" + c
+}
+
+// ja4Hash returns the first 12 hex chars of SHA-256(s), or twelve zeros when s
+// is empty (the FoxIO "no values" sentinel).
+func ja4Hash(s string) string {
+	if s == "" {
+		return "000000000000"
+	}
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+// ja4Version maps the highest offered TLS version to its 2-char JA4 code,
+// preferring the supported_versions extension (non-GREASE max) over the legacy
+// ClientHello version field.
+func ja4Version(verMajor, verMinor int, versionsRaw []uint16) string {
+	best := -1
+	for _, v := range versionsRaw {
+		if isGREASE(v) {
+			continue
+		}
+		if int(v) > best {
+			best = int(v)
+		}
+	}
+	if best < 0 {
+		best = verMajor<<8 | verMinor
+	}
+	switch best {
+	case 0x0304:
+		return "13"
+	case 0x0303:
+		return "12"
+	case 0x0302:
+		return "11"
+	case 0x0301:
+		return "10"
+	case 0x0300:
+		return "s3"
+	case 0x0002:
+		return "s2"
+	default:
+		return "00"
+	}
+}
+
+// ja4ALPN returns the JA4 2-char ALPN code: the first and last character of the
+// first ALPN protocol when both are alphanumeric (e.g. "h2" -> "h2",
+// "http/1.1" -> "h1"), "00" when no ALPN, or the spec's hex fallback for a
+// non-alphanumeric boundary (not hit by any IANA-registered ALPN).
+func ja4ALPN(alpn []string) string {
+	if len(alpn) == 0 || alpn[0] == "" {
+		return "00"
+	}
+	s := alpn[0]
+	first, last := s[0], s[len(s)-1]
+	if isAlnumByte(first) && isAlnumByte(last) {
+		return string([]byte{first, last})
+	}
+	h := fmt.Sprintf("%02x%02x", first, last)
+	return string([]byte{h[0], h[len(h)-1]})
+}
+
+func isAlnumByte(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// parseU16List reads a length-prefixed list of big-endian uint16 code points.
+// prefixLen is the byte width of the leading list-length field (1 for
+// supported_versions, 2 for signature_algorithms).
+func parseU16List(b []byte, prefixLen int) []uint16 {
+	if len(b) < prefixLen {
+		return nil
+	}
+	listLen := 0
+	for i := 0; i < prefixLen; i++ {
+		listLen = listLen<<8 | int(b[i])
+	}
+	body := b[prefixLen:]
+	if listLen > len(body) {
+		listLen = len(body)
+	}
+	body = body[:listLen]
+	var out []uint16
+	for i := 0; i+2 <= len(body); i += 2 {
+		out = append(out, uint16(body[i])<<8|uint16(body[i+1]))
+	}
+	return out
 }
 
 // isGREASE reports true for the GREASE values defined in RFC

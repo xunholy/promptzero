@@ -83,6 +83,16 @@ func TestDecode_ClientHello_RoundTrip(t *testing.T) {
 	if !strings.HasPrefix(ch.JA3, "771,") {
 		t.Errorf("JA3 = %q; want 771,... prefix", ch.JA3)
 	}
+	// JA4 end-to-end: this ClientHello is TLS 1.3 (supported_versions),
+	// SNI present, ALPN h2 -> "t13d...h2_<12hex>_<12hex>".
+	if !strings.HasPrefix(ch.JA4, "t13d") {
+		t.Errorf("JA4 = %q; want t13d... prefix (TLS1.3 + SNI)", ch.JA4)
+	}
+	if parts := strings.Split(ch.JA4, "_"); len(parts) != 3 || len(parts[1]) != 12 || len(parts[2]) != 12 {
+		t.Errorf("JA4 = %q; want three _-separated parts with 12-hex hashes", ch.JA4)
+	} else if !strings.HasSuffix(parts[0], "h2") {
+		t.Errorf("JA4_a = %q; want h2 ALPN suffix", parts[0])
+	}
 }
 
 // TestDecode_ClientHello_GREASE verifies that GREASE values

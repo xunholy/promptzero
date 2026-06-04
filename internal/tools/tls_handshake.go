@@ -62,7 +62,13 @@ var tlsHandshakeDecodeSpec = Spec{
 		"hyphens between list members, plus its MD5 hash. GREASE values (RFC 8701: 0x?A?A) " +
 		"are stripped automatically. The JA3 client fingerprint identifies the TLS client " +
 		"stack (browser, library, malware family) across thousands of distinct signatures " +
-		"and is the standard input for SOC TLS-anomaly detection.\n\n" +
+		"and is the standard input for SOC TLS-anomaly detection.\n" +
+		"- **JA4 fingerprint** (FoxIO, the modern successor to JA3): protocol + TLS version + " +
+		"SNI flag + non-GREASE cipher/extension counts + first ALPN, then the truncated SHA-256 " +
+		"of the sorted cipher list and of the sorted extensions (SNI/ALPN removed) + the " +
+		"signature_algorithms in order — e.g. `t13d1516h2_8daaf6152771_e5627efa2ab1`. Verified " +
+		"byte-for-byte against the FoxIO worked example; it is increasingly the preferred " +
+		"client/C2/malware fingerprint over JA3.\n\n" +
 		"Pure offline parser — operators paste a hex blob extracted from a Wireshark TLS " +
 		"frame, a tcpdump-of-443 capture, or a tshark `tls.handshake` field and inspect " +
 		"every plaintext field without re-attaching to the network. Complements the " +
@@ -72,9 +78,10 @@ var tlsHandshakeDecodeSpec = Spec{
 		"is run through the X.509 decoder, surfacing subject / issuer / validity / SAN / " +
 		"fingerprints (the TLS 1.3 Certificate message is encrypted on the wire and so is " +
 		"not present in a passive capture).\n\n" +
-		"Out of scope (deferred to future iterations): JA4 / JA4S / JA4H / JA4X fingerprinting " +
-		"(newer FoxIO scheme), TLS 1.3 inner-handshake (encrypted on the wire without " +
-		"session keys), DTLS (Datagram TLS over UDP).\n\n" +
+		"Out of scope (deferred to future iterations): the JA4S / JA4H / JA4X members of the " +
+		"JA4 family (server / HTTP / X.509 — the client TLS JA4 is computed above), TLS 1.3 " +
+		"inner-handshake (encrypted on the wire without session keys), DTLS (Datagram TLS over " +
+		"UDP).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (network-protocol decode space — TLS is the " +
 		"most-traffic-bearing app-layer protocol). Wrap-vs-native: native — RFC 5246 + RFC " +
 		"8446 + IANA TLS registries are fully public, every field is fixed-format integer " +
