@@ -41,6 +41,11 @@ var aprsPacketDecodeSpec = Spec{
 		"plus a 30+ entry symbol-name lookup covering common categories (Car, House (QTH), " +
 		"Yacht, Aircraft, Police station, Repeater, Weather station, Hospital, Fire engine, " +
 		"etc.).\n" +
+		"- **Compressed position** (APRS101 §9): the 13-byte base-91 form (symbol-table + " +
+		"4-byte latitude + 4-byte longitude + symbol code + cs + type) → latitude_deg / " +
+		"longitude_deg (lat = 90 − base91/380926, lon = −180 + base91/190463), plus the " +
+		"cs+type extension decoded to course_deg + speed_knots, altitude_ft, or radio_range_mi " +
+		"(APRS-native units; a space cs means none). Anchored to the aprslib reference decoder.\n" +
 		"- **PHG extension** (APRS101 §7): antenna Power-Height-Gain-Directivity profile " +
 		"that fixed stations broadcast for coverage analysis.\n" +
 		"- **Status report** ('>'): bare text extraction.\n" +
@@ -76,8 +81,9 @@ var aprsPacketDecodeSpec = Spec{
 		"VHF + UHF ham bands where APRS lives.\n\n" +
 		"Out of scope for this Spec (deferred to future iterations as separate sub-decoders): " +
 		"Mic-E telemetry channels (surfaced as part of the raw status text rather than parsed), " +
-		"compressed position format ('/' or '\\' leading char of 13-byte base-91 form, including " +
-		"the compressed-position complete weather report), telemetry parameter " +
+		"the compressed-position complete weather report (a §9 compressed position whose symbol " +
+		"code is '_' — the base-91 position itself is now decoded, but its trailing weather block " +
+		"is not), telemetry parameter " +
 		"definitions (#PARM / #UNIT / #EQNS / #BITS), and AX.25 connection-mode frames " +
 		"(SABM / DISC / RR / I-frames).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (ham-radio decode space — APRS is the high-" +

@@ -23,6 +23,13 @@ func FuzzDecode(f *testing.F) {
 		"N0CALL>S32U6:`short",
 		"CALL>DEST:!4903.50N/07201.75W-Test",
 		"CALL>DEST::ADDRESSEE:hello{1",
+		// §9 compressed-position seeds (course/speed, none, altitude, range).
+		"N0CALL>APRS:!/5L!!<*e8>yE[",
+		"N0CALL>APRS:!\\`6WXqPijk  !",
+		"N0CALL>APRS:!/5L!!<*e8O5SQ",
+		"N0CALL>APRS:!/5L!!<*e8>{I#",
+		"N0CALL>APRS:=/9u<\";gyon:+Chello",
+		"N0CALL>APRS:!/5L!",
 		"_",
 		"",
 	}

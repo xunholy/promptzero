@@ -40,6 +40,11 @@
 //     conversion to signed decimal degrees, symbol table
 //     and symbol code extraction.
 //
+//   - Compressed position decode (APRS101 §9): the 13-byte
+//     base-91 form (symbol table + 4-byte lat + 4-byte lon +
+//     symbol code + cs + type), with the cs+type extension
+//     decoded to course/speed, altitude, or radio range.
+//
 //   - PHG extension parse (APRS101 §7) — antenna
 //     Power-Height-Gain-Directivity for fixed-station
 //     coverage analysis.
@@ -92,9 +97,6 @@
 //
 // # What this package does NOT cover (deliberately out of scope)
 //
-//   - Compressed position format ('/') — 12-byte base-91
-//     encoding; not as common as uncompressed and decoded
-//     identically to uncompressed once parsed.
 //   - Snowfall (tail 's'), the '#' raw rain counter, and the
 //     trailing APRS-software / WX-unit code are under-specified
 //     in APRS101 (no fixed width / scaling), so they are left
@@ -114,6 +116,7 @@ package aprs
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -148,7 +151,8 @@ type Address struct {
 	Digipeated bool   `json:"digipeated,omitempty"`
 }
 
-// Position is the decoded uncompressed APRS position view.
+// Position is the decoded APRS position view (uncompressed §8 or
+// compressed §9).
 type Position struct {
 	LatitudeDeg  float64 `json:"latitude_deg"`
 	LongitudeDeg float64 `json:"longitude_deg"`
@@ -156,6 +160,16 @@ type Position struct {
 	SymbolCode   string  `json:"symbol_code"`
 	SymbolName   string  `json:"symbol_name,omitempty"`
 	Timestamp    string  `json:"timestamp,omitempty"`
+	// Compressed is set when the position was carried in the §9
+	// base-91 compressed format rather than the §8 text form.
+	Compressed bool `json:"compressed,omitempty"`
+	// CourseDeg / SpeedKnots / AltitudeFt / RadioRangeMi carry the
+	// §9 compressed cs+type extension, when present. Exactly one of
+	// {course+speed, altitude, radio-range} is set per the type byte.
+	CourseDeg    int     `json:"course_deg,omitempty"`
+	SpeedKnots   float64 `json:"speed_knots,omitempty"`
+	AltitudeFt   float64 `json:"altitude_ft,omitempty"`
+	RadioRangeMi float64 `json:"radio_range_mi,omitempty"`
 }
 
 // Message is the decoded ':' addressee + body packet.
@@ -420,10 +434,13 @@ func decodeInfoField(f *Frame, info string) error {
 // the symbol code, and the character before '/' is the symbol
 // table identifier.
 //
-// Compressed position (13 bytes, leading char is one of
-// '/'/'\\'/A-Z/a-j) is intentionally not parsed here — that's
-// a separate format with base-91 lat/lon encoding.
+// A compressed position (13 bytes, leading char is one of
+// '/'/'\\'/A-Z/a-j) is dispatched to decodeCompressedPosition
+// (APRS101 §9, base-91 lat/lon encoding).
 func decodePosition(f *Frame, payload string, _ bool) error {
+	if isCompressedPosition(payload) {
+		return decodeCompressedPosition(f, payload)
+	}
 	// "DDMM.MMN/DDDMM.MMW" is 18 chars + 1 symbol char = 19;
 	// symbol table is char 8 (sandwiched as the '/' or
 	// alternative).
@@ -471,6 +488,91 @@ func decodePosition(f *Frame, payload string, _ bool) error {
 		}
 	}
 	return nil
+}
+
+// isCompressedPosition reports whether payload is an APRS101 §9
+// compressed position: a leading symbol-table char ('/', '\\', an
+// A-Z or a-j overlay), then eight base-91 lat/lon chars in the
+// printable range '!'..'{' (value 0..90). The §8 uncompressed form
+// always begins with a digit (or a space for ambiguity), so the two
+// are unambiguous.
+func isCompressedPosition(p string) bool {
+	if len(p) < 13 {
+		return false
+	}
+	c := p[0]
+	isSymTable := c == '/' || c == '\\' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'j')
+	if !isSymTable {
+		return false
+	}
+	for i := 1; i <= 8; i++ {
+		if p[i] < '!' || p[i] > '{' {
+			return false
+		}
+	}
+	return true
+}
+
+// decodeCompressedPosition parses the 13-byte APRS101 §9 compressed
+// position: symbol-table(1) + base-91 latitude(4) + base-91
+// longitude(4) + symbol-code(1) + cs(2) + compression-type(1).
+//
+//	latitude  = 90  - base91(YYYY) / 380926
+//	longitude = -180 + base91(XXXX) / 190463
+//
+// The cs+type bytes carry exactly one optional extension, selected as
+// in the reference decoders: a space in either cs byte means none;
+// else type&0x18==0x10 is altitude (1.002^(c1*91+s1) feet); else
+// c1 0..89 is course (c1*4 deg, or 360 when 0) + speed (1.08^s1 - 1
+// knots); else c1==90 is a pre-set radio range (2 * 1.08^s1 miles).
+// Values are kept in their APRS-native units (knots / feet / miles).
+func decodeCompressedPosition(f *Frame, payload string) error {
+	c := payload[:13]
+	symTable := c[0:1]
+	symCode := c[9:10]
+	lat := 90 - float64(base91(c[1:5]))/380926.0
+	lon := -180 + float64(base91(c[5:9]))/190463.0
+	pos := &Position{
+		LatitudeDeg:  lat,
+		LongitudeDeg: lon,
+		SymbolTable:  symTable,
+		SymbolCode:   symCode,
+		SymbolName:   symbolName(symTable, symCode),
+		Compressed:   true,
+	}
+	c1 := int(c[10]) - 33
+	s1 := int(c[11]) - 33
+	ctype := int(c[12]) - 33
+	switch {
+	case c[10] == ' ' || c[11] == ' ':
+		// No cs extension present.
+	case ctype&0x18 == 0x10:
+		pos.AltitudeFt = math.Pow(1.002, float64(c1*91+s1))
+	case c1 >= 0 && c1 <= 89:
+		if c1 == 0 {
+			pos.CourseDeg = 360
+		} else {
+			pos.CourseDeg = c1 * 4
+		}
+		pos.SpeedKnots = math.Pow(1.08, float64(s1)) - 1
+	case c1 == 90:
+		pos.RadioRangeMi = 2 * math.Pow(1.08, float64(s1))
+	}
+	f.Position = pos
+	if rest := strings.TrimSpace(payload[13:]); rest != "" {
+		f.Comment = rest
+	}
+	return nil
+}
+
+// base91 decodes a big-endian base-91 string (each char value =
+// byte - 33), as used by the APRS101 §9 compressed position fields.
+func base91(s string) int {
+	v := 0
+	for i := 0; i < len(s); i++ {
+		v = v*91 + (int(s[i]) - 33)
+	}
+	return v
 }
 
 // parseLatLonText converts a single hemispheric position field
