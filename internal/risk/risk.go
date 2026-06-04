@@ -699,6 +699,13 @@ var toolLevels = func() map[string]Level {
 		// an operator-supplied token; reads a string, transmits
 		// nothing, so it is Low.
 		"paseto_decode",
+		// v0.498 — SAML 2.0 message decode (the SSO counterpart of
+		// jwt_decode / paseto_decode): base64 ± DEFLATE -> XML, with
+		// issuer / destination / NameID / conditions / audience +
+		// signature-present (golden-SAML triage) extraction. Offline
+		// decode of an operator-supplied value; reads a string,
+		// transmits nothing, so it is Low.
+		"saml_decode",
 		"jwt_forge",
 		// Flask/itsdangerous session cookie decode / verify / forge —
 		// the web analogue of the JWT trio. Offline compute over

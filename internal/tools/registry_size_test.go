@@ -2136,7 +2136,11 @@ func TestRegistrySize(t *testing.T) {
 	// jwt_decode counterpart: vN.purpose.payload[.footer] structure, public
 	// cleartext claims, v2/v4 Ed25519 signature verify over the PASETO PAE; gated
 	// vs the official PASETO v4 test vectors. internal/paseto).
-	const expected = 522
+	// v0.498.0 added saml_decode (SAML 2.0 message decode — the SSO counterpart:
+	// base64 ± DEFLATE -> XML + issuer/destination/NameID/conditions/audience +
+	// signature-present golden-SAML triage; anchored vs an independent DEFLATE
+	// redirect vector + a POST signed Response. internal/saml).
+	const expected = 523
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
