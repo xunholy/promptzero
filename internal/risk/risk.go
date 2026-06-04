@@ -775,6 +775,15 @@ var toolLevels = func() map[string]Level {
 		// computes it derives a value and transmits nothing, so it is
 		// Low.
 		"postgres_password",
+		// v0.491 — PostgreSQL SCRAM-SHA-256 verifier (the PG 10+
+		// default in pg_authid.rolpassword:
+		// SCRAM-SHA-256$iter:salt$StoredKey:ServerKey, hashcat
+		// 28600) compute + verify, the modern successor to
+		// postgres_password's md5. Offline compute / constant-time
+		// verify from operator-supplied strings — like the other
+		// credential computes it derives a value and transmits
+		// nothing, so it is Low.
+		"postgres_scram",
 		// v0.244 (NATIVE-fit gap — most-traffic-bearing UDP/53
 		// protocol): DNS packet dissector per RFC 1035 + 6891.
 		// Header (txn + flags broken out + counts), question

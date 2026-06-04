@@ -2116,7 +2116,11 @@ func TestRegistrySize(t *testing.T) {
 	// "md5"+hex(MD5(password+username)), hashcat 12; username-salted; the
 	// DB-credential sibling of mysql_password; gated vs the documented
 	// pg_md5_encrypt construction. internal/pgpassword).
-	const expected = 517
+	// v0.491.0 added postgres_scram (PostgreSQL SCRAM-SHA-256 verifier compute +
+	// verify — SCRAM-SHA-256$iter:salt$StoredKey:ServerKey, hashcat 28600; the
+	// PG 10+ default, modern successor to postgres_password's md5; gated vs the
+	// RFC 7677 §3 worked example. internal/pgscram).
+	const expected = 518
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
