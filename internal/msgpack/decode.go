@@ -31,11 +31,15 @@
 //
 // # Covered / deferred
 //
-// Covered: all MessagePack core types. Deferred: the Timestamp extension (ext
-// type -1) is surfaced as a raw ext (type + data hex) rather than decoded into a
-// time — its 32/64/96-bit variants are a clean follow-up; surfacing raw avoids a
-// confidently-wrong time. Invalid-UTF-8 str payloads are surfaced as hex with a
-// note instead of an invalid string.
+// Covered: all MessagePack core types, plus the Timestamp extension (ext type
+// -1) decoded to RFC 3339 across all three wire layouts — 32-bit (uint32
+// seconds), 64-bit (30-bit nanoseconds + 34-bit seconds) and 96-bit (uint32
+// nanoseconds + signed int64 seconds, so pre-epoch times decode correctly). A
+// non-standard Timestamp length or an out-of-range nanoseconds field is left
+// raw with a note rather than decoded into a confidently-wrong time. Other
+// extension types are surfaced as raw (extension type + data hex).
+// Invalid-UTF-8 str payloads are surfaced as hex with a note instead of an
+// invalid string.
 package msgpack
 
 import (
@@ -44,6 +48,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -67,6 +72,12 @@ type Value struct {
 	// Ext fields (msgpack extension types).
 	ExtType *int8  `json:"ext_type,omitempty"`
 	ExtData string `json:"ext_data_hex,omitempty"`
+
+	// Timestamp fields, set when an ext type -1 carries a well-formed
+	// MessagePack Timestamp (Type becomes "timestamp").
+	Timestamp        string  `json:"timestamp,omitempty"` // RFC 3339 (UTC)
+	TimestampUnixSec *int64  `json:"timestamp_unix_sec,omitempty"`
+	TimestampNanos   *uint32 `json:"timestamp_nanos,omitempty"`
 }
 
 // MapEntry is one key/value pair of a decoded map (order-preserving).
@@ -300,9 +311,48 @@ func (d *decoder) extVal(format string, n int) (*Value, error) {
 	v := &Value{Type: "ext", Format: format, ExtType: &et,
 		ExtData: strings.ToUpper(hex.EncodeToString(raw))}
 	if et == -1 {
-		v.Note = "ext type -1 is the MessagePack Timestamp; surfaced as raw (time decode deferred)"
+		decodeTimestamp(v, raw)
 	}
 	return v, nil
+}
+
+// decodeTimestamp annotates an ext type -1 (MessagePack Timestamp) value with
+// its decoded RFC 3339 time. The three wire layouts (spec §Timestamp
+// extension type) are:
+//
+//	4 bytes  — uint32 seconds since the epoch (nanoseconds = 0)
+//	8 bytes  — uint64 with the top 30 bits = nanoseconds, low 34 bits = seconds
+//	12 bytes — uint32 nanoseconds, then int64 seconds (signed; pre-epoch ok)
+//
+// A non-standard length, or a nanoseconds field >= 1e9, is left as raw with a
+// note rather than decoded into a confidently-wrong time.
+func decodeTimestamp(v *Value, raw []byte) {
+	var sec int64
+	var nanos uint32
+	switch len(raw) {
+	case 4:
+		sec = int64(binary.BigEndian.Uint32(raw))
+	case 8:
+		u := binary.BigEndian.Uint64(raw)
+		nanos = uint32(u >> 34)
+		sec = int64(u & 0x3_ffff_ffff)
+	case 12:
+		nanos = binary.BigEndian.Uint32(raw[0:4])
+		sec = int64(binary.BigEndian.Uint64(raw[4:12]))
+	default:
+		v.Note = fmt.Sprintf("ext type -1 (Timestamp) has a non-standard %d-byte payload; surfaced raw", len(raw))
+		return
+	}
+	if nanos >= 1_000_000_000 {
+		v.Note = "ext type -1 (Timestamp) nanoseconds field >= 1e9 (invalid); surfaced raw"
+		return
+	}
+	v.Type = "timestamp"
+	v.Timestamp = time.Unix(sec, int64(nanos)).UTC().Format(time.RFC3339Nano)
+	v.TimestampUnixSec = &sec
+	if nanos != 0 {
+		v.TimestampNanos = &nanos
+	}
 }
 
 func (d *decoder) arrayVal(format string, n, depth int) (*Value, error) {

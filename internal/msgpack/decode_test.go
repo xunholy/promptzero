@@ -119,11 +119,59 @@ func TestExtVector(t *testing.T) {
 	}
 }
 
-func TestTimestampExtNote(t *testing.T) {
-	// fixext4, type -1 (0xff) — the Timestamp ext; surfaced raw with a note.
-	v := mustDecode(t, "d6ff5a4af600")
-	if v.ExtType == nil || *v.ExtType != -1 || v.Note == "" {
-		t.Errorf("timestamp ext should be raw with a note: %+v", v)
+// TestTimestampExt anchors all three MessagePack Timestamp wire layouts against
+// reference msgpack library vectors.
+func TestTimestampExt(t *testing.T) {
+	cases := []struct {
+		name, hex, wantRFC string
+		wantSec            int64
+		wantNanos          uint32
+	}{
+		// 32-bit: uint32 seconds.
+		{"32-bit 2018", "d6ff5a497a00", "2018-01-01T00:00:00Z", 1514764800, 0},
+		{"32-bit epoch", "d6ff00000000", "1970-01-01T00:00:00Z", 0, 0},
+		// 64-bit: 30-bit nanos + 34-bit seconds (1µs after 2018-01-01).
+		{"64-bit +1us", "d7ff00000fa05a497a00", "2018-01-01T00:00:00.000001Z", 1514764800, 1000},
+		// 96-bit: uint32 nanos + signed int64 seconds (pre-epoch).
+		{"96-bit 1900", "c70cff00000000ffffffff7c558180", "1900-01-01T00:00:00Z", -2208988800, 0},
+	}
+	for _, c := range cases {
+		v := mustDecode(t, c.hex)
+		if v.Type != "timestamp" {
+			t.Errorf("%s: type = %q, want timestamp", c.name, v.Type)
+		}
+		if v.Timestamp != c.wantRFC {
+			t.Errorf("%s: timestamp = %q, want %q", c.name, v.Timestamp, c.wantRFC)
+		}
+		if v.TimestampUnixSec == nil || *v.TimestampUnixSec != c.wantSec {
+			t.Errorf("%s: unix_sec = %v, want %d", c.name, v.TimestampUnixSec, c.wantSec)
+		}
+		if c.wantNanos != 0 && (v.TimestampNanos == nil || *v.TimestampNanos != c.wantNanos) {
+			t.Errorf("%s: nanos = %v, want %d", c.name, v.TimestampNanos, c.wantNanos)
+		}
+	}
+}
+
+// TestTimestampExtMalformed confirms a non-standard length or out-of-range
+// nanoseconds is left raw with a note, not decoded into a wrong time.
+func TestTimestampExtMalformed(t *testing.T) {
+	// fixext2 (2-byte) ext type -1 — not a valid Timestamp length.
+	v := mustDecode(t, "d5ff1234")
+	if v.Type != "ext" || v.Timestamp != "" || v.Note == "" {
+		t.Errorf("non-standard timestamp length should stay raw ext with a note: %+v", v)
+	}
+	// 8-byte form with a nanoseconds field >= 1e9 (top 30 bits all set).
+	bad := mustDecode(t, "d7fffffffffc00000000")
+	if bad.Type != "ext" || bad.Timestamp != "" || bad.Note == "" {
+		t.Errorf("out-of-range nanos should stay raw with a note: %+v", bad)
+	}
+}
+
+// TestExtNonTimestamp confirms a non-(-1) ext is still surfaced raw.
+func TestExtNonTimestamp(t *testing.T) {
+	v := mustDecode(t, "d60501020304")
+	if v.Type != "ext" || v.Timestamp != "" {
+		t.Errorf("non-timestamp ext should stay raw: %+v", v)
 	}
 }
 

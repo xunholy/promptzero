@@ -30,8 +30,11 @@ var msgpackDecodeSpec = Spec{
 		"surfaced as hex with a note, never an invalid string), and **bin** (bin8/16/32) rendered as hex.\n" +
 		"- **array** (fixarray / array16 / array32) and **map** (fixmap / map16 / map32), recursively, " +
 		"preserving key order and duplicate keys.\n" +
-		"- **ext** (fixext1..16 / ext8/16/32): extension type byte + data hex; the Timestamp extension " +
-		"(type -1) is flagged but surfaced raw (time decode deferred to avoid a confidently-wrong value).\n\n" +
+		"- **ext** (fixext1..16 / ext8/16/32): extension type byte + data hex; the **Timestamp extension " +
+		"(type -1)** is decoded to RFC 3339 across all three wire layouts — 32-bit (uint32 seconds), 64-bit " +
+		"(30-bit nanoseconds + 34-bit seconds), and 96-bit (uint32 nanoseconds + signed int64 seconds, so " +
+		"pre-epoch times decode correctly); a non-standard Timestamp length or out-of-range nanoseconds is " +
+		"left raw with a note rather than a confidently-wrong time.\n\n" +
 		"Each node reports its wire `format` (e.g. `uint16`, `fixstr`, `array16`) so the exact encoding is " +
 		"visible. Pure offline parser — a truncated or malformed blob is rejected with an error (never a " +
 		"partial/guessed decode), the reserved 0xc1 tag is rejected, hostile huge length fields are bounded, " +
