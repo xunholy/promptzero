@@ -33,9 +33,10 @@ var bsonDecodeSpec = Spec{
 		"user-defined + data hex).\n" +
 		"- **embedded document** and **array**, recursively, preserving field order.\n" +
 		"- **regex** (pattern + options), **JavaScript** code (and code-with-scope), the deprecated " +
-		"**symbol** / **DBPointer** / **undefined**, **min/max key**, and **Decimal128** (surfaced as raw " +
-		"16 bytes — the IEEE 754-2008 decimal-string decode is deferred to avoid a confidently-wrong " +
-		"value).\n\n" +
+		"**symbol** / **DBPointer** / **undefined**, **min/max key**, and **Decimal128** (the IEEE " +
+		"754-2008 Binary-Integer-Decimal form decoded to sign + 113-bit coefficient + biased exponent + an " +
+		"exact plain decimal value, with NaN / ±Infinity surfaced as such; the raw 16 bytes are also " +
+		"kept).\n\n" +
 		"Each value reports its BSON `type`. Pure offline parser — a truncated or malformed document is " +
 		"rejected with an error (never a partial/guessed decode), length fields are bounds-checked, nesting " +
 		"is depth-capped, and any trailing bytes after the document are surfaced as `trailing_bytes_hex`. " +

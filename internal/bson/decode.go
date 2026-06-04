@@ -34,11 +34,12 @@
 //
 // # Covered / deferred
 //
-// Covered: all current BSON element types. Decimal128 (0x13) is surfaced as its
-// 16 raw bytes (hex) — the IEEE 754-2008 decimal-string conversion is a clean
-// follow-up and surfacing raw avoids a confidently-wrong decimal value. The
-// deprecated DBPointer (0x0C) and Symbol (0x0E) and JavaScript-code-with-scope
-// (0x0F) are decoded structurally.
+// Covered: all current BSON element types, including Decimal128 (0x13) decoded
+// from its IEEE 754-2008 Binary-Integer-Decimal form to sign + 113-bit
+// coefficient + biased exponent and an exact plain (non-scientific) decimal
+// string, with NaN / ±Infinity surfaced as such (the raw 16 bytes are also kept
+// for traceability). The deprecated DBPointer (0x0C) and Symbol (0x0E) and
+// JavaScript-code-with-scope (0x0F) are decoded structurally.
 package bson
 
 import (
@@ -46,6 +47,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"math/big"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -88,7 +90,10 @@ type Value struct {
 	Code   *string `json:"code,omitempty"`
 	Symbol *string `json:"symbol,omitempty"`
 
-	Decimal128Hex string `json:"decimal128_hex,omitempty"`
+	Decimal128Hex         string `json:"decimal128_hex,omitempty"`
+	Decimal128            string `json:"decimal128,omitempty"` // plain value, or NaN / ±Infinity
+	Decimal128Coefficient string `json:"decimal128_coefficient,omitempty"`
+	Decimal128Exponent    *int   `json:"decimal128_exponent,omitempty"`
 
 	Note string `json:"note,omitempty"`
 }
@@ -296,21 +301,85 @@ func (d *decoder) value(t byte, b []byte, depth int) (*Value, int, error) {
 		}
 		i := int64(binary.LittleEndian.Uint64(raw))
 		return &Value{Type: "int64", Int64: &i}, 8, nil
-	case 0x13: // decimal128 (16 bytes, surfaced raw)
+	case 0x13: // decimal128 (16 bytes, IEEE 754-2008 BID)
 		raw, err := need(b, 16)
 		if err != nil {
 			return nil, 0, err
 		}
-		return &Value{
-			Type: "decimal128", Decimal128Hex: strings.ToUpper(hex.EncodeToString(raw)),
-			Note: "Decimal128 surfaced as raw 16 bytes; decimal-string decode deferred",
-		}, 16, nil
+		v := &Value{Type: "decimal128", Decimal128Hex: strings.ToUpper(hex.EncodeToString(raw))}
+		decodeDecimal128(v, raw)
+		return v, 16, nil
 	case 0xFF: // min key
 		return &Value{Type: "minKey"}, 0, nil
 	case 0x7F: // max key
 		return &Value{Type: "maxKey"}, 0, nil
 	}
 	return nil, 0, fmt.Errorf("bson: unknown element type 0x%02x", t)
+}
+
+// decodeDecimal128 decodes the 16 little-endian bytes of a BSON Decimal128
+// (IEEE 754-2008 decimal128, Binary Integer Decimal encoding) into a sign +
+// 113-bit coefficient + 14-bit biased exponent, and renders the exact value as
+// a plain (non-scientific) decimal string. NaN / ±Infinity are surfaced as
+// such. The "11" combination form (coefficient ≥ 10^34) is, per the spec,
+// treated as a zero coefficient.
+func decodeDecimal128(v *Value, raw []byte) {
+	lo := binary.LittleEndian.Uint64(raw[0:8])
+	hi := binary.LittleEndian.Uint64(raw[8:16])
+	neg := hi>>63&1 == 1
+
+	switch {
+	case hi&0x7c00000000000000 == 0x7c00000000000000: // combination 11111 → NaN
+		v.Decimal128 = "NaN"
+		return
+	case hi&0x7800000000000000 == 0x7800000000000000: // combination 11110 → Infinity
+		if neg {
+			v.Decimal128 = "-Infinity"
+		} else {
+			v.Decimal128 = "Infinity"
+		}
+		return
+	}
+
+	var coeffHi uint64
+	var exp int
+	if hi>>61&3 == 3 { // G0 G1 = 11: implied coefficient ≥ 10^34 → zero (IEEE 754)
+		exp = int((hi>>47)&0x3fff) - 6176
+		coeffHi, lo = 0, 0
+	} else {
+		exp = int((hi>>49)&0x3fff) - 6176
+		coeffHi = hi & 0x0001ffffffffffff // bits 112..64 of the coefficient
+	}
+
+	c := new(big.Int).SetUint64(coeffHi)
+	c.Lsh(c, 64)
+	c.Or(c, new(big.Int).SetUint64(lo))
+	coeff := c.String()
+
+	v.Decimal128Coefficient = coeff
+	e := exp
+	v.Decimal128Exponent = &e
+	v.Decimal128 = formatDecimal128(neg, coeff, exp)
+}
+
+// formatDecimal128 renders coefficient × 10^exp as an exact plain decimal
+// string (no scientific notation — so trailing zeros and scale are preserved
+// exactly, since Decimal128 is unnormalized).
+func formatDecimal128(neg bool, digits string, exp int) string {
+	var s string
+	switch {
+	case exp >= 0:
+		s = digits + strings.Repeat("0", exp)
+	case len(digits) > -exp:
+		p := len(digits) + exp
+		s = digits[:p] + "." + digits[p:]
+	default:
+		s = "0." + strings.Repeat("0", -exp-len(digits)) + digits
+	}
+	if neg {
+		s = "-" + s
+	}
+	return s
 }
 
 // bsonString reads an int32-length-prefixed UTF-8 string (with a trailing NUL).

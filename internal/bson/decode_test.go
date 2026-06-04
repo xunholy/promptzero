@@ -131,10 +131,57 @@ func TestTimestamp(t *testing.T) {
 	}
 }
 
+// TestDecimal128 anchors the IEEE 754-2008 BID decode against PyMongo
+// Decimal128 vectors: sign, coefficient, exponent, plain value, and the
+// NaN / ±Infinity special forms. The full BSON element wrappers are
+// "18000000136d00" + <16 bytes LE> + "00".
 func TestDecimal128(t *testing.T) {
-	v := one(t, "18000000136d0096000000000000000000000000003c3000", "m")
-	if v.Type != "decimal128" || len(v.Decimal128Hex) != 32 || v.Note == "" {
-		t.Errorf("decimal128: %+v", v)
+	cases := []struct {
+		bytesLE, wantCoeff, wantPlain string
+		wantExp                       int
+	}{
+		{"96000000000000000000000000003c30", "150", "1.50", -2},
+		{"00000000000000000000000000004030", "0", "0", 0},
+		{"000000000000000000000000000040b0", "0", "-0", 0},
+		{"01000000000000000000000000004030", "1", "1", 0},
+		{"010000000000000000000000000040b0", "1", "-1", 0},
+		{"01000000000000000000000000004c30", "1", "1000000", 6},
+		{"d2040000000000000000000000002630", "1234", "0.0000000001234", -13},
+		{"0a000000000000000000000000004030", "10", "10", 0},
+		{"ee0200000000000000000000000042b0", "750", "-7500", 1},
+		{"d20a3f4eeee073c3f60fe98e01004030", "123456789012345678901234567890", "123456789012345678901234567890", 0},
+	}
+	for _, c := range cases {
+		v := one(t, "18000000136d00"+c.bytesLE+"00", "m")
+		if v.Type != "decimal128" {
+			t.Errorf("%s: type %q", c.bytesLE, v.Type)
+		}
+		if v.Decimal128Coefficient != c.wantCoeff {
+			t.Errorf("%s: coeff = %q, want %q", c.bytesLE, v.Decimal128Coefficient, c.wantCoeff)
+		}
+		if v.Decimal128Exponent == nil || *v.Decimal128Exponent != c.wantExp {
+			t.Errorf("%s: exp = %v, want %d", c.bytesLE, v.Decimal128Exponent, c.wantExp)
+		}
+		if v.Decimal128 != c.wantPlain {
+			t.Errorf("%s: plain = %q, want %q", c.bytesLE, v.Decimal128, c.wantPlain)
+		}
+	}
+}
+
+func TestDecimal128Special(t *testing.T) {
+	cases := map[string]string{
+		"0000000000000000000000000000007c": "NaN",
+		"00000000000000000000000000000078": "Infinity",
+		"000000000000000000000000000000f8": "-Infinity",
+	}
+	for le, want := range cases {
+		v := one(t, "18000000136d00"+le+"00", "m")
+		if v.Decimal128 != want {
+			t.Errorf("%s: decimal128 = %q, want %q", le, v.Decimal128, want)
+		}
+		if v.Decimal128Coefficient != "" {
+			t.Errorf("%s: special should have no coefficient, got %q", le, v.Decimal128Coefficient)
+		}
 	}
 }
 
