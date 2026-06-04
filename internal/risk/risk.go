@@ -505,6 +505,10 @@ var toolLevels = func() map[string]Level {
 		// (v7: unix-ms timestamp). Offline parse of a pasted ID; reads a
 		// string, transmits nothing, so it is Low.
 		"uuid_decode",
+		// v0.518 — MongoDB ObjectId decoder: embedded creation timestamp
+		// + random + counter (the recon value is the timestamp). Offline
+		// parse of a pasted ID; reads a string, transmits nothing, Low.
+		"objectid_decode",
 		// v0.512 — GPS/GNSS NMEA 0183 sentence decode (GGA/RMC/GLL/
 		// VTG/GSA/GSV): the offline complement to the device-side
 		// gps_* / marauder_nmea stream tools — paste a captured NMEA

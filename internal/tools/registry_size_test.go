@@ -2201,7 +2201,11 @@ func TestRegistrySize(t *testing.T) {
 	// version/variant + the v1/v6 leaked host MAC + creation time, v7 unix-ms
 	// timestamp; v3/v4/v5 carry no recoverable data. Anchored vs Python's uuid
 	// module. internal/uuidinfo).
-	const expected = 536
+	// v0.518.0 added objectid_decode (MongoDB ObjectId decoder — embedded
+	// creation timestamp + random + counter; the MongoDB analogue of uuid_decode
+	// and the completion of the opaque-hex ObjectId in mongodb/bson decoders.
+	// Anchored vs pymongo ObjectId.generation_time. internal/objectid).
+	const expected = 537
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
