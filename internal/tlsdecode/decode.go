@@ -98,9 +98,11 @@
 //   - Encrypted ApplicationData / CCS / Alert bodies: the
 //     record envelope is decoded but the post-handshake
 //     ciphertext is opaque without key material.
-//   - JA4H / JA4X (the HTTP / X.509 members of the JA4 family)
-//     remain deferred — FoxIO publishes no inline test vectors
-//     for them and verifying needs tshark + their pcap snapshots.
+//     (The JA4X X.509 fingerprint is computed for each cert in
+//     the chain by internal/x509decode.) JA4H (the HTTP member
+//     of the JA4 family) remains deferred — FoxIO publishes no
+//     inline test vector and verifying it needs tshark + their
+//     pcap snapshots.
 //   - TLS 1.3 inner handshake (EncryptedExtensions onward)
 //     is encrypted on the wire and requires session-key
 //     material that this Spec deliberately does not handle.

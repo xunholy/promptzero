@@ -62,6 +62,13 @@
 //   - Certificate Policies (OIDs).
 //   - Fingerprints: SHA-1 (legacy / GUI-displayed),
 //     SHA-256 (modern / SPKI pinning).
+//   - **JA4X fingerprint** (FoxIO): the certificate member of
+//     the JA4+ family — hash12(issuer RDN OIDs) _ hash12(subject
+//     RDN OIDs) _ hash12(extension OIDs), each the comma-joined
+//     hex of the OID DER content-octets in certificate order.
+//     Fingerprints the cert-generation stack (malware C2 /
+//     phishing infra reuses it). Verified byte-for-byte against
+//     FoxIO snapshot RDN hashes.
 //
 // # What this package does NOT cover (deliberately out of scope)
 //
@@ -87,6 +94,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
@@ -117,6 +125,7 @@ type Certificate struct {
 	SelfSigned         bool        `json:"self_signed"`
 	IsCA               bool        `json:"is_ca"`
 	ChainLength        int         `json:"chain_length_seen,omitempty"`
+	JA4X               string      `json:"ja4x,omitempty"`
 }
 
 // Name is the structured view of a DN.
@@ -227,6 +236,7 @@ func decodeDER(b []byte, chainLen int, source string) (*Certificate, error) {
 	sha256Sum := sha256.Sum256(cert.Raw)
 	c.FingerprintSHA1 = formatFingerprint(sha1Sum[:])
 	c.FingerprintSHA256 = formatFingerprint(sha256Sum[:])
+	c.JA4X = computeJA4X(cert)
 	if chainLen > 1 {
 		c.ChainLength = chainLen
 	}
@@ -402,4 +412,75 @@ func stripSeparators(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// computeJA4X builds the JA4X X.509-certificate fingerprint per the FoxIO
+// reference implementation (rust/ja4x). It is the certificate member of the
+// JA4+ family — alongside JA4 (TLS client) and JA4S (TLS server) — and
+// fingerprints the cert-generation stack, which malware C2 / phishing
+// infrastructure reuses across deployments.
+//
+//	JA4X = hash12(issuer_RDN_OIDs) _ hash12(subject_RDN_OIDs) _ hash12(extension_OIDs)
+//
+// Each part is the comma-joined hex of the DER content-octets of the OIDs (the
+// RDN attribute types / the extension IDs), in the order they appear in the
+// certificate (NOT sorted); hash12 is the first 12 hex chars of SHA-256.
+//
+// Verified byte-for-byte against three recurring RDN hashes from the FoxIO
+// browsers-x509 snapshot: C,O,CN -> a373a9f83c6b, C,O,OU,CN -> 7d5dbb3783b4,
+// C,ST,L,O,CN -> 2bab15409345.
+func computeJA4X(cert *x509.Certificate) string {
+	return ja4xHash12(rdnOIDHex(cert.Issuer.Names)) + "_" +
+		ja4xHash12(rdnOIDHex(cert.Subject.Names)) + "_" +
+		ja4xHash12(extOIDHex(cert.Extensions))
+}
+
+// rdnOIDHex joins the DER content-octet hex of each RDN attribute's OID, in order.
+func rdnOIDHex(attrs []pkix.AttributeTypeAndValue) string {
+	parts := make([]string, 0, len(attrs))
+	for _, a := range attrs {
+		if h := oidContentHex(a.Type); h != "" {
+			parts = append(parts, h)
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
+// extOIDHex joins the DER content-octet hex of each extension's OID, in order.
+func extOIDHex(exts []pkix.Extension) string {
+	parts := make([]string, 0, len(exts))
+	for _, e := range exts {
+		if h := oidContentHex(e.Id); h != "" {
+			parts = append(parts, h)
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
+// oidContentHex returns the lower-case hex of an OID's DER content octets (the
+// encoded OID with its 0x06 tag and length stripped) — matching x509-parser's
+// Oid::as_bytes() used by the JA4X reference.
+func oidContentHex(oid asn1.ObjectIdentifier) string {
+	der, err := asn1.Marshal(oid)
+	if err != nil || len(der) < 2 || der[0] != 0x06 {
+		return ""
+	}
+	hdr := 2 // 0x06 + 1-byte length (OID content is always < 128 bytes here)
+	if der[1]&0x80 != 0 {
+		hdr = 2 + int(der[1]&0x7f)
+	}
+	if hdr > len(der) {
+		return ""
+	}
+	return hex.EncodeToString(der[hdr:])
+}
+
+// ja4xHash12 returns the first 12 hex chars of SHA-256(s), or twelve zeros for
+// an empty input (the FoxIO sentinel).
+func ja4xHash12(s string) string {
+	if s == "" {
+		return "000000000000"
+	}
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])[:12]
 }

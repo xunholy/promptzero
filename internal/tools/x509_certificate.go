@@ -58,7 +58,13 @@ var x509CertificateDecodeSpec = Spec{
 		"- **Fingerprints**: SHA-1 + SHA-256 in canonical openssl/GUI colon-separated " +
 		"form (the form used for SPKI pinning, CT log lookups, and at-a-glance cert " +
 		"identification).\n" +
-		"- **Self-signed detection**: SubjectDN == IssuerDN flag.\n\n" +
+		"- **Self-signed detection**: SubjectDN == IssuerDN flag.\n" +
+		"- **JA4X fingerprint** (FoxIO): the certificate member of the JA4+ threat-intel family — " +
+		"`hash12(issuer RDN OIDs)_hash12(subject RDN OIDs)_hash12(extension OIDs)`, each the " +
+		"comma-joined hex of the OID DER content-octets in certificate order. Fingerprints the " +
+		"cert-generation stack (malware C2 / phishing infrastructure reuses it across deployments); " +
+		"pairs with JA4 (client) + JA4S (server). Verified byte-for-byte against FoxIO snapshot RDN " +
+		"hashes.\n\n" +
 		"Pure offline parser — operators paste a PEM blob (from a certificate file, " +
 		"`openssl s_client` output, a TLS handshake capture, or a CT log entry) and " +
 		"inspect every field. Pairs with tls_handshake_decode for the complete " +
