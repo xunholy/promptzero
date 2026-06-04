@@ -2197,7 +2197,11 @@ func TestRegistrySize(t *testing.T) {
 	// in GEO values / geo fields; decode returns center + half-cell + bbox,
 	// encode at 1-12 chars. Anchored vs the pygeohash reference library.
 	// internal/geohash).
-	const expected = 535
+	// v0.517.0 added uuid_decode (UUID/GUID structure + info-leak decoder —
+	// version/variant + the v1/v6 leaked host MAC + creation time, v7 unix-ms
+	// timestamp; v3/v4/v5 carry no recoverable data. Anchored vs Python's uuid
+	// module. internal/uuidinfo).
+	const expected = 536
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

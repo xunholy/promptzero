@@ -500,6 +500,11 @@ var toolLevels = func() map[string]Level {
 		// values / geo fields). Bidirectional, pure base-32 bisection;
 		// reads strings/numbers, transmits nothing, so it is Low.
 		"geohash_decode",
+		// v0.517 — UUID/GUID structure + info-leak decoder: version/
+		// variant, and for v1/v6 the leaked host MAC + creation time
+		// (v7: unix-ms timestamp). Offline parse of a pasted ID; reads a
+		// string, transmits nothing, so it is Low.
+		"uuid_decode",
 		// v0.512 — GPS/GNSS NMEA 0183 sentence decode (GGA/RMC/GLL/
 		// VTG/GSA/GSV): the offline complement to the device-side
 		// gps_* / marauder_nmea stream tools — paste a captured NMEA
