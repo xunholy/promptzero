@@ -2157,7 +2157,11 @@ func TestRegistrySize(t *testing.T) {
 	// builder — from a captured AS-REP -> $krb5asrep$ (18200) or TGS-REP ->
 	// $krb5tgs$ (13100), emit the hashcat line; anchored vs spec-conformant
 	// AS-REP/TGS-REP vectors. internal/krbroast).
-	const expected = 527
+	// (v0.504.0 added no tool — krb_roast_hashcat AES etype 17/18 support.)
+	// v0.505.0 added dcc2 (Domain Cached Credentials v2 / mscash2 compute +
+	// verify — MD4(MD4(pw)+user)+PBKDF2-HMAC-SHA1, hashcat 2100; gated vs the
+	// canonical hashcat-2100 example tom/hashcat. internal/dcc2).
+	const expected = 528
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
