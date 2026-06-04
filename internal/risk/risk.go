@@ -883,6 +883,13 @@ var toolLevels = func() map[string]Level {
 		// kex;enc;mac;compression). SSH counterpart to TLS
 		// JA3.
 		"ssh_handshake_decode",
+		// v0.506 — OpenSSH private-key (openssh-key-v1) triage: from a
+		// stolen id_ed25519/id_rsa, surface encrypted? / cipher / kdf
+		// rounds / key type / SHA256 fingerprint / comment — the
+		// loot-triage step (encrypted -> ssh2john + hashcat 22921).
+		// Offline parse of a pasted key; reads a string, transmits
+		// nothing, so it is Low.
+		"ssh_privkey_decode",
 		// v0.251 (NATIVE-fit gap — binary JSON for IoT):
 		// CBOR (Concise Binary Object Representation)
 		// dissector per RFC 8949. Recursive walker handling

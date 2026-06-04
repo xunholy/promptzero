@@ -2161,7 +2161,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.505.0 added dcc2 (Domain Cached Credentials v2 / mscash2 compute +
 	// verify — MD4(MD4(pw)+user)+PBKDF2-HMAC-SHA1, hashcat 2100; gated vs the
 	// canonical hashcat-2100 example tom/hashcat. internal/dcc2).
-	const expected = 528
+	// v0.506.0 added ssh_privkey_decode (OpenSSH private-key openssh-key-v1
+	// triage — encrypted?/cipher/kdf-rounds/key-type/SHA256-fingerprint/comment;
+	// anchored vs ssh-keygen -l for ed25519 + rsa (encrypted and not).
+	// internal/sshkey).
+	const expected = 529
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
