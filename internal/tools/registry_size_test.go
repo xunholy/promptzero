@@ -2183,7 +2183,12 @@ func TestRegistrySize(t *testing.T) {
 	// GGA/RMC/GLL/VTG/GSA/GSV: lat/lon/time/fix/speed/course/altitude with XOR
 	// checksum validation; the offline complement to marauder_nmea. Anchored vs
 	// pynmea2. internal/nmea).
-	const expected = 532
+	// (v0.513.0 added no tool — gps_nmea_decode GSV per-satellite + GST + ZDA.)
+	// v0.514.0 added subghz_jammer_detect (offline sub-GHz jammer analyser — RSSI
+	// floor + occupancy + dwell heuristic over a captured RSSI sequence, the
+	// host-side complement to the on-device Jammer Detect FAP; observation-not-
+	// verdict like subghz_rollback_detect. internal/subghz AnalyzeJamming).
+	const expected = 533
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

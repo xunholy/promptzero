@@ -666,6 +666,13 @@ var toolLevels = func() map[string]Level {
 		// and, when decrypted counters are supplied, counter regressions
 		// — both as observations, not verdicts. No RF/TX; analysis-only.
 		"subghz_rollback_detect",
+		// v0.514 (gap-analysis §3 rank 16 — subghz_jammer_detect): pure
+		// offline, defensive analyser over a captured sub-GHz RSSI sample
+		// sequence — the host-side complement to the on-device Jammer
+		// Detect FAP. Reports RSSI stats (floor/occupancy/dwell) and flags
+		// elevated-floor / sustained-occupancy / long-dwell as observations
+		// with benign explanations, never a verdict. No RF/TX; analysis-only.
+		"subghz_jammer_detect",
 		// v0.241 (NATIVE-fit gap in the network-protocol decode
 		// space): TLS handshake dissector per RFC 5246 + RFC 8446.
 		// Pure offline parser for ClientHello / ServerHello: TLS
