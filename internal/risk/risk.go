@@ -898,6 +898,14 @@ var toolLevels = func() map[string]Level {
 		// putty2john + John). Offline parse of a pasted key; reads a
 		// string, transmits nothing, so it is Low.
 		"putty_privkey_decode",
+		// v0.508 — PEM private-key triage (the openssl-key counterpart
+		// to ssh_privkey_decode / putty_privkey_decode): from a stolen
+		// .pem/.key, surface format / encrypted? / algorithm+size /
+		// public-SHA256 (unencrypted) / cipher+KDF (PBKDF2 iter / scrypt
+		// N,r,p) — the loot-triage step (encrypted -> openssl/pem2john +
+		// John). Offline parse of a pasted key; reads a string, transmits
+		// nothing, so it is Low.
+		"pem_privkey_decode",
 		// v0.251 (NATIVE-fit gap — binary JSON for IoT):
 		// CBOR (Concise Binary Object Representation)
 		// dissector per RFC 8949. Recursive walker handling

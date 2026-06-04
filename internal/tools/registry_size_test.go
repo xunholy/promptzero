@@ -2170,7 +2170,13 @@ func TestRegistrySize(t *testing.T) {
 	// key-type/SHA256-fingerprint/comment/Argon2 KDF params; the .ppk public
 	// block is the same SSH-wire blob as an OpenSSH .pub, so the fingerprint is
 	// cross-validated vs ssh-keygen -l. internal/puttykey).
-	const expected = 530
+	// v0.508.0 added pem_privkey_decode (PEM private-key triage — the openssl-key
+	// counterpart to ssh/putty: format/encrypted?/algorithm+size/public-SHA256
+	// (unencrypted)/cipher+KDF (PBKDF2 iter, scrypt N,r,p). Native: crypto/x509
+	// for the standard DER + a hand-rolled encoding/asn1 walk for the encrypted
+	// params; anchored vs openssl pkey -pubout + openssl asn1parse.
+	// internal/pemkey).
+	const expected = 531
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
