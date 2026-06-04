@@ -2254,6 +2254,14 @@ var toolLevels = func() map[string]Level {
 		// pasted hex blob; reads bytes, transmits nothing, so it is
 		// Low.
 		"keytab_decode",
+		// v0.500 — MIT Kerberos credential cache (.ccache /
+		// krb5cc_* v0x0504) parser, the credential-cache complement
+		// to keytab_decode + kerberos_decode: default principal +
+		// per-credential client/server, key, times, ticket flags, and
+		// the embedded ticket (pass-the-ticket loot; krbtgt TGT
+		// flagged). Offline parse of a pasted hex blob; reads bytes,
+		// transmits nothing, so it is Low.
+		"ccache_decode",
 		// v0.331 native-fit gap: ldap_decode is a pure
 		// offline dissector for LDAP v3 per RFC 4511 — the
 		// canonical directory-service protocol used by

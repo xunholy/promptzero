@@ -2144,7 +2144,11 @@ func TestRegistrySize(t *testing.T) {
 	// file-format complement to kerberos_decode: principals, KVNO, enctype, raw
 	// key bytes (RC4 = NT hash flagged); anchored vs a keytab confirmed by the
 	// MIT ktutil oracle. internal/keytab).
-	const expected = 524
+	// v0.500.0 added ccache_decode (MIT Kerberos credential cache v0x0504 parser —
+	// default principal + per-credential client/server/key/times/flags + the
+	// embedded ticket (pass-the-ticket loot; krbtgt TGT flagged); anchored vs a
+	// ccache confirmed by the MIT klist -cf oracle. internal/ccache).
+	const expected = 525
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
