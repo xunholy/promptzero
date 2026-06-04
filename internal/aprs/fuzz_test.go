@@ -30,6 +30,10 @@ func FuzzDecode(f *testing.F) {
 		"N0CALL>APRS:!/5L!!<*e8>{I#",
 		"N0CALL>APRS:=/9u<\";gyon:+Chello",
 		"N0CALL>APRS:!/5L!",
+		// §9 compressed complete weather report (symbol '_').
+		"WX>APRS:!/5L!!<*e8_  !g005t077r000p000P000h50b09900",
+		"WX>APRS:!/5L!!<*e8_yE[g005t077h50b09900",
+		"WX>APRS:!/5L!!<*e8_  !Hello world",
 		"_",
 		"",
 	}

@@ -105,6 +105,74 @@ func TestCompressedRadioRange(t *testing.T) {
 	}
 }
 
+// Compressed complete weather report (APRS101 §12): a compressed position
+// with symbol code '_' trailing a weather block. cs = spaces (no wind), block
+// = g005t077r000p000P000h50b09900. aprslib decodes wind_gust 2.2352 m/s (5
+// mph), temperature 25 C (77 F), humidity 50, pressure 990.0 hPa, rain 0.
+func TestCompressedWeatherNoCS(t *testing.T) {
+	f, err := Decode("WX>APRS:!/5L!!<*e8_  !g005t077r000p000P000h50b09900")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if f.Position == nil || !f.Position.Compressed || f.Position.SymbolCode != "_" {
+		t.Fatalf("position=%v, want compressed weather symbol", f.Position)
+	}
+	w := f.Weather
+	if w == nil {
+		t.Fatal("weather = nil, want decoded weather block")
+	}
+	if w.GustMph == nil || *w.GustMph != 5 {
+		t.Errorf("gust_mph = %v, want 5", w.GustMph)
+	}
+	if w.TemperatureF == nil || *w.TemperatureF != 77 {
+		t.Errorf("temperature_f = %v, want 77", w.TemperatureF)
+	}
+	if w.HumidityPct == nil || *w.HumidityPct != 50 {
+		t.Errorf("humidity_pct = %v, want 50", w.HumidityPct)
+	}
+	if w.PressureHpa == nil || *w.PressureHpa != 990.0 {
+		t.Errorf("pressure_hpa = %v, want 990.0", w.PressureHpa)
+	}
+	if w.RainLastHourIn == nil || *w.RainLastHourIn != 0 {
+		t.Errorf("rain_last_hour_in = %v, want 0", w.RainLastHourIn)
+	}
+	if f.Comment != "" {
+		t.Errorf("comment = %q, want empty (consumed as weather)", f.Comment)
+	}
+}
+
+// Compressed weather WITH a cs course/speed: the cs stays course/speed
+// (decoded above), the trailing block is the weather.
+func TestCompressedWeatherWithCS(t *testing.T) {
+	f, err := Decode("WX>APRS:!/5L!!<*e8_yE[g005t077h50b09900")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if f.Position.CourseDeg != 352 {
+		t.Errorf("course = %d, want 352 (cs stays course/speed)", f.Position.CourseDeg)
+	}
+	near(t, "speed_knots", f.Position.SpeedKnots, 14.9681718379, 1e-6)
+	w := f.Weather
+	if w == nil || w.GustMph == nil || *w.GustMph != 5 || w.TemperatureF == nil || *w.TemperatureF != 77 {
+		t.Fatalf("weather block not decoded: %+v", w)
+	}
+}
+
+// A '_'-symbol compressed position carrying a plain comment (no weather
+// fields) must NOT be reported as empty weather — the comment wins.
+func TestCompressedWeatherGate(t *testing.T) {
+	f, err := Decode("WX>APRS:!/5L!!<*e8_  !Hello world")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if f.Weather != nil {
+		t.Errorf("weather = %+v, want nil for a non-weather comment", f.Weather)
+	}
+	if f.Comment != "Hello world" {
+		t.Errorf("comment = %q, want 'Hello world'", f.Comment)
+	}
+}
+
 // An uncompressed position must still take the §8 path (leading digit),
 // not be misrouted to the compressed decoder.
 func TestUncompressedStillWorks(t *testing.T) {

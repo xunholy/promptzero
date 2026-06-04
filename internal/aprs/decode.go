@@ -559,10 +559,37 @@ func decodeCompressedPosition(f *Frame, payload string) error {
 		pos.RadioRangeMi = 2 * math.Pow(1.08, float64(s1))
 	}
 	f.Position = pos
-	if rest := strings.TrimSpace(payload[13:]); rest != "" {
-		f.Comment = rest
+	rest := payload[13:]
+	// Compressed complete weather report (APRS101 §12): when the symbol code
+	// is '_' (weather station), the bytes after the compressed position are a
+	// weather block — and, unlike the uncompressed §12 form, there is no
+	// leading "ddd/sss" wind extension (the wind is carried by the compressed
+	// cs course/speed, decoded above), so the block begins directly at the
+	// gust/temperature fields. Attach it only when at least one weather field
+	// actually parsed, so a '_'-symbol position carrying a plain comment is not
+	// mis-reported as empty weather.
+	if symCode == "_" {
+		w := &Weather{}
+		parseWeatherTail(w, rest)
+		if weatherPopulated(w) {
+			f.Weather = w
+			return nil
+		}
+	}
+	if r := strings.TrimSpace(rest); r != "" {
+		f.Comment = r
 	}
 	return nil
+}
+
+// weatherPopulated reports whether a Weather has at least one decoded
+// measurement (i.e. the trailing block really was a weather report, not a
+// free-text comment).
+func weatherPopulated(w *Weather) bool {
+	return w.WindDirectionDeg != nil || w.WindSpeedMph != nil || w.GustMph != nil ||
+		w.TemperatureF != nil || w.RainLastHourIn != nil || w.RainLast24hIn != nil ||
+		w.RainSinceMidnightIn != nil || w.HumidityPct != nil || w.PressureHpa != nil ||
+		w.LuminosityWm2 != nil
 }
 
 // base91 decodes a big-endian base-91 string (each char value =
