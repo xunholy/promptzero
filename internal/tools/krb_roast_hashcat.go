@@ -34,14 +34,17 @@ var krbRoastHashcatSpec = Spec{
 		"- **Kerberoast** (hashcat `-m 13100`): paste a **TGS-REP** (its service ticket's enc-part is " +
 		"encrypted with the service account's key) → `$krb5tgs$23$*user$REALM$spn*$checksum$edata` (the SPN " +
 		"is taken from the service ticket's sname).\n\n" +
+		"Both **RC4 (etype 23)** and **AES (etype 17/18)** tickets are handled, matching impacket's " +
+		"GetUserSPNs / GetNPUsers exactly: RC4 splits checksum(16)‖edata (Kerberoast 13100 / AS-REP " +
+		"18200); AES splits edata‖checksum(12) — the checksum is the LAST 12 bytes — with the SPN " +
+		"`*`-wrapped alone and ':'→'~' (AES Kerberoast 19600 / 19700). AES AS-REP roast has no standard " +
+		"hashcat mode and is flagged for John the Ripper.\n\n" +
 		"Provide **message** (the AS-REP / TGS-REP as hex — the same input kerberos_decode takes; the message " +
-		"type selects the attack). The RC4 (etype 23) enc-part cipher is split checksum(16) ‖ edata as " +
-		"hashcat expects. Output is the crack line + the hashcat mode + the principal / SPN / realm.\n\n" +
+		"type selects the attack). Output is the crack line + the hashcat mode + the principal / SPN / realm.\n\n" +
 		"Pure offline transform — reads operator-supplied hex, transmits nothing, so it is Low risk. A " +
-		"non-AS-REP/TGS-REP input, or an AES (etype 17/18) enc-part (its checksum is placed differently — " +
-		"modes 19600/19700; reported as not-yet-supported rather than mis-split), errors instead of emitting " +
-		"a wrong line. Verified in-tree against spec-conformant AS-REP + TGS-REP vectors with the canonical " +
-		"hashcat 18200 / 13100 format. Wrap-vs-native: native — reuses the internal/kerberos decoder.",
+		"non-AS-REP/TGS-REP input, or any other etype, errors instead of emitting a wrong line. Verified " +
+		"in-tree against spec-conformant AS-REP + TGS-REP vectors (RC4 + AES) reproducing the canonical " +
+		"hashcat / impacket lines byte-for-byte. Wrap-vs-native: native — reuses the internal/kerberos decoder.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
