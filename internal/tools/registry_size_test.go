@@ -2232,7 +2232,12 @@ func TestRegistrySize(t *testing.T) {
 	// identifier + CRC-16/ARC validation + OBIS object decode [energy/power/
 	// voltage/current/gas]. DSMR 5.0 / IEC 62056-21; verified byte-for-byte
 	// against the dsmr_parser reference telegram (CRC 0x6796). internal/dsmr).
-	const expected = 544
+	// v0.539.0 added wmbus_decode (Wireless M-Bus / EN 13757-4 868 MHz radio
+	// frame decoder — L/C/manufacturer/meter-ID/device-type + per-block CRC-16
+	// + de-chunked application payload. The radio framing internal/mbus
+	// explicitly deferred; verified against a CRC-valid Format-A frame and a
+	// real meter header block (CRC 0x3363). internal/wmbus).
+	const expected = 545
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

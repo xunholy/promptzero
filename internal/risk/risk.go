@@ -489,6 +489,12 @@ var toolLevels = func() map[string]Level {
 		// offline ASCII parse of a P1 telegram; verified byte-for-byte
 		// against the dsmr_parser reference telegram (CRC 0x6796).
 		"dsmr_p1_decode",
+		// v0.539 (sub-GHz smart-metering decode space): Wireless M-Bus /
+		// EN 13757-4 868 MHz radio frame decoder — L/C/manufacturer/
+		// meter-ID/device-type + per-block CRC-16 + de-chunked application
+		// payload. Pure offline byte-field decode of a line-decoded frame;
+		// verified against a CRC-valid Format-A frame + a real header block.
+		"wmbus_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast
