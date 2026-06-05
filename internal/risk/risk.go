@@ -2268,6 +2268,13 @@ var toolLevels = func() map[string]Level {
 		// offline text decode of a pasted MRZ; reads a string, transmits
 		// nothing, so it is Low. Verified against the mrz reference lib.
 		"mrz_decode",
+		// v0.552 (travel-OSINT decode): bcbp_decode — the IATA Resolution
+		// 792 Bar Coded Boarding Pass (the PDF417/Aztec/QR barcode text).
+		// Surfaces passenger name / PNR / itinerary / seat; the airline-use
+		// conditional section is surfaced raw. Pure offline text decode of a
+		// pasted barcode string; reads a string, transmits nothing, so it is
+		// Low. Verified against the canonical IATA 792 example.
+		"bcbp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

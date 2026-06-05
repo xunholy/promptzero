@@ -2269,7 +2269,12 @@ func TestRegistrySize(t *testing.T) {
 	// TD1/TD2/TD3 passport/ID/visa fields + 7-3-1 check-digit validation;
 	// the BAC-key input for e-passport NFC. Verified against the mrz lib.
 	// internal/mrz).
-	const expected = 552
+	// v0.552.0 added bcbp_decode (IATA Resolution 792 Bar Coded Boarding Pass
+	// decoder — passenger/PNR/itinerary/seat from the boarding-pass barcode;
+	// travel-OSINT companion to mrz_decode. Self-describing length markers;
+	// conditional section surfaced raw. Verified vs the canonical IATA
+	// example. internal/bcbp).
+	const expected = 553
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
