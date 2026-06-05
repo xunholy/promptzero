@@ -47,6 +47,11 @@
 //     smaller-vessel position broadcast with MMSI, Speed,
 //     Position Accuracy, Longitude / Latitude, Course,
 //     True Heading, Timestamp, RAIM.
+//   - Type-9 SAR Aircraft Position Report: altitude (in
+//     place of nav status), whole-knot speed, position,
+//     course, timestamp and the DTE / assigned / RAIM
+//     flags — the broadcast from a search-and-rescue
+//     aircraft.
 //   - Type-19 Extended Class B Position Report: Type-18's
 //     position fields plus the vessel name, ship type and
 //     dimensions, so a single 312-bit message carries both
@@ -60,6 +65,11 @@
 //   - Type-24 Static Data Class B: Part A (vessel name)
 //     or Part B (ship type + vendor ID + callsign +
 //     dimensions or mother-ship MMSI).
+//   - Type-27 Long-Range Position Report: the compressed
+//     position broadcast for satellite reception — nav
+//     status, coarse 1/10-minute position, whole-knot
+//     speed, whole-degree course, RAIM and the GNSS
+//     position-latency flag.
 //
 // # What this package does NOT cover (deliberately out of scope)
 //
@@ -68,14 +78,12 @@
 //     would each need their own decoder; the type label and
 //     destination MMSI / DAC / FI fields are surfaced but
 //     the body is exposed as a raw hex string.
-//   - Type 9 SAR Aircraft Position, Type 11 UTC/Date
-//     Response, Type 14 Safety Related Broadcast, Type
-//     15 Interrogation, Type 16 Assigned-Mode Command,
-//     Type 17 DGNSS Broadcast, Type 20 Data Link
-//     Management, Type 22 Channel Management, Type 23
-//     Group Assignment, Type 25 / 26 / 27 Long-Range
-//     Application — recognised by name but body decode
-//     deferred.
+//   - Type 11 UTC/Date Response, Type 14 Safety Related
+//     Broadcast, Type 15 Interrogation, Type 16 Assigned-
+//     Mode Command, Type 17 DGNSS Broadcast, Type 20 Data
+//     Link Management, Type 22 Channel Management, Type 23
+//     Group Assignment, Type 25 / 26 Binary Message —
+//     recognised by name but body decode deferred.
 //   - Live demodulation from raw I/Q samples — sentences
 //     must be pre-decoded to NMEA text by an upstream
 //     receiver (rtl_ais / AIS-catcher / AISHub).
@@ -106,6 +114,8 @@ type Message struct {
 	ExtendedClassB  *ExtendedPositionClassB `json:"extended_class_b,omitempty"`
 	StaticClassB    *StaticDataReportClassB `json:"static_class_b,omitempty"`
 	AidToNavigation *AidToNavigationReport  `json:"aid_to_navigation,omitempty"`
+	SARAircraft     *SARAircraftPosition    `json:"sar_aircraft,omitempty"`
+	LongRange       *LongRangePosition      `json:"long_range,omitempty"`
 }
 
 // PositionReportClassA is the Type-1/2/3 body — the high-
@@ -236,6 +246,42 @@ type AidToNavigationReport struct {
 	Assigned         bool     `json:"assigned"`
 }
 
+// SARAircraftPosition is Type-9 — the position broadcast from a
+// Search-And-Rescue aircraft (helicopter / fixed-wing). Unlike
+// the vessel position reports it carries an altitude instead of
+// a navigation status, and its speed is in whole knots.
+type SARAircraftPosition struct {
+	AltitudeM           *int     `json:"altitude_m,omitempty"`
+	SpeedOverGroundKts  *float64 `json:"speed_over_ground_kts,omitempty"`
+	PositionAccuracy    bool     `json:"position_accuracy"`
+	LongitudeDeg        *float64 `json:"longitude_deg,omitempty"`
+	LatitudeDeg         *float64 `json:"latitude_deg,omitempty"`
+	CourseOverGroundDeg *float64 `json:"course_over_ground_deg,omitempty"`
+	Timestamp           int      `json:"timestamp_sec"`
+	DTE                 int      `json:"dte"`
+	Assigned            bool     `json:"assigned"`
+	RAIM                bool     `json:"raim"`
+}
+
+// LongRangePosition is Type-27 — the heavily-compressed position
+// report intended for long-range (satellite) reception. Position
+// is at the coarser 1/10-minute resolution and speed/course are
+// whole knots / whole degrees.
+type LongRangePosition struct {
+	PositionAccuracy    bool     `json:"position_accuracy"`
+	RAIM                bool     `json:"raim"`
+	NavStatus           int      `json:"nav_status"`
+	NavStatusName       string   `json:"nav_status_name"`
+	LongitudeDeg        *float64 `json:"longitude_deg,omitempty"`
+	LatitudeDeg         *float64 `json:"latitude_deg,omitempty"`
+	SpeedOverGroundKts  *float64 `json:"speed_over_ground_kts,omitempty"`
+	CourseOverGroundDeg *float64 `json:"course_over_ground_deg,omitempty"`
+	// GNSSPositionLatency is the Type-27 GNSS flag: false = the
+	// position is a current GNSS fix (latency < 5 s); true = the
+	// position is older / not a current GNSS fix.
+	GNSSPositionLatency bool `json:"gnss_position_latency"`
+}
+
 // StaticDataReportClassB is Type-24 — Part A (vessel name) or
 // Part B (ship type + dimensions). PartA / PartB are mutually
 // exclusive in a single sentence.
@@ -321,6 +367,11 @@ func Decode(input string) (*Message, error) {
 			return nil, fmt.Errorf("ais: Type 5 payload truncated (%d bits, need 424)", len(bits))
 		}
 		m.StaticAndVoyage = decodeStaticAndVoyage(bits)
+	case 9:
+		if len(bits) < 148 {
+			return nil, fmt.Errorf("ais: Type 9 payload truncated (%d bits, need 148)", len(bits))
+		}
+		m.SARAircraft = decodeSARAircraft(bits)
 	case 18:
 		m.PositionClassB = decodePositionClassB(bits)
 	case 19:
@@ -333,6 +384,11 @@ func Decode(input string) (*Message, error) {
 			return nil, fmt.Errorf("ais: Type 21 payload truncated (%d bits, need 272)", len(bits))
 		}
 		m.AidToNavigation = decodeAidToNavigation(bits)
+	case 27:
+		if len(bits) < 96 {
+			return nil, fmt.Errorf("ais: Type 27 payload truncated (%d bits, need 96)", len(bits))
+		}
+		m.LongRange = decodeLongRange(bits)
 	case 24:
 		m.StaticClassB = decodeStaticClassB(bits, m.MMSI)
 	}
@@ -607,6 +663,74 @@ func decodePositionClassB(bits []byte) *PositionReportClassB {
 		p.Msg22Flag = bits[145] == 1
 		p.Assigned = bits[146] == 1
 		p.RAIM = bits[147] == 1
+	}
+	return p
+}
+
+func decodeSARAircraft(bits []byte) *SARAircraftPosition {
+	p := &SARAircraftPosition{
+		PositionAccuracy: bits[60] == 1,
+		Timestamp:        readUint(bits, 128, 6),
+		DTE:              readUint(bits, 142, 1),
+		Assigned:         bits[146] == 1,
+		RAIM:             bits[147] == 1,
+	}
+	alt := readUint(bits, 38, 12)
+	if alt != 4095 { // 4095 = altitude not available
+		p.AltitudeM = &alt
+	}
+	sog := readUint(bits, 50, 10)
+	if sog != 1023 { // Type 9 SOG is whole knots, not deciknots
+		s := float64(sog)
+		p.SpeedOverGroundKts = &s
+	}
+	lon := readInt(bits, 61, 28)
+	if lon != 0x6791AC0 {
+		l := float64(lon) / 600000.0
+		p.LongitudeDeg = &l
+	}
+	lat := readInt(bits, 89, 27)
+	if lat != 0x3412140 {
+		l := float64(lat) / 600000.0
+		p.LatitudeDeg = &l
+	}
+	cog := readUint(bits, 116, 12)
+	if cog != 3600 {
+		c := float64(cog) / 10.0
+		p.CourseOverGroundDeg = &c
+	}
+	return p
+}
+
+func decodeLongRange(bits []byte) *LongRangePosition {
+	p := &LongRangePosition{
+		PositionAccuracy:    bits[38] == 1,
+		RAIM:                bits[39] == 1,
+		NavStatus:           readUint(bits, 40, 4),
+		GNSSPositionLatency: bits[94] == 1,
+	}
+	p.NavStatusName = navStatusName(p.NavStatus)
+	// Type 27 carries position at the coarse 1/10-minute scale:
+	// 18-bit signed longitude, 17-bit signed latitude, /600.
+	lon := readInt(bits, 44, 18)
+	if lon != 0x1A838 { // 181° sentinel at 1/10-minute scale
+		l := float64(lon) / 600.0
+		p.LongitudeDeg = &l
+	}
+	lat := readInt(bits, 62, 17)
+	if lat != 0xD548 { // 91° sentinel
+		l := float64(lat) / 600.0
+		p.LatitudeDeg = &l
+	}
+	sog := readUint(bits, 79, 6)
+	if sog != 63 { // whole knots; 63 = not available
+		s := float64(sog)
+		p.SpeedOverGroundKts = &s
+	}
+	cog := readUint(bits, 85, 9)
+	if cog != 511 { // whole degrees; 511 = not available
+		c := float64(cog)
+		p.CourseOverGroundDeg = &c
 	}
 	return p
 }

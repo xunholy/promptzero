@@ -164,6 +164,90 @@ func TestDecode_Type24_PartB(t *testing.T) {
 	}
 }
 
+// TestDecode_Type9_SARAircraft pins a Search-And-Rescue aircraft
+// position report. The sentence was minted by pyais 3.0.1's
+// encoder from known field values and the decoded fields are
+// cross-checked against pyais's own decode() of it.
+func TestDecode_Type9_SARAircraft(t *testing.T) {
+	got, err := Decode("!AIVDO,1,1,,A,91b74r1GQOPC?t8MfhuW:rP00000,0*7E")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.MessageType != 9 {
+		t.Errorf("MessageType = %d; want 9", got.MessageType)
+	}
+	if got.MMSI != 111265000 {
+		t.Errorf("MMSI = %d; want 111265000", got.MMSI)
+	}
+	a := got.SARAircraft
+	if a == nil {
+		t.Fatal("SARAircraft nil")
+	}
+	if a.AltitudeM == nil || *a.AltitudeM != 350 {
+		t.Errorf("AltitudeM = %v; want 350", a.AltitudeM)
+	}
+	if a.SpeedOverGroundKts == nil || *a.SpeedOverGroundKts != 95 {
+		t.Errorf("SpeedOverGroundKts = %v; want 95 (whole knots)", a.SpeedOverGroundKts)
+	}
+	if !a.PositionAccuracy {
+		t.Errorf("PositionAccuracy = false; want true")
+	}
+	if a.LongitudeDeg == nil || math.Abs(*a.LongitudeDeg-4.20502) > 0.001 {
+		t.Errorf("LongitudeDeg = %v; want ~4.20502", a.LongitudeDeg)
+	}
+	if a.LatitudeDeg == nil || math.Abs(*a.LatitudeDeg-51.95817) > 0.001 {
+		t.Errorf("LatitudeDeg = %v; want ~51.95817", a.LatitudeDeg)
+	}
+	if a.CourseOverGroundDeg == nil || math.Abs(*a.CourseOverGroundDeg-183.5) > 0.001 {
+		t.Errorf("CourseOverGroundDeg = %v; want 183.5", a.CourseOverGroundDeg)
+	}
+	if a.Timestamp != 42 {
+		t.Errorf("Timestamp = %d; want 42", a.Timestamp)
+	}
+	if a.DTE != 0 || a.Assigned || a.RAIM {
+		t.Errorf("dte/assigned/raim = %d/%v/%v; want 0/false/false", a.DTE, a.Assigned, a.RAIM)
+	}
+}
+
+// TestDecode_Type27_LongRange pins a long-range (satellite)
+// position report. Oracle values cross-checked against pyais
+// 3.0.1.
+func TestDecode_Type27_LongRange(t *testing.T) {
+	got, err := Decode("!AIVDM,1,1,,B,KC5E2b@U19PFdLbMuc5=ROv62<7m,0*16")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.MessageType != 27 {
+		t.Errorf("MessageType = %d; want 27", got.MessageType)
+	}
+	if got.MMSI != 206914217 {
+		t.Errorf("MMSI = %d; want 206914217", got.MMSI)
+	}
+	l := got.LongRange
+	if l == nil {
+		t.Fatal("LongRange nil")
+	}
+	if l.NavStatus != 2 || !strings.Contains(l.NavStatusName, "Not under command") {
+		t.Errorf("NavStatus = %d (%q); want 2 Not under command", l.NavStatus, l.NavStatusName)
+	}
+	if l.LongitudeDeg == nil || math.Abs(*l.LongitudeDeg-137.023333) > 0.001 {
+		t.Errorf("LongitudeDeg = %v; want ~137.023333", l.LongitudeDeg)
+	}
+	if l.LatitudeDeg == nil || math.Abs(*l.LatitudeDeg-4.84) > 0.001 {
+		t.Errorf("LatitudeDeg = %v; want ~4.84", l.LatitudeDeg)
+	}
+	if l.SpeedOverGroundKts == nil || *l.SpeedOverGroundKts != 57 {
+		t.Errorf("SpeedOverGroundKts = %v; want 57 (whole knots)", l.SpeedOverGroundKts)
+	}
+	if l.CourseOverGroundDeg == nil || *l.CourseOverGroundDeg != 167 {
+		t.Errorf("CourseOverGroundDeg = %v; want 167 (whole degrees)", l.CourseOverGroundDeg)
+	}
+	if l.PositionAccuracy || l.RAIM || l.GNSSPositionLatency {
+		t.Errorf("accuracy/raim/gnss = %v/%v/%v; want false/false/false",
+			l.PositionAccuracy, l.RAIM, l.GNSSPositionLatency)
+	}
+}
+
 // TestDecode_Type19_ExtendedClassB pins an Extended Class B
 // position report. Oracle values cross-checked against pyais
 // 3.0.1 decode() of the same sentence.
