@@ -472,6 +472,12 @@ var toolLevels = func() map[string]Level {
 		// validation. Pure offline byte-field decode of an RS-485 capture;
 		// verified byte-for-byte against the libosdp phy-layer vectors.
 		"osdp_packet_decode",
+		// v0.536 (RF broadcast / SDR decode space): EAS / SAME emergency-
+		// alert header decoder — originator / event code / FIPS location /
+		// valid + issue time / callsign (NWS NWSI 10-1712 / FCC 47 CFR
+		// 11.31). Pure offline string parse of a demodulated ZCZC header;
+		// verified against the documented NWS worked example.
+		"eas_same_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast

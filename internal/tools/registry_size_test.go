@@ -2221,7 +2221,11 @@ func TestRegistrySize(t *testing.T) {
 	// reader-bus packet dissector — frame + control + SCB + command/reply code
 	// + NAK error + CRC-16/AUG-CCITT or checksum validation. Verified
 	// byte-for-byte against the libosdp phy-layer test vectors. internal/osdp).
-	const expected = 541
+	// v0.536.0 added eas_same_decode (EAS / SAME emergency-alert header decoder
+	// — originator / event-code / FIPS-location / valid + issue time / callsign,
+	// NWS NWSI 10-1712 / FCC 47 CFR 11.31. Verified against the documented NWS
+	// worked example. internal/eas).
+	const expected = 542
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
