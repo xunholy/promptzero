@@ -71,7 +71,8 @@
 //
 //   - 3 Retry: Retry Token (variable) + Retry Integrity
 //     Tag (16 bytes, AES-128-GCM tag covering the original
-//     DCID).
+//     DCID). The tag is VERIFIABLE offline given the original
+//     DCID — see VerifyRetryIntegrity / retry_integrity.go.
 //
 //   - **Variable-Length Integer** (RFC 9000 §16):
 //
@@ -180,6 +181,12 @@ type RetryPacket struct {
 	RetryTokenLen   int    `json:"retry_token_length"`
 	RetryTokenHex   string `json:"retry_token_hex,omitempty"`
 	IntegrityTagHex string `json:"integrity_tag_hex"`
+	// IntegrityVerified is set when the caller supplies the original
+	// Destination Connection ID: true if the Retry Integrity Tag is
+	// authentic (RFC 9001 §5.8), false if it does not match. nil when no
+	// ODCID was supplied or verification is not applicable.
+	IntegrityVerified *bool  `json:"integrity_verified,omitempty"`
+	IntegrityNote     string `json:"integrity_note,omitempty"`
 }
 
 // VersionNeg is the Version Negotiation packet body

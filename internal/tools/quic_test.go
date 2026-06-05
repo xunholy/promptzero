@@ -55,6 +55,46 @@ func TestQUICLongHeaderDecodeHandler_ShortHeaderNote(t *testing.T) {
 	}
 }
 
+// TestQUICLongHeaderDecodeHandler_RetryIntegrity drives the RFC 9001 A.4
+// Retry through the handler with original_dcid and asserts the integrity
+// verdict surfaces in the JSON.
+func TestQUICLongHeaderDecodeHandler_RetryIntegrity(t *testing.T) {
+	const retry = "ff000000010008f067a5502a4262b5746f6b656e04a265ba2eff4d829058fb3f0f2496ba"
+
+	// Authentic: correct original DCID.
+	out, err := quicLongHeaderDecodeHandler(context.Background(), nil,
+		map[string]any{"hex": retry, "original_dcid": "8394c8f03e515708"})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if !strings.Contains(out, `"integrity_verified": true`) {
+		t.Errorf("expected integrity_verified true:\n%s", out)
+	}
+
+	// Wrong DCID → false.
+	bad, err := quicLongHeaderDecodeHandler(context.Background(), nil,
+		map[string]any{"hex": retry, "original_dcid": "0000000000000000"})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if !strings.Contains(bad, `"integrity_verified": false`) {
+		t.Errorf("expected integrity_verified false for wrong DCID:\n%s", bad)
+	}
+
+	// No DCID → prompt note, no verdict.
+	none, err := quicLongHeaderDecodeHandler(context.Background(), nil,
+		map[string]any{"hex": retry})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if strings.Contains(none, `"integrity_verified"`) {
+		t.Errorf("did not expect a verdict without original_dcid:\n%s", none)
+	}
+	if !strings.Contains(none, "supply original_dcid") {
+		t.Errorf("expected prompt note:\n%s", none)
+	}
+}
+
 func TestQUICLongHeaderDecodeHandler_RejectsEmpty(t *testing.T) {
 	_, err := quicLongHeaderDecodeHandler(context.Background(), nil,
 		map[string]any{"hex": ""})

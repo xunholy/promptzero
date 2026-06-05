@@ -53,7 +53,12 @@ var quicLongHeaderDecodeSpec = Spec{
 		"  - **2 Handshake**: Length (VLI) + Protected Packet Number + Protected " +
 		"Payload.\n" +
 		"  - **3 Retry**: Retry Token (variable) + Retry Integrity Tag (16 bytes, " +
-		"AES-128-GCM tag covering the original DCID).\n" +
+		"AES-128-GCM tag covering the original DCID). **The tag is VERIFIED** when " +
+		"`original_dcid` is supplied (RFC 9001 §5.8): the tag is recomputed over the " +
+		"Retry Pseudo-Packet with the fixed v1 key/nonce and reported as " +
+		"`integrity_verified` true/false — a mismatch flags a forged / corrupt / " +
+		"off-path Retry (Retry-injection detection). Verified byte-for-byte against the " +
+		"RFC 9001 Appendix A.4 worked example.\n" +
 		"- **Variable-Length Integer** (RFC 9000 §16): 2-bit prefix indicates length " +
 		"(1/2/4/8 bytes), remaining bits hold the value:\n" +
 		"  - 0b00 prefix: 6-bit value in 1 byte\n" +
@@ -93,7 +98,8 @@ var quicLongHeaderDecodeSpec = Spec{
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"hex":{"type":"string","description":"QUIC packet UDP-payload bytes as hex. Separators (':' '-' '_' whitespace) tolerated. '0x' prefix tolerated."}
+			"hex":{"type":"string","description":"QUIC packet UDP-payload bytes as hex. Separators (':' '-' '_' whitespace) tolerated. '0x' prefix tolerated."},
+			"original_dcid":{"type":"string","description":"Optional. For a Retry packet, the original Destination Connection ID the client chose in its first Initial (hex). When supplied, the Retry Integrity Tag (RFC 9001 §5.8) is verified and reported as integrity_verified true/false. Not present in the Retry packet itself — take it from the same capture's client Initial."}
 		},
 		"required":["hex"]
 	}`),
@@ -112,6 +118,29 @@ func quicLongHeaderDecodeHandler(_ context.Context, _ *Deps, p map[string]any) (
 	res, err := quic.Decode(raw)
 	if err != nil {
 		return "", fmt.Errorf("quic_long_header_decode: %w", err)
+	}
+	// Optional Retry Integrity Tag verification (RFC 9001 §5.8).
+	odcid := strings.TrimSpace(str(p, "original_dcid"))
+	if res.Retry != nil {
+		switch odcid {
+		case "":
+			res.Retry.IntegrityNote = "supply original_dcid (the client's first-Initial " +
+				"Destination Connection ID) to verify the Retry Integrity Tag"
+		default:
+			valid, verr := quic.VerifyRetryIntegrityHex(raw, odcid)
+			if verr != nil {
+				res.Retry.IntegrityNote = "integrity verification failed: " + verr.Error()
+			} else {
+				res.Retry.IntegrityVerified = &valid
+				if valid {
+					res.Retry.IntegrityNote = "Retry Integrity Tag is authentic for the supplied original DCID"
+				} else {
+					res.Retry.IntegrityNote = "Retry Integrity Tag does NOT match — forged, corrupt, or wrong original DCID"
+				}
+			}
+		}
+	} else if odcid != "" {
+		res.Notes = append(res.Notes, "original_dcid supplied but this is not a Retry packet; ignored")
 	}
 	out, _ := json.MarshalIndent(res, "", "  ")
 	return string(out), nil
