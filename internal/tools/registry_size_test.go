@@ -2250,7 +2250,12 @@ func TestRegistrySize(t *testing.T) {
 	// envelope + Fletcher-16 checksum + NAV-PVT position/velocity/time body;
 	// the binary counterpart to gps_nmea_decode. Anchored to pyubx2.
 	// internal/ubx).
-	const expected = 548
+	// (v0.546.0 extended ubx_decode with NAV-SAT + NAV-STATUS — no new tool.)
+	// v0.547.0 added rtcm_decode (RTCM 3.x differential-GNSS message decoder —
+	// 0xD3 frame + CRC-24Q + message-type ID + 1005/1006 station-ARP ECEF
+	// body; the corrections leg of the GNSS triad. Anchored to pyrtcm.
+	// internal/rtcm).
+	const expected = 549
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

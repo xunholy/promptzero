@@ -513,6 +513,13 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Anchored to
 		// pyubx2.
 		"ubx_decode",
+		// v0.547 (GPS/GNSS decode space): RTCM 3.x differential-GNSS
+		// message decoder — the corrections leg of the GNSS triad with
+		// gps_nmea_decode + ubx_decode. 0xD3 frame + CRC-24Q validation +
+		// message-type ID + 1005/1006 station-ARP ECEF body. Pure offline
+		// byte-field decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Anchored to pyrtcm.
+		"rtcm_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast
