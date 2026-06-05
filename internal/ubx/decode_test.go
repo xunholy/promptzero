@@ -90,6 +90,86 @@ func TestDecodeNavPVT(t *testing.T) {
 	}
 }
 
+// navSATSample is a UBX-NAV-SAT frame minted by pyubx2 1.3.1 with
+// two satellites (a used/healthy GPS SV and an unused/unhealthy
+// GLONASS SV). Cross-checked against pyubx2's decode. Checksum 63 C5.
+const navSATSample = "b56201352000186104000102000000052c4678000b001f080000060b000a2c0100002400000063c5"
+
+func TestDecodeNavSAT(t *testing.T) {
+	msgs, err := Decode(navSATSample)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	m := msgs[0]
+	if m.Name != "NAV-SAT" || !m.ChecksumOK {
+		t.Fatalf("name/ck = %s/%v; want NAV-SAT/true", m.Name, m.ChecksumOK)
+	}
+	s := m.NavSAT
+	if s == nil {
+		t.Fatal("NavSAT nil")
+	}
+	if s.ITOWms != 287000 || s.Version != 1 || s.NumSVs != 2 {
+		t.Errorf("itow/version/numSvs = %d/%d/%d; want 287000/1/2", s.ITOWms, s.Version, s.NumSVs)
+	}
+	if len(s.Satellites) != 2 {
+		t.Fatalf("got %d satellites; want 2", len(s.Satellites))
+	}
+	sv1 := s.Satellites[0]
+	if sv1.GNSSID != 0 || sv1.GNSSName != "GPS" || sv1.SVID != 5 {
+		t.Errorf("sv1 gnss/svid = %d(%q)/%d; want 0 GPS / 5", sv1.GNSSID, sv1.GNSSName, sv1.SVID)
+	}
+	if sv1.CNoDBHz != 44 || sv1.ElevationDeg != 70 || sv1.AzimuthDeg != 120 {
+		t.Errorf("sv1 cno/elev/azim = %d/%d/%d; want 44/70/120", sv1.CNoDBHz, sv1.ElevationDeg, sv1.AzimuthDeg)
+	}
+	if math.Abs(sv1.PseudoRangeRes-1.1) > 1e-6 {
+		t.Errorf("sv1 prRes = %v; want 1.1", sv1.PseudoRangeRes)
+	}
+	if sv1.QualityInd != 7 || !sv1.Used || sv1.Health != 1 || sv1.HealthName != "healthy" || !sv1.EphemerisAvail {
+		t.Errorf("sv1 qual/used/health/eph = %d/%v/%d(%q)/%v; want 7/true/1 healthy/true",
+			sv1.QualityInd, sv1.Used, sv1.Health, sv1.HealthName, sv1.EphemerisAvail)
+	}
+	sv2 := s.Satellites[1]
+	if sv2.GNSSID != 6 || sv2.GNSSName != "GLONASS" || sv2.SVID != 11 {
+		t.Errorf("sv2 gnss/svid = %d(%q)/%d; want 6 GLONASS / 11", sv2.GNSSID, sv2.GNSSName, sv2.SVID)
+	}
+	if sv2.AzimuthDeg != 300 {
+		t.Errorf("sv2 azim = %d; want 300", sv2.AzimuthDeg)
+	}
+	if sv2.QualityInd != 4 || sv2.Used || sv2.Health != 2 || sv2.HealthName != "unhealthy" {
+		t.Errorf("sv2 qual/used/health = %d/%v/%d(%q); want 4/false/2 unhealthy",
+			sv2.QualityInd, sv2.Used, sv2.Health, sv2.HealthName)
+	}
+}
+
+// navStatusSample is a UBX-NAV-STATUS frame minted by pyubx2 1.3.1
+// (3D fix, fixOK, week+TOW set, TTFF 3500 ms, uptime 128000 ms).
+const navStatusSample = "b5620103100018610400030d0000ac0d000000f401004f20"
+
+func TestDecodeNavStatus(t *testing.T) {
+	msgs, err := Decode(navStatusSample)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	m := msgs[0]
+	if m.Name != "NAV-STATUS" || !m.ChecksumOK {
+		t.Fatalf("name/ck = %s/%v; want NAV-STATUS/true", m.Name, m.ChecksumOK)
+	}
+	st := m.NavStatus
+	if st == nil {
+		t.Fatal("NavStatus nil")
+	}
+	if st.GPSFix != 3 || st.GPSFixName != "3D fix" {
+		t.Errorf("gpsFix = %d (%q); want 3 3D fix", st.GPSFix, st.GPSFixName)
+	}
+	if !st.GPSFixOK || st.DiffSoln || !st.WeekNumSet || !st.TimeOfWeekOK {
+		t.Errorf("flags fixOK/diff/wkn/tow = %v/%v/%v/%v; want true/false/true/true",
+			st.GPSFixOK, st.DiffSoln, st.WeekNumSet, st.TimeOfWeekOK)
+	}
+	if st.TTFFms != 3500 || st.UptimeMs != 128000 {
+		t.Errorf("ttff/uptime = %d/%d; want 3500/128000", st.TTFFms, st.UptimeMs)
+	}
+}
+
 func TestDecodeSkipsLeadingGarbage(t *testing.T) {
 	// A real capture often starts mid-stream; prepend junk bytes.
 	msgs, err := Decode("ffeedd" + navPVTSample)
@@ -124,9 +204,10 @@ func TestDecodeBadChecksum(t *testing.T) {
 }
 
 func TestDecodeUnknownMessageFrameOnly(t *testing.T) {
-	// NAV-STATUS (0x01 0x03) with a 16-byte zero payload; recompute checksum.
-	body := []byte{0x01, 0x03, 0x10, 0x00}
-	for i := 0; i < 16; i++ {
+	// NAV-POSLLH (0x01 0x02) is named but not bodied out: with a
+	// 28-byte zero payload, recompute the checksum.
+	body := []byte{0x01, 0x02, 0x1C, 0x00}
+	for i := 0; i < 28; i++ {
 		body = append(body, 0x00)
 	}
 	a, b := fletcher(body)
@@ -136,14 +217,14 @@ func TestDecodeUnknownMessageFrameOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
-	if msgs[0].Name != "NAV-STATUS" {
-		t.Errorf("Name = %q; want NAV-STATUS", msgs[0].Name)
+	if msgs[0].Name != "NAV-POSLLH" {
+		t.Errorf("Name = %q; want NAV-POSLLH", msgs[0].Name)
 	}
 	if !msgs[0].ChecksumOK {
 		t.Error("ChecksumOK = false; want true")
 	}
-	if msgs[0].NavPVT != nil {
-		t.Error("NavPVT should be nil for a non-PVT message")
+	if msgs[0].NavPVT != nil || msgs[0].NavSAT != nil || msgs[0].NavStatus != nil {
+		t.Error("typed bodies should be nil for an undecoded message")
 	}
 	if msgs[0].PayloadHex == "" {
 		t.Error("PayloadHex should be surfaced for an undecoded body")
@@ -169,6 +250,8 @@ func hexOf(b []byte) string {
 
 func FuzzDecode(f *testing.F) {
 	f.Add(navPVTSample)
+	f.Add(navSATSample)
+	f.Add(navStatusSample)
 	f.Add("ffeedd" + navPVTSample)
 	f.Add("b562010700000000")
 	f.Add("")

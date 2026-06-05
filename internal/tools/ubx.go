@@ -40,12 +40,19 @@ var ubxDecodeSpec = Spec{
 		"accuracy), fix type (no-fix / dead-reckoning / 2D / 3D / GNSS+DR / time-only) and gnssFixOK, " +
 		"satellites used, longitude / latitude, height (ellipsoid + MSL), horizontal / vertical accuracy, " +
 		"the NED velocity vector, ground speed, heading of motion and position DOP. Raw integer units " +
-		"(mm, mm/s, deg×1e-7, deg×1e-5, 0.01 DOP) are converted to metres / m·s⁻¹ / degrees.\n\n" +
+		"(mm, mm/s, deg×1e-7, deg×1e-5, 0.01 DOP) are converted to metres / m·s⁻¹ / degrees.\n" +
+		"- **NAV-SAT** (class 0x01 id 0x35) — per-satellite signal info: for each tracked SV the " +
+		"constellation (GPS / SBAS / Galileo / BeiDou / QZSS / GLONASS / NavIC), satellite id, C/N0, " +
+		"elevation / azimuth, pseudorange residual, signal-quality indicator, whether it is used in the " +
+		"solution and its health. Anomalous per-satellite C/N0 or geometry is a primary tell of **GPS " +
+		"spoofing / jamming**, so this is the UBX counterpart to the NMEA GSV decode.\n" +
+		"- **NAV-STATUS** (class 0x01 id 0x03) — fix type + status flags (gnssFixOK, differential " +
+		"solution, week-number / time-of-week valid) + time-to-first-fix + receiver uptime.\n\n" +
 		"Paste the UBX bytes as hex; ':' / '-' / '_' / whitespace separators and a '0x' prefix tolerated. " +
 		"Each frame reports `checksum_ok` (a bad checksum is still surfaced but flagged). Other UBX " +
-		"messages (NAV-POSLLH, NAV-STATUS, RXM-*, CFG-*, …) are frame-decoded and class/id-named but their " +
-		"body is surfaced as raw hex rather than guessed — NAV-PVT is the one message bodied out. No " +
-		"network, no device, transmits nothing, so it is Low risk.\n\n" +
+		"messages (NAV-POSLLH, NAV-VELNED, RXM-*, CFG-*, …) are frame-decoded and class/id-named but their " +
+		"body is surfaced as raw hex rather than guessed — NAV-PVT / NAV-SAT / NAV-STATUS are the messages " +
+		"bodied out. No network, no device, transmits nothing, so it is Low risk.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (GPS/GNSS decode — the binary counterpart to gps_nmea_decode). " +
 		"Wrap-vs-native: native — fixed public wire format + Fletcher checksum, stdlib only, no new go.mod " +
 		"dep. Anchored to the pyubx2 reference library: a NAV-PVT frame minted by pyubx2 reproduces its " +
