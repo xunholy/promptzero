@@ -248,6 +248,51 @@ func TestDecode_Type27_LongRange(t *testing.T) {
 	}
 }
 
+// TestDecode_Type9_Sentinels locks in the not-available sentinels: a
+// Type 9 with altitude 4095 (N/A) and speed 1023 (N/A) but a valid
+// position must decode those two to nil, not a zero. Oracle: pyais.
+func TestDecode_Type9_Sentinels(t *testing.T) {
+	got, err := Decode("!AIVDO,1,1,,A,91auciwwwwPC>N0Md``>3jP00000,0*4F")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	a := got.SARAircraft
+	if a == nil {
+		t.Fatal("SARAircraft nil")
+	}
+	if a.AltitudeM != nil {
+		t.Errorf("AltitudeM = %v; want nil (4095 sentinel)", a.AltitudeM)
+	}
+	if a.SpeedOverGroundKts != nil {
+		t.Errorf("SpeedOverGroundKts = %v; want nil (1023 sentinel)", a.SpeedOverGroundKts)
+	}
+	if a.LongitudeDeg == nil || math.Abs(*a.LongitudeDeg-4.2) > 0.001 {
+		t.Errorf("LongitudeDeg = %v; want ~4.2 (position still valid)", a.LongitudeDeg)
+	}
+}
+
+// TestDecode_Type27_Sentinels locks in the Type 27 not-available
+// sentinels: speed 63 and course 511 must decode to nil. Oracle: pyais.
+func TestDecode_Type27_Sentinels(t *testing.T) {
+	got, err := Decode("!AIVDO,1,1,,A,K3CsGSShGL3bHOwt,0*1D")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	l := got.LongRange
+	if l == nil {
+		t.Fatal("LongRange nil")
+	}
+	if l.SpeedOverGroundKts != nil {
+		t.Errorf("SpeedOverGroundKts = %v; want nil (63 sentinel)", l.SpeedOverGroundKts)
+	}
+	if l.CourseOverGroundDeg != nil {
+		t.Errorf("CourseOverGroundDeg = %v; want nil (511 sentinel)", l.CourseOverGroundDeg)
+	}
+	if l.LongitudeDeg == nil || math.Abs(*l.LongitudeDeg-10.0) > 0.01 {
+		t.Errorf("LongitudeDeg = %v; want ~10.0 (position still valid)", l.LongitudeDeg)
+	}
+}
+
 // TestDecode_Type19_ExtendedClassB pins an Extended Class B
 // position report. Oracle values cross-checked against pyais
 // 3.0.1 decode() of the same sentence.

@@ -83,6 +83,39 @@ func TestDecodeStream(t *testing.T) {
 	}
 }
 
+// msg1005neg is a 1005 with NEGATIVE ECEF X/Y/Z — it exercises the
+// 38-bit two's-complement sign extension, the bug-prone path. Values
+// cross-checked against pyrtcm: station 99, X -12345.6789, Y -200000.0,
+// Z -0.005 m.
+const msg1005neg = "d300133ed06302bff8a432eb3f88ca6c003fffffffce68014e"
+
+func TestDecode1005NegativeECEF(t *testing.T) {
+	msgs, err := Decode(msg1005neg)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	m := msgs[0]
+	if m.MessageType != 1005 || !m.ChecksumOK {
+		t.Fatalf("type/crc = %d/%v", m.MessageType, m.ChecksumOK)
+	}
+	if m.ReferenceStationID == nil || *m.ReferenceStationID != 99 {
+		t.Errorf("station = %v; want 99", m.ReferenceStationID)
+	}
+	a := m.StationARP
+	if a == nil {
+		t.Fatal("StationARP nil")
+	}
+	if math.Abs(a.ECEFXm-(-12345.6789)) > 1e-4 {
+		t.Errorf("ECEFXm = %v; want -12345.6789 (sign extension)", a.ECEFXm)
+	}
+	if math.Abs(a.ECEFYm-(-200000.0)) > 1e-4 {
+		t.Errorf("ECEFYm = %v; want -200000.0", a.ECEFYm)
+	}
+	if math.Abs(a.ECEFZm-(-0.005)) > 1e-4 {
+		t.Errorf("ECEFZm = %v; want -0.005", a.ECEFZm)
+	}
+}
+
 func TestDecodeSkipsLeadingGarbage(t *testing.T) {
 	msgs, err := Decode("00ffd3" + msg1005[2:])
 	if err != nil {
