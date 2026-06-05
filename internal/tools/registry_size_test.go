@@ -2278,7 +2278,11 @@ func TestRegistrySize(t *testing.T) {
 	// TCI/AN flags + Short Length + Packet Number + Secure Channel Identifier
 	// from the 0x88E5 wired-L2 security header; bodies out the EtherType the
 	// vlan/lldp decoders only named. Verified vs scapy. internal/macsec).
-	const expected = 554
+	// v0.554.0 added dtp_decode (Cisco Dynamic Trunking Protocol decoder —
+	// version + Domain/Status/Type/Neighbour TLVs; the VLAN-hopping
+	// attack-surface signal, joining the cdp/lldp/stp switch-L2 set. Status
+	// bits surfaced raw (Cisco-proprietary). Verified vs scapy. internal/dtp).
+	const expected = 555
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

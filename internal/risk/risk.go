@@ -2282,6 +2282,14 @@ var toolLevels = func() map[string]Level {
 		// wire). Pure offline byte-field decode of pasted bytes; reads a
 		// string, transmits nothing, so it is Low. Verified vs scapy.
 		"macsec_decode",
+		// v0.554 (switch-L2 VLAN-hopping recon): dtp_decode — Cisco
+		// Dynamic Trunking Protocol. Version + Domain/Status/Type/Neighbour
+		// TLVs; flags the VLAN-hopping prerequisite (DTP negotiation
+		// enabled). Status bits surfaced raw (Cisco-proprietary, not
+		// authoritatively standardised). Pure offline TLV walk of pasted
+		// bytes; reads a string, transmits nothing, so it is Low. Verified
+		// vs scapy.
+		"dtp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
