@@ -53,7 +53,13 @@ var adsbModeSDecodeSpec = Spec{
 		"(track + turn report: roll, true track, ground speed, track-angle rate, true airspeed), " +
 		"BDS 6,0 (heading + speed report: magnetic heading, IAS, Mach, barometric + inertial " +
 		"vertical rate), and BDS 1,7 (GICB capability list); BDS 1,0 participates in inference. " +
-		"Verified byte-for-byte against the pyModeS reference test vectors.\n\n" +
+		"Verified byte-for-byte against the pyModeS reference test vectors.\n" +
+		"- **Surveillance altitude + squawk** from the 13-bit field at message bits 20-32: " +
+		"DF0/4/16/20 carry the AC13 pressure altitude (25-ft Q-bit encoding, Gillham/Mode-C " +
+		"gray-coded 100-ft encoding, and metric M-bit encoding all decoded), and DF5/21 carry " +
+		"the ID13 4-digit octal Mode-A squawk with the reserved emergency codes flagged — 7500 " +
+		"(unlawful interference / hijack), 7600 (radio failure), 7700 (general emergency). " +
+		"Verified byte-for-byte against pyModeS altcode / idcode.\n\n" +
 		"CPR position resolution (full lat/lon) is deferred — the decoder exposes the raw 17-bit " +
 		"CPR latitude/longitude and the odd/even frame flag, but pairing an even + odd frame for " +
 		"a global solve (or applying a local reference position) is left to a higher-level Spec " +
@@ -63,9 +69,9 @@ var adsbModeSDecodeSpec = Spec{
 		"the existing subghz_* coverage (UHF surveillance and decoders below 1 GHz) by extending " +
 		"the airborne / aerospace decode space.\n\n" +
 		"Accepts ':' / '-' / '_' / whitespace separators and a leading '0x' prefix.\n\n" +
-		"Scope: civil-aviation Mode S DFs. The DF20/21 13-bit altitude / squawk header fields " +
-		"(Gillham-coded), meteorological BDS 4,4 / 4,5 registers, DF18 CF>=2 sub-formats (fine " +
-		"TIS-B / ADS-R), and live demodulation from raw I/Q samples are out of scope.\n\n" +
+		"Scope: civil-aviation Mode S DFs. The meteorological BDS 4,4 / 4,5 registers, DF18 " +
+		"CF>=2 sub-formats (fine TIS-B / ADS-R), and live demodulation from raw I/Q samples are " +
+		"out of scope.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (aerospace / airborne decode space — native fit " +
 		"as a pure host-side parser).",
 	Schema: json.RawMessage(`{

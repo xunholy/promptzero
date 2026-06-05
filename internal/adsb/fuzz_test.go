@@ -21,6 +21,9 @@ func FuzzDecode(f *testing.F) {
 		"A000139381951536E024D4CCF6B5", // BDS50
 		"A00004128F39F91A7E27C46ADC21", // BDS60
 		"A000083E202CC371C31DE0AA1CCF", // BDS20
+		"28000AAA000000",               // DF5 squawk 7700 (emergency)
+		"20000C83000000",               // DF4 altitude 38000 (Gillham)
+		"200003B0000000",               // DF4 altitude 5000 (25-ft)
 	} {
 		if b, err := hex.DecodeString(h); err == nil {
 			f.Add(b)

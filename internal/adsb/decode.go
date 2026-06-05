@@ -68,9 +68,11 @@
 //   - Comm-B BDS register decoding for DF20/21 — the MB field is
 //     decoded register-by-register with validity-gated inference
 //     (BDS 2,0 / 4,0 / 5,0 / 6,0 / 1,7, with BDS 1,0 inferred);
-//     see commb.go. The DF20 13-bit altitude / DF21 squawk header
-//     fields (Gillham-coded AC13 / ID13) are not yet broken out.
-//     Meteorological registers (BDS 4,4 / 4,5) remain deferred.
+//     see commb.go. The surveillance AC13 altitude (DF0/4/16/20)
+//     and ID13 squawk (DF5/21) header fields — including Gillham
+//     (Mode C) gray-coded altitude and emergency-squawk flagging
+//     — are decoded in altid.go. Meteorological BDS 4,4 / 4,5
+//     registers remain deferred.
 //   - TIS-B (DF18) imitation-of-other-format payload variants:
 //     DF18 is decoded as if it were DF17, which is correct for
 //     the most common CF=0/CF=1 case. CF=2..7 sub-formats
@@ -101,6 +103,9 @@ type Frame struct {
 	CRCValid    bool   `json:"crc_valid"`
 	ADSB        *ADSB  `json:"adsb,omitempty"`
 	CommB       *CommB `json:"comm_b,omitempty"`
+	// Surveillance carries the AC13 pressure altitude (DF0/4/16/20) or
+	// the ID13 Mode-A squawk (DF5/21) from the 13-bit field at bits 20-32.
+	Surveillance *AltID `json:"surveillance,omitempty"`
 }
 
 // ADSB carries the decoded Extended Squitter ME field (DF17 /
@@ -224,6 +229,14 @@ func DecodeBytes(b []byte) (*Frame, error) {
 	// decoded register-by-register with validity-gated BDS inference.
 	if df == 20 || df == 21 {
 		f.CommB = decodeCommB(b[4:11])
+	}
+
+	// Surveillance AC13 altitude / ID13 squawk header (bits 20-32).
+	switch df {
+	case 0, 4, 16, 20:
+		f.Surveillance = decodeAltitudeFrame(b)
+	case 5, 21:
+		f.Surveillance = decodeIdentityFrame(b)
 	}
 
 	return f, nil
