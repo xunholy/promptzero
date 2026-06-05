@@ -483,6 +483,12 @@ var toolLevels = func() map[string]Level {
 		// sender ID + RSSI. Pure offline byte-field decode of an ESP3
 		// capture; verified against a CRC-8-valid RADIO_ERP1 reference frame.
 		"enocean_decode",
+		// v0.538 (smart-metering / energy IoT decode space): DSMR / P1
+		// smart-meter telegram decoder — identifier + CRC-16/ARC validation
+		// + OBIS object decode (energy/power/voltage/current/gas). Pure
+		// offline ASCII parse of a P1 telegram; verified byte-for-byte
+		// against the dsmr_parser reference telegram (CRC 0x6796).
+		"dsmr_p1_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast

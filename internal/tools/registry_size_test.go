@@ -2228,7 +2228,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.537.0 added enocean_decode (EnOcean ESP3 / ERP1 building-automation
 	// radio decoder — framing + dual CRC-8 + RORG + 32-bit sender ID + RSSI.
 	// Verified against a CRC-8-valid RADIO_ERP1 reference frame. internal/enocean).
-	const expected = 543
+	// v0.538.0 added dsmr_p1_decode (DSMR / P1 smart-meter telegram decoder —
+	// identifier + CRC-16/ARC validation + OBIS object decode [energy/power/
+	// voltage/current/gas]. DSMR 5.0 / IEC 62056-21; verified byte-for-byte
+	// against the dsmr_parser reference telegram (CRC 0x6796). internal/dsmr).
+	const expected = 544
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
