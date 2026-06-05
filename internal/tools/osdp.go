@@ -37,14 +37,17 @@ var osdpPacketDecodeSpec = Spec{
 		"- **NAK** replies: the error code with its meaning (bad checksum/CRC, command length, " +
 		"unknown command, sequence error, secure-channel not supported, …).\n" +
 		"- **Trailer integrity**: the CRC-16/AUG-CCITT (poly 0x1021, init 0x1D0F) or the 1-byte " +
-		"two's-complement checksum is recomputed and reported valid / invalid.\n\n" +
+		"two's-complement checksum is recomputed and reported valid / invalid.\n" +
+		"- **Typed reply payloads** for the codes with a well-defined plaintext layout: " +
+		"**osdp_RAW** (card-read reader / format / bit-count / **card data** — the actual badge, " +
+		"feed it to wiegand_decode / rfid_pacs_decode), **osdp_PDID** (vendor / model / version / " +
+		"serial / firmware device fingerprint), **osdp_COM** (address + baud rate), **osdp_KEYPAD** " +
+		"(PIN key presses) and **osdp_LSTATR** (tamper + power).\n\n" +
 		"Input is one packet as hex (a leading 0xFF mark is tolerated; ':' / '-' / '_' / " +
 		"whitespace separators and a '0x' prefix are accepted). Verified byte-for-byte against " +
 		"the libosdp phy-layer reference test vectors.\n\n" +
-		"Out of scope (deferred): per-command/-reply payload field decode (the osdp_RAW " +
-		"reader/format/bit-count/card-data layout, osdp_PDID device-ID fields, osdp_LED/BUZ " +
-		"parameters) — the data is surfaced as hex and the code name identifies it, since the " +
-		"reference ships no byte-exact payload vectors to verify a field decode against; and " +
+		"Out of scope (deferred): command (CP→PD) payload field decode (osdp_LED / BUZ / OUT / " +
+		"TEXT parameters) — the data is surfaced as hex and the code name identifies it; and " +
 		"secure-channel-encrypted payloads (SCS_17/18), which need the session keys.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (physical access-control decode space). " +
 		"Wrap-vs-native: native — the OSDP packet is a fixed little-endian frame decoded by pure " +

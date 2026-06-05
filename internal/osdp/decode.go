@@ -32,16 +32,21 @@
 //   - NAK replies: the error code with its meaning.
 //   - Trailer integrity: the CRC-16/AUG-CCITT or checksum is recomputed
 //     and reported as valid / invalid.
+//   - Typed reply payloads for the codes with a well-defined plaintext
+//     layout: osdp_RAW (card-read reader / format / bit-count / card
+//     data — the actual badge), osdp_PDID (vendor / model / version /
+//     serial / firmware device fingerprint), osdp_COM (address + baud
+//     rate), osdp_KEYPAD (PIN key presses) and osdp_LSTATR (tamper +
+//     power). Their wire layouts are ported from the libosdp reference
+//     reply builder; see payload.go.
 //
 // # Deliberately deferred
 //
-//	Per-command/-reply payload field decode (e.g. the osdp_RAW card-read
-//	reader/format/bit-count/card-data layout, osdp_PDID device-ID
-//	fields, osdp_LED/BUZ command parameters) is not broken out — the
-//	data is surfaced as hex and the code name identifies it, since
-//	libosdp ships no byte-exact payload vectors to verify a field decode
-//	against. Secure-channel-encrypted payloads (SCS_17/18) cannot be
-//	decrypted without the session keys and are surfaced as ciphertext.
+//	Command (CP->PD) payload field decode (osdp_LED / BUZ / OUT / TEXT
+//	parameters) is not broken out — the data is surfaced as hex and the
+//	code name identifies it. Secure-channel-encrypted payloads
+//	(SCS_17/18) cannot be decrypted without the session keys and are
+//	surfaced as ciphertext.
 package osdp
 
 import (
@@ -69,6 +74,14 @@ type Result struct {
 
 	NAKError     *int   `json:"nak_error_code,omitempty"`
 	NAKErrorName string `json:"nak_error_name,omitempty"`
+
+	// Decoded reply payloads (PD->CP), when the code has a well-defined
+	// plaintext layout (ported from the libosdp reference; see payload.go).
+	CardRead    *CardRead    `json:"card_read,omitempty"`
+	DeviceID    *DeviceID    `json:"device_id,omitempty"`
+	ComConfig   *ComConfig   `json:"com_config,omitempty"`
+	Keypad      *Keypad      `json:"keypad,omitempty"`
+	LocalStatus *LocalStatus `json:"local_status,omitempty"`
 
 	TrailerHex      string `json:"trailer_hex"`
 	TrailerComputed string `json:"trailer_computed"`
@@ -184,6 +197,8 @@ func Decode(hexStr string) (*Result, error) {
 		r.NAKError = &ec
 		r.NAKErrorName = nakErrorName(data[0])
 	}
+	// Typed reply payloads for codes with a well-defined plaintext layout.
+	decodePayload(r, code, data, addr&0x80 != 0)
 
 	trailer := frame[dataEnd:]
 	r.TrailerHex = strings.ToUpper(hex.EncodeToString(trailer))

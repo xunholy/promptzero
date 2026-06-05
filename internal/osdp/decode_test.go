@@ -138,3 +138,90 @@ func FuzzDecode(f *testing.F) {
 		_, _ = Decode(s)
 	})
 }
+
+// buildReply constructs a PD->CP reply frame (CRC mode) carrying the given
+// reply code + payload data, with a valid CRC trailer computed by the
+// package's own (independently vector-verified) CRC. The payload bytes are
+// laid out per the libosdp reference (src/osdp_pd.c build_reply).
+func buildReply(t *testing.T, pdAddr byte, code byte, data []byte) string {
+	t.Helper()
+	length := 5 + 1 + len(data) + 2 // header + code + data + 2-byte CRC
+	frame := []byte{0x53, 0x80 | pdAddr, byte(length), byte(length >> 8), 0x04, code}
+	frame = append(frame, data...)
+	crc := crc16AugCCITT(frame)
+	frame = append(frame, byte(crc), byte(crc>>8))
+	return hex.EncodeToString(frame)
+}
+
+func TestPayloadCardReadRAW(t *testing.T) {
+	// osdp_RAW: reader 0, format 1 (wiegand), bit_count 26, 4 card bytes.
+	r, err := Decode(buildReply(t, 0x00, 0x50, []byte{0x00, 0x01, 0x1A, 0x00, 0x12, 0x34, 0x56, 0x78}))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if !r.TrailerValid {
+		t.Fatal("trailer should be valid")
+	}
+	if r.CardRead == nil {
+		t.Fatal("no card_read payload")
+	}
+	if r.CardRead.ReaderNo != 0 || r.CardRead.Format != 1 || r.CardRead.FormatName != "wiegand" {
+		t.Errorf("card read header = %+v", r.CardRead)
+	}
+	if r.CardRead.BitCount != 26 || r.CardRead.CardDataHex != "12345678" {
+		t.Errorf("bit_count/data = %d/%s, want 26/12345678", r.CardRead.BitCount, r.CardRead.CardDataHex)
+	}
+}
+
+func TestPayloadDeviceIDPDID(t *testing.T) {
+	// vendor 0x00A1B2 (u24 LE), model 5, version 3, serial 0x12345678
+	// (u32 LE), firmware 1.2.3 (u24 BE).
+	data := []byte{0xB2, 0xA1, 0x00, 0x05, 0x03, 0x78, 0x56, 0x34, 0x12, 0x01, 0x02, 0x03}
+	r, err := Decode(buildReply(t, 0x05, 0x45, data))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	d := r.DeviceID
+	if d == nil {
+		t.Fatal("no device_id payload")
+	}
+	if d.VendorCode != "0x00A1B2" || d.Model != 5 || d.Version != 3 {
+		t.Errorf("device id = %+v", d)
+	}
+	if d.SerialNumber != 0x12345678 || d.FirmwareVersion != "1.2.3" {
+		t.Errorf("serial/fw = 0x%X / %s", d.SerialNumber, d.FirmwareVersion)
+	}
+}
+
+func TestPayloadComConfig(t *testing.T) {
+	// address 0x7F, baud 9600 (0x2580 u32 LE).
+	r, err := Decode(buildReply(t, 0x00, 0x54, []byte{0x7F, 0x80, 0x25, 0x00, 0x00}))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.ComConfig == nil || r.ComConfig.Address != 0x7F || r.ComConfig.BaudRate != 9600 {
+		t.Errorf("com_config = %+v", r.ComConfig)
+	}
+}
+
+func TestPayloadKeypad(t *testing.T) {
+	// reader 0, length 4, keys "1234".
+	r, err := Decode(buildReply(t, 0x00, 0x53, []byte{0x00, 0x04, 0x31, 0x32, 0x33, 0x34}))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.Keypad == nil || r.Keypad.Length != 4 || r.Keypad.KeysASCII != "1234" {
+		t.Errorf("keypad = %+v", r.Keypad)
+	}
+}
+
+func TestPayloadLocalStatus(t *testing.T) {
+	// tamper 1, power 0.
+	r, err := Decode(buildReply(t, 0x00, 0x48, []byte{0x01, 0x00}))
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.LocalStatus == nil || r.LocalStatus.Tamper != 1 || r.LocalStatus.Power != 0 {
+		t.Errorf("local_status = %+v", r.LocalStatus)
+	}
+}
