@@ -192,3 +192,70 @@ func FuzzDecryptInitial(f *testing.F) {
 		_, _ = DecryptInitial(b, "server")
 	})
 }
+
+// foxioQUICInitial is the complete 1250-byte QUIC v1 client Initial packet
+// from FoxIO's pcap/quic-tls-handshake.pcapng (Chrome -> www.google.com).
+// Decrypting it and fingerprinting the recovered ClientHello must reproduce
+// FoxIO's published JA4 q13d0310h3_55b375c5d22e_cd85d2d88918 — an end-to-end
+// real-world anchor (pcap -> decrypt -> ClientHello -> JA4) distinct from the
+// synthetic RFC 9001 A.2 vector.
+const foxioQUICInitial = "c200000001082fadc20ded383f8c000044d0661f493208bfaab1b3e235880430" +
+	"de1b39b3657d677de7feffc302596026cb681ce7e897e87956ec2f0ae86d7a7b" +
+	"030f55ff431666e17c345c21f7985acb37e26727fbf5f383e58fbc545a926c4c" +
+	"b51f022747250c45cfacb8b6f8cbbfec9ece4e6a66801a6d9a53b593f02dfcf1" +
+	"055d6ece25dc2081db7a48e6c1da29eebbf50d190e01fba0207a8f25132ee633" +
+	"8fcdcb06122b57027588cc3b0cbdbe6c42199b7b7f0be298ff11b424f636a341" +
+	"389d1b49e7ea3515112c3c08d5dbcb890e3f23e3f47f5ce5778af103a56d3bf6" +
+	"473dfb13edbbb047cf1a1fecdac49dda440de47774b5761bb7fe0bc10dd523ff" +
+	"f82ff6fb1f70b7db2782ef5c9de7ec839c8be930b7cac7d0ac6ec00bcac54b26" +
+	"66173cd6417d8b743f6020176648ead59104a48dc31785322fad7ec8d3af44e9" +
+	"6c2d0e7b810b174b595a2e44e6208ff90cfbcd8614bb285f3185121dc86dc8dc" +
+	"ee3cf88076d3ce77871e5d130d51261c9415b0f1ed565b805fd6935e7b77d9de" +
+	"ba69d9889cda9a4e8522dcc2da78304d46fb35ce220901d9c387d1e5b8182368" +
+	"2cdfd220bb8e948053cf80b6a9ca464f158629673d1321dafd8224d0ebc384f9" +
+	"98b55555aa3ab0918ba4303ca6890d76344d8b139e733ac3ef41f69aab555175" +
+	"f887377079055211904523552c1a27c30dae848a57767008664280ea64cdaabd" +
+	"1bb2edd388998f171f131554fed4aea696a7d406dedf44ccc8a52b56ac6a085e" +
+	"0f178b062afbccf9fdbec7d6f0f74897d5a537adc62f6f92e1a7fcffc047d945" +
+	"4b116d157fa46904a02234da1936ea2951ef23656be608c66c3b901836f43713" +
+	"3d75bf650ed54bf077635895d1dcb2957eff2b63520c59bd79c077e90ed94cdb" +
+	"3e23de84e8a6dfa5268066a90429d8591631414befc879b6801e4efcc020a572" +
+	"7569d7807c788982811d20d4b86dcb451eec47c0f233a23d1fa50af0bd1371ca" +
+	"298c5756413a09c434d6771b24e763618a4847292f9e2b8f38978afd04e09320" +
+	"eaa4c025592af0a1160ebf4adb8fb427618751ff974200dda043f20160d4bbe6" +
+	"838eb369a020f117daa33b87e63b220633e9ae1a436f774278a42dc2d157f96d" +
+	"2c70504cef09f73a9a481ee0a9f86bd5bb896f44b1b4ad4833e52f662477d39b" +
+	"7875b41222d38d261ab01f9bb3ce4abd87b833aa503fe1953027bc53099db21e" +
+	"73192a69c5b702f823f867ae10d4db2d782717fa195e19913972cdbcd692d4b4" +
+	"9a913cb919360e98be6bf9f682683f61bf8d87b98771a7b97beafd4a2598f0bd" +
+	"d5c6db78f4501d5b6c754ab8c3ed0fd915cd417b9e2d912b74929ad826d0e1c9" +
+	"7474f487d308f979eac57cddea1db7ce0639fa9e0222c2e184ca99341dbc0ece" +
+	"c586788c5f2fb2f106ee58ec469ec864b452613fa5d94c857f9f2917bc089b5d" +
+	"bd4fa8f0eb97d4f5321cc90c6c7beddf74b2abe7c4a3da7ef9268d7e615a14b2" +
+	"8846636e49fca55ddc36746940310c4e70e4c12a05fc29844005960237dee196" +
+	"eb4c4a8ade30ed1dbd50bdef211449608db982d82fc8a3000629ad302a4cc817" +
+	"431d5c64a2ac69b096502563d6545fabcd8f128fbd7724bc79b4ae3272c7bce3" +
+	"a1c866312819d1c14d313dc53df6003499b8acdfdcbcf1ff03e3af883284ba1f" +
+	"e87e0fecc815f75b6aa62d9db60a251d1cc4f829cb9abf7255afa6cbbc1e6fed" +
+	"0dd4d7d3d0e9edb849da6aa301c894c4e4dbc5f826dc3a536432d337a0bcb7fa" +
+	"582b"
+
+// TestDecryptInitialFoxIOJA4 is the end-to-end real-world anchor for both the
+// Initial decryption and the QUIC JA4 fingerprint.
+func TestDecryptInitialFoxIOJA4(t *testing.T) {
+	pkt, err := hex.DecodeString(foxioQUICInitial)
+	if err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	d, err := DecryptInitial(pkt, "client")
+	if err != nil {
+		t.Fatalf("DecryptInitial: %v", err)
+	}
+	if d.TLSMessage == "" || d.CryptoStreamLen == 0 {
+		t.Fatalf("no ClientHello recovered: %+v", d)
+	}
+	const want = "q13d0310h3_55b375c5d22e_cd85d2d88918"
+	if d.JA4 != want {
+		t.Errorf("JA4 = %q, want %q", d.JA4, want)
+	}
+}

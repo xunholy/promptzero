@@ -312,13 +312,13 @@ func decodeHandshake(b []byte) (*Handshake, int, error) {
 	body := b[4 : 4+length]
 	switch mt {
 	case 1: // ClientHello
-		ch, err := decodeClientHello(body)
+		ch, err := decodeClientHello(body, "t")
 		if err != nil {
 			return nil, 0, fmt.Errorf("ClientHello: %w", err)
 		}
 		h.ClientHello = ch
 	case 2: // ServerHello
-		sh, err := decodeServerHello(body)
+		sh, err := decodeServerHello(body, "t")
 		if err != nil {
 			return nil, 0, fmt.Errorf("ServerHello: %w", err)
 		}
@@ -376,7 +376,7 @@ func decodeCertificate(body []byte) *Certificate {
 	return m
 }
 
-func decodeClientHello(b []byte) (*ClientHello, error) {
+func decodeClientHello(b []byte, proto string) (*ClientHello, error) {
 	if len(b) < 38 {
 		return nil, fmt.Errorf("ClientHello body too short (%d bytes)", len(b))
 	}
@@ -446,13 +446,13 @@ func decodeClientHello(b []byte) (*ClientHello, error) {
 			ch.VersionMajor, ch.VersionMinor, ch.CipherSuites, ch.Extensions,
 			ja3Curves, ja3Formats)
 		ch.JA4 = computeJA4(
-			ch.VersionMajor, ch.VersionMinor, ch.CipherSuites, ch.Extensions,
+			proto, ch.VersionMajor, ch.VersionMinor, ch.CipherSuites, ch.Extensions,
 			ch.ALPNProtocols, ext0.versionsRaw, ext0.sigAlgsRaw)
 	}
 	return ch, nil
 }
 
-func decodeServerHello(b []byte) (*ServerHello, error) {
+func decodeServerHello(b []byte, proto string) (*ServerHello, error) {
 	if len(b) < 38 {
 		return nil, fmt.Errorf("ServerHello body too short (%d bytes)", len(b))
 	}
@@ -499,9 +499,48 @@ func decodeServerHello(b []byte) (*ServerHello, error) {
 		if len(ext0.versions) > 0 {
 			sh.NegotiatedVersion = ext0.versions[0]
 		}
-		sh.JA4S = computeJA4S(sh.VersionMajor, sh.VersionMinor, cs, exts, sh.NegotiatedALPN, sh.NegotiatedVersion)
+		sh.JA4S = computeJA4S(proto, sh.VersionMajor, sh.VersionMinor, cs, exts, sh.NegotiatedALPN, sh.NegotiatedVersion)
 	}
 	return sh, nil
+}
+
+// QUICHandshakeJA4 computes the JA4 (for a ClientHello) or JA4S (for a
+// ServerHello) fingerprint of a bare TLS handshake message lifted out of
+// a QUIC Initial packet's reassembled CRYPTO stream, using the QUIC
+// protocol prefix "q" (JA4 §"q"/"t"/"d" rule). QUIC carries the TLS
+// handshake directly in CRYPTO frames with no TLS record envelope (RFC
+// 9001 §4.1), so handshake[0] is the 1-byte handshake type and
+// handshake[1:4] the 3-byte length. Returns the fingerprint and the
+// message kind ("ClientHello" / "ServerHello"). The JA4 computation is
+// identical to the TLS-over-TCP path bar the leading protocol character —
+// verified end-to-end against FoxIO's QUIC snapshots (see
+// internal/quic).
+func QUICHandshakeJA4(handshake []byte) (fingerprint, kind string, err error) {
+	if len(handshake) < 4 {
+		return "", "", fmt.Errorf("handshake message too short (%d bytes)", len(handshake))
+	}
+	mt := int(handshake[0])
+	length := int(handshake[1])<<16 | int(handshake[2])<<8 | int(handshake[3])
+	if 4+length > len(handshake) {
+		return "", "", fmt.Errorf("handshake length %d exceeds buffer (%d available)",
+			length, len(handshake)-4)
+	}
+	body := handshake[4 : 4+length]
+	switch mt {
+	case 1:
+		ch, err := decodeClientHello(body, "q")
+		if err != nil {
+			return "", "", fmt.Errorf("ClientHello: %w", err)
+		}
+		return ch.JA4, "ClientHello", nil
+	case 2:
+		sh, err := decodeServerHello(body, "q")
+		if err != nil {
+			return "", "", fmt.Errorf("ServerHello: %w", err)
+		}
+		return sh.JA4S, "ServerHello", nil
+	}
+	return "", "", fmt.Errorf("handshake type %d is not ClientHello/ServerHello", mt)
 }
 
 // extractedExtensions bundles the operationally-interesting
@@ -787,11 +826,13 @@ func computeJA3(verMajor, verMinor int, suites []CipherSuite, exts []*Extension,
 // input yields twelve zeros, per the spec.
 //
 // Verified byte-for-byte against the FoxIO worked example
-// t13d1516h2_8daaf6152771_e5627efa2ab1. The protocol is fixed to "t" (this
-// decoder handles TLS-over-TCP records; the QUIC "q" / DTLS "d" variants are
-// out of scope), and the rare non-alphanumeric-ALPN fallback follows the spec's
-// hex rule but is not exercised by any IANA-registered ALPN.
-func computeJA4(verMajor, verMinor int, suites []CipherSuite, exts []*Extension,
+// t13d1516h2_8daaf6152771_e5627efa2ab1. The protocol prefix is a parameter:
+// "t" for TLS-over-TCP records (the decoder's own path) and "q" for the QUIC
+// variant computed over a ClientHello extracted from a QUIC Initial (see
+// QUICHandshakeJA4), the only difference between the two per the JA4 spec. The
+// rare non-alphanumeric-ALPN fallback follows the spec's hex rule but is not
+// exercised by any IANA-registered ALPN.
+func computeJA4(proto string, verMajor, verMinor int, suites []CipherSuite, exts []*Extension,
 	alpn []string, versionsRaw, sigAlgsRaw []uint16) string {
 	sni := "i"
 	for _, e := range exts {
@@ -821,8 +862,8 @@ func computeJA4(verMajor, verMinor int, suites []CipherSuite, exts []*Extension,
 		extHex = append(extHex, fmt.Sprintf("%04x", e.Type))
 	}
 
-	a := fmt.Sprintf("t%s%s%02d%02d%s",
-		ja4Version(verMajor, verMinor, versionsRaw), sni,
+	a := fmt.Sprintf("%s%s%s%02d%02d%s",
+		proto, ja4Version(verMajor, verMinor, versionsRaw), sni,
 		minInt(len(cipherHex), 99), minInt(extCount, 99), ja4ALPN(alpn))
 
 	sort.Strings(cipherHex)
@@ -859,9 +900,11 @@ func computeJA4(verMajor, verMinor int, suites []CipherSuite, exts []*Extension,
 // TLS 1.3 ServerHello (key_share then supported_versions) ->
 // t130200_1301_234ea6891581, and a LastPass one (supported_versions then
 // key_share) -> t130200_1302_a56c5b993250 — the same two extensions in opposite
-// order yield different hashes, confirming the wire-order rule. As in the
-// reference, the QUIC ("q") variant and GREASE-bearing servers are out of scope.
-func computeJA4S(verMajor, verMinor int, cipher uint16, exts []*Extension, alpn, negotiatedVersion string) string {
+// order yield different hashes, confirming the wire-order rule. The protocol
+// prefix is a parameter ("t" for TLS-over-TCP, "q" for a ServerHello extracted
+// from a QUIC Initial — see QUICHandshakeJA4); GREASE-bearing servers remain
+// out of scope as in the reference.
+func computeJA4S(proto string, verMajor, verMinor int, cipher uint16, exts []*Extension, alpn, negotiatedVersion string) string {
 	// The ServerHello's supported_versions extension is a single bare version
 	// (not the client's length-prefixed list), so the negotiated-version string
 	// is the reliable source; fall back to the legacy ClientHello-version field.
@@ -877,7 +920,7 @@ func computeJA4S(verMajor, verMinor int, cipher uint16, exts []*Extension, alpn,
 	for i, e := range exts {
 		extHex[i] = fmt.Sprintf("%04x", uint16(e.Type)) // wire order, not sorted
 	}
-	a := fmt.Sprintf("t%s%02d%s", ja4Version(verMajor, verMinor, vraw), minInt(len(exts), 99), alpnCode)
+	a := fmt.Sprintf("%s%s%02d%s", proto, ja4Version(verMajor, verMinor, vraw), minInt(len(exts), 99), alpnCode)
 	return fmt.Sprintf("%s_%04x_%s", a, cipher, ja4Hash(strings.Join(extHex, ",")))
 }
 

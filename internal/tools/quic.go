@@ -42,8 +42,13 @@ var quicLongHeaderDecodeSpec = Spec{
 		"AES-128-GCM, dissects the frames (PADDING / PING / ACK / CRYPTO / " +
 		"CONNECTION_CLOSE) and reassembles the CRYPTO stream into the TLS " +
 		"ClientHello / ServerHello — the bytes QUIC otherwise hides, ready to paste " +
-		"into `tls_handshake_decode` for the full JA4 / ALPN / SNI view. Verified " +
-		"byte-for-byte against the RFC 9001 Appendix A worked example.\n" +
+		"into `tls_handshake_decode` for the full ALPN / SNI view. The **JA4 QUIC " +
+		"fingerprint** (FoxIO, protocol prefix `q`) is computed over the recovered " +
+		"ClientHello / ServerHello and surfaced as `decrypted.ja4` — JA4 for a client " +
+		"Initial, JA4S for a server Initial. Decryption is verified byte-for-byte " +
+		"against the RFC 9001 Appendix A worked example, and the JA4 end-to-end " +
+		"(pcap → decrypt → ClientHello → JA4) against FoxIO's published QUIC snapshot " +
+		"`q13d0310h3_55b375c5d22e_cd85d2d88918`.\n" +
 		"  - **1 0-RTT**: Length (VLI) + Protected Packet Number + Protected Payload.\n" +
 		"  - **2 Handshake**: Length (VLI) + Protected Packet Number + Protected " +
 		"Payload.\n" +

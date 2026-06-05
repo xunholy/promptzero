@@ -50,6 +50,18 @@ package quic
 //     full ClientHello / JA4 / ALPN / SNI view that QUIC's
 //     encryption otherwise hides.
 //
+//   - The **JA4 QUIC fingerprint** (FoxIO, protocol prefix "q")
+//     computed over the recovered ClientHello / ServerHello via
+//     tlsdecode.QUICHandshakeJA4 — JA4 for a client Initial,
+//     JA4S for a server Initial. The computation is identical to
+//     the TLS-over-TCP JA4 bar the leading "q", and is verified
+//     end-to-end (pcap -> decrypt -> ClientHello -> JA4) against
+//     FoxIO's published QUIC snapshot
+//     q13d0310h3_55b375c5d22e_cd85d2d88918. Only emitted for a
+//     complete, contiguous handshake — a partial ClientHello
+//     would fingerprint wrong, so nothing is surfaced rather
+//     than a confidently-wrong value.
+//
 // What this does NOT cover (deliberately out of scope)
 //
 //   - QUIC v2 (RFC 9369) and the various drafts use different
@@ -79,6 +91,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/xunholy/promptzero/internal/tlsdecode"
 	"golang.org/x/crypto/hkdf"
 )
 
@@ -102,7 +115,12 @@ type DecryptedInitial struct {
 	CryptoStreamLen int         `json:"crypto_stream_length,omitempty"`
 	CryptoStreamHex string      `json:"crypto_stream_hex,omitempty"`
 	TLSMessage      string      `json:"tls_message,omitempty"`
-	Notes           []string    `json:"notes,omitempty"`
+	// JA4 is the QUIC client/server fingerprint (protocol prefix "q")
+	// computed over the reassembled ClientHello / ServerHello. JA4 for a
+	// ClientHello, JA4S for a ServerHello — empty if the CRYPTO stream is
+	// incomplete or not a (Client/Server)Hello.
+	JA4   string   `json:"ja4,omitempty"`
+	Notes []string `json:"notes,omitempty"`
 }
 
 // QUICFrame is one parsed frame from the decrypted payload.
@@ -387,6 +405,15 @@ func parseFrames(p []byte, d *DecryptedInitial) {
 		d.TLSMessage = "ClientHello (feed crypto_stream_hex to tls_handshake_decode)"
 	case 0x02:
 		d.TLSMessage = "ServerHello (feed crypto_stream_hex to tls_handshake_decode)"
+	}
+	// Compute the QUIC JA4 / JA4S fingerprint (protocol prefix "q") over
+	// the full reassembled handshake message. Only when the stream is
+	// contiguous and complete — a partial ClientHello would fingerprint
+	// wrong, so we surface nothing rather than a confidently-wrong value.
+	if contiguous {
+		if fp, _, err := tlsdecode.QUICHandshakeJA4(stream); err == nil {
+			d.JA4 = fp
+		}
 	}
 }
 
