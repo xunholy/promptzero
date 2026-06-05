@@ -32,16 +32,24 @@
 //   - Group 2A/2B: RadioText (up to 64 chars, assembled across
 //     segments, truncated at the 0x0D terminator), with the A/B text
 //     flag.
-//   - The RDS G0 default character set (IEC 62106 Annex E) for both
-//     Programme Service and RadioText.
+//   - Group 1A: Programme Item Number (the day + time the current
+//     programme started), the linkage flag, and the slow-labelling
+//     variants — extended country code (raw), language (named), TMC
+//     identification, SLC broadcaster bits and the emergency-warning
+//     field.
+//   - Group 10A: Programme Type Name (the 8-character long-form
+//     programme-type label, assembled across its two segments).
+//   - The RDS G0 default character set (IEC 62106 Annex E) for the
+//     Programme Service, RadioText and Programme Type Name.
 //
 // # Deliberately deferred
 //
 //	Clock-time (group 4A), alternative-frequency lists, Open Data
-//	Applications / TMC (3A / 8A), Enhanced Other Networks (14), PIN
-//	(1A), PTYN (10A) and the legacy three-letter / nationally-linked
-//	RBDS call signs are not decoded; the group type is still reported
-//	so nothing is silently dropped.
+//	Applications / TMC (3A / 8A), Enhanced Other Networks (14), the
+//	ECC->country-name table (the raw extended country code is
+//	surfaced) and the legacy three-letter / nationally-linked RBDS
+//	call signs are not decoded; the group type is still reported so
+//	nothing is silently dropped.
 package rds
 
 import (
@@ -59,13 +67,14 @@ type Options struct {
 
 // Result is the decoded view of one or more RDS groups.
 type Result struct {
-	GroupCount       int      `json:"group_count"`
-	PI               string   `json:"pi,omitempty"`
-	Callsign         string   `json:"callsign,omitempty"`
-	ProgrammeService string   `json:"programme_service,omitempty"`
-	RadioText        string   `json:"radiotext,omitempty"`
-	Groups           []Group  `json:"groups"`
-	Notes            []string `json:"notes,omitempty"`
+	GroupCount        int      `json:"group_count"`
+	PI                string   `json:"pi,omitempty"`
+	Callsign          string   `json:"callsign,omitempty"`
+	ProgrammeService  string   `json:"programme_service,omitempty"`
+	RadioText         string   `json:"radiotext,omitempty"`
+	ProgrammeTypeName string   `json:"programme_type_name,omitempty"`
+	Groups            []Group  `json:"groups"`
+	Notes             []string `json:"notes,omitempty"`
 }
 
 // Group is the decode of a single 4-block RDS group.
@@ -88,7 +97,34 @@ type Group struct {
 	RadioTextAB      string `json:"radiotext_ab,omitempty"`
 	RadioTextSegment string `json:"radiotext_segment,omitempty"`
 
+	// Group 1 (programme item number + slow labelling)
+	ProgItemNumber     *int   `json:"prog_item_number,omitempty"`
+	ProgItemDay        *int   `json:"prog_item_day,omitempty"`
+	ProgItemTime       string `json:"prog_item_time,omitempty"`
+	HasLinkage         *bool  `json:"has_linkage,omitempty"`
+	ECC                string `json:"extended_country_code,omitempty"`
+	CountryCodeNibble  *int   `json:"pi_country_code,omitempty"`
+	Language           string `json:"language,omitempty"`
+	TMCID              *int   `json:"tmc_id,omitempty"`
+	EWS                *int   `json:"ews,omitempty"`
+	SLCBroadcasterBits string `json:"slc_broadcaster_bits,omitempty"`
+
+	// Group 10 (Programme Type Name)
+	PTYNSegment string `json:"ptyn_segment,omitempty"`
+
 	Note string `json:"note,omitempty"`
+}
+
+// assembler holds the multi-group accumulation buffers for the
+// Programme Service name, RadioText and Programme Type Name.
+type assembler struct {
+	ps       [8]byte
+	psSet    bool
+	rt       [64]byte
+	rtSet    bool
+	ptyn     [8]byte
+	ptynRecv [8]bool
+	ptynSet  bool
 }
 
 // Decode parses a sequence of RDS groups from hex. Each group is four
@@ -105,16 +141,13 @@ func Decode(hexStr string, opts Options) (*Result, error) {
 	}
 
 	r := &Result{}
-	var ps [8]byte
-	for i := range ps {
-		ps[i] = ' '
+	a := &assembler{}
+	for i := range a.ps {
+		a.ps[i] = ' '
 	}
-	psSet := false
-	rt := make([]byte, 64)
-	for i := range rt {
-		rt[i] = ' '
+	for i := range a.rt {
+		a.rt[i] = ' '
 	}
-	rtSet := false
 	var lastPI string
 
 	for off := 0; off < len(clean); off += 16 {
@@ -122,7 +155,7 @@ func Decode(hexStr string, opts Options) (*Result, error) {
 		if err != nil {
 			return nil, fmt.Errorf("group %d: %w", off/16, err)
 		}
-		g := decodeGroup(blocks, opts, &ps, &psSet, rt, &rtSet)
+		g := decodeGroup(blocks, opts, a)
 		r.Groups = append(r.Groups, g)
 		lastPI = g.PI
 	}
@@ -133,11 +166,16 @@ func Decode(hexStr string, opts Options) (*Result, error) {
 			r.Callsign = cs
 		}
 	}
-	if psSet {
-		r.ProgrammeService = renderText(ps[:])
+	if a.psSet {
+		r.ProgrammeService = renderText(a.ps[:])
 	}
-	if rtSet {
-		r.RadioText = renderText(truncateAtCR(rt))
+	if a.rtSet {
+		r.RadioText = renderText(truncateAtCR(a.rt[:]))
+	}
+	if a.ptynSet {
+		if name, ok := renderPTYN(a.ptyn, a.ptynRecv); ok {
+			r.ProgrammeTypeName = name
+		}
 	}
 	return r, nil
 }
@@ -159,7 +197,7 @@ func parseBlocks(h string) ([4]uint16, error) {
 	return b, nil
 }
 
-func decodeGroup(b [4]uint16, opts Options, ps *[8]byte, psSet *bool, rt []byte, rtSet *bool) Group {
+func decodeGroup(b [4]uint16, opts Options, a *assembler) Group {
 	bA, bB, bC, bD := b[0], b[1], b[2], b[3]
 	typeNum := int(bB>>12) & 0xF
 	version := int(bB>>11) & 1 // 0=A, 1=B
@@ -190,9 +228,9 @@ func decodeGroup(b [4]uint16, opts Options, ps *[8]byte, psSet *bool, rt []byte,
 		g.DI = diLabel(seg, bB&0x0004 != 0)
 		// PS chars: block D high + low byte at position seg*2.
 		hi, lo := byte(bD>>8), byte(bD&0xFF)
-		ps[seg*2] = hi
-		ps[seg*2+1] = lo
-		*psSet = true
+		a.ps[seg*2] = hi
+		a.ps[seg*2+1] = lo
+		a.psSet = true
 		s := seg
 		g.PSSegmentAddr = &s
 		g.PSSegment = renderText([]byte{hi, lo})
@@ -207,8 +245,8 @@ func decodeGroup(b [4]uint16, opts Options, ps *[8]byte, psSet *bool, rt []byte,
 			pos := seg * 4
 			chars := []byte{byte(bC >> 8), byte(bC & 0xFF), byte(bD >> 8), byte(bD & 0xFF)}
 			for i, c := range chars {
-				if pos+i < len(rt) {
-					rt[pos+i] = c
+				if pos+i < len(a.rt) {
+					a.rt[pos+i] = c
 				}
 			}
 			g.RadioTextSegment = renderText(chars)
@@ -216,18 +254,113 @@ func decodeGroup(b [4]uint16, opts Options, ps *[8]byte, psSet *bool, rt []byte,
 			pos := seg * 2
 			chars := []byte{byte(bD >> 8), byte(bD & 0xFF)}
 			for i, c := range chars {
-				if pos+i < len(rt) {
-					rt[pos+i] = c
+				if pos+i < len(a.rt) {
+					a.rt[pos+i] = c
 				}
 			}
 			g.RadioTextSegment = renderText(chars)
 		}
-		*rtSet = true
+		a.rtSet = true
+	case 1: // 1A / 1B — programme item number + slow labelling
+		decodeGroup1(bA, bB, bC, bD, version, &g)
+	case 10: // 10A — Programme Type Name
+		if version == 0 {
+			seg := int(bB) & 0x1
+			chars := []byte{byte(bC >> 8), byte(bC & 0xFF), byte(bD >> 8), byte(bD & 0xFF)}
+			for i, c := range chars {
+				pos := seg*4 + i
+				if pos < len(a.ptyn) {
+					a.ptyn[pos] = c
+					a.ptynRecv[pos] = true
+				}
+			}
+			a.ptynSet = true
+			g.PTYNSegment = renderText(chars)
+		} else {
+			g.Note = "group 10B is not yet broken out"
+		}
 	default:
 		g.Note = "group type decoded at the header level only (PS/RadioText/PI/PTY); " +
 			"this type's payload is not yet broken out"
 	}
 	return g
+}
+
+// decodeGroup1 fills the group-1 (programme item number + slow
+// labelling) fields. Block D is the PIN / programme-item word; block C
+// (1A only) carries the linkage bit and a 3-bit slow-labelling variant.
+func decodeGroup1(bA, _, bC, bD uint16, version int, g *Group) {
+	// Programme Item Number (block D): day / hour / minute.
+	if bD != 0 {
+		day := int(bD>>11) & 0x1F
+		hour := int(bD>>6) & 0x1F
+		minute := int(bD) & 0x3F
+		if day >= 1 && day <= 31 && hour <= 23 && minute <= 59 {
+			pin := int(bD)
+			g.ProgItemNumber = &pin
+			g.ProgItemDay = &day
+			g.ProgItemTime = fmt.Sprintf("%02d:%02d", hour, minute)
+		}
+	}
+	if version != 0 {
+		return // slow labelling is 1A only
+	}
+	link := bC&0x8000 != 0
+	g.HasLinkage = &link
+	switch int(bC>>12) & 0x7 { // slow-labelling variant
+	case 0: // ECC (extended country code)
+		if ecc := int(bC) & 0xFF; ecc != 0 {
+			g.ECC = fmt.Sprintf("0x%02X", ecc)
+			cc := int(bA>>12) & 0xF
+			g.CountryCodeNibble = &cc
+			g.Note = "country name lookup (ECC + PI country nibble) is deferred; raw codes surfaced"
+		}
+	case 1: // TMC identification
+		id := int(bC) & 0x0FFF
+		g.TMCID = &id
+	case 3: // language
+		g.Language = languageName(int(bC) & 0xFF)
+	case 6: // SLC broadcaster bits
+		g.SLCBroadcasterBits = fmt.Sprintf("0x%03X", int(bC)&0x7FF)
+	case 7: // emergency warning system
+		ews := int(bC) & 0x0FFF
+		g.EWS = &ews
+	}
+}
+
+func languageName(code int) string {
+	if code < 0 || code >= len(languages) {
+		return ""
+	}
+	return languages[code]
+}
+
+// renderPTYN renders the 8-byte Programme Type Name buffer per the RDS
+// terminator semantics: the expected length runs to the first 0x0D
+// carriage return (inclusive), which itself — like any unreceived or
+// null position — renders as a blank. Unlike RadioText the result is NOT
+// right-trimmed (so "CRI.CN" + terminator yields "CRI.CN "). Returns
+// false until every position up to the expected length has been received.
+func renderPTYN(buf [8]byte, recv [8]bool) (string, bool) {
+	explen := len(buf)
+	for i, b := range buf {
+		if b == 0x0D {
+			explen = i + 1
+			break
+		}
+	}
+	var sb strings.Builder
+	for i := 0; i < explen; i++ {
+		if !recv[i] {
+			return "", false
+		}
+		if buf[i] == 0x0D || buf[i] == 0 {
+			sb.WriteString(" ")
+		} else {
+			sb.WriteString(g0Charset[buf[i]])
+		}
+	}
+	return sb.String(), true
 }
 
 // truncateAtCR returns the RadioText buffer up to the first 0x0D

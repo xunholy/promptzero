@@ -38,6 +38,44 @@ var ptyNamesRDS = [32]string{
 	"Folk music", "Documentary", "Alarm test", "Alarm",
 }
 
+// languages is the RDS language-code table (IEC 62106), indexed by the
+// 7-bit language code from a group 1A variant-3 slow-labelling block.
+// Ported verbatim from the redsea reference table.
+var languages = [128]string{
+	"Unknown", "Albanian", "Breton", "Catalan",
+	"Croatian", "Welsh", "Czech", "Danish",
+	"German", "English", "Spanish", "Esperanto",
+	"Estonian", "Basque", "Faroese", "French",
+	"Frisian", "Irish", "Gaelic", "Galician",
+	"Icelandic", "Italian", "Lappish", "Latin",
+	"Latvian", "Luxembourgian", "Lithuanian", "Hungarian",
+	"Maltese", "Dutch", "Norwegian", "Occitan",
+	"Polish", "Portuguese", "Romanian", "Romansh",
+	"Serbian", "Slovak", "Slovene", "Finnish",
+	"Swedish", "Turkish", "Flemish", "Walloon",
+	"", "", "", "",
+	"", "", "", "",
+	"", "", "", "",
+	"", "", "", "",
+	"", "", "", "",
+	"Background", "", "", "",
+	"", "Zulu", "Vietnamese", "Uzbek",
+	"Urdu", "Ukrainian", "Thai", "Telugu",
+	"Tatar", "Tamil", "Tadzhik", "Swahili",
+	"SrananTongo", "Somali", "Sinhalese", "Shona",
+	"Serbo-Croat", "Ruthenian", "Russian", "Quechua",
+	"Pushtu", "Punjabi", "Persian", "Papamiento",
+	"Oriya", "Nepali", "Ndebele", "Marathi",
+	"Moldovian", "Malaysian", "Malagasay", "Macedonian",
+	"Laotian", "Korean", "Khmer", "Kazakh",
+	"Kannada", "Japanese", "Indonesian", "Hindi",
+	"Hebrew", "Hausa", "Gurani", "Gujurati",
+	"Greek", "Georgian", "Fulani", "Dari",
+	"Churash", "Chinese", "Burmese", "Bulgarian",
+	"Bengali", "Belorussian", "Bambora", "Azerbaijan",
+	"Assamese", "Armenian", "Arabic", "Amharic",
+}
+
 // ptyNamesRBDS is the North American RBDS programme-type table (NRSC-4).
 var ptyNamesRBDS = [32]string{
 	"No PTY", "News", "Information", "Sports",

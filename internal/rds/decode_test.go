@@ -96,6 +96,67 @@ func TestRBDSCallsign(t *testing.T) {
 	}
 }
 
+func TestGroup1ProgItemAndCountry(t *testing.T) {
+	// YLE Yksi (fi) 2016-09-15 — group 1A, variant 0 (ECC).
+	r, err := Decode("6201 10E0 00E1 7C54", Options{})
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	g := r.Groups[0]
+	if g.GroupType != "1A" {
+		t.Fatalf("group type = %s, want 1A", g.GroupType)
+	}
+	if g.ProgItemNumber == nil || *g.ProgItemNumber != 31828 {
+		t.Errorf("prog_item_number = %v, want 31828", g.ProgItemNumber)
+	}
+	if g.ProgItemDay == nil || *g.ProgItemDay != 15 {
+		t.Errorf("prog_item_day = %v, want 15", g.ProgItemDay)
+	}
+	if g.ProgItemTime != "17:20" {
+		t.Errorf("prog_item_time = %q, want 17:20", g.ProgItemTime)
+	}
+	if g.ECC != "0xE1" {
+		t.Errorf("ECC = %q, want 0xE1", g.ECC)
+	}
+	if g.CountryCodeNibble == nil || *g.CountryCodeNibble != 6 {
+		t.Errorf("country nibble = %v, want 6", g.CountryCodeNibble)
+	}
+}
+
+func TestGroup1Language(t *testing.T) {
+	// Group 1A, variant 3 — language code 0x27 = Finnish.
+	r, err := Decode("6201 10E0 3027 7C54", Options{})
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.Groups[0].Language != "Finnish" {
+		t.Errorf("language = %q, want Finnish", r.Groups[0].Language)
+	}
+}
+
+func TestGroup1SLCBroadcasterBits(t *testing.T) {
+	// RTL 102.5 (it) — group 1A, variant 6.
+	r, err := Decode("5218 1520 6DAB 0000", Options{})
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.Groups[0].SLCBroadcasterBits != "0x5AB" {
+		t.Errorf("slc_broadcaster_bits = %q, want 0x5AB", r.Groups[0].SLCBroadcasterBits)
+	}
+}
+
+func TestProgrammeTypeName(t *testing.T) {
+	// CRI Poland 2019-05-04 — group 10A PTYN "CRI.CN " (trailing space kept).
+	in := "3ABC A750 4352 492E  3ABC A751 434E 0D0D"
+	r, err := Decode(in, Options{})
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.ProgrammeTypeName != "CRI.CN " {
+		t.Errorf("programme_type_name = %q, want %q", r.ProgrammeTypeName, "CRI.CN ")
+	}
+}
+
 func TestPTYTablesDiffer(t *testing.T) {
 	// PTY 5: RDS "Education" vs RBDS "Rock".
 	if ptyName(5, false) != "Education" || ptyName(5, true) != "Rock" {

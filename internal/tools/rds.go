@@ -35,6 +35,12 @@ var rdsDecodeSpec = Spec{
 		"(decoder-identification: stereo / artificial-head / compressed / dynamic-PTY) flags.\n" +
 		"- **Group 2A/2B — RadioText** (up to 64 characters, assembled across segments and " +
 		"truncated at the 0x0D terminator) with the A/B text flag.\n" +
+		"- **Group 1A** — Programme Item Number (the day + time the current programme started), " +
+		"the linkage flag, and the slow-labelling variants: extended country code (raw), " +
+		"**language** (named), TMC identification, SLC broadcaster bits and the emergency-warning " +
+		"field.\n" +
+		"- **Group 10A — Programme Type Name** (the 8-character long-form programme-type label, " +
+		"assembled across its two segments).\n" +
 		"- The **RDS G0 default character set** (IEC 62106 Annex E) for both Programme Service " +
 		"and RadioText, so non-ASCII station text (e.g. ä, ö, é) renders correctly.\n\n" +
 		"Input is the post-demodulation block hex: four 16-bit blocks (A B C D = 16 hex digits) " +
@@ -42,9 +48,10 @@ var rdsDecodeSpec = Spec{
 		"concatenated hex, and ':' / '-' / '_' / whitespace / comma separators are all accepted. " +
 		"Multiple groups are assembled into the full Programme Service name and RadioText.\n\n" +
 		"Out of scope (deferred): clock-time (group 4A), alternative-frequency lists, Open Data " +
-		"Applications / TMC traffic messages (3A / 8A), Enhanced Other Networks (14), PIN (1A), " +
-		"PTYN (10A), and the legacy three-letter / nationally-linked RBDS call signs — the group " +
-		"type is still reported for these so nothing is silently dropped.\n\n" +
+		"Applications / TMC traffic messages (3A / 8A), Enhanced Other Networks (14), the " +
+		"ECC→country-name table (the raw extended country code is surfaced), and the legacy " +
+		"three-letter / nationally-linked RBDS call signs — the group type is still reported for " +
+		"these so nothing is silently dropped.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (FM broadcast / SDR decode space). Wrap-vs-native: " +
 		"native — RDS is fully public; a group is four 16-bit blocks decoded by pure bit-field " +
 		"extraction plus the G0 charset, the PTY name tables and the RBDS PI→call-sign " +
