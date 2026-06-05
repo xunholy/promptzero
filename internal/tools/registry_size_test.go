@@ -2217,7 +2217,11 @@ func TestRegistrySize(t *testing.T) {
 	// — PI + RBDS call sign, group type / TP / PTY, Programme Service name,
 	// RadioText with the G0 charset; IEC 62106 / NRSC-4. Verified byte-for-byte
 	// against the redsea reference test vectors. internal/rds).
-	const expected = 540
+	// v0.534.0 added osdp_packet_decode (OSDP / IEC 60839-11-5 access-control
+	// reader-bus packet dissector — frame + control + SCB + command/reply code
+	// + NAK error + CRC-16/AUG-CCITT or checksum validation. Verified
+	// byte-for-byte against the libosdp phy-layer test vectors. internal/osdp).
+	const expected = 541
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -466,6 +466,12 @@ var toolLevels = func() map[string]Level {
 		// Pure offline IEC 62106 / NRSC-4 bit-field decode of post-demod
 		// block hex; verified byte-for-byte against the redsea reference.
 		"rds_decode",
+		// v0.534 (physical access-control decode space): OSDP / IEC
+		// 60839-11-5 reader-bus packet dissector — frame + control + SCB +
+		// command/reply code + NAK error + CRC-16/AUG-CCITT / checksum
+		// validation. Pure offline byte-field decode of an RS-485 capture;
+		// verified byte-for-byte against the libosdp phy-layer vectors.
+		"osdp_packet_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast
