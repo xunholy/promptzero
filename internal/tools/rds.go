@@ -41,17 +41,23 @@ var rdsDecodeSpec = Spec{
 		"field.\n" +
 		"- **Group 10A — Programme Type Name** (the 8-character long-form programme-type label, " +
 		"assembled across its two segments).\n" +
+		"- **Group 0A alternative frequencies** — the flat, de-duplicated VHF frequency list " +
+		"(EN 50067 Annex D; kHz) the station simulcasts on, plus the advertised AF count. " +
+		"Verified byte-for-byte against the redsea Method A vector.\n" +
 		"- The **RDS G0 default character set** (IEC 62106 Annex E) for both Programme Service " +
 		"and RadioText, so non-ASCII station text (e.g. ä, ö, é) renders correctly.\n\n" +
 		"Input is the post-demodulation block hex: four 16-bit blocks (A B C D = 16 hex digits) " +
 		"per group, one or more groups. The redsea `0xAAAA'BBBB'CCCC'DDDD` form, plain " +
 		"concatenated hex, and ':' / '-' / '_' / whitespace / comma separators are all accepted. " +
 		"Multiple groups are assembled into the full Programme Service name and RadioText.\n\n" +
-		"Out of scope (deferred): clock-time (group 4A), alternative-frequency lists, Open Data " +
-		"Applications / TMC traffic messages (3A / 8A), Enhanced Other Networks (14), the " +
-		"ECC→country-name table (the raw extended country code is surfaced), and the legacy " +
-		"three-letter / nationally-linked RBDS call signs — the group type is still reported for " +
-		"these so nothing is silently dropped.\n\n" +
+		"Out of scope (deferred): clock-time (group 4A — the reference decoder's output is " +
+		"timezone/implementation dependent, so there is no deterministic oracle to verify " +
+		"against), the AF Method B same-programme vs regional-variant structuring (a Method B " +
+		"station's flat list still contains its tuned frequency), Open Data Applications / TMC " +
+		"traffic messages (3A / 8A), Enhanced Other Networks (14), the ECC→country-name table " +
+		"(the raw extended country code is surfaced), and the legacy three-letter / " +
+		"nationally-linked RBDS call signs — the group type is still reported for these so " +
+		"nothing is silently dropped.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (FM broadcast / SDR decode space). Wrap-vs-native: " +
 		"native — RDS is fully public; a group is four 16-bit blocks decoded by pure bit-field " +
 		"extraction plus the G0 charset, the PTY name tables and the RBDS PI→call-sign " +

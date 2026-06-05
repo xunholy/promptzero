@@ -157,6 +157,30 @@ func TestProgrammeTypeName(t *testing.T) {
 	}
 }
 
+func TestAlternativeFrequenciesMethodA(t *testing.T) {
+	// YLE Yksi (fi) — group 0A AF Method A. redsea expects the flat list
+	// {87900, 90900, 89800, 89200, 93200, 88500, 89500} kHz; the leading
+	// 0xE7 (231) code is the "7 alternative frequencies follow" count.
+	in := "6201 00F7 E704 5349  6201 00F0 2217 594C  " +
+		"6201 00F1 1139 4520  6201 00F2 0A14 594B"
+	r, err := Decode(in, Options{})
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	want := []int{87900, 90900, 89800, 89200, 93200, 88500, 89500}
+	if len(r.AltFrequenciesKHz) != len(want) {
+		t.Fatalf("AF = %v, want %v", r.AltFrequenciesKHz, want)
+	}
+	for i := range want {
+		if r.AltFrequenciesKHz[i] != want[i] {
+			t.Errorf("AF[%d] = %d, want %d", i, r.AltFrequenciesKHz[i], want[i])
+		}
+	}
+	if r.AFCount == nil || *r.AFCount != 7 {
+		t.Errorf("af_count = %v, want 7", r.AFCount)
+	}
+}
+
 func TestPTYTablesDiffer(t *testing.T) {
 	// PTY 5: RDS "Education" vs RBDS "Rock".
 	if ptyName(5, false) != "Education" || ptyName(5, true) != "Rock" {

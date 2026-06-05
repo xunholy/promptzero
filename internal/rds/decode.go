@@ -39,14 +39,21 @@
 //     field.
 //   - Group 10A: Programme Type Name (the 8-character long-form
 //     programme-type label, assembled across its two segments).
+//   - Group 0A alternative frequencies: the flat, de-duplicated VHF
+//     frequency list (EN 50067 Annex D) the station simulcasts on,
+//     plus the advertised AF count.
 //   - The RDS G0 default character set (IEC 62106 Annex E) for the
 //     Programme Service, RadioText and Programme Type Name.
 //
 // # Deliberately deferred
 //
-//	Clock-time (group 4A), alternative-frequency lists, Open Data
-//	Applications / TMC (3A / 8A), Enhanced Other Networks (14), the
-//	ECC->country-name table (the raw extended country code is
+//	Clock-time (group 4A) — the reference decoder's output is
+//	timezone/implementation dependent, so there is no trustworthy
+//	deterministic oracle to verify a port against. The AF Method B
+//	same-programme vs regional-variant structuring (a Method B
+//	station's flat list still contains its tuned frequency), Open
+//	Data Applications / TMC (3A / 8A), Enhanced Other Networks (14),
+//	the ECC->country-name table (the raw extended country code is
 //	surfaced) and the legacy three-letter / nationally-linked RBDS
 //	call signs are not decoded; the group type is still reported so
 //	nothing is silently dropped.
@@ -73,6 +80,8 @@ type Result struct {
 	ProgrammeService  string   `json:"programme_service,omitempty"`
 	RadioText         string   `json:"radiotext,omitempty"`
 	ProgrammeTypeName string   `json:"programme_type_name,omitempty"`
+	AltFrequenciesKHz []int    `json:"alternative_frequencies_khz,omitempty"`
+	AFCount           *int     `json:"af_count,omitempty"`
 	Groups            []Group  `json:"groups"`
 	Notes             []string `json:"notes,omitempty"`
 }
@@ -125,6 +134,7 @@ type assembler struct {
 	ptyn     [8]byte
 	ptynRecv [8]bool
 	ptynSet  bool
+	afBytes  []byte // alternative-frequency codes accumulated from 0A block C
 }
 
 // Decode parses a sequence of RDS groups from hex. Each group is four
@@ -177,7 +187,55 @@ func Decode(hexStr string, opts Options) (*Result, error) {
 			r.ProgrammeTypeName = name
 		}
 	}
+	if len(a.afBytes) > 0 {
+		freqs, count, afNotes := processAF(a.afBytes)
+		r.AltFrequenciesKHz = freqs
+		r.AFCount = count
+		r.Notes = append(r.Notes, afNotes...)
+	}
 	return r, nil
+}
+
+// processAF decodes a sequence of group-0A alternative-frequency codes
+// (EN 50067 Annex D) into a flat, de-duplicated VHF frequency list (kHz,
+// transmission order). Code 1-204 is a VHF carrier (87.5 MHz + code*0.1
+// MHz); code 225-249 is the "N alternative frequencies follow" count
+// filler; code 250 marks that the next code is an LF/MF carrier (not
+// decoded here); codes 0, 205-224 are fillers / "no AF". The AF Method B
+// same-programme vs regional-variant structuring (which encodes the list
+// as tuned-frequency pairs) is deliberately not broken out — a Method B
+// station's flat list therefore also contains its tuned frequency.
+func processAF(codes []byte) (freqs []int, count *int, notes []string) {
+	seen := make(map[int]bool)
+	lfmfNext := false
+	lfmfNoted := false
+	for _, b := range codes {
+		c := int(b)
+		if lfmfNext {
+			lfmfNext = false
+			if !lfmfNoted {
+				notes = append(notes, "an LF/MF alternative frequency is present (not decoded)")
+				lfmfNoted = true
+			}
+			continue
+		}
+		switch {
+		case c >= 1 && c <= 204:
+			f := 87500 + c*100
+			if !seen[f] {
+				seen[f] = true
+				freqs = append(freqs, f)
+			}
+		case c >= 225 && c <= 249:
+			if count == nil {
+				n := c - 224
+				count = &n
+			}
+		case c == 250:
+			lfmfNext = true
+		}
+	}
+	return freqs, count, notes
 }
 
 func parseBlocks(h string) ([4]uint16, error) {
@@ -234,6 +292,11 @@ func decodeGroup(b [4]uint16, opts Options, a *assembler) Group {
 		s := seg
 		g.PSSegmentAddr = &s
 		g.PSSegment = renderText([]byte{hi, lo})
+		// 0A only: block C carries two alternative-frequency codes
+		// (in 0B, block C is the PI repeat).
+		if version == 0 {
+			a.afBytes = append(a.afBytes, byte(bC>>8), byte(bC&0xFF))
+		}
 	case 2: // 2A / 2B — RadioText
 		seg := int(bB) & 0xF
 		if bB&0x0010 != 0 {
