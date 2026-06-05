@@ -2213,7 +2213,11 @@ func TestRegistrySize(t *testing.T) {
 	// timestamp from a Discord/Twitter-X 64-bit ID; the social-media-OSINT
 	// sibling of uuid/objectid/ulid, candidate-per-platform (asserts none).
 	// Anchored vs Discord's documented example. internal/snowflake).
-	const expected = 539
+	// v0.531.0 added rds_decode (RDS / RBDS FM Radio Data System group decoder
+	// — PI + RBDS call sign, group type / TP / PTY, Programme Service name,
+	// RadioText with the G0 charset; IEC 62106 / NRSC-4. Verified byte-for-byte
+	// against the redsea reference test vectors. internal/rds).
+	const expected = 540
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

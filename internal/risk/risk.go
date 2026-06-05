@@ -460,6 +460,12 @@ var toolLevels = func() map[string]Level {
 		// Complements subghz_* coverage by extending decode to
 		// 1090 MHz airborne / aerospace traffic.
 		"adsb_mode_s_decode",
+		// v0.531 (FM broadcast / SDR decode space): RDS / RBDS Radio
+		// Data System group decoder — PI + RBDS call sign, group type /
+		// TP / PTY, Programme Service name, RadioText (G0 charset).
+		// Pure offline IEC 62106 / NRSC-4 bit-field decode of post-demod
+		// block hex; verified byte-for-byte against the redsea reference.
+		"rds_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast
