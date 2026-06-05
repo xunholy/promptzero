@@ -42,7 +42,18 @@ var adsbModeSDecodeSpec = Spec{
 		"(25-ft resolution; Gillham/Mode-C Q=0 frames flagged invalid) + raw CPR (lat/lon, " +
 		"even/odd flag).\n" +
 		"  - TC 19: Airborne Velocity (subtypes 1/2 ground speed + track; subtypes 3/4 airspeed " +
-		"+ magnetic heading) + vertical rate with source flag (barometric vs GNSS).\n\n" +
+		"+ magnetic heading) + vertical rate with source flag (barometric vs GNSS).\n" +
+		"- **Comm-B (DF20/21) BDS register decode** of the 56-bit MB field (ICAO Doc 9871). " +
+		"A Comm-B reply is not self-describing, so the register is INFERRED via validity gates " +
+		"(pyModeS is10/is17/is20/is40/is50/is60): a register is only reported when its status " +
+		"bits and value ranges are internally consistent, and an ambiguous match (more than one " +
+		"register validating) is flagged rather than guessed — no confidently-wrong output. " +
+		"Decodes BDS 2,0 (aircraft identification / callsign), BDS 4,0 (selected vertical " +
+		"intention: MCP/FCU + FMS selected altitude, barometric pressure setting), BDS 5,0 " +
+		"(track + turn report: roll, true track, ground speed, track-angle rate, true airspeed), " +
+		"BDS 6,0 (heading + speed report: magnetic heading, IAS, Mach, barometric + inertial " +
+		"vertical rate), and BDS 1,7 (GICB capability list); BDS 1,0 participates in inference. " +
+		"Verified byte-for-byte against the pyModeS reference test vectors.\n\n" +
 		"CPR position resolution (full lat/lon) is deferred — the decoder exposes the raw 17-bit " +
 		"CPR latitude/longitude and the odd/even frame flag, but pairing an even + odd frame for " +
 		"a global solve (or applying a local reference position) is left to a higher-level Spec " +
@@ -52,9 +63,9 @@ var adsbModeSDecodeSpec = Spec{
 		"the existing subghz_* coverage (UHF surveillance and decoders below 1 GHz) by extending " +
 		"the airborne / aerospace decode space.\n\n" +
 		"Accepts ':' / '-' / '_' / whitespace separators and a leading '0x' prefix.\n\n" +
-		"Scope: civil-aviation Mode S DFs. Comm-B BDS register decoding (DF20/21 payloads), DF18 " +
-		"CF>=2 sub-formats (fine TIS-B / ADS-R), and live demodulation from raw I/Q samples are " +
-		"out of scope.\n\n" +
+		"Scope: civil-aviation Mode S DFs. The DF20/21 13-bit altitude / squawk header fields " +
+		"(Gillham-coded), meteorological BDS 4,4 / 4,5 registers, DF18 CF>=2 sub-formats (fine " +
+		"TIS-B / ADS-R), and live demodulation from raw I/Q samples are out of scope.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (aerospace / airborne decode space — native fit " +
 		"as a pure host-side parser).",
 	Schema: json.RawMessage(`{

@@ -15,6 +15,17 @@ func FuzzDecode(f *testing.F) {
 	for _, s := range [][]byte{{}, {0x00}, {0x01, 0x02, 0x03, 0x04}, {0xff, 0xff, 0xff, 0xff}} {
 		f.Add(s)
 	}
+	// DF20 Comm-B frames exercise the BDS register inference + decode path.
+	for _, h := range []string{
+		"A000029C85E42F313000007047D3", // BDS40
+		"A000139381951536E024D4CCF6B5", // BDS50
+		"A00004128F39F91A7E27C46ADC21", // BDS60
+		"A000083E202CC371C31DE0AA1CCF", // BDS20
+	} {
+		if b, err := hex.DecodeString(h); err == nil {
+			f.Add(b)
+		}
+	}
 	f.Fuzz(func(_ *testing.T, b []byte) {
 		_, _ = Decode(hex.EncodeToString(b)) // must not panic
 	})

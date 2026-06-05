@@ -65,10 +65,12 @@
 //     because no civil aviation traffic uses these slots in
 //     practice (and the bodies have no published civilian
 //     spec).
-//   - Comm-B BDS register decoding for DF20/21 — only the DF
-//     envelope is decoded; the BDS payload requires a
-//     register-by-register decoder (BDS 1,7 / 4,0 / 4,4 /
-//     5,0 / 6,0 etc.) which is a separate ~600 LoC effort.
+//   - Comm-B BDS register decoding for DF20/21 — the MB field is
+//     decoded register-by-register with validity-gated inference
+//     (BDS 2,0 / 4,0 / 5,0 / 6,0 / 1,7, with BDS 1,0 inferred);
+//     see commb.go. The DF20 13-bit altitude / DF21 squawk header
+//     fields (Gillham-coded AC13 / ID13) are not yet broken out.
+//     Meteorological registers (BDS 4,4 / 4,5) remain deferred.
 //   - TIS-B (DF18) imitation-of-other-format payload variants:
 //     DF18 is decoded as if it were DF17, which is correct for
 //     the most common CF=0/CF=1 case. CF=2..7 sub-formats
@@ -98,6 +100,7 @@ type Frame struct {
 	CRCExpected string `json:"crc_expected"`
 	CRCValid    bool   `json:"crc_valid"`
 	ADSB        *ADSB  `json:"adsb,omitempty"`
+	CommB       *CommB `json:"comm_b,omitempty"`
 }
 
 // ADSB carries the decoded Extended Squitter ME field (DF17 /
@@ -215,6 +218,12 @@ func DecodeBytes(b []byte) (*Frame, error) {
 	// ADS-B Extended Squitter body for DF17 + DF18 (CF=0/1).
 	if df == 17 || df == 18 {
 		f.ADSB = decodeME(b[4:11])
+	}
+
+	// Comm-B (DF20/21) MB field — the 56 bits at byte offset 4..10,
+	// decoded register-by-register with validity-gated BDS inference.
+	if df == 20 || df == 21 {
+		f.CommB = decodeCommB(b[4:11])
 	}
 
 	return f, nil
