@@ -33,6 +33,11 @@ var wmbusDecodeSpec = Spec{
 		"request / …), the **manufacturer** (the 3-letter FLAG code from the M field), and the " +
 		"**address** — the BCD **meter ID**, the version, and the **device/medium type** (+ name: " +
 		"water / gas / heat / electricity / cold water / …).\n" +
+		"- The **transport-layer (TPL) header** after the CI field (short 0x7A / long 0x72 / none " +
+		"0x78): the access number, status byte, and — the headline — the **encryption mode** from " +
+		"the config word (plaintext vs **AES-128-CBC** mode 5/7, with the encrypted-block count and " +
+		"the bidirectional / accessibility / synchronous flags). Whether the meter's data is " +
+		"readable or AES-encrypted is the first thing a smart-meter assessment needs to know.\n" +
 		"- The **de-chunked application payload** (the data blocks with their CRCs stripped and " +
 		"concatenated) and its leading CI field — ready to paste into `mbus_decode` for the full " +
 		"Variable-Data-Structure (consumption) read.\n\n" +
@@ -41,9 +46,10 @@ var wmbusDecodeSpec = Spec{
 		"prefix tolerated. Verified against a CRC-valid Format-A frame and a real meter header " +
 		"block (CRC 0x3363).\n\n" +
 		"Out of scope (deferred): Format B framing (single trailing CRC instead of per-block — " +
-		"detected by CRC mismatch and noted); the 3-of-6 / Manchester line coding (upstream); and " +
-		"the application-layer DIF/VIF consumption decode (mbus_decode's job — the de-chunked " +
-		"payload is surfaced for it).\n\n" +
+		"detected by CRC mismatch and noted); the 3-of-6 / Manchester line coding (upstream); AES " +
+		"decryption of an encrypted payload (needs the meter key, not in the frame — the mode is " +
+		"reported); and the application-layer DIF/VIF consumption decode (mbus_decode's job — the " +
+		"de-chunked payload is surfaced for it).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (sub-GHz smart-metering decode space; the wM-Bus " +
 		"radio framing explicitly deferred by internal/mbus). Wrap-vs-native: native — the wM-Bus " +
 		"radio frame is a fixed public EN 13757-4 structure decoded by byte-field extraction plus " +

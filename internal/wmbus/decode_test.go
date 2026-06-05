@@ -40,6 +40,59 @@ func TestDecodeValidFrame(t *testing.T) {
 
 // TestRealWorldBlock1CRC anchors the EN 13757 CRC-16 to a real meter
 // header block (Elster gas, ID 12345678): 2e449315785634123303 -> 0x3363.
+// unencFrame / encFrame are CRC-valid Format-A frames whose application
+// payload carries a complete short TPL header: an unencrypted one
+// (config 0x0000, mode 0) and an AES-CBC-encrypted one (config 0x0520,
+// mode 5, 2 encrypted blocks).
+const (
+	unencFrame = "0E44931578563412330706AC7A2A00000017E1"
+	encFrame   = "0E44931578563412330706AC7A2A0020058CFC"
+)
+
+func TestTPLUnencrypted(t *testing.T) {
+	r, err := Decode(unencFrame)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if !r.BlocksValid {
+		t.Fatal("blocks should be valid")
+	}
+	if r.Transport == nil {
+		t.Fatal("no transport header")
+	}
+	tp := r.Transport
+	if tp.HeaderType != "short" || tp.AccessNumber == nil || *tp.AccessNumber != 42 {
+		t.Errorf("header = %+v", tp)
+	}
+	if tp.Encrypted || tp.EncryptionMode != 0 || tp.EncryptionName != "no security (plaintext)" {
+		t.Errorf("encryption = %v / %d / %q", tp.Encrypted, tp.EncryptionMode, tp.EncryptionName)
+	}
+}
+
+func TestTPLEncryptedMode5(t *testing.T) {
+	r, err := Decode(encFrame)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if !r.BlocksValid {
+		t.Fatal("blocks should be valid")
+	}
+	tp := r.Transport
+	if tp == nil || !tp.Encrypted {
+		t.Fatalf("expected encrypted transport, got %+v", tp)
+	}
+	if tp.EncryptionMode != 5 || tp.EncryptionName != "AES-128-CBC, dynamic IV (mode 5)" {
+		t.Errorf("mode = %d / %q, want 5 / AES-128-CBC...", tp.EncryptionMode, tp.EncryptionName)
+	}
+	if tp.EncryptedBlocks != 2 || tp.ConfigWord != "0x0520" {
+		t.Errorf("blocks/cfg = %d / %s, want 2 / 0x0520", tp.EncryptedBlocks, tp.ConfigWord)
+	}
+	// The water device type (0x07) is decoded at the link layer.
+	if r.DeviceTypeName != "water" {
+		t.Errorf("device type = %q, want water", r.DeviceTypeName)
+	}
+}
+
 func TestRealWorldBlock1CRC(t *testing.T) {
 	b, _ := hex.DecodeString("2e449315785634123303")
 	if got := crc16Wmbus(b); got != 0x3363 {
