@@ -164,6 +164,107 @@ func TestDecode_Type24_PartB(t *testing.T) {
 	}
 }
 
+// TestDecode_Type19_ExtendedClassB pins an Extended Class B
+// position report. Oracle values cross-checked against pyais
+// 3.0.1 decode() of the same sentence.
+func TestDecode_Type19_ExtendedClassB(t *testing.T) {
+	got, err := Decode("!AIVDM,1,1,,B,C5N3SRgPEnJGEBT>NhWAwwo862PaLELTBJ:V00000000S0D:R220,0*0B")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.MessageType != 19 {
+		t.Errorf("MessageType = %d; want 19", got.MessageType)
+	}
+	if got.MMSI != 367059850 {
+		t.Errorf("MMSI = %d; want 367059850", got.MMSI)
+	}
+	e := got.ExtendedClassB
+	if e == nil {
+		t.Fatal("ExtendedClassB nil")
+	}
+	if e.SpeedOverGroundKts == nil || math.Abs(*e.SpeedOverGroundKts-8.7) > 0.001 {
+		t.Errorf("SpeedOverGroundKts = %v; want 8.7", e.SpeedOverGroundKts)
+	}
+	if e.LongitudeDeg == nil || math.Abs(*e.LongitudeDeg-(-88.810392)) > 0.001 {
+		t.Errorf("LongitudeDeg = %v; want ~-88.810392", e.LongitudeDeg)
+	}
+	if e.LatitudeDeg == nil || math.Abs(*e.LatitudeDeg-29.543695) > 0.001 {
+		t.Errorf("LatitudeDeg = %v; want ~29.543695", e.LatitudeDeg)
+	}
+	if e.CourseOverGroundDeg == nil || math.Abs(*e.CourseOverGroundDeg-335.9) > 0.001 {
+		t.Errorf("CourseOverGroundDeg = %v; want 335.9", e.CourseOverGroundDeg)
+	}
+	if e.TrueHeadingDeg != nil { // 511 sentinel = not available
+		t.Errorf("TrueHeadingDeg = %v; want nil (511 sentinel)", e.TrueHeadingDeg)
+	}
+	if e.Timestamp != 46 {
+		t.Errorf("Timestamp = %d; want 46", e.Timestamp)
+	}
+	if e.VesselName != "CAPT.J.RIMES" {
+		t.Errorf("VesselName = %q; want CAPT.J.RIMES", e.VesselName)
+	}
+	if e.ShipType != 70 || !strings.Contains(e.ShipTypeName, "Cargo") {
+		t.Errorf("ShipType = %d (%q); want 70 Cargo", e.ShipType, e.ShipTypeName)
+	}
+	if e.DimensionBow != 5 || e.DimensionStern != 21 || e.DimensionPort != 4 || e.DimensionStbd != 4 {
+		t.Errorf("dims = %d/%d/%d/%d; want 5/21/4/4", e.DimensionBow, e.DimensionStern, e.DimensionPort, e.DimensionStbd)
+	}
+	if e.EPFDType != 1 || e.RAIM || e.DTE != 0 || e.Assigned {
+		t.Errorf("epfd/raim/dte/assigned = %d/%v/%d/%v; want 1/false/0/false", e.EPFDType, e.RAIM, e.DTE, e.Assigned)
+	}
+}
+
+// TestDecode_Type21_AidToNavigation pins a multi-fragment
+// Aid-to-Navigation report, including the variable name-
+// extension field. Oracle values cross-checked against pyais
+// 3.0.1.
+func TestDecode_Type21_AidToNavigation(t *testing.T) {
+	// NB: the widely-circulated copy of this AtoN vector carries
+	// bad NMEA checksums (*7B / *60); the XOR-correct values are
+	// *79 / *62. pyais does not verify checksums, but our decoder
+	// does, so the corrected suffixes are used here.
+	got, err := Decode("!AIVDM,2,1,5,B,E1c2;q@b44ah4ah0h:2ab@70VRpU<Bgpm4:gP50HH`Th`QF5,0*79\n" +
+		"!AIVDM,2,2,5,B,1CQ1A83PCAH0,0*62")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.MessageType != 21 {
+		t.Errorf("MessageType = %d; want 21", got.MessageType)
+	}
+	if got.MMSI != 112233445 {
+		t.Errorf("MMSI = %d; want 112233445", got.MMSI)
+	}
+	a := got.AidToNavigation
+	if a == nil {
+		t.Fatal("AidToNavigation nil")
+	}
+	if a.AidType != 1 || !strings.Contains(a.AidTypeName, "Reference point") {
+		t.Errorf("AidType = %d (%q); want 1 Reference point", a.AidType, a.AidTypeName)
+	}
+	if a.Name != "THIS IS A TEST NAME1" {
+		t.Errorf("Name = %q; want 'THIS IS A TEST NAME1'", a.Name)
+	}
+	if a.NameExtension != "EXTENDED NAME" {
+		t.Errorf("NameExtension = %q; want 'EXTENDED NAME'", a.NameExtension)
+	}
+	if a.LongitudeDeg == nil || math.Abs(*a.LongitudeDeg-145.181) > 0.001 {
+		t.Errorf("LongitudeDeg = %v; want ~145.181", a.LongitudeDeg)
+	}
+	if a.LatitudeDeg == nil || math.Abs(*a.LatitudeDeg-(-38.220167)) > 0.001 {
+		t.Errorf("LatitudeDeg = %v; want ~-38.220167", a.LatitudeDeg)
+	}
+	if a.DimensionBow != 5 || a.DimensionStern != 3 || a.DimensionPort != 3 || a.DimensionStbd != 5 {
+		t.Errorf("dims = %d/%d/%d/%d; want 5/3/3/5", a.DimensionBow, a.DimensionStern, a.DimensionPort, a.DimensionStbd)
+	}
+	if a.EPFDType != 1 || a.Timestamp != 9 {
+		t.Errorf("epfd/second = %d/%d; want 1/9", a.EPFDType, a.Timestamp)
+	}
+	if !a.OffPosition || a.RAIM || a.VirtualAid || !a.Assigned {
+		t.Errorf("off/raim/virtual/assigned = %v/%v/%v/%v; want true/false/false/true",
+			a.OffPosition, a.RAIM, a.VirtualAid, a.Assigned)
+	}
+}
+
 // TestDecode_BadChecksum surfaces a clear error.
 func TestDecode_BadChecksum(t *testing.T) {
 	if _, err := Decode("!AIVDM,1,1,,A,15M67FC000G?ufbE`FepT@3n00Sa,0*FF"); err == nil {

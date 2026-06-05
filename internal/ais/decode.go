@@ -47,6 +47,16 @@
 //     smaller-vessel position broadcast with MMSI, Speed,
 //     Position Accuracy, Longitude / Latitude, Course,
 //     True Heading, Timestamp, RAIM.
+//   - Type-19 Extended Class B Position Report: Type-18's
+//     position fields plus the vessel name, ship type and
+//     dimensions, so a single 312-bit message carries both
+//     dynamic and static data for the craft.
+//   - Type-21 Aid-to-Navigation Report: aid type (32-entry
+//     table — buoys, lighthouses, RACONs, beacons), name
+//     (with the 0-88-bit extension field), position,
+//     dimensions, EPFD, timestamp, and the off-position /
+//     virtual-aid / assigned flags that distinguish a real
+//     mark from a transmitted "virtual" AtoN.
 //   - Type-24 Static Data Class B: Part A (vessel name)
 //     or Part B (ship type + vendor ID + callsign +
 //     dimensions or mother-ship MMSI).
@@ -61,10 +71,9 @@
 //   - Type 9 SAR Aircraft Position, Type 11 UTC/Date
 //     Response, Type 14 Safety Related Broadcast, Type
 //     15 Interrogation, Type 16 Assigned-Mode Command,
-//     Type 17 DGNSS Broadcast, Type 19 Extended Class B
-//     Position, Type 20 Data Link Management, Type 21
-//     Aid-to-Navigation, Type 22 Channel Management, Type
-//     23 Group Assignment, Type 25 / 26 / 27 Long-Range
+//     Type 17 DGNSS Broadcast, Type 20 Data Link
+//     Management, Type 22 Channel Management, Type 23
+//     Group Assignment, Type 25 / 26 / 27 Long-Range
 //     Application — recognised by name but body decode
 //     deferred.
 //   - Live demodulation from raw I/Q samples — sentences
@@ -94,7 +103,9 @@ type Message struct {
 	BaseStation     *BaseStationReport      `json:"base_station,omitempty"`
 	StaticAndVoyage *StaticAndVoyageData    `json:"static_and_voyage,omitempty"`
 	PositionClassB  *PositionReportClassB   `json:"position_class_b,omitempty"`
+	ExtendedClassB  *ExtendedPositionClassB `json:"extended_class_b,omitempty"`
 	StaticClassB    *StaticDataReportClassB `json:"static_class_b,omitempty"`
+	AidToNavigation *AidToNavigationReport  `json:"aid_to_navigation,omitempty"`
 }
 
 // PositionReportClassA is the Type-1/2/3 body — the high-
@@ -172,6 +183,57 @@ type PositionReportClassB struct {
 	Msg22Flag           bool     `json:"msg22_flag"`
 	Assigned            bool     `json:"assigned"`
 	RAIM                bool     `json:"raim"`
+}
+
+// ExtendedPositionClassB is Type-19 — the richer Class-B
+// position broadcast that, unlike Type-18, also carries the
+// vessel name, ship type and dimensions in a single 312-bit
+// message (so it doubles as static data for small craft).
+type ExtendedPositionClassB struct {
+	SpeedOverGroundKts  *float64 `json:"speed_over_ground_kts,omitempty"`
+	PositionAccuracy    bool     `json:"position_accuracy"`
+	LongitudeDeg        *float64 `json:"longitude_deg,omitempty"`
+	LatitudeDeg         *float64 `json:"latitude_deg,omitempty"`
+	CourseOverGroundDeg *float64 `json:"course_over_ground_deg,omitempty"`
+	TrueHeadingDeg      *int     `json:"true_heading_deg,omitempty"`
+	Timestamp           int      `json:"timestamp_sec"`
+	VesselName          string   `json:"vessel_name"`
+	ShipType            int      `json:"ship_type"`
+	ShipTypeName        string   `json:"ship_type_name"`
+	DimensionBow        int      `json:"dimension_to_bow_m"`
+	DimensionStern      int      `json:"dimension_to_stern_m"`
+	DimensionPort       int      `json:"dimension_to_port_m"`
+	DimensionStbd       int      `json:"dimension_to_starboard_m"`
+	EPFDType            int      `json:"epfd_type"`
+	EPFDName            string   `json:"epfd_name"`
+	RAIM                bool     `json:"raim"`
+	DTE                 int      `json:"dte"`
+	Assigned            bool     `json:"assigned"`
+}
+
+// AidToNavigationReport is Type-21 — broadcast by (or on behalf
+// of) a navigation aid: a buoy, lighthouse, RACON, beacon or a
+// "virtual" AtoN that exists only as a transmitted mark. The
+// name can overflow into a 0-88-bit extension field.
+type AidToNavigationReport struct {
+	AidType          int      `json:"aid_type"`
+	AidTypeName      string   `json:"aid_type_name"`
+	Name             string   `json:"name"`
+	NameExtension    string   `json:"name_extension,omitempty"`
+	PositionAccuracy bool     `json:"position_accuracy"`
+	LongitudeDeg     *float64 `json:"longitude_deg,omitempty"`
+	LatitudeDeg      *float64 `json:"latitude_deg,omitempty"`
+	DimensionBow     int      `json:"dimension_to_bow_m"`
+	DimensionStern   int      `json:"dimension_to_stern_m"`
+	DimensionPort    int      `json:"dimension_to_port_m"`
+	DimensionStbd    int      `json:"dimension_to_starboard_m"`
+	EPFDType         int      `json:"epfd_type"`
+	EPFDName         string   `json:"epfd_name"`
+	Timestamp        int      `json:"timestamp_sec"`
+	OffPosition      bool     `json:"off_position"`
+	RAIM             bool     `json:"raim"`
+	VirtualAid       bool     `json:"virtual_aid"`
+	Assigned         bool     `json:"assigned"`
 }
 
 // StaticDataReportClassB is Type-24 — Part A (vessel name) or
@@ -261,6 +323,16 @@ func Decode(input string) (*Message, error) {
 		m.StaticAndVoyage = decodeStaticAndVoyage(bits)
 	case 18:
 		m.PositionClassB = decodePositionClassB(bits)
+	case 19:
+		if len(bits) < 311 {
+			return nil, fmt.Errorf("ais: Type 19 payload truncated (%d bits, need 311)", len(bits))
+		}
+		m.ExtendedClassB = decodeExtendedClassB(bits)
+	case 21:
+		if len(bits) < 272 {
+			return nil, fmt.Errorf("ais: Type 21 payload truncated (%d bits, need 272)", len(bits))
+		}
+		m.AidToNavigation = decodeAidToNavigation(bits)
 	case 24:
 		m.StaticClassB = decodeStaticClassB(bits, m.MMSI)
 	}
@@ -539,6 +611,87 @@ func decodePositionClassB(bits []byte) *PositionReportClassB {
 	return p
 }
 
+func decodeExtendedClassB(bits []byte) *ExtendedPositionClassB {
+	p := &ExtendedPositionClassB{
+		PositionAccuracy: bits[56] == 1,
+		Timestamp:        readUint(bits, 133, 6),
+		VesselName:       read6BitString(bits, 143, 120),
+		ShipType:         readUint(bits, 263, 8),
+		DimensionBow:     readUint(bits, 271, 9),
+		DimensionStern:   readUint(bits, 280, 9),
+		DimensionPort:    readUint(bits, 289, 6),
+		DimensionStbd:    readUint(bits, 295, 6),
+		EPFDType:         readUint(bits, 301, 4),
+		RAIM:             bits[305] == 1,
+		DTE:              readUint(bits, 306, 1),
+		Assigned:         bits[307] == 1,
+	}
+	p.ShipTypeName = shipTypeName(p.ShipType)
+	p.EPFDName = epfdName(p.EPFDType)
+	sog := readUint(bits, 46, 10)
+	if sog != 1023 {
+		s := float64(sog) / 10.0
+		p.SpeedOverGroundKts = &s
+	}
+	lon := readInt(bits, 57, 28)
+	if lon != 0x6791AC0 {
+		l := float64(lon) / 600000.0
+		p.LongitudeDeg = &l
+	}
+	lat := readInt(bits, 85, 27)
+	if lat != 0x3412140 {
+		l := float64(lat) / 600000.0
+		p.LatitudeDeg = &l
+	}
+	cog := readUint(bits, 112, 12)
+	if cog != 3600 {
+		c := float64(cog) / 10.0
+		p.CourseOverGroundDeg = &c
+	}
+	th := readUint(bits, 124, 9)
+	if th != 511 {
+		p.TrueHeadingDeg = &th
+	}
+	return p
+}
+
+func decodeAidToNavigation(bits []byte) *AidToNavigationReport {
+	a := &AidToNavigationReport{
+		AidType:          readUint(bits, 38, 5),
+		Name:             read6BitString(bits, 43, 120),
+		PositionAccuracy: bits[163] == 1,
+		DimensionBow:     readUint(bits, 219, 9),
+		DimensionStern:   readUint(bits, 228, 9),
+		DimensionPort:    readUint(bits, 237, 6),
+		DimensionStbd:    readUint(bits, 243, 6),
+		EPFDType:         readUint(bits, 249, 4),
+		Timestamp:        readUint(bits, 253, 6),
+		OffPosition:      bits[259] == 1,
+		RAIM:             bits[268] == 1,
+		VirtualAid:       bits[269] == 1,
+		Assigned:         bits[270] == 1,
+	}
+	a.AidTypeName = aidTypeName(a.AidType)
+	a.EPFDName = epfdName(a.EPFDType)
+	lon := readInt(bits, 164, 28)
+	if lon != 0x6791AC0 {
+		l := float64(lon) / 600000.0
+		a.LongitudeDeg = &l
+	}
+	lat := readInt(bits, 192, 27)
+	if lat != 0x3412140 {
+		l := float64(lat) / 600000.0
+		a.LatitudeDeg = &l
+	}
+	// The name may overflow into a variable extension field
+	// (bits 272 onward, up to 88 bits / 14 chars), present only
+	// when the sender padded the message out past the 272-bit core.
+	if extWidth := ((len(bits) - 272) / 6) * 6; extWidth > 0 {
+		a.NameExtension = read6BitString(bits, 272, extWidth)
+	}
+	return a
+}
+
 func decodeStaticClassB(bits []byte, parentMMSI int) *StaticDataReportClassB {
 	part := readUint(bits, 38, 2)
 	s := &StaticDataReportClassB{PartNumber: part}
@@ -639,6 +792,78 @@ func messageTypeName(t int) string {
 		return "Position Report For Long-Range Applications"
 	}
 	return fmt.Sprintf("Reserved (type %d)", t)
+}
+
+// aidTypeName maps the Type-21 aid-type code to its label per
+// ITU-R M.1371-5 Table 76.
+func aidTypeName(t int) string {
+	switch t {
+	case 0:
+		return "Default, type of AtoN not specified"
+	case 1:
+		return "Reference point"
+	case 2:
+		return "RACON (radar transponder)"
+	case 3:
+		return "Fixed structure off shore"
+	case 4:
+		return "Spare (reserved)"
+	case 5:
+		return "Light, without sectors"
+	case 6:
+		return "Light, with sectors"
+	case 7:
+		return "Leading Light Front"
+	case 8:
+		return "Leading Light Rear"
+	case 9:
+		return "Beacon, Cardinal N"
+	case 10:
+		return "Beacon, Cardinal E"
+	case 11:
+		return "Beacon, Cardinal S"
+	case 12:
+		return "Beacon, Cardinal W"
+	case 13:
+		return "Beacon, Port hand"
+	case 14:
+		return "Beacon, Starboard hand"
+	case 15:
+		return "Beacon, Preferred Channel port hand"
+	case 16:
+		return "Beacon, Preferred Channel starboard hand"
+	case 17:
+		return "Beacon, Isolated danger"
+	case 18:
+		return "Beacon, Safe water"
+	case 19:
+		return "Beacon, Special mark"
+	case 20:
+		return "Cardinal Mark N"
+	case 21:
+		return "Cardinal Mark E"
+	case 22:
+		return "Cardinal Mark S"
+	case 23:
+		return "Cardinal Mark W"
+	case 24:
+		return "Port hand Mark"
+	case 25:
+		return "Starboard hand Mark"
+	case 26:
+		return "Preferred Channel Port hand"
+	case 27:
+		return "Preferred Channel Starboard hand"
+	case 28:
+		return "Isolated danger"
+	case 29:
+		return "Safe Water"
+	case 30:
+		return "Special Mark"
+	case 31:
+		return "Light Vessel / LANBY / Rig"
+	}
+	return fmt.Sprintf("Unknown aid type %d", t)
 }
 
 func navStatusName(s int) string {
