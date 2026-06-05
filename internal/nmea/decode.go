@@ -8,6 +8,15 @@
 // drone-telemetry dump) and get the fix — latitude/longitude, time, fix quality,
 // satellites, speed/course, altitude — with the sentence checksum validated.
 //
+// Beyond the GPS/GNSS sentences it also decodes the marine-instrument
+// sentences carried on a vessel's NMEA 0183 bus — heading (HDT / HDG),
+// water speed and heading (VHW), depth (DBT / DPT), water temperature
+// (MTW), wind (MWV / MWD) and rate of turn (ROT). NMEA 0183 is an
+// unauthenticated bus, so a spoofed depth / heading / wind value injected
+// onto it can mislead an autopilot or crew — the maritime counterpart to
+// GPS spoofing — which makes decoding a captured marine NMEA stream a
+// genuine integrity-analysis surface (companion to ais_nmea_decode).
+//
 // # Wrap-vs-native judgement
 //
 // Native. NMEA 0183 is a fully public, comma-delimited ASCII format with a
@@ -20,10 +29,11 @@
 //
 // # Verifiable / no confidently-wrong output
 //
-// The position/velocity/fix sentences (GGA, RMC, GLL, VTG, GSA, GSV) are
-// anchored to the pynmea2 reference library: the canonical example sentences
-// reproduce its decoded latitude/longitude/time/speed/course/fix fields
-// exactly. The checksum is validated and surfaced (checksum_ok); a sentence
+// The position/velocity/fix sentences (GGA, RMC, GLL, VTG, GSA, GSV) and the
+// marine-instrument sentences (HDT, HDG, VHW, DBT, DPT, MTW, MWV, MWD, ROT)
+// are anchored to the pynmea2 reference library: the canonical example
+// sentences reproduce its decoded fields (latitude/longitude/time/speed/
+// course/fix, and heading/depth/wind/temperature) exactly. The checksum is validated and surfaced (checksum_ok); a sentence
 // with a bad or absent checksum is still parsed but flagged. An empty field
 // (no fix yet) decodes to a null value, never a zero. An unrecognised sentence
 // type is surfaced with its raw comma fields rather than guessed.
@@ -81,6 +91,31 @@ type Sentence struct {
 	StdDevLonM     *float64 `json:"std_dev_lon_m,omitempty"`
 	StdDevAltM     *float64 `json:"std_dev_alt_m,omitempty"`
 
+	// Marine instrument sentences — heading / depth / wind / speed /
+	// temperature carried on a vessel's NMEA 0183 bus alongside GPS.
+	// (NMEA 0183 is unauthenticated, so a spoofed depth / heading /
+	// wind value injected onto the bus can mislead an autopilot or
+	// crew — the maritime counterpart to GPS spoofing.)
+	HeadingTrueDeg   *float64 `json:"heading_true_deg,omitempty"`            // HDT / VHW
+	HeadingMagDeg    *float64 `json:"heading_magnetic_deg,omitempty"`        // HDG / VHW
+	MagDeviationDeg  *float64 `json:"mag_deviation_deg,omitempty"`           // HDG (signed E+/W-)
+	WaterSpeedKnots  *float64 `json:"water_speed_knots,omitempty"`           // VHW
+	WaterSpeedKmh    *float64 `json:"water_speed_kmh,omitempty"`             // VHW
+	DepthMeters      *float64 `json:"depth_meters,omitempty"`                // DBT / DPT
+	DepthFeet        *float64 `json:"depth_feet,omitempty"`                  // DBT
+	DepthFathoms     *float64 `json:"depth_fathoms,omitempty"`               // DBT
+	DepthOffsetM     *float64 `json:"depth_offset_m,omitempty"`              // DPT transducer offset
+	WaterTempC       *float64 `json:"water_temp_c,omitempty"`                // MTW
+	WindAngleDeg     *float64 `json:"wind_angle_deg,omitempty"`              // MWV
+	WindReference    string   `json:"wind_reference,omitempty"`              // MWV R=relative / T=true
+	WindSpeed        *float64 `json:"wind_speed,omitempty"`                  // MWV
+	WindSpeedUnits   string   `json:"wind_speed_units,omitempty"`            // MWV K/M/N
+	WindDirTrueDeg   *float64 `json:"wind_direction_true_deg,omitempty"`     // MWD
+	WindDirMagDeg    *float64 `json:"wind_direction_magnetic_deg,omitempty"` // MWD
+	WindSpeedKnots   *float64 `json:"wind_speed_knots,omitempty"`            // MWD
+	WindSpeedMS      *float64 `json:"wind_speed_ms,omitempty"`               // MWD
+	RateOfTurnDegMin *float64 `json:"rate_of_turn_deg_min,omitempty"`        // ROT
+
 	// Satellites carries the per-satellite detail of a GSV sentence.
 	Satellites []Satellite `json:"satellites,omitempty"`
 
@@ -112,6 +147,15 @@ var typeNames = map[string]string{
 	"GSV": "GNSS Satellites in View",
 	"GST": "GNSS Pseudorange Error Statistics",
 	"ZDA": "Time and Date",
+	"HDT": "Heading — True",
+	"HDG": "Heading, Deviation & Variation",
+	"VHW": "Water Speed and Heading",
+	"DBT": "Depth Below Transducer",
+	"DPT": "Depth of Water",
+	"MTW": "Water Temperature",
+	"MWV": "Wind Speed and Angle",
+	"MWD": "Wind Direction and Speed",
+	"ROT": "Rate of Turn",
 }
 
 var fixQualityNames = map[int]string{
@@ -186,6 +230,24 @@ func decodeLine(line string) *Sentence {
 		decodeGST(s, fields)
 	case "ZDA":
 		decodeZDA(s, fields)
+	case "HDT":
+		decodeHDT(s, fields)
+	case "HDG":
+		decodeHDG(s, fields)
+	case "VHW":
+		decodeVHW(s, fields)
+	case "DBT":
+		decodeDBT(s, fields)
+	case "DPT":
+		decodeDPT(s, fields)
+	case "MTW":
+		decodeMTW(s, fields)
+	case "MWV":
+		decodeMWV(s, fields)
+	case "MWD":
+		decodeMWD(s, fields)
+	case "ROT":
+		decodeROT(s, fields)
 	default:
 		s.Fields = fields[1:]
 		if s.Note == "" {
@@ -310,6 +372,67 @@ func decodeZDA(s *Sentence, f []string) {
 	if day != nil && mon != nil && yr != nil {
 		s.Date = fmt.Sprintf("%04d-%02d-%02d", *yr, *mon, *day)
 	}
+}
+
+func decodeHDT(s *Sentence, f []string) {
+	// heading, T
+	s.HeadingTrueDeg = floatPtr(f, 1)
+}
+
+func decodeHDG(s *Sentence, f []string) {
+	// magnetic_sensor_heading, deviation, dev_dir(E/W), variation, var_dir(E/W)
+	s.HeadingMagDeg = floatPtr(f, 1)
+	s.MagDeviationDeg = signedMagVar(f, 2, 3)
+	s.MagVariationDeg = signedMagVar(f, 4, 5)
+}
+
+func decodeVHW(s *Sentence, f []string) {
+	// heading_true, T, heading_mag, M, speed_knots, N, speed_kmh, K
+	s.HeadingTrueDeg = floatPtr(f, 1)
+	s.HeadingMagDeg = floatPtr(f, 3)
+	s.WaterSpeedKnots = floatPtr(f, 5)
+	s.WaterSpeedKmh = floatPtr(f, 7)
+}
+
+func decodeDBT(s *Sentence, f []string) {
+	// depth_feet, f, depth_meters, M, depth_fathoms, F
+	s.DepthFeet = floatPtr(f, 1)
+	s.DepthMeters = floatPtr(f, 3)
+	s.DepthFathoms = floatPtr(f, 5)
+}
+
+func decodeDPT(s *Sentence, f []string) {
+	// depth_meters, transducer_offset_meters, [max_range_meters]
+	s.DepthMeters = floatPtr(f, 1)
+	s.DepthOffsetM = floatPtr(f, 2)
+}
+
+func decodeMTW(s *Sentence, f []string) {
+	// temperature, C
+	s.WaterTempC = floatPtr(f, 1)
+}
+
+func decodeMWV(s *Sentence, f []string) {
+	// wind_angle, reference(R/T), wind_speed, units(K/M/N), status(A/V)
+	s.WindAngleDeg = floatPtr(f, 1)
+	s.WindReference = at(f, 2)
+	s.WindSpeed = floatPtr(f, 3)
+	s.WindSpeedUnits = at(f, 4)
+	s.Status = at(f, 5)
+}
+
+func decodeMWD(s *Sentence, f []string) {
+	// dir_true, T, dir_mag, M, speed_knots, N, speed_ms, M
+	s.WindDirTrueDeg = floatPtr(f, 1)
+	s.WindDirMagDeg = floatPtr(f, 3)
+	s.WindSpeedKnots = floatPtr(f, 5)
+	s.WindSpeedMS = floatPtr(f, 7)
+}
+
+func decodeROT(s *Sentence, f []string) {
+	// rate_of_turn (deg/min, bow-up positive), status(A/V)
+	s.RateOfTurnDegMin = floatPtr(f, 1)
+	s.Status = at(f, 2)
 }
 
 // latLon converts the ddmm.mmmm / dddmm.mmmm field at index valIdx plus the

@@ -40,6 +40,13 @@ var gpsNMEADecodeSpec = Spec{
 		"- **GST** — pseudorange error statistics: RMS, error-ellipse (major/minor/orientation), " +
 		"and lat/lon/altitude standard deviations (fix integrity).\n" +
 		"- **ZDA** — UTC time + date.\n\n" +
+		"It also decodes the **marine-instrument sentences** carried on a vessel's NMEA 0183 bus alongside " +
+		"GPS — **HDT/HDG** (heading true / magnetic + deviation + variation), **VHW** (water speed + " +
+		"heading), **DBT/DPT** (depth below transducer / depth + transducer offset), **MTW** (water " +
+		"temperature), **MWV/MWD** (wind speed + angle, relative or true), and **ROT** (rate of turn). " +
+		"NMEA 0183 is unauthenticated, so a spoofed depth / heading / wind value injected onto the bus can " +
+		"mislead an autopilot or crew — the maritime counterpart to GPS spoofing — making a captured marine " +
+		"NMEA stream a genuine integrity-analysis surface (companion to `ais_nmea_decode`).\n\n" +
 		"Coordinates are converted from `ddmm.mmmm`/hemisphere to signed decimal degrees; the talker ID " +
 		"(GP=GPS, GN=combined GNSS, GL=GLONASS, GA=Galileo, GB/BD=BeiDou, …) is identified. Multiple " +
 		"sentences (newline-separated) decode to an array. Each sentence reports `checksum_ok` (the NMEA " +

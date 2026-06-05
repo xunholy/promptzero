@@ -167,6 +167,98 @@ func TestZDA(t *testing.T) {
 	}
 }
 
+// --- Marine instrument sentences (oracle values from pynmea2 1.19.0) ---
+
+func TestHDT(t *testing.T) {
+	s := one(t, "$GPHDT,274.07,T*03")
+	if !s.ChecksumOK || s.Type != "HDT" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "heading_true", s.HeadingTrueDeg, 274.07)
+}
+
+func TestHDG(t *testing.T) {
+	s := one(t, "$HCHDG,98.3,0.0,E,12.6,W*57")
+	if !s.ChecksumOK || s.Type != "HDG" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "heading_mag", s.HeadingMagDeg, 98.3)
+	feq(t, "deviation", s.MagDeviationDeg, 0.0)
+	feq(t, "variation", s.MagVariationDeg, -12.6) // W = negative
+}
+
+func TestVHW(t *testing.T) {
+	s := one(t, "$VWVHW,274.0,T,261.4,M,5.2,N,9.6,K*5C")
+	if !s.ChecksumOK || s.Type != "VHW" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "heading_true", s.HeadingTrueDeg, 274.0)
+	feq(t, "heading_mag", s.HeadingMagDeg, 261.4)
+	feq(t, "water_speed_knots", s.WaterSpeedKnots, 5.2)
+	feq(t, "water_speed_kmh", s.WaterSpeedKmh, 9.6)
+}
+
+func TestDBT(t *testing.T) {
+	s := one(t, "$SDDBT,17.5,f,5.3,M,2.9,F*38")
+	if !s.ChecksumOK || s.Type != "DBT" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "depth_feet", s.DepthFeet, 17.5)
+	feq(t, "depth_meters", s.DepthMeters, 5.3)
+	feq(t, "depth_fathoms", s.DepthFathoms, 2.9)
+}
+
+func TestDPT(t *testing.T) {
+	s := one(t, "$SDDPT,5.3,0.5,0.0*56")
+	if !s.ChecksumOK || s.Type != "DPT" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "depth_meters", s.DepthMeters, 5.3)
+	feq(t, "depth_offset", s.DepthOffsetM, 0.5)
+}
+
+func TestMTW(t *testing.T) {
+	s := one(t, "$YXMTW,17.9,C*1D")
+	if !s.ChecksumOK || s.Type != "MTW" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "water_temp_c", s.WaterTempC, 17.9)
+}
+
+func TestMWV(t *testing.T) {
+	s := one(t, "$WIMWV,214.8,R,0.1,K,A*28")
+	if !s.ChecksumOK || s.Type != "MWV" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "wind_angle", s.WindAngleDeg, 214.8)
+	if s.WindReference != "R" || s.WindSpeedUnits != "K" || s.Status != "A" {
+		t.Errorf("ref/units/status = %q/%q/%q; want R/K/A", s.WindReference, s.WindSpeedUnits, s.Status)
+	}
+	feq(t, "wind_speed", s.WindSpeed, 0.1)
+}
+
+func TestMWD(t *testing.T) {
+	s := one(t, "$WIMWD,271.0,T,261.0,M,7.0,N,3.6,M*59")
+	if !s.ChecksumOK || s.Type != "MWD" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "dir_true", s.WindDirTrueDeg, 271.0)
+	feq(t, "dir_mag", s.WindDirMagDeg, 261.0)
+	feq(t, "speed_knots", s.WindSpeedKnots, 7.0)
+	feq(t, "speed_ms", s.WindSpeedMS, 3.6)
+}
+
+func TestROT(t *testing.T) {
+	s := one(t, "$TIROT,-2.3,A*17")
+	if !s.ChecksumOK || s.Type != "ROT" {
+		t.Fatalf("ck/type = %v/%s", s.ChecksumOK, s.Type)
+	}
+	feq(t, "rate_of_turn", s.RateOfTurnDegMin, -2.3)
+	if s.Status != "A" {
+		t.Errorf("status = %q; want A", s.Status)
+	}
+}
+
 func TestChecksumBadFlagged(t *testing.T) {
 	// Same GGA with a wrong checksum: still parses, but flagged.
 	s := one(t, "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*00")
