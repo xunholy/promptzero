@@ -2261,7 +2261,11 @@ func TestRegistrySize(t *testing.T) {
 	// MCC→country + MNC/MSIN split; the subscriber companion to imei_decode,
 	// the IMSI gap it deferred. MCC table code-generated from python-stdnum's
 	// imsi.dat; split verified against stdnum. internal/imsi).
-	const expected = 550
+	// v0.550.0 added iccid_decode (ICCID SIM-card-serial decoder — 89 MII +
+	// E.164 country code + Luhn check; the SIM-card leg completing the
+	// IMEI/IMSI/ICCID cellular identifier triad. Calling-code table
+	// code-generated from libphonenumber; Luhn-anchored. internal/iccid).
+	const expected = 551
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

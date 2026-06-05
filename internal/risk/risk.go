@@ -2254,6 +2254,13 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. MCC table
 		// code-generated from python-stdnum; split verified against it.
 		"imsi_decode",
+		// v0.550 (SIM-card identifier decode): iccid_decode — the
+		// SIM-card leg completing the IMEI/IMSI/ICCID triad. 89 MII +
+		// E.164 country code + Luhn check digit (the verification
+		// anchor). Pure offline digit-field decode of a pasted number;
+		// reads a string, transmits nothing, so it is Low. Calling-code
+		// table code-generated from Google libphonenumber.
+		"iccid_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
