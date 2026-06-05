@@ -2255,7 +2255,13 @@ func TestRegistrySize(t *testing.T) {
 	// 0xD3 frame + CRC-24Q + message-type ID + 1005/1006 station-ARP ECEF
 	// body; the corrections leg of the GNSS triad. Anchored to pyrtcm.
 	// internal/rtcm).
-	const expected = 549
+	// (v0.548.0 extended gps_nmea_decode with the marine-instrument sentences
+	// HDT/HDG/VHW/DBT/DPT/MTW/MWV/MWD/ROT — no new tool.)
+	// v0.549.0 added imsi_decode (IMSI cellular subscriber-identity decoder —
+	// MCC→country + MNC/MSIN split; the subscriber companion to imei_decode,
+	// the IMSI gap it deferred. MCC table code-generated from python-stdnum's
+	// imsi.dat; split verified against stdnum. internal/imsi).
+	const expected = 550
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
