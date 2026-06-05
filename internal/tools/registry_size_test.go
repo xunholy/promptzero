@@ -2225,7 +2225,10 @@ func TestRegistrySize(t *testing.T) {
 	// — originator / event-code / FIPS-location / valid + issue time / callsign,
 	// NWS NWSI 10-1712 / FCC 47 CFR 11.31. Verified against the documented NWS
 	// worked example. internal/eas).
-	const expected = 542
+	// v0.537.0 added enocean_decode (EnOcean ESP3 / ERP1 building-automation
+	// radio decoder — framing + dual CRC-8 + RORG + 32-bit sender ID + RSSI.
+	// Verified against a CRC-8-valid RADIO_ERP1 reference frame. internal/enocean).
+	const expected = 543
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

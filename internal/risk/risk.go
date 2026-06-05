@@ -478,6 +478,11 @@ var toolLevels = func() map[string]Level {
 		// 11.31). Pure offline string parse of a demodulated ZCZC header;
 		// verified against the documented NWS worked example.
 		"eas_same_decode",
+		// v0.537 (sub-GHz building-automation decode space): EnOcean ESP3 /
+		// ERP1 radio decoder — framing + dual CRC-8 + RORG type + 32-bit
+		// sender ID + RSSI. Pure offline byte-field decode of an ESP3
+		// capture; verified against a CRC-8-valid RADIO_ERP1 reference frame.
+		"enocean_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast
