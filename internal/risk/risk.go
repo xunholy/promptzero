@@ -2261,6 +2261,13 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Calling-code
 		// table code-generated from Google libphonenumber.
 		"iccid_decode",
+		// v0.551 (travel-document decode): mrz_decode — the ICAO 9303
+		// Machine Readable Zone of a passport / ID / visa (TD1/TD2/TD3),
+		// the BAC-key input for reading an e-passport NFC chip. Fields +
+		// 7-3-1 check-digit validation (the verification anchor). Pure
+		// offline text decode of a pasted MRZ; reads a string, transmits
+		// nothing, so it is Low. Verified against the mrz reference lib.
+		"mrz_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

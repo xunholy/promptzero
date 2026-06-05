@@ -2265,7 +2265,11 @@ func TestRegistrySize(t *testing.T) {
 	// E.164 country code + Luhn check; the SIM-card leg completing the
 	// IMEI/IMSI/ICCID cellular identifier triad. Calling-code table
 	// code-generated from libphonenumber; Luhn-anchored. internal/iccid).
-	const expected = 551
+	// v0.551.0 added mrz_decode (ICAO 9303 Machine Readable Zone decoder —
+	// TD1/TD2/TD3 passport/ID/visa fields + 7-3-1 check-digit validation;
+	// the BAC-key input for e-passport NFC. Verified against the mrz lib.
+	// internal/mrz).
+	const expected = 552
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
