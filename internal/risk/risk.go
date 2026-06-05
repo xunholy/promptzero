@@ -2275,6 +2275,13 @@ var toolLevels = func() map[string]Level {
 		// pasted barcode string; reads a string, transmits nothing, so it is
 		// Low. Verified against the canonical IATA 792 example.
 		"bcbp_decode",
+		// v0.553 (wired-L2 security decode): macsec_decode — the IEEE
+		// 802.1AE MACsec SecTAG (EtherType 0x88E5). TCI/AN flags + Short
+		// Length + Packet Number + Secure Channel Identifier; the
+		// encrypted Secure Data + ICV are surfaced opaque (no SAK on the
+		// wire). Pure offline byte-field decode of pasted bytes; reads a
+		// string, transmits nothing, so it is Low. Verified vs scapy.
+		"macsec_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

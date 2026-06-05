@@ -2274,7 +2274,11 @@ func TestRegistrySize(t *testing.T) {
 	// travel-OSINT companion to mrz_decode. Self-describing length markers;
 	// conditional section surfaced raw. Verified vs the canonical IATA
 	// example. internal/bcbp).
-	const expected = 553
+	// v0.553.0 added macsec_decode (IEEE 802.1AE MACsec SecTAG decoder —
+	// TCI/AN flags + Short Length + Packet Number + Secure Channel Identifier
+	// from the 0x88E5 wired-L2 security header; bodies out the EtherType the
+	// vlan/lldp decoders only named. Verified vs scapy. internal/macsec).
+	const expected = 554
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
