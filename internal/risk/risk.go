@@ -506,6 +506,13 @@ var toolLevels = func() map[string]Level {
 		// header; the AES payload is surfaced as ciphertext. Wire layout
 		// from the Meshtastic firmware.
 		"meshtastic_decode",
+		// v0.545 (GPS/GNSS decode space): u-blox UBX binary protocol
+		// decoder — the binary counterpart to gps_nmea_decode. Frame
+		// envelope + Fletcher-16 checksum + NAV-PVT position/velocity/
+		// time body. Pure offline byte-field decode of pasted bytes;
+		// reads a string, transmits nothing, so it is Low. Anchored to
+		// pyubx2.
+		"ubx_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast

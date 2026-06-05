@@ -2244,7 +2244,13 @@ func TestRegistrySize(t *testing.T) {
 	// decoder — node IDs + packet ID + hop/ack/MQTT flags + channel hash +
 	// next-hop/relay; the AES payload is surfaced as ciphertext. Wire layout
 	// from the Meshtastic firmware PacketHeader. internal/meshtastic).
-	const expected = 547
+	// (v0.543.0 + v0.544.0 extended ais_nmea_decode with AIS Types 19/21/9/27
+	// — no new tool, so the count is unchanged.)
+	// v0.545.0 added ubx_decode (u-blox UBX binary protocol decoder — frame
+	// envelope + Fletcher-16 checksum + NAV-PVT position/velocity/time body;
+	// the binary counterpart to gps_nmea_decode. Anchored to pyubx2.
+	// internal/ubx).
+	const expected = 548
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
