@@ -2240,7 +2240,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.541.0 added lin_frame_decode (LIN / ISO 17987 automotive body-bus
 	// frame decoder — PID + parity validation + classic/enhanced checksum.
 	// Verified against the standard LIN PID constants. internal/lin).
-	const expected = 546
+	// v0.542.0 added meshtastic_decode (Meshtastic LoRa-mesh packet-header
+	// decoder — node IDs + packet ID + hop/ack/MQTT flags + channel hash +
+	// next-hop/relay; the AES payload is surfaced as ciphertext. Wire layout
+	// from the Meshtastic firmware PacketHeader. internal/meshtastic).
+	const expected = 547
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

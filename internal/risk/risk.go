@@ -500,6 +500,12 @@ var toolLevels = func() map[string]Level {
 		// enhanced checksum. Pure offline bit/byte math on a captured frame;
 		// verified against the standard LIN PID constants.
 		"lin_frame_decode",
+		// v0.542 (LoRa mesh decode space): Meshtastic packet-header decoder
+		// — source/destination node IDs + packet ID + hop/ack/MQTT flags +
+		// channel hash. Pure offline byte-field decode of the plaintext
+		// header; the AES payload is surfaced as ciphertext. Wire layout
+		// from the Meshtastic firmware.
+		"meshtastic_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast
