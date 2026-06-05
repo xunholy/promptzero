@@ -2237,7 +2237,10 @@ func TestRegistrySize(t *testing.T) {
 	// + de-chunked application payload. The radio framing internal/mbus
 	// explicitly deferred; verified against a CRC-valid Format-A frame and a
 	// real meter header block (CRC 0x3363). internal/wmbus).
-	const expected = 545
+	// v0.541.0 added lin_frame_decode (LIN / ISO 17987 automotive body-bus
+	// frame decoder — PID + parity validation + classic/enhanced checksum.
+	// Verified against the standard LIN PID constants. internal/lin).
+	const expected = 546
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

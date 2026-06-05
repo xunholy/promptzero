@@ -495,6 +495,11 @@ var toolLevels = func() map[string]Level {
 		// payload. Pure offline byte-field decode of a line-decoded frame;
 		// verified against a CRC-valid Format-A frame + a real header block.
 		"wmbus_decode",
+		// v0.541 (automotive decode space): LIN / ISO 17987 body-bus frame
+		// decoder — protected identifier + parity validation + classic/
+		// enhanced checksum. Pure offline bit/byte math on a captured frame;
+		// verified against the standard LIN PID constants.
+		"lin_frame_decode",
 		// v0.236 (NATIVE-fit gap in the drone OSINT space):
 		// ASTM F3411-22 Remote ID payload dissector — the
 		// FAA-mandated (14 CFR Part 89) and EU-mandated broadcast
