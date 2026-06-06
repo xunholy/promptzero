@@ -2542,6 +2542,16 @@ var toolLevels = func() map[string]Level {
 		// offline decode of pasted bytes; reads a string, transmits
 		// nothing, so it is Low. Verified vs scapy + RFC 2710/3810.
 		"mld_decode",
+		// v0.587 (substation process-bus / IEC 61850 recon):
+		// sampled_values_decode — IEC 61850-9-2 / 9-2LE Sampled Values
+		// (SV / SMV), the substation process-bus current/voltage sample
+		// multicast (EtherType 0x88BA), the sampled-measurement sibling
+		// of goose_decode. Decodes the APPID/length header + the ASN.1
+		// BER savPdu → seqASDU → ASDUs: svID, smpCnt, confRev, smpSynch,
+		// and the raw sampled-value block. Pure offline decode of pasted
+		// bytes; reads a string, transmits nothing, so it is Low.
+		// Verified vs the IEC 61850-9-2 ASN.1 / Wireshark sv dissector.
+		"sampled_values_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

@@ -2423,7 +2423,14 @@ func TestRegistrySize(t *testing.T) {
 	// (mDNS ff02::fb, LLMNR ff02::1:3) — IPv6 multicast-service recon, the IPv6
 	// companion to igmp/igmpv3. Verified vs scapy + RFC 2710/3810 (50-row
 	// MLDv2-Report differential, 0 mismatches). internal/mld).
-	const expected = 584
+	// v0.587.0 added sampled_values_decode (IEC 61850-9-2 / 9-2LE Sampled Values
+	// SV/SMV — the substation process-bus current/voltage sample multicast,
+	// EtherType 0x88BA; the sampled-measurement sibling of goose_decode: an
+	// ASN.1 BER savPdu (tag 0x60) → seqASDU (0xA2) → ASDUs (0x30) with svID,
+	// smpCnt (the SV-injection/replay counter), confRev, smpSynch and the raw
+	// sampled-value block. BER walk verified byte-by-byte vs the IEC 61850-9-2
+	// ASN.1 / Wireshark sv dissector (no scapy model exists). internal/sv).
+	const expected = 585
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
