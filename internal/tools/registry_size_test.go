@@ -2387,7 +2387,12 @@ func TestRegistrySize(t *testing.T) {
 	// header (MD type / next proto) + service-path SPI/SI + context, chaining
 	// the inner IPv4/IPv6/Ethernet to ipdecode; joins the tunnel-decap family.
 	// Header verified vs scapy. internal/nsh).
-	const expected = 579
+	// v0.581.0 added homeplugav_decode (HomePlug AV / IEEE 1901 powerline
+	// management envelope, EtherType 0x88E1 — version + LE MMTYPE + name
+	// (77-entry code-gen table) + sub-type/category; powerline (PLC) mgmt
+	// recon (key exchange / sniffer / network info). Verified vs scapy.
+	// internal/homeplugav).
+	const expected = 580
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

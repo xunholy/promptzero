@@ -2489,6 +2489,15 @@ var toolLevels = func() map[string]Level {
 		// offline decode of pasted bytes; reads a string, transmits nothing,
 		// so it is Low. Header verified vs scapy.
 		"nsh_decode",
+		// v0.581 (powerline / HomePlug AV management recon):
+		// homeplugav_decode — HomePlug AV / IEEE 1901 powerline management
+		// envelope (EtherType 0x88E1). Decodes the version + little-endian
+		// MMTYPE + name (77-entry code-gen table) + sub-type / category,
+		// identifying the PLC management operation (key exchange / sniffer /
+		// network info / MAC-memory read); bodies surfaced raw. Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it
+		// is Low. Verified vs scapy.
+		"homeplugav_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
