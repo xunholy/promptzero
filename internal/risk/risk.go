@@ -2388,6 +2388,14 @@ var toolLevels = func() map[string]Level {
 		// of pasted bytes; reads a string, transmits nothing, so it is Low.
 		// Verified vs scapy.
 		"gxrp_decode",
+		// v0.567 (L2 flow-control DoS recon): maccontrol_decode — IEEE
+		// 802.3 MAC Control (EtherType 0x8808). Decodes 802.3x PAUSE (the
+		// switch-port flow-control DoS), 802.1Qbb PFC (priority-flow storm)
+		// and the EPON MPCP opcodes (GATE/REPORT/REGISTER); the L2-DoS leg
+		// of the LAN-attack family with dtp+vtp+vqp+gxrp. Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it
+		// is Low. Verified vs scapy.
+		"maccontrol_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

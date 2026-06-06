@@ -2332,7 +2332,11 @@ func TestRegistrySize(t *testing.T) {
 	// the JoinIn/Leave/LeaveAll events + VLAN/group-MAC/service values; the
 	// GVRP VLAN-hopping primitive, fourth leg of the VLAN-attack family with
 	// dtp+vtp+vqp. Verified vs scapy. internal/gxrp).
-	const expected = 567
+	// v0.567.0 added maccontrol_decode (IEEE 802.3 MAC Control, EtherType
+	// 0x8808 — 802.3x PAUSE (flow-control DoS) + 802.1Qbb PFC (priority-flow
+	// storm) + EPON MPCP GATE/REPORT/REGISTER; the L2-DoS leg of the
+	// LAN-attack family. Verified vs scapy. internal/maccontrol).
+	const expected = 568
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
