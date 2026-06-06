@@ -2314,7 +2314,12 @@ func TestRegistrySize(t *testing.T) {
 	// UDP 1589 — 8-byte header + datatype/len/value TLV walk surfacing the
 	// queried MAC + assigned VLAN name; third leg of the VLAN-attack family
 	// with dtp + vtp (voiphopper / yersinia). Verified vs scapy. internal/vqp).
-	const expected = 563
+	// v0.563.0 added igmpv3_decode (IGMPv3 / RFC 3376 IPv4 multicast
+	// membership v3 — checksum-verified header + Query (source list, QRV/QQIC
+	// float codes, query type) + v3 Report group records (INCLUDE/EXCLUDE
+	// source filters); multicast recon, v3 companion to igmp. Verified vs
+	// scapy. internal/igmpv3).
+	const expected = 564
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

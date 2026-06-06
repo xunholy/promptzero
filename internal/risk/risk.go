@@ -2352,6 +2352,15 @@ var toolLevels = func() map[string]Level {
 		// of pasted bytes; reads a string, transmits nothing, so it is Low.
 		// Verified vs scapy.
 		"vqp_decode",
+		// v0.563 (IPv4 multicast-membership recon): igmpv3_decode — IGMPv3
+		// (RFC 3376), the IPv4 multicast group-membership protocol v3.
+		// Decodes the checksum-verified header + Query (source list, QRV /
+		// QQIC float codes, query type) + v3 Report group records
+		// (INCLUDE / EXCLUDE source filters) revealing which multicast
+		// groups a host has joined. v3 companion to igmp. Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it
+		// is Low. Verified vs scapy.
+		"igmpv3_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
