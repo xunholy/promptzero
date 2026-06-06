@@ -2520,6 +2520,18 @@ var toolLevels = func() map[string]Level {
 		// offline decode of pasted bytes; reads a string, transmits
 		// nothing, so it is Low. Verified vs scapy.
 		"roce_decode",
+		// v0.584 (ICMP MPLS-extension / traceroute topology recon):
+		// icmp_extension_decode — ICMP multipart message extension
+		// (RFC 4884) + the MPLS Label Stack object (RFC 4950) that
+		// routers append to Time Exceeded / Destination Unreachable
+		// messages. Decodes the 4-byte extension header + the TLV
+		// objects, fully decoding the MPLS object into its 32-bit label
+		// entries (label / traffic class / bottom-of-stack / TTL); the
+		// RFC 5837 Interface Information / Identification objects and any
+		// unknown class are surfaced raw. Pure offline decode of pasted
+		// bytes; reads a string, transmits nothing, so it is Low.
+		// Verified vs scapy + RFC 4950.
+		"icmp_extension_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

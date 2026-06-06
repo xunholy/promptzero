@@ -2406,7 +2406,14 @@ func TestRegistrySize(t *testing.T) {
 	// datacenter RDMA-fabric recon, a distinct domain. 12-byte layout + 57-entry
 	// opcode table verified vs scapy (80-row differential, 0 mismatches).
 	// internal/roce).
-	const expected = 582
+	// v0.584.0 added icmp_extension_decode (ICMP multipart extension, RFC 4884 +
+	// MPLS Label Stack object, RFC 4950 — the extension routers append to Time
+	// Exceeded / Unreachable messages: the MPLS labels (label/TC/S/TTL) a
+	// dropped packet was traversing, leaking the label-switched path during a
+	// traceroute through an MPLS core; RFC 5837 Interface Information surfaced
+	// raw. Pairs with icmp_packet_decode + mpls_decode. Header + TLV + MPLS
+	// object verified vs scapy + RFC 4950. internal/icmpext).
+	const expected = 583
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
