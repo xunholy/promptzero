@@ -2405,6 +2405,14 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it
 		// is Low. Verified vs scapy.
 		"oam_decode",
+		// v0.570 (Sun-RPC / rpcbind service-enumeration recon):
+		// portmap_decode — ONC RPC portmapper / rpcbind v2 (program 100000,
+		// port 111). Decodes the RPC header + GETPORT call/reply + the DUMP
+		// reply service list (the rpcinfo -p enumeration: nfs / mountd /
+		// NIS / nlockmgr with program + version + transport + port). Pure
+		// offline decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Verified vs scapy.
+		"portmap_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

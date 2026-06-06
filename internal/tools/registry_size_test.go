@@ -2343,7 +2343,12 @@ func TestRegistrySize(t *testing.T) {
 	// body (RDI / period / seq / MEP ID / MEG ID); the L2 connectivity-fault /
 	// service-topology recon leg of the LAN family. Verified vs scapy.
 	// internal/oam).
-	const expected = 569
+	// v0.570.0 added portmap_decode (ONC RPC portmapper / rpcbind v2, port
+	// 111 — RPC header + GETPORT call/reply + DUMP reply service list (the
+	// rpcinfo -p enumeration: nfs/mountd/NIS/... program+version+port). The
+	// Sun-RPC service-enumeration recon decoder. Verified vs scapy.
+	// internal/portmap).
+	const expected = 570
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
