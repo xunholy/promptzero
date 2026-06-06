@@ -2445,7 +2445,17 @@ func TestRegistrySize(t *testing.T) {
 	// Request-System-Code list. Well-known system codes named, the rest raw.
 	// Frame layout verified byte-by-byte vs the Sony FeliCa Card User's Manual /
 	// JIS X 6319-4 (no scapy model exists). internal/felica).
-	const expected = 587
+	// (v0.590.0 was an enhancement to nfc_iso14443a_identify — full ATS
+	// interface-byte decode (TA1 bit rate / TB1 FWI+SFGI / TC1 NAD+CID) to
+	// parity with the Type-B decoder — not a new tool, so the count was
+	// unchanged.)
+	// v0.591.0 added nfc_tcl_decode (ISO 14443-4 T=CL block transmission
+	// protocol — the half-duplex block layer carrying APDUs to a Type-4 card:
+	// the PCB → I-block (APDU data + chaining) / R-block (ACK/NAK) / S-block
+	// (WTX/DESELECT) + CID/NAD + INF; completes the NFC stack identify → ATS →
+	// T=CL → APDU. PCB coding verified vs ISO 14443-4 §7.1 + Proxmark/libnfc
+	// canonical values. internal/tcl).
+	const expected = 588
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

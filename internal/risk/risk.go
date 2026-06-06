@@ -2572,6 +2572,16 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low. Verified
 		// vs the Sony FeliCa Card User's Manual / JIS X 6319-4.
 		"nfc_felica_decode",
+		// v0.591 (NFC T=CL transport recon):
+		// nfc_tcl_decode — ISO/IEC 14443-4 T=CL block transmission
+		// protocol, the half-duplex block layer that carries APDUs to a
+		// Type-4 contactless card. Decodes the PCB into I-block (APDU data
+		// + chaining) / R-block (ACK/NAK) / S-block (WTX/DESELECT), the
+		// CID / NAD, and the INF field (the APDU fragment, surfaced raw for
+		// the APDU decoder). Completes the NFC stack identify → ATS → T=CL
+		// → APDU. Pure offline decode of pasted bytes; reads a string,
+		// transmits nothing, so it is Low. Verified vs ISO 14443-4 §7.1.
+		"nfc_tcl_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
