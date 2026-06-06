@@ -2379,6 +2379,15 @@ var toolLevels = func() map[string]Level {
 		// pasted bytes; reads a string, transmits nothing, so it is Low.
 		// Verified vs scapy.
 		"ripng_decode",
+		// v0.566 (GVRP/GMRP dynamic VLAN/multicast-registration recon):
+		// gxrp_decode — GARP (IEEE 802.1D) and its GVRP / GMRP
+		// applications. Decodes the protocol id + nested message/attribute
+		// lists (event names + VLAN / group-MAC / service values); the
+		// GVRP VLAN-registration primitive (VLAN hopping), fourth leg of
+		// the VLAN-attack family with dtp + vtp + vqp. Pure offline decode
+		// of pasted bytes; reads a string, transmits nothing, so it is Low.
+		// Verified vs scapy.
+		"gxrp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

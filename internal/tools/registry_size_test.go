@@ -2327,7 +2327,12 @@ func TestRegistrySize(t *testing.T) {
 	// IPv6 sibling of rip: 4-byte header + 20-byte route table entries with
 	// the next-hop (metric 0xFF) + infinity (16) special RTEs; IPv6 routing
 	// recon / route-injection surface. Verified vs scapy. internal/ripng).
-	const expected = 566
+	// v0.566.0 added gxrp_decode (GARP / GVRP / GMRP, IEEE 802.1D dynamic
+	// VLAN + multicast registration — nested message/attribute lists with
+	// the JoinIn/Leave/LeaveAll events + VLAN/group-MAC/service values; the
+	// GVRP VLAN-hopping primitive, fourth leg of the VLAN-attack family with
+	// dtp+vtp+vqp. Verified vs scapy. internal/gxrp).
+	const expected = 567
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
