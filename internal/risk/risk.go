@@ -2473,6 +2473,14 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it
 		// is Low. Verified vs scapy.
 		"hicp_decode",
+		// v0.579 (DDS / RTPS OT-middleware recon): rtps_decode — the RTPS
+		// wire protocol of OMG DDS (ROS2 / autonomous / industrial pub-sub).
+		// Decodes the 20-byte header (vendor-id fingerprint + GUID prefix) +
+		// the submessage-kind walk (DATA/HEARTBEAT/ACKNACK/INFO_DST/...);
+		// the DDS member of the OT/ICS family. Pure offline decode of pasted
+		// bytes; reads a string, transmits nothing, so it is Low. Header
+		// verified vs scapy.
+		"rtps_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

@@ -2379,7 +2379,11 @@ func TestRegistrySize(t *testing.T) {
 	// Response (asset inventory + PSWD=OFF unauth-reconfig flag) / Configure;
 	// the profinetdcp-analog OT device-discovery decoder. Verified vs scapy.
 	// internal/hicp).
-	const expected = 577
+	// v0.579.0 added rtps_decode (RTPS / DDS wire protocol — ROS2 / autonomous
+	// / industrial pub-sub: 20-byte header (vendor-id fingerprint + GUID
+	// prefix) + submessage-kind walk (DATA/HEARTBEAT/INFO_DST/...); the DDS
+	// member of the OT/ICS family. Header verified vs scapy. internal/rtps).
+	const expected = 578
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
