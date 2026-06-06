@@ -2336,7 +2336,14 @@ func TestRegistrySize(t *testing.T) {
 	// 0x8808 — 802.3x PAUSE (flow-control DoS) + 802.1Qbb PFC (priority-flow
 	// storm) + EPON MPCP GATE/REPORT/REGISTER; the L2-DoS leg of the
 	// LAN-attack family. Verified vs scapy. internal/maccontrol).
-	const expected = 568
+	// (v0.568.0 was an IR feature — RC5/RC5X added to ir_raw_decode, no new
+	// tool, registry unchanged.)
+	// v0.569.0 added oam_decode (Ethernet OAM / CFM, 802.1ag / Y.1731,
+	// EtherType 0x8902 — common header (MD level + all 24 opcode names) + CCM
+	// body (RDI / period / seq / MEP ID / MEG ID); the L2 connectivity-fault /
+	// service-topology recon leg of the LAN family. Verified vs scapy.
+	// internal/oam).
+	const expected = 569
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

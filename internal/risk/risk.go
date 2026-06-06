@@ -2396,6 +2396,15 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it
 		// is Low. Verified vs scapy.
 		"maccontrol_decode",
+		// v0.569 (L2 connectivity-fault / service-topology recon):
+		// oam_decode — Ethernet OAM / CFM (802.1ag / Y.1731, EtherType
+		// 0x8902). Decodes the common header (MD level + all 24 opcode
+		// names) + the CCM body (RDI / period / sequence / MEP ID / MEG ID)
+		// that maps the L2 maintenance topology; the connectivity-fault leg
+		// of the LAN family with dtp+vtp+vqp+gxrp+maccontrol. Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it
+		// is Low. Verified vs scapy.
+		"oam_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
