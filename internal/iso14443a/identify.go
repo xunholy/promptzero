@@ -32,16 +32,17 @@
 //   - UID classification: 4 / 7 / 10-byte length, manufacturer
 //     name from the first byte (or after the cascade tag),
 //     cascade-byte presence
-//   - Optional ATS (Answer To Select) parsing: TL + T0 +
-//     interface-byte presence + historical bytes
+//   - Optional ATS (Answer To Select) parsing: TL + T0 + FSCI →
+//     FSC max frame size, the TA(1) bit-rate capability (the
+//     divisors supported each direction), the TB(1) FWI → FWT
+//     frame-waiting and SFGI → SFGT start-up-guard times, the
+//     TC(1) NAD / CID protocol options, and the historical bytes
+//     — to parity with the Type B ATQB decoder (internal/iso14443b)
 //
 // What this package does NOT cover (deliberately out of scope):
 //   - Reading the actual card (operators bring the
 //     anti-collision result from their reader)
-//   - ISO 14443B (Type B) — separate spec
-//   - ATS interface-byte field decoding past presence flags
-//     (TA1 / TB1 / TC1 — happy to add when a caller materialises
-//     with a concrete need)
+//   - ISO 14443B (Type B) — separate spec (internal/iso14443b)
 package iso14443a
 
 import (
@@ -139,9 +140,9 @@ type ATS struct {
 	// in the low nibble.
 	FormatByte int `json:"format_byte,omitempty"`
 	// TA1Present / TB1Present / TC1Present mirror the documented
-	// presence flags (T0 bits 4-6). The actual TA/TB/TC bytes,
-	// when present, are surfaced as hex but not field-decoded
-	// (operators rarely care beyond presence).
+	// presence flags (T0 bits 4-6). When present, the interface
+	// bytes are field-decoded below (to parity with the Type B
+	// ATQB decoder in internal/iso14443b).
 	TA1Present bool `json:"ta1_present"`
 	TB1Present bool `json:"tb1_present"`
 	TC1Present bool `json:"tc1_present"`
@@ -149,8 +150,24 @@ type ATS struct {
 	// Card Index, 0-8). Maps to FSC via the documented table.
 	FSCI int `json:"fsci"`
 	FSC  int `json:"fsc,omitempty"`
+	// BitRate is the decoded TA(1) bit-rate capability (ISO
+	// 14443-4 §5.2.2): the divisors the card supports in each
+	// direction (106 kbit/s is always supported). nil when TA(1)
+	// is absent.
+	BitRate *ATSBitRate `json:"bit_rate,omitempty"`
+	// FWI / FWTms come from the high nibble of TB(1) (ISO 14443-4
+	// §5.2.5): the Frame Waiting Time the reader must allow.
+	FWI   int     `json:"fwi,omitempty"`
+	FWTms float64 `json:"fwt_ms,omitempty"`
+	// SFGI / SFGTms come from the low nibble of TB(1) (§5.2.5):
+	// the Start-up Frame Guard Time the card needs after ATS.
+	SFGI   int     `json:"sfgi,omitempty"`
+	SFGTms float64 `json:"sfgt_ms,omitempty"`
+	// NADSupported / CIDSupported come from TC(1) (§5.2.4).
+	NADSupported bool `json:"nad_supported,omitempty"`
+	CIDSupported bool `json:"cid_supported,omitempty"`
 	// InterfaceBytesHex is the raw TA1 / TB1 / TC1 bytes (when
-	// present) as hex.
+	// present) as hex (kept alongside the decoded fields).
 	InterfaceBytesHex string `json:"interface_bytes_hex,omitempty"`
 	// HistoricalBytesHex is the rest of the ATS — the
 	// historical bytes, vendor-specific. Often carries an
@@ -389,15 +406,25 @@ func parseATS(s string) (ATS, error) {
 	off := 2
 	var ifBytes []byte
 	if out.TA1Present && off < len(b) {
-		ifBytes = append(ifBytes, b[off])
+		ta1 := b[off]
+		ifBytes = append(ifBytes, ta1)
+		out.BitRate = decodeATSBitRate(ta1)
 		off++
 	}
 	if out.TB1Present && off < len(b) {
-		ifBytes = append(ifBytes, b[off])
+		tb1 := b[off]
+		ifBytes = append(ifBytes, tb1)
+		out.FWI = int(tb1 >> 4)
+		out.FWTms = atsFrameTimeMs(out.FWI)
+		out.SFGI = int(tb1 & 0x0F)
+		out.SFGTms = atsFrameTimeMs(out.SFGI)
 		off++
 	}
 	if out.TC1Present && off < len(b) {
-		ifBytes = append(ifBytes, b[off])
+		tc1 := b[off]
+		ifBytes = append(ifBytes, tc1)
+		out.NADSupported = tc1&0x01 != 0
+		out.CIDSupported = tc1&0x02 != 0
 		off++
 	}
 	if len(ifBytes) > 0 {
@@ -419,6 +446,55 @@ func fsciToFSC(fsci int) int {
 		return 0
 	}
 	return table[fsci]
+}
+
+// ATSBitRate is the decoded TA(1) bit-rate capability of the ATS
+// (ISO 14443-4 §5.2.2). 106 kbit/s (the base rate) is always
+// supported and is always present in each list.
+type ATSBitRate struct {
+	SameBitrateBothDirections bool  `json:"same_bitrate_both_directions"`
+	PICCtoPCDkbit             []int `json:"picc_to_pcd_kbit"` // DS divisors (card → reader)
+	PCDtoPICCkbit             []int `json:"pcd_to_picc_kbit"` // DR divisors (reader → card)
+}
+
+// decodeATSBitRate decodes TA(1): bit 8 = same rate both ways; bits
+// 7-5 = DS (PICC→PCD) for 848/424/212; bits 3-1 = DR (PCD→PICC) for
+// 848/424/212 (ISO 14443-4 §5.2.2). Bit 4 / bit 0 are RFU.
+func decodeATSBitRate(ta1 byte) *ATSBitRate {
+	r := &ATSBitRate{
+		SameBitrateBothDirections: ta1&0x80 != 0,
+		PICCtoPCDkbit:             []int{106},
+		PCDtoPICCkbit:             []int{106},
+	}
+	if ta1&0x10 != 0 { // DS bit5 → 2x
+		r.PICCtoPCDkbit = append(r.PICCtoPCDkbit, 212)
+	}
+	if ta1&0x20 != 0 { // DS bit6 → 4x
+		r.PICCtoPCDkbit = append(r.PICCtoPCDkbit, 424)
+	}
+	if ta1&0x40 != 0 { // DS bit7 → 8x
+		r.PICCtoPCDkbit = append(r.PICCtoPCDkbit, 848)
+	}
+	if ta1&0x02 != 0 { // DR bit1 → 2x
+		r.PCDtoPICCkbit = append(r.PCDtoPICCkbit, 212)
+	}
+	if ta1&0x04 != 0 { // DR bit2 → 4x
+		r.PCDtoPICCkbit = append(r.PCDtoPICCkbit, 424)
+	}
+	if ta1&0x08 != 0 { // DR bit3 → 8x
+		r.PCDtoPICCkbit = append(r.PCDtoPICCkbit, 848)
+	}
+	return r
+}
+
+// atsFrameTimeMs converts an FWI / SFGI integer (0-14) to its time
+// in milliseconds: (256 × 16 / fc) × 2^n with fc = 13.56 MHz, i.e.
+// 0.302064 ms × 2^n (ISO 14443-4 §5.2.5). 15 is RFU → 0.
+func atsFrameTimeMs(n int) float64 {
+	if n < 0 || n > 14 {
+		return 0
+	}
+	return 0.302064 * float64(int(1)<<uint(n))
 }
 
 // asciiPreview renders bytes as ASCII with '.' for non-printable.

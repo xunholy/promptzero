@@ -121,6 +121,49 @@ func TestIdentify_DESFire_WithATS(t *testing.T) {
 	if got.ATS.InterfaceBytesHex != "778102" {
 		t.Errorf("InterfaceBytesHex = %q; want '778102'", got.ATS.InterfaceBytesHex)
 	}
+	// TA(1) = 0x77: same-both=false; DS (PICC→PCD) 212/424/848 all set;
+	// DR (PCD→PICC) bit3 (848) clear, so 212/424 only.
+	if got.ATS.BitRate == nil {
+		t.Fatal("BitRate should be decoded from TA(1)")
+	}
+	if got.ATS.BitRate.SameBitrateBothDirections {
+		t.Error("TA(1) 0x77 bit8=0 → not same both directions")
+	}
+	if !intsEqual(got.ATS.BitRate.PICCtoPCDkbit, []int{106, 212, 424, 848}) {
+		t.Errorf("PICCtoPCDkbit = %v; want [106 212 424 848]", got.ATS.BitRate.PICCtoPCDkbit)
+	}
+	if !intsEqual(got.ATS.BitRate.PCDtoPICCkbit, []int{106, 212, 424}) {
+		t.Errorf("PCDtoPICCkbit = %v; want [106 212 424]", got.ATS.BitRate.PCDtoPICCkbit)
+	}
+	// TB(1) = 0x81: FWI=8, SFGI=1.
+	if got.ATS.FWI != 8 {
+		t.Errorf("FWI = %d; want 8", got.ATS.FWI)
+	}
+	if d := got.ATS.FWTms - 0.302064*256; d > 0.001 || d < -0.001 {
+		t.Errorf("FWTms = %v; want ~77.33", got.ATS.FWTms)
+	}
+	if got.ATS.SFGI != 1 {
+		t.Errorf("SFGI = %d; want 1", got.ATS.SFGI)
+	}
+	// TC(1) = 0x02: CID supported, NAD not.
+	if !got.ATS.CIDSupported {
+		t.Error("TC(1) 0x02 bit1 → CID supported")
+	}
+	if got.ATS.NADSupported {
+		t.Error("TC(1) 0x02 bit0=0 → NAD not supported")
+	}
+}
+
+func intsEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // TestIdentify_ATS_WithHistoricals — a card whose ATS carries

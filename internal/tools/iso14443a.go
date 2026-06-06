@@ -43,10 +43,13 @@ var nfcISO14443AIdentifySpec = Spec{
 		"bitfield (cascade bit, ISO 14443-4 vs 14443-3-only compliance), and classifies the " +
 		"UID (4 / 7 / 10 bytes, manufacturer name from the first byte or after a 0x88 " +
 		"cascade tag).\n\n" +
-		"When the operator supplies the optional ATS (Answer To Select), the decoder parses " +
-		"TL + T0 (TA1 / TB1 / TC1 presence flags + FSCI → FSC frame size), surfaces the " +
-		"interface bytes as hex, and renders historical bytes as both hex and printable-" +
-		"ASCII preview.\n\n" +
+		"When the operator supplies the optional ATS (Answer To Select), the decoder fully " +
+		"decodes it (ISO 14443-4 §5.2, to parity with the Type B ATQB decoder): TL + T0 + " +
+		"FSCI → FSC max frame size, the TA(1) bit-rate capability (the divisors supported each " +
+		"direction — 106 / 212 / 424 / 848 kbit/s), the TB(1) FWI → FWT frame-waiting and " +
+		"SFGI → SFGT start-up-guard times, the TC(1) NAD / CID protocol options, and the " +
+		"historical bytes (hex + printable-ASCII preview; these often fingerprint the card OS, " +
+		"e.g. the DESFire EV1 ATS 06 75 77 81 02 80).\n\n" +
 		"Pure offline parser — no Flipper required. Pairs with the Bruce / Proxmark / " +
 		"Flipper `nfc read` transports and with `mifare_classic_decode_block` (decodes " +
 		"content once the type is known). Accepts ':' / '-' / '_' / whitespace separators in " +
