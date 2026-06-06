@@ -2430,6 +2430,15 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Verified vs
 		// scapy.
 		"nfs_decode",
+		// v0.574 (NFS lock-manager / rpc.lockd recon): nlm_decode — ONC RPC
+		// NFS Lock Manager v4 (program 100021), the fourth member of the
+		// Sun-RPC suite on internal/oncrpc. Decodes the TEST/LOCK/CANCEL/
+		// UNLOCK lock arguments (caller name / file handle / lock owner /
+		// offset / length / exclusive) + the reply nlm4_stats — which hosts
+		// are locking which files. Pure offline decode of pasted bytes;
+		// reads a string, transmits nothing, so it is Low. Verified vs
+		// scapy.
+		"nlm_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

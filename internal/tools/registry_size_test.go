@@ -2356,7 +2356,12 @@ func TestRegistrySize(t *testing.T) {
 	// + all 22 procedure names + call-side filename / file-handle / offset
 	// extraction (LOOKUP/REMOVE/RENAME/READ/WRITE/...); completes the NFS
 	// recon chain portmap->mount->nfs. Verified vs scapy. internal/nfs).
-	const expected = 572
+	// (v0.573.0 was the shared internal/oncrpc refactor — no new tool.)
+	// v0.574.0 added nlm_decode (ONC RPC NFS Lock Manager v4, program 100021
+	// / rpc.lockd — TEST/LOCK/CANCEL/UNLOCK lock args (caller / file handle /
+	// owner / offset / length / exclusive) + reply nlm4_stats; fourth member
+	// of the Sun-RPC suite on internal/oncrpc. Verified vs scapy. internal/nlm).
+	const expected = 573
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
