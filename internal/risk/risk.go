@@ -2562,6 +2562,16 @@ var toolLevels = func() map[string]Level {
 		// Pure offline decode of pasted bytes; reads a string, transmits
 		// nothing, so it is Low. Verified vs scapy.
 		"esmc_decode",
+		// v0.589 (NFC-F / FeliCa transit + payment recon):
+		// nfc_felica_decode — FeliCa (NFC-F / NFC Forum Type 3, JIS X
+		// 6319-4), the Sony contactless protocol behind East-Asian transit
+		// and payment cards (Suica / Octopus / EZ-Link) and NDEF Type 3.
+		// Decodes the LEN + command/response code + IDm (card identifier) +
+		// PMm + System Code + read status/block data; well-known system
+		// codes named, the rest surfaced raw. Pure offline decode of pasted
+		// bytes; reads a string, transmits nothing, so it is Low. Verified
+		// vs the Sony FeliCa Card User's Manual / JIS X 6319-4.
+		"nfc_felica_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

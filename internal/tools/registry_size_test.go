@@ -2437,7 +2437,15 @@ func TestRegistrySize(t *testing.T) {
 	// frequency-sync companion to ptpv2_decode. SSM→QL is option-dependent
 	// (G.781 Option I/II) so both names are surfaced. Verified vs scapy.contrib
 	// .esmc. internal/esmc).
-	const expected = 586
+	// v0.589.0 added nfc_felica_decode (FeliCa / NFC-F / NFC Forum Type 3, JIS
+	// X 6319-4 — the Sony contactless protocol behind East-Asian transit /
+	// payment cards (Suica, Octopus, EZ-Link) + NDEF Type 3; the NFC-F member
+	// of the NFC family: LEN + command/response code + IDm (+ manufacturer
+	// code) + PMm (+ IC code) + polling System Code + read status/block data +
+	// Request-System-Code list. Well-known system codes named, the rest raw.
+	// Frame layout verified byte-by-byte vs the Sony FeliCa Card User's Manual /
+	// JIS X 6319-4 (no scapy model exists). internal/felica).
+	const expected = 587
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
