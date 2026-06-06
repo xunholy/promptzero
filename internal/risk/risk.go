@@ -2481,6 +2481,14 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low. Header
 		// verified vs scapy.
 		"rtps_decode",
+		// v0.580 (SFC / NSH service-chain decap recon): nsh_decode — the
+		// Network Service Header (RFC 8300). Decodes the base header (MD
+		// type / next protocol) + the service-path SPI/SI + context, and
+		// chains the inner IPv4/IPv6/Ethernet packet to ipdecode; joins the
+		// tunnel-decap family (gre/geneve/vxlan/mpls/sflow/etherip). Pure
+		// offline decode of pasted bytes; reads a string, transmits nothing,
+		// so it is Low. Header verified vs scapy.
+		"nsh_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

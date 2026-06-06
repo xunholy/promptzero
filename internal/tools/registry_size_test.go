@@ -2383,7 +2383,11 @@ func TestRegistrySize(t *testing.T) {
 	// / industrial pub-sub: 20-byte header (vendor-id fingerprint + GUID
 	// prefix) + submessage-kind walk (DATA/HEARTBEAT/INFO_DST/...); the DDS
 	// member of the OT/ICS family. Header verified vs scapy. internal/rtps).
-	const expected = 578
+	// v0.580.0 added nsh_decode (Network Service Header / RFC 8300 SFC — base
+	// header (MD type / next proto) + service-path SPI/SI + context, chaining
+	// the inner IPv4/IPv6/Ethernet to ipdecode; joins the tunnel-decap family.
+	// Header verified vs scapy. internal/nsh).
+	const expected = 579
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
