@@ -2421,6 +2421,15 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Verified vs
 		// scapy.
 		"mount_decode",
+		// v0.572 (NFS file-access / filename recon): nfs_decode — ONC RPC
+		// NFS v3 (program 100003), completing the NFS-recon chain after
+		// portmap + mount. Decodes the RPC header + all 22 procedure names
+		// + the call-side filenames / file handles / read-write offsets
+		// (LOOKUP/REMOVE/RENAME/READ/WRITE/...) that show what a client
+		// accesses on the share. Pure offline decode of pasted bytes;
+		// reads a string, transmits nothing, so it is Low. Verified vs
+		// scapy.
+		"nfs_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

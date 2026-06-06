@@ -2352,7 +2352,11 @@ func TestRegistrySize(t *testing.T) {
 	// — MNT/UMNT call path + MOUNT reply (status / file handle / auth
 	// flavors); the NFS export / file-handle / weak-auth recon companion to
 	// portmap. Verified vs scapy. internal/mount).
-	const expected = 571
+	// v0.572.0 added nfs_decode (ONC RPC NFS v3, program 100003 — RPC header
+	// + all 22 procedure names + call-side filename / file-handle / offset
+	// extraction (LOOKUP/REMOVE/RENAME/READ/WRITE/...); completes the NFS
+	// recon chain portmap->mount->nfs. Verified vs scapy. internal/nfs).
+	const expected = 572
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
