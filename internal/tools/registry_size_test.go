@@ -2298,7 +2298,11 @@ func TestRegistrySize(t *testing.T) {
 	// header (version/flags/type/TEID/seq) + IE TLV walk with TS 29.274
 	// type names + IMSI/MSISDN/MEI TBCD decode; the control-plane companion
 	// to gtp_decode (which defers GTP-C). Verified vs scapy. internal/gtpv2).
-	const expected = 559
+	// v0.559.0 added pfcp_decode (PFCP / 5G N4 (SMF<->UPF) + 4G CUPS control
+	// protocol — header (version/flags/type/SEID/seq) + IE TLV walk with
+	// TS 29.244 names (code-generated from scapy) + Cause decode; the
+	// session-manipulation attack surface. Verified vs scapy. internal/pfcp).
+	const expected = 560
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

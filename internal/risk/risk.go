@@ -2320,6 +2320,14 @@ var toolLevels = func() map[string]Level {
 		// raw. Pure offline decode of pasted bytes; reads a string, transmits
 		// nothing, so it is Low. Verified vs scapy.
 		"gtpv2_decode",
+		// v0.559 (5G-core N4 session-manipulation recon): pfcp_decode — PFCP
+		// (3GPP TS 29.244), the 5G N4 (SMF<->UPF) / 4G CUPS control protocol.
+		// Header + IE TLV walk (names code-generated from scapy) + Cause
+		// decode; surfaces the SEID and the Session Modification/Deletion
+		// attack surface. Other IE values surfaced raw. Pure offline decode
+		// of pasted bytes; reads a string, transmits nothing, so it is Low.
+		// Verified vs scapy.
+		"pfcp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
