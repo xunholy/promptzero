@@ -2455,6 +2455,15 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low. Verified
 		// vs scapy.
 		"etherip_decode",
+		// v0.577 (unauthenticated L2 storage / AoE attack-surface recon):
+		// aoe_decode — ATA over Ethernet (EtherType 0x88A2), raw ATA disk
+		// commands over L2 with no auth. Decodes the 10-byte header
+		// (shelf/slot/command/tag) + the ATA command (READ/WRITE/IDENTIFY +
+		// 48-bit LBA + sector count) / Query-Config (config string +
+		// firmware). Pure offline decode of pasted bytes; reads a string,
+		// transmits nothing, so it is Low. Structural fields verified vs
+		// scapy.
+		"aoe_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

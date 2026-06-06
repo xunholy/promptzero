@@ -2369,7 +2369,12 @@ func TestRegistrySize(t *testing.T) {
 	// IP proto 97 — 2-byte header + inner Ethernet (MACs/EtherType) chaining
 	// an inner IPv4/IPv6 to ipdecode; completes the tunnel-decap family
 	// gre/geneve/vxlan/mpls/sflow. Verified vs scapy. internal/etherip).
-	const expected = 575
+	// v0.577.0 added aoe_decode (ATA over Ethernet, EtherType 0x88A2 — the
+	// unauthenticated L2 raw-disk protocol: 10-byte header (shelf/slot/cmd/
+	// tag) + ATA command (READ/WRITE/IDENTIFY + 48-bit LBA) / Query-Config;
+	// storage attack-surface recon. Structural fields verified vs scapy.
+	// internal/aoe).
+	const expected = 576
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
