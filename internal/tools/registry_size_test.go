@@ -2365,7 +2365,11 @@ func TestRegistrySize(t *testing.T) {
 	// method-select / request+reply with the proxied destination host:port
 	// (ipv4/ipv6/domain) + SOCKS4 request/reply; the proxy/pivot/exfil
 	// decoder. RFC-verified (scapy cross-check where correct). internal/socks).
-	const expected = 574
+	// v0.576.0 added etherip_decode (EtherIP / RFC 3378 L2-over-IP tunnel,
+	// IP proto 97 — 2-byte header + inner Ethernet (MACs/EtherType) chaining
+	// an inner IPv4/IPv6 to ipdecode; completes the tunnel-decap family
+	// gre/geneve/vxlan/mpls/sflow. Verified vs scapy. internal/etherip).
+	const expected = 575
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

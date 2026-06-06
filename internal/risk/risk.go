@@ -2447,6 +2447,14 @@ var toolLevels = func() map[string]Level {
 		// transmits nothing, so it is Low. RFC-verified (scapy cross-check
 		// for the cases scapy encodes correctly).
 		"socks_decode",
+		// v0.576 (L2-over-IP tunnel / exfil decap recon): etherip_decode —
+		// EtherIP (RFC 3378, IP protocol 97). Decodes the 2-byte header +
+		// the inner Ethernet frame (MACs / EtherType) and chains an inner
+		// IPv4 / IPv6 payload to ipdecode; completes the tunnel-decap family
+		// (gre/geneve/vxlan/mpls/sflow). Pure offline decode of pasted
+		// bytes; reads a string, transmits nothing, so it is Low. Verified
+		// vs scapy.
+		"etherip_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
