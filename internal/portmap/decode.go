@@ -36,6 +36,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/oncrpc"
 )
 
 // Mapping is one registered RPC service from a DUMP reply.
@@ -90,55 +92,31 @@ func Decode(input string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(b) < 8 {
-		return nil, fmt.Errorf("portmap: %d bytes — too short for an RPC header", len(b))
+	m, err := oncrpc.Parse(b)
+	if err != nil {
+		return nil, fmt.Errorf("portmap: %w", err)
 	}
-	mtype := binary.BigEndian.Uint32(b[4:8])
 	r := &Result{
-		XID:         fmt.Sprintf("0x%08X", binary.BigEndian.Uint32(b[0:4])),
-		MessageType: int(mtype),
-		MessageName: msgTypeName(mtype),
+		XID:         fmt.Sprintf("0x%08X", m.XID),
+		MessageType: int(m.Type),
+		MessageName: msgTypeName(m.Type),
 	}
-	switch mtype {
-	case 0:
-		return decodeCall(r, b[8:])
-	case 1:
-		return decodeReply(r, b[8:])
-	default:
-		return nil, fmt.Errorf("portmap: message type %d is not CALL (0) or REPLY (1)", mtype)
+	if m.IsCall() {
+		return decodeCall(r, m), nil
 	}
+	return decodeReply(r, m), nil
 }
 
-func decodeCall(r *Result, b []byte) (*Result, error) {
-	if len(b) < 24 {
-		return nil, fmt.Errorf("portmap: CALL header truncated")
-	}
-	ver := binary.BigEndian.Uint32(b[0:4])
-	prog := binary.BigEndian.Uint32(b[4:8])
-	pver := binary.BigEndian.Uint32(b[8:12])
-	proc := binary.BigEndian.Uint32(b[12:16])
+func decodeCall(r *Result, m *oncrpc.Message) *Result {
+	prog, pver, proc := m.Program, m.ProgramVersion, m.Procedure
+	ver, aflavor := m.RPCVersion, m.AuthFlavor
 	r.RPCVersion, r.Program, r.ProgVersion, r.Procedure = &ver, &prog, &pver, &proc
+	r.AuthFlavor = &aflavor
 	r.ProgramName = programName(prog)
 	if prog == portmapProgram {
 		r.ProcName = portmapProcName(proc)
 	}
-	// Auth: aflavor(4) alength(4) [alength bytes] vflavor(4) vlength(4) [vlength bytes].
-	off := 16
-	aflavor := binary.BigEndian.Uint32(b[off : off+4])
-	r.AuthFlavor = &aflavor
-	alength := int(binary.BigEndian.Uint32(b[off+4 : off+8]))
-	off += 8 + alength
-	if off+8 > len(b) {
-		r.Notes = append(r.Notes, "auth body overruns the captured bytes")
-		return r, nil
-	}
-	vlength := int(binary.BigEndian.Uint32(b[off+4 : off+8]))
-	off += 8 + vlength
-	if off > len(b) {
-		r.Notes = append(r.Notes, "verifier body overruns the captured bytes")
-		return r, nil
-	}
-	args := b[off:]
+	args := m.Body
 	if prog == portmapProgram && proc == 3 && len(args) >= 16 { // GETPORT
 		r.Query = &Mapping{
 			Program:     binary.BigEndian.Uint32(args[0:4]),
@@ -152,39 +130,25 @@ func decodeCall(r *Result, b []byte) (*Result, error) {
 	} else if len(args) > 0 {
 		r.BodyHex = hexUpper(args)
 	}
-	return r, nil
+	return r
 }
 
-func decodeReply(r *Result, b []byte) (*Result, error) {
-	if len(b) < 4 {
-		return nil, fmt.Errorf("portmap: REPLY truncated")
-	}
-	rs := binary.BigEndian.Uint32(b[0:4])
+func decodeReply(r *Result, m *oncrpc.Message) *Result {
+	rs := m.ReplyStat
 	r.ReplyStat, r.ReplyName = &rs, replyStatName(rs)
 	if rs != 0 { // DENIED — surface the rest raw
-		r.BodyHex = hexUpper(b[4:])
+		r.BodyHex = hexUpper(m.Body)
 		r.Notes = append(r.Notes, "RPC reply denied (auth or RPC-version mismatch)")
-		return r, nil
+		return r
 	}
-	// ACCEPTED: verf flavor(4) length(4) [length bytes] accept_stat(4).
-	if len(b) < 12 {
-		return nil, fmt.Errorf("portmap: accepted REPLY header truncated")
-	}
-	vlength := int(binary.BigEndian.Uint32(b[8:12]))
-	off := 12 + vlength
-	if off+4 > len(b) {
-		r.Notes = append(r.Notes, "verifier body overruns the captured bytes")
-		return r, nil
-	}
-	as := binary.BigEndian.Uint32(b[off : off+4])
-	r.AcceptStat, r.AcceptName = &as, acceptStatName(as)
-	off += 4
-	body := b[off:]
+	as := m.AcceptStat
+	r.AcceptStat, r.AcceptName = &as, oncrpc.AcceptStatName(as)
+	body := m.Body
 	if as != 0 || len(body) == 0 { // not SUCCESS, or empty body
 		if len(body) > 0 {
 			r.BodyHex = hexUpper(body)
 		}
-		return r, nil
+		return r
 	}
 	// The reply does not say which procedure it answers; type the body by
 	// structure. A bare 4-byte accepted result is a GETPORT port (the common
@@ -200,16 +164,16 @@ func decodeReply(r *Result, b []byte) (*Result, error) {
 			note += " — port 0 means the service is not registered (also byte-identical to an empty DUMP reply)"
 		}
 		r.Notes = append(r.Notes, note)
-		return r, nil
+		return r
 	}
 	if maps, ok := parseDumpList(body); ok {
 		r.Mappings = maps
 		r.Notes = append(r.Notes, fmt.Sprintf("DUMP reply: %d registered RPC services (rpcinfo-style enumeration) — inferred from the value-follows list structure", len(maps)))
-		return r, nil
+		return r
 	}
 	r.BodyHex = hexUpper(body)
 	r.Notes = append(r.Notes, "accepted RPC result surfaced raw (the procedure is not identifiable from the reply alone)")
-	return r, nil
+	return r
 }
 
 // parseDumpList parses a portmap DUMP reply body (a leading value-follows
@@ -277,24 +241,6 @@ func replyStatName(s uint32) string {
 		return "MSG_ACCEPTED"
 	case 1:
 		return "MSG_DENIED"
-	}
-	return fmt.Sprintf("%d", s)
-}
-
-func acceptStatName(s uint32) string {
-	switch s {
-	case 0:
-		return "SUCCESS"
-	case 1:
-		return "PROG_UNAVAIL"
-	case 2:
-		return "PROG_MISMATCH"
-	case 3:
-		return "PROC_UNAVAIL"
-	case 4:
-		return "GARBAGE_ARGS"
-	case 5:
-		return "SYSTEM_ERR"
 	}
 	return fmt.Sprintf("%d", s)
 }

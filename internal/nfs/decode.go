@@ -17,8 +17,9 @@
 //	plus a procedure body of XDR fields — file handles (length-prefixed
 //	opaque) and names (length-prefixed strings), 4-byte aligned. A
 //	byte-field read + bounded XDR walks; stdlib only, no new go.mod dep.
-//	(The RPC framing is decoded inline, consistent with internal/portmap
-//	and internal/mount.)
+//	The RPC framing is parsed by the shared internal/oncrpc package (used
+//	by portmap, mount and nfs); this package implements only the NFS
+//	procedure bodies.
 //
 // # Verifiable / no confidently-wrong output
 //
@@ -40,6 +41,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/oncrpc"
 )
 
 // Result is the decoded view of an NFS v3 RPC message.
@@ -80,55 +83,33 @@ func Decode(input string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(b) < 8 {
-		return nil, fmt.Errorf("nfs: %d bytes — too short for an RPC header", len(b))
+	m, err := oncrpc.Parse(b)
+	if err != nil {
+		return nil, fmt.Errorf("nfs: %w", err)
 	}
-	mtype := binary.BigEndian.Uint32(b[4:8])
-	r := &Result{XID: fmt.Sprintf("0x%08X", binary.BigEndian.Uint32(b[0:4])), MessageType: int(mtype)}
-	switch mtype {
-	case 0:
+	r := &Result{XID: fmt.Sprintf("0x%08X", m.XID), MessageType: int(m.Type)}
+	if m.IsCall() {
 		r.MessageName = "CALL"
-		return decodeCall(r, b[8:])
-	case 1:
-		r.MessageName = "REPLY"
-		return decodeReply(r, b[8:])
-	default:
-		return nil, fmt.Errorf("nfs: message type %d is not CALL (0) or REPLY (1)", mtype)
+		return decodeCall(r, m), nil
 	}
+	r.MessageName = "REPLY"
+	return decodeReply(r, m), nil
 }
 
-func decodeCall(r *Result, b []byte) (*Result, error) {
-	if len(b) < 24 {
-		return nil, fmt.Errorf("nfs: CALL header truncated")
-	}
-	prog := binary.BigEndian.Uint32(b[4:8])
-	pver := binary.BigEndian.Uint32(b[8:12])
-	proc := binary.BigEndian.Uint32(b[12:16])
+func decodeCall(r *Result, m *oncrpc.Message) *Result {
+	prog, pver, proc := m.Program, m.ProgramVersion, m.Procedure
 	r.Program, r.ProgVersion, r.Procedure = &prog, &pver, &proc
 	r.ProcName = procName(proc)
-	off := 16
-	alength := int(binary.BigEndian.Uint32(b[off+4 : off+8]))
-	off += 8 + alength
-	if off+8 > len(b) {
-		r.Notes = append(r.Notes, "auth body overruns the captured bytes")
-		return r, nil
-	}
-	vlength := int(binary.BigEndian.Uint32(b[off+4 : off+8]))
-	off += 8 + vlength
-	if off > len(b) {
-		r.Notes = append(r.Notes, "verifier body overruns the captured bytes")
-		return r, nil
-	}
-	args := b[off:]
+	args := m.Body
 	if prog != nfsProgram {
 		r.Notes = append(r.Notes, fmt.Sprintf("program %d is not NFS (100003)", prog))
 		if len(args) > 0 {
 			r.BodyHex = hexUpper(args)
 		}
-		return r, nil
+		return r
 	}
 	decodeArgs(r, proc, args)
-	return r, nil
+	return r
 }
 
 // decodeArgs decodes the recon-bearing leading arguments of an NFSv3 call.
@@ -182,28 +163,15 @@ func decodeArgs(r *Result, proc uint32, a []byte) {
 	}
 }
 
-func decodeReply(r *Result, b []byte) (*Result, error) {
-	if len(b) < 4 {
-		return nil, fmt.Errorf("nfs: REPLY truncated")
-	}
-	if rs := binary.BigEndian.Uint32(b[0:4]); rs != 0 {
-		r.BodyHex = hexUpper(b[4:])
+func decodeReply(r *Result, m *oncrpc.Message) *Result {
+	if m.ReplyStat != 0 {
+		r.BodyHex = hexUpper(m.Body)
 		r.Notes = append(r.Notes, "RPC reply denied")
-		return r, nil
+		return r
 	}
-	if len(b) < 12 {
-		return nil, fmt.Errorf("nfs: accepted REPLY header truncated")
-	}
-	vlength := int(binary.BigEndian.Uint32(b[8:12]))
-	off := 12 + vlength
-	if off+4 > len(b) {
-		r.Notes = append(r.Notes, "verifier body overruns the captured bytes")
-		return r, nil
-	}
-	as := binary.BigEndian.Uint32(b[off : off+4])
-	r.AcceptStat, r.AcceptName = &as, acceptStatName(as)
-	off += 4
-	body := b[off:]
+	as := m.AcceptStat
+	r.AcceptStat, r.AcceptName = &as, oncrpc.AcceptStatName(as)
+	body := m.Body
 	if as == 0 && len(body) >= 4 {
 		if status := int(binary.BigEndian.Uint32(body[0:4])); knownNFSStat(status) {
 			name := nfsStatName(status)
@@ -214,7 +182,7 @@ func decodeReply(r *Result, b []byte) (*Result, error) {
 		r.BodyHex = hexUpper(body)
 	}
 	r.Notes = append(r.Notes, "NFS reply: the status is decoded; the procedure-specific body is surfaced raw (an NFS reply does not identify which call it answers)")
-	return r, nil
+	return r
 }
 
 // reader walks XDR fields with bounds checking.
@@ -286,24 +254,6 @@ func procName(p uint32) string {
 		return n
 	}
 	return fmt.Sprintf("proc-%d", p)
-}
-
-func acceptStatName(s uint32) string {
-	switch s {
-	case 0:
-		return "SUCCESS"
-	case 1:
-		return "PROG_UNAVAIL"
-	case 2:
-		return "PROG_MISMATCH"
-	case 3:
-		return "PROC_UNAVAIL"
-	case 4:
-		return "GARBAGE_ARGS"
-	case 5:
-		return "SYSTEM_ERR"
-	}
-	return fmt.Sprintf("%d", s)
 }
 
 var nfsStats = map[int]string{

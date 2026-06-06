@@ -18,9 +18,9 @@
 //	Native. A MOUNT message is an ONC RPC header (xid, type, call/reply
 //	fields) plus a short procedure body — an XDR path string (call) or a
 //	status + file handle + auth-flavor list (reply). A byte-field read +
-//	bounded XDR walks; stdlib only, no new go.mod dep. (The RPC framing is
-//	decoded inline; a shared oncrpc helper across portmap + mount is a
-//	deliberate future refactor, not duplicated logic worth coupling now.)
+//	bounded XDR walks; stdlib only, no new go.mod dep. The RPC framing is
+//	parsed by the shared internal/oncrpc package (used by portmap, mount
+//	and nfs); this package implements only the MOUNT procedure bodies.
 //
 // # Verifiable / no confidently-wrong output
 //
@@ -40,6 +40,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/oncrpc"
 )
 
 // Result is the decoded view of an NFS MOUNT-protocol RPC message.
@@ -77,50 +79,24 @@ func Decode(input string) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(b) < 8 {
-		return nil, fmt.Errorf("mount: %d bytes — too short for an RPC header", len(b))
+	m, err := oncrpc.Parse(b)
+	if err != nil {
+		return nil, fmt.Errorf("mount: %w", err)
 	}
-	mtype := binary.BigEndian.Uint32(b[4:8])
-	r := &Result{
-		XID:         fmt.Sprintf("0x%08X", binary.BigEndian.Uint32(b[0:4])),
-		MessageType: int(mtype),
-	}
-	switch mtype {
-	case 0:
+	r := &Result{XID: fmt.Sprintf("0x%08X", m.XID), MessageType: int(m.Type)}
+	if m.IsCall() {
 		r.MessageName = "CALL"
-		return decodeCall(r, b[8:])
-	case 1:
-		r.MessageName = "REPLY"
-		return decodeReply(r, b[8:])
-	default:
-		return nil, fmt.Errorf("mount: message type %d is not CALL (0) or REPLY (1)", mtype)
+		return decodeCall(r, m), nil
 	}
+	r.MessageName = "REPLY"
+	return decodeReply(r, m), nil
 }
 
-func decodeCall(r *Result, b []byte) (*Result, error) {
-	if len(b) < 24 {
-		return nil, fmt.Errorf("mount: CALL header truncated")
-	}
-	prog := binary.BigEndian.Uint32(b[4:8])
-	pver := binary.BigEndian.Uint32(b[8:12])
-	proc := binary.BigEndian.Uint32(b[12:16])
+func decodeCall(r *Result, m *oncrpc.Message) *Result {
+	prog, pver, proc := m.Program, m.ProgramVersion, m.Procedure
 	r.Program, r.ProgVersion, r.Procedure = &prog, &pver, &proc
 	r.ProcName = procName(proc)
-	// Auth: aflavor(4) alength(4) [body] vflavor(4) vlength(4) [body].
-	off := 16
-	alength := int(binary.BigEndian.Uint32(b[off+4 : off+8]))
-	off += 8 + alength
-	if off+8 > len(b) {
-		r.Notes = append(r.Notes, "auth body overruns the captured bytes")
-		return r, nil
-	}
-	vlength := int(binary.BigEndian.Uint32(b[off+4 : off+8]))
-	off += 8 + vlength
-	if off > len(b) {
-		r.Notes = append(r.Notes, "verifier body overruns the captured bytes")
-		return r, nil
-	}
-	args := b[off:]
+	args := m.Body
 	if prog == mountProgram && (proc == 1 || proc == 3) { // MNT / UMNT carry a path
 		if path, ok := readXDRString(args); ok {
 			r.Path = path
@@ -129,42 +105,29 @@ func decodeCall(r *Result, b []byte) (*Result, error) {
 				verb = "unmounting"
 			}
 			r.Notes = append(r.Notes, "MOUNT call: a client is "+verb+" the NFS export "+path)
-			return r, nil
+			return r
 		}
 	}
 	if len(args) > 0 {
 		r.BodyHex = hexUpper(args)
 	}
-	return r, nil
+	return r
 }
 
-func decodeReply(r *Result, b []byte) (*Result, error) {
-	if len(b) < 4 {
-		return nil, fmt.Errorf("mount: REPLY truncated")
-	}
-	if rs := binary.BigEndian.Uint32(b[0:4]); rs != 0 {
-		r.BodyHex = hexUpper(b[4:])
+func decodeReply(r *Result, m *oncrpc.Message) *Result {
+	if m.ReplyStat != 0 {
+		r.BodyHex = hexUpper(m.Body)
 		r.Notes = append(r.Notes, "RPC reply denied")
-		return r, nil
+		return r
 	}
-	if len(b) < 12 {
-		return nil, fmt.Errorf("mount: accepted REPLY header truncated")
-	}
-	vlength := int(binary.BigEndian.Uint32(b[8:12]))
-	off := 12 + vlength
-	if off+4 > len(b) {
-		r.Notes = append(r.Notes, "verifier body overruns the captured bytes")
-		return r, nil
-	}
-	as := binary.BigEndian.Uint32(b[off : off+4])
-	r.AcceptStat, r.AcceptName = &as, acceptStatName(as)
-	off += 4
-	body := b[off:]
+	as := m.AcceptStat
+	r.AcceptStat, r.AcceptName = &as, oncrpc.AcceptStatName(as)
+	body := m.Body
 	if as != 0 || len(body) < 4 {
 		if len(body) > 0 {
 			r.BodyHex = hexUpper(body)
 		}
-		return r, nil
+		return r
 	}
 	// MOUNT reply: status(4) + (on MNT3_OK) file handle + auth-flavor list.
 	// Gate on a defined mountstat3 so a non-MOUNT reply is not mis-typed.
@@ -173,23 +136,23 @@ func decodeReply(r *Result, b []byte) (*Result, error) {
 	if !known {
 		r.BodyHex = hexUpper(body)
 		r.Notes = append(r.Notes, "accepted result is not a recognised MOUNT reply (first word is not a mountstat3 code) — surfaced raw")
-		return r, nil
+		return r
 	}
 	r.Status, r.StatusName = &status, name
 	if status != 0 {
 		r.Notes = append(r.Notes, "MOUNT denied: "+name+" — the export's access control rejected this client")
-		return r, nil
+		return r
 	}
 	// MNT3_OK: file handle (length + bytes + 4-byte pad), then flavor count + flavors.
 	off2 := 4
 	if off2+4 > len(body) {
-		return r, nil
+		return r
 	}
 	fhLen := int(binary.BigEndian.Uint32(body[off2 : off2+4]))
 	off2 += 4
 	if fhLen < 0 || off2+fhLen > len(body) {
 		r.Notes = append(r.Notes, "file-handle length overruns the body")
-		return r, nil
+		return r
 	}
 	r.FileHandle = hexUpper(body[off2 : off2+fhLen])
 	off2 += fhLen + (4-fhLen%4)%4 // XDR opaque is 4-byte aligned
@@ -204,7 +167,7 @@ func decodeReply(r *Result, b []byte) (*Result, error) {
 	r.Notes = append(r.Notes,
 		"MOUNT succeeded: the server returned the export root file handle (a captured / guessable NFS file handle enables the file-handle-reuse attack)",
 		"auth flavors the server accepts — AUTH_NULL / AUTH_SYS are trivially spoofable (the root of most NFS compromises)")
-	return r, nil
+	return r
 }
 
 // readXDRString reads an XDR variable-length opaque/string (4-byte length +
@@ -246,24 +209,6 @@ func mountStat(s int) (string, bool) {
 	}
 	n, ok := m[s]
 	return n, ok
-}
-
-func acceptStatName(s uint32) string {
-	switch s {
-	case 0:
-		return "SUCCESS"
-	case 1:
-		return "PROG_UNAVAIL"
-	case 2:
-		return "PROG_MISMATCH"
-	case 3:
-		return "PROC_UNAVAIL"
-	case 4:
-		return "GARBAGE_ARGS"
-	case 5:
-		return "SYSTEM_ERR"
-	}
-	return fmt.Sprintf("%d", s)
 }
 
 func authFlavorName(f uint32) string {
