@@ -2348,7 +2348,11 @@ func TestRegistrySize(t *testing.T) {
 	// rpcinfo -p enumeration: nfs/mountd/NIS/... program+version+port). The
 	// Sun-RPC service-enumeration recon decoder. Verified vs scapy.
 	// internal/portmap).
-	const expected = 570
+	// v0.571.0 added mount_decode (NFS MOUNT protocol v3, RPC program 100005
+	// — MNT/UMNT call path + MOUNT reply (status / file handle / auth
+	// flavors); the NFS export / file-handle / weak-auth recon companion to
+	// portmap. Verified vs scapy. internal/mount).
+	const expected = 571
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -2413,6 +2413,14 @@ var toolLevels = func() map[string]Level {
 		// offline decode of pasted bytes; reads a string, transmits
 		// nothing, so it is Low. Verified vs scapy.
 		"portmap_decode",
+		// v0.571 (NFS MOUNT export / file-handle / weak-auth recon):
+		// mount_decode — NFS MOUNT protocol v3 (RPC program 100005, mountd),
+		// the NFS-recon companion to portmap. Decodes the MNT/UMNT call path
+		// + the MOUNT reply (status / file handle / auth flavors) from a
+		// captured mount exchange. Pure offline decode of pasted bytes;
+		// reads a string, transmits nothing, so it is Low. Verified vs
+		// scapy.
+		"mount_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
