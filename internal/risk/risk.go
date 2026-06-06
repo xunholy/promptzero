@@ -2290,6 +2290,14 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low. Verified
 		// vs scapy.
 		"dtp_decode",
+		// v0.555 (switch-L2 VLAN-database-attack recon): vtp_decode — Cisco
+		// VLAN Trunking Protocol. Header + Summary (config revision /
+		// updater / MD5) + Subset (VLAN list) bodies; surfaces the
+		// config-revision attack signal (a higher revision overwrites the
+		// domain's VLAN database). MD5 surfaced raw, not verified (password
+		// not on the wire). Pure offline decode of pasted bytes; reads a
+		// string, transmits nothing, so it is Low. Verified vs scapy.
+		"vtp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

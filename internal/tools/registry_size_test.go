@@ -2282,7 +2282,11 @@ func TestRegistrySize(t *testing.T) {
 	// version + Domain/Status/Type/Neighbour TLVs; the VLAN-hopping
 	// attack-surface signal, joining the cdp/lldp/stp switch-L2 set. Status
 	// bits surfaced raw (Cisco-proprietary). Verified vs scapy. internal/dtp).
-	const expected = 555
+	// v0.555.0 added vtp_decode (Cisco VLAN Trunking Protocol decoder —
+	// header + Summary (config revision/updater/MD5) + Subset (VLAN list)
+	// bodies; surfaces the config-revision VLAN-database-attack signal.
+	// Verified vs scapy. internal/vtp).
+	const expected = 556
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
