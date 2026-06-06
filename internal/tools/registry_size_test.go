@@ -2392,7 +2392,14 @@ func TestRegistrySize(t *testing.T) {
 	// (77-entry code-gen table) + sub-type/category; powerline (PLC) mgmt
 	// recon (key exchange / sniffer / network info). Verified vs scapy.
 	// internal/homeplugav).
-	const expected = 580
+	// v0.582.0 added homepluggp_decode (HomePlug Green PHY SLAC — the EV ↔ EVSE
+	// CCS / ISO 15118 charging-pairing handshake on the Control Pilot: the
+	// 0x60xx CCo SLAC MMEs (parm → start-atten → M-sound → atten-char → match →
+	// set-key) with the session Run ID, EV/EVSE MACs+IDs and the NID + NMK key
+	// material from the match/set-key messages; EV-charging-security recon
+	// extending the powerline domain. Body layouts verified vs scapy + ISO
+	// 15118-3. internal/homepluggp).
+	const expected = 581
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

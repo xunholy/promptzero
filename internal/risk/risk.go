@@ -2498,6 +2498,17 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it
 		// is Low. Verified vs scapy.
 		"homeplugav_decode",
+		// v0.582 (powerline / EV-charging SLAC recon):
+		// homepluggp_decode — HomePlug Green PHY SLAC, the EV ↔ EVSE
+		// CCS / ISO 15118 charging-pairing handshake on the Control Pilot
+		// line (the 0x60xx CCo SLAC MMEs, EtherType 0x88E1). Decodes the
+		// envelope + the standardised SLAC body: the handshake step, the
+		// session Run ID, the EV / EVSE MACs and IDs, and the NID + NMK key
+		// material from the match / set-key messages. Length-gated, bodies
+		// that do not fit are surfaced raw. Pure offline decode of pasted
+		// bytes; reads a string, transmits nothing, so it is Low. Verified
+		// vs scapy + ISO 15118-3.
+		"homepluggp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
