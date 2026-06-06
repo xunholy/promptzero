@@ -2343,6 +2343,15 @@ var toolLevels = func() map[string]Level {
 		// Pure offline decode of pasted bytes; reads a string, transmits
 		// nothing, so it is Low. Verified vs scapy.
 		"rpl_decode",
+		// v0.562 (Cisco VLAN-assignment / VMPS recon): vqp_decode — Cisco
+		// VQP (VLAN Query Protocol), the VMPS wire protocol (UDP 1589) for
+		// dynamic VLAN assignment by source MAC. Decodes the 8-byte header
+		// (opcode / response code / sequence) + the datatype/len/value
+		// entry TLVs (MAC / IP / portName / VLANName / Domain); the third
+		// leg of the VLAN-attack family with dtp + vtp. Pure offline decode
+		// of pasted bytes; reads a string, transmits nothing, so it is Low.
+		// Verified vs scapy.
+		"vqp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

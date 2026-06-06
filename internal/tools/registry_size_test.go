@@ -2310,7 +2310,11 @@ func TestRegistrySize(t *testing.T) {
 	// for 6LoWPAN / 802.15.4 IoT mesh, carried in ICMPv6 type 155 — header +
 	// message name (DIS/DIO/DAO/DAO-ACK) + DIO rank/version/MOP/DODAGID, the
 	// sinkhole / version-rebuild attack fields. Verified vs scapy. internal/rpl).
-	const expected = 562
+	// v0.562.0 added vqp_decode (Cisco VQP / VMPS dynamic VLAN assignment,
+	// UDP 1589 — 8-byte header + datatype/len/value TLV walk surfacing the
+	// queried MAC + assigned VLAN name; third leg of the VLAN-attack family
+	// with dtp + vtp (voiphopper / yersinia). Verified vs scapy. internal/vqp).
+	const expected = 563
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
