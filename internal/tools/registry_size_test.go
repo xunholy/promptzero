@@ -2290,7 +2290,11 @@ func TestRegistrySize(t *testing.T) {
 	// — version/type + VHID + advskew/advbase + counter + SHA-1 HMAC; the
 	// third FHRP decoder (hsrp/vrrp/carp), advskew = the hijack/MITM signal.
 	// HMAC surfaced raw. Verified vs scapy. internal/carp).
-	const expected = 557
+	// v0.557.0 added erspan_decode (ERSPAN Type II/III header decoder —
+	// version/vlan/cos/session-id + (II) index / (III) timestamp, GRE-
+	// stripping, mirrored frame surfaced raw; port-mirror/interception
+	// recon, pairs with gre_decode. Verified vs scapy. internal/erspan).
+	const expected = 558
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

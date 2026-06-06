@@ -2306,6 +2306,13 @@ var toolLevels = func() map[string]Level {
 		// offline decode of pasted bytes; reads a string, transmits nothing,
 		// so it is Low. Verified vs scapy.
 		"carp_decode",
+		// v0.557 (port-mirror / traffic-interception recon): erspan_decode —
+		// ERSPAN Type II/III header (GRE-encapsulated remote SPAN). version /
+		// vlan / cos / session-id + (II) index / (III) timestamp; GRE header
+		// stripped; the mirrored Ethernet frame surfaced raw. Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it is
+		// Low. Verified vs scapy.
+		"erspan_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
