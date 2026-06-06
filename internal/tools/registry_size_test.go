@@ -2430,7 +2430,14 @@ func TestRegistrySize(t *testing.T) {
 	// smpCnt (the SV-injection/replay counter), confRev, smpSynch and the raw
 	// sampled-value block. BER walk verified byte-by-byte vs the IEC 61850-9-2
 	// ASN.1 / Wireshark sv dissector (no scapy model exists). internal/sv).
-	const expected = 585
+	// v0.588.0 added esmc_decode (ESMC — Ethernet Synchronization Messaging
+	// Channel / SyncE, ITU-T G.8264; the Slow-Protocol frame EtherType 0x8809
+	// subtype 0x0A that advertises the clock Quality Level (SSM): the 10-byte
+	// header + QL / Enhanced-QL TLVs, event-vs-information type; the
+	// frequency-sync companion to ptpv2_decode. SSM→QL is option-dependent
+	// (G.781 Option I/II) so both names are surfaced. Verified vs scapy.contrib
+	// .esmc. internal/esmc).
+	const expected = 586
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

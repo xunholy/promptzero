@@ -2552,6 +2552,16 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low.
 		// Verified vs the IEC 61850-9-2 ASN.1 / Wireshark sv dissector.
 		"sampled_values_decode",
+		// v0.588 (timing-network / SyncE recon):
+		// esmc_decode — ESMC (Ethernet Synchronization Messaging Channel),
+		// the control channel of Synchronous Ethernet (SyncE, ITU-T
+		// G.8264): the Slow-Protocol frame (EtherType 0x8809 subtype 0x0A)
+		// that advertises the clock Quality Level (SSM). Decodes the
+		// 10-byte header + the QL / Enhanced-QL TLVs and the event-vs-
+		// information type; the frequency-sync companion to ptpv2_decode.
+		// Pure offline decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Verified vs scapy.
+		"esmc_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
