@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package vqp
+
+import "testing"
+
+func FuzzDecode(f *testing.F) {
+	for _, s := range []string{
+		"010100060000274800000c04000b656e67696e656572696e6700000c02000f4661737445746865726e6574302f3100000c06000600112233445500000c0100040a000001",
+		"010200020000274800000c03000a6163636f756e74696e6700000c080006001122334455",
+		"010203020000000100000c0300082d2d4e4f4e452d2d",
+		"01010006000000000000ffff0001", // entry overruns
+		"010100", "0201", "00000000", "", "zz",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(_ *testing.T, s string) { _, _ = Decode(s) })
+}
