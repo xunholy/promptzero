@@ -2319,7 +2319,11 @@ func TestRegistrySize(t *testing.T) {
 	// float codes, query type) + v3 Report group records (INCLUDE/EXCLUDE
 	// source filters); multicast recon, v3 companion to igmp. Verified vs
 	// scapy. internal/igmpv3).
-	const expected = 564
+	// v0.564.0 added tzsp_decode (TaZmen Sniffer Protocol, UDP 37008 — the
+	// MikroTik/Aruba remote wireless-capture encapsulation: 4-byte header +
+	// tag walk (RSSI/SNR/rate/channel/FCS) + raw encapsulated frame; wireless
+	// sniffer recon. Verified vs scapy. internal/tzsp).
+	const expected = 565
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -2361,6 +2361,15 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it
 		// is Low. Verified vs scapy.
 		"igmpv3_decode",
+		// v0.564 (remote wireless-capture / MikroTik sniffer recon):
+		// tzsp_decode — TZSP (TaZmen Sniffer Protocol, UDP 37008), the
+		// encapsulation MikroTik/Aruba use to stream sniffed wireless
+		// frames. Decodes the 4-byte header + the metadata tag walk
+		// (RSSI / SNR / data rate / RX channel / FCS error) and surfaces
+		// the encapsulated frame as raw hex. Pure offline decode of pasted
+		// bytes; reads a string, transmits nothing, so it is Low. Verified
+		// vs scapy.
+		"tzsp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
