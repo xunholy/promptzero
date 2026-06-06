@@ -2413,7 +2413,17 @@ func TestRegistrySize(t *testing.T) {
 	// traceroute through an MPLS core; RFC 5837 Interface Information surfaced
 	// raw. Pairs with icmp_packet_decode + mpls_decode. Header + TLV + MPLS
 	// object verified vs scapy + RFC 4950. internal/icmpext).
-	const expected = 583
+	// (v0.585.0 was an enhancement to the existing ndp_decode — SeND option
+	// decode (RFC 3971 CGA/RSA-Sig/Timestamp/Nonce) + Type-13 Nonce→Timestamp
+	// mislabel fix — not a new tool, so the count was unchanged.)
+	// v0.586.0 added mld_decode (MLD — Multicast Listener Discovery, RFC 2710
+	// MLDv1 + RFC 3810 MLDv2 — the IPv6 multicast-group membership protocol in
+	// ICMPv6: Query / Report / Done + the MLDv2 group records (record type +
+	// multicast address + source filters); names the groups a host joined
+	// (mDNS ff02::fb, LLMNR ff02::1:3) — IPv6 multicast-service recon, the IPv6
+	// companion to igmp/igmpv3. Verified vs scapy + RFC 2710/3810 (50-row
+	// MLDv2-Report differential, 0 mismatches). internal/mld).
+	const expected = 584
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -2532,6 +2532,16 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low.
 		// Verified vs scapy + RFC 4950.
 		"icmp_extension_decode",
+		// v0.586 (IPv6 multicast-membership recon):
+		// mld_decode — MLD (Multicast Listener Discovery), the IPv6
+		// multicast-group membership protocol in ICMPv6: MLDv1 (RFC 2710)
+		// Query / Report / Done + MLDv2 (RFC 3810) Query + Report group
+		// records. Decodes the multicast address(es) a host has joined
+		// (mDNS / LLMNR / SSDP / …), the MLDv2 source filters and the
+		// querier parameters; the IPv6 companion to igmp / igmpv3. Pure
+		// offline decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Verified vs scapy + RFC 2710/3810.
+		"mld_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
