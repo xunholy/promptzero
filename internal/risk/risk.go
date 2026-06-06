@@ -2298,6 +2298,14 @@ var toolLevels = func() map[string]Level {
 		// not on the wire). Pure offline decode of pasted bytes; reads a
 		// string, transmits nothing, so it is Low. Verified vs scapy.
 		"vtp_decode",
+		// v0.556 (FHRP-hijacking recon): carp_decode — Common Address
+		// Redundancy Protocol (OpenBSD/pfSense HA), the third FHRP decoder
+		// with hsrp/vrrp. Version/type + VHID + advskew/advbase + counter +
+		// SHA-1 HMAC; advskew = the hijack/MITM election signal. HMAC
+		// surfaced raw, not verified (passphrase not on the wire). Pure
+		// offline decode of pasted bytes; reads a string, transmits nothing,
+		// so it is Low. Verified vs scapy.
+		"carp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

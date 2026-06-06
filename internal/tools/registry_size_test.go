@@ -2286,7 +2286,11 @@ func TestRegistrySize(t *testing.T) {
 	// header + Summary (config revision/updater/MD5) + Subset (VLAN list)
 	// bodies; surfaces the config-revision VLAN-database-attack signal.
 	// Verified vs scapy. internal/vtp).
-	const expected = 556
+	// v0.556.0 added carp_decode (Common Address Redundancy Protocol decoder
+	// — version/type + VHID + advskew/advbase + counter + SHA-1 HMAC; the
+	// third FHRP decoder (hsrp/vrrp/carp), advskew = the hijack/MITM signal.
+	// HMAC surfaced raw. Verified vs scapy. internal/carp).
+	const expected = 557
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
