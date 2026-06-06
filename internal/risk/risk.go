@@ -2313,6 +2313,13 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it is
 		// Low. Verified vs scapy.
 		"erspan_decode",
+		// v0.558 (cellular control-plane decode): gtpv2_decode — GTPv2-C
+		// (GTP control plane, TS 29.274), the companion to gtp_decode (GTP-U,
+		// which defers GTP-C). Header + IE TLV walk + IMSI/MSISDN/MEI TBCD
+		// decode (the IMSI-harvesting exposure). Other IE values surfaced
+		// raw. Pure offline decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Verified vs scapy.
+		"gtpv2_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

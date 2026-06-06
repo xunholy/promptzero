@@ -2294,7 +2294,11 @@ func TestRegistrySize(t *testing.T) {
 	// version/vlan/cos/session-id + (II) index / (III) timestamp, GRE-
 	// stripping, mirrored frame surfaced raw; port-mirror/interception
 	// recon, pairs with gre_decode. Verified vs scapy. internal/erspan).
-	const expected = 558
+	// v0.558.0 added gtpv2_decode (GTPv2-C / GTP control-plane decoder —
+	// header (version/flags/type/TEID/seq) + IE TLV walk with TS 29.274
+	// type names + IMSI/MSISDN/MEI TBCD decode; the control-plane companion
+	// to gtp_decode (which defers GTP-C). Verified vs scapy. internal/gtpv2).
+	const expected = 559
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
