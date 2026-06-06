@@ -2335,6 +2335,14 @@ var toolLevels = func() map[string]Level {
 		// offline decode of pasted bytes; reads a string, transmits nothing,
 		// so it is Low. Verified vs scapy.
 		"skinny_decode",
+		// v0.561 (6LoWPAN / RPL IoT-mesh routing recon): rpl_decode — RPL
+		// (RFC 6550), the IPv6 routing protocol for 802.15.4 IoT mesh,
+		// carried in ICMPv6 type 155. Decodes header + message name
+		// (DIS/DIO/DAO/DAO-ACK) + DIO rank/version/MOP/DODAGID (the
+		// sinkhole / version-rebuild attack fields); options surfaced raw.
+		// Pure offline decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Verified vs scapy.
+		"rpl_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

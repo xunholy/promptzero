@@ -2306,7 +2306,11 @@ func TestRegistrySize(t *testing.T) {
 	// framed walk + 132-entry message-name table (code-generated from scapy)
 	// + KeypadButton dialed-digit decode; VoIP call-flow/dialed-number recon.
 	// Verified vs scapy. internal/skinny).
-	const expected = 561
+	// v0.561.0 added rpl_decode (RPL / RFC 6550 — the IPv6 routing protocol
+	// for 6LoWPAN / 802.15.4 IoT mesh, carried in ICMPv6 type 155 — header +
+	// message name (DIS/DIO/DAO/DAO-ACK) + DIO rank/version/MOP/DODAGID, the
+	// sinkhole / version-rebuild attack fields. Verified vs scapy. internal/rpl).
+	const expected = 562
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
