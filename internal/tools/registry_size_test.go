@@ -2361,7 +2361,11 @@ func TestRegistrySize(t *testing.T) {
 	// / rpc.lockd — TEST/LOCK/CANCEL/UNLOCK lock args (caller / file handle /
 	// owner / offset / length / exclusive) + reply nlm4_stats; fourth member
 	// of the Sun-RPC suite on internal/oncrpc. Verified vs scapy. internal/nlm).
-	const expected = 573
+	// v0.575.0 added socks_decode (SOCKS4/4a/5 proxy, RFC 1928 — greeting /
+	// method-select / request+reply with the proxied destination host:port
+	// (ipv4/ipv6/domain) + SOCKS4 request/reply; the proxy/pivot/exfil
+	// decoder. RFC-verified (scapy cross-check where correct). internal/socks).
+	const expected = 574
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -2439,6 +2439,14 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Verified vs
 		// scapy.
 		"nlm_decode",
+		// v0.575 (SOCKS proxy / pivot / exfil-channel recon): socks_decode
+		// — SOCKS4 / 4a / 5 (RFC 1928). Decodes the greeting / method
+		// selection / request+reply, surfacing the proxied destination
+		// host:port (ipv4 / ipv6 / domain) that a client reaches through
+		// the proxy. Pure offline decode of pasted bytes; reads a string,
+		// transmits nothing, so it is Low. RFC-verified (scapy cross-check
+		// for the cases scapy encodes correctly).
+		"socks_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
