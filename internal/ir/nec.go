@@ -27,15 +27,17 @@
 //
 // # Covered / deferred
 //
-// The NEC family (standard, extended, and the repeat code) and Sony SIRC
-// (12 / 15 / 20-bit) are covered — the two most common consumer-IR
-// pulse-distance protocols. NEC is gated by its address/command inverse-byte
-// checksum; SIRC carries no checksum, so it is gated structurally instead —
-// the distinctive 2400µs leader, an exact 12/15/20-bit count, and a clean
-// per-bit mark classification reject any non-SIRC pulse train. RC5/RC6
-// (Manchester), Samsung, and the Pronto/`ir_build` parsed formats are
-// deliberately not decoded here yet — they need a different (bi-phase)
-// decoder or carry no comparable structural gate.
+// The NEC family (standard, extended, and the repeat code), Sony SIRC
+// (12 / 15 / 20-bit), Samsung, and Philips RC5 / RC5X (14-bit Manchester) are
+// covered — the most common consumer-IR protocols across the three encoding
+// families (pulse-distance, pulse-width, and bi-phase). NEC is gated by its
+// address/command inverse-byte checksum; the checksum-less protocols are gated
+// structurally instead — SIRC by its 2400µs leader + exact 12/15/20-bit count,
+// and RC5 by an exact 28-half-bit Manchester reconstruction with a valid S1
+// start bit (a polarity-inverted or non-RC5 train fails the bit-pair or S1
+// gate and is rejected, not mis-decoded). RC6 (a more complex Manchester
+// variant with a double-width toggle) and the Pronto/`ir_build` parsed formats
+// are deliberately not decoded here yet.
 package ir
 
 import (
@@ -84,10 +86,18 @@ func DecodeRaw(timings string) (*Result, error) {
 		return decodeNEC(t)
 	case within(t[0], samsungLeaderMark):
 		return decodeSamsung(t)
+	case within(t[0], rc5HalfBit) || within(t[0], rc5FullBit):
+		// RC5 has no leader: it begins directly with the Manchester bit
+		// stream, so its first mark is a 889µs (or merged 1778µs) half-bit.
+		// Checked before SIRC: an RC5X frame opens with a merged 1778µs mark
+		// that falls inside SIRC's wide leader window, but SIRC's 2400µs
+		// leader is outside RC5's 1778±30% window, so this ordering is
+		// unambiguous.
+		return decodeRC5(t)
 	case within(t[0], sircLeaderMark):
 		return decodeSIRC(t)
 	default:
-		return nil, fmt.Errorf("ir: leader mark %dµs matches no supported protocol (NEC ~9000µs, Samsung ~4500µs, Sony SIRC ~2400µs)", t[0])
+		return nil, fmt.Errorf("ir: leader mark %dµs matches no supported protocol (NEC ~9000µs, Samsung ~4500µs, Sony SIRC ~2400µs, Philips RC5 ~889µs)", t[0])
 	}
 }
 

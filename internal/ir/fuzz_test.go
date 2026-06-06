@@ -4,10 +4,11 @@ package ir
 
 import "testing"
 
-// FuzzDecodeRaw exercises the raw IR timing decoder (NEC / Samsung / SIRC
-// dispatch) on arbitrary timing strings — leader detection, the pulse-distance
-// bit reader, and the SIRC pulse-width reader must never panic or index out of
-// range on malformed / truncated / non-numeric input.
+// FuzzDecodeRaw exercises the raw IR timing decoder (NEC / Samsung / SIRC /
+// RC5 dispatch) on arbitrary timing strings — leader detection, the
+// pulse-distance bit reader, the SIRC pulse-width reader and the RC5 Manchester
+// reconstruction must never panic or index out of range on malformed /
+// truncated / non-numeric input.
 func FuzzDecodeRaw(f *testing.F) {
 	seeds := []string{
 		"",
@@ -16,6 +17,9 @@ func FuzzDecodeRaw(f *testing.F) {
 		genNEC(0x04, 0x08),
 		genSamsung(0x07, 0x02),
 		genSIRC(0x12, 0x05, 0, 12),
+		genRC5(0x14, 0x01, 0),
+		genRC5(0x00, 0x40, 1),
+		"889 889 1778 889 889",
 		"2400 600 1200 600",
 		"abc def",
 		"9000",

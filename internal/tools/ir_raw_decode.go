@@ -30,7 +30,7 @@ var irRawDecodeSpec = Spec{
 		"durations from ir_receive raw, a Flipper RAW .ir entry, or a logic-analyser trace) into its " +
 		"protocol + address/command — the IR analogue of subghz_decode, and the complement to " +
 		"ir_decode_file (which only reads a .ir file's already-parsed entries).\n\n" +
-		"Decodes NEC, Samsung32, and Sony SIRC, dispatched by the leader pulse (NEC ~9000µs, Samsung " +
+		"Decodes NEC, Samsung32, Sony SIRC, and Philips RC5/RC5X, dispatched by the leader pulse (NEC ~9000µs, Samsung " +
 		"~4500µs, SIRC ~2400µs). NEC: standard NEC (8-bit address + command, each followed by its " +
 		"bitwise inverse), NEC-extended (16-bit address, command inversion only), and the NEC repeat " +
 		"code — NEC's inverse-byte pairs are a built-in checksum, so a frame is reported as standard NEC " +
@@ -42,7 +42,7 @@ var irRawDecodeSpec = Spec{
 		"extension), LSB-first — SIRC has no checksum, so it is gated structurally instead (the " +
 		"distinctive 2400µs leader, an exact 12/15/20-bit count, and a clean per-bit mark classification " +
 		"reject any non-SIRC pulse train). The leader and every bit are tolerance-matched (±30%). " +
-		"RC5/RC6 (Manchester) is deliberately not decoded yet.\n\n" +
+		"Philips RC5/RC5X (14-bit Manchester / bi-phase): no leader and no checksum, the 889us half-bit stream is reconstructed into exactly 28 half-bits forming 14 Manchester bit-pairs (S1, S2, toggle, 5 address, 6 command), gated by a valid S1=1 start bit so a polarity-inverted or non-RC5 train is rejected not mis-decoded; RC5X (S2=0) extends the command to 0-127. RC6 is deliberately not decoded yet.\n\n" +
 		"Field: **timings** — space/comma-separated integer microsecond values, alternating mark, space, " +
 		"mark, space… (a leading 9000 4500 NEC leader). Output is the protocol, address, command (decimal " +
 		"+ hex), bit count, checksum validity, and the raw 4 bytes. Offline transform — reads timings and " +
