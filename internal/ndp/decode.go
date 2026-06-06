@@ -48,10 +48,13 @@
 //	Native. RFC 4861 + 4191 + 8106 are publicly available; NDP
 //	uses a tight 4-byte ICMPv6 header + per-type fixed fields
 //	+ a TLV Options stream where every option is (Type +
-//	Length-in-8-byte-units + Value). No crypto at the parse
-//	layer (the optional SeND extension — RFC 3971 — adds CGA
-//	+ RSA Signature options that this decoder surfaces as raw
-//	hex; key validation is higher-level work).
+//	Length-in-8-byte-units + Value). The optional SeND
+//	extension — RFC 3971 — adds CGA / RSA Signature /
+//	Timestamp / Nonce options whose framing this decoder
+//	parses (modifier, subnet prefix, collision count, key
+//	hash, timestamp, nonce); the public key + signature blobs
+//	are surfaced as raw hex and cryptographic validation is
+//	higher-level work.
 //
 // What this package covers
 //
@@ -97,13 +100,15 @@
 //     payload. Walker stops at the end of the input or on a
 //     Length=0 (illegal — would loop).
 //
-//   - **9-entry NDP Option type name table**: 1
+//   - **12-entry NDP Option type name table**: 1
 //     `Source_Link_Layer_Address` (SLLA) / 2
 //     `Target_Link_Layer_Address` (TLLA) / 3
 //     `Prefix_Information` / 4 `Redirected_Header` / 5 `MTU` /
-//     13 `Nonce` (RFC 3971 SeND) / 24 `Route_Information` (RFC
-//     4191) / 25 `RDNSS` (RFC 8106 Recursive DNS Server) / 31
-//     `DNSSL` (RFC 8106 DNS Search List).
+//     11 `CGA` / 12 `RSA_Signature` / 13 `Timestamp` / 14
+//     `Nonce` (the four RFC 3971 SeND options) / 24
+//     `Route_Information` (RFC 4191) / 25 `RDNSS` (RFC 8106
+//     Recursive DNS Server) / 31 `DNSSL` (RFC 8106 DNS Search
+//     List).
 //
 //   - **Per-option decoders**:
 //
@@ -161,10 +166,18 @@
 //     this decoder surfaces the on-wire checksum as hex but
 //     does not re-compute (out of scope unless we have the L3
 //     pseudo-header).
-//   - **SeND (Secure Neighbor Discovery)** — RFC 3971 adds CGA
-//   - RSA Signature + Nonce + Timestamp options to prevent
-//     ND spoofing; the Nonce option (Type 13) name surfaces
-//     but the CGA + RSA Signature options are not decoded.
+//   - **SeND (Secure Neighbor Discovery)** — RFC 3971 adds the
+//     CGA (Type 11), RSA Signature (Type 12), Timestamp (Type
+//     13) and Nonce (Type 14) options to prevent ND spoofing.
+//     Their framing is decoded — the CGA modifier / subnet
+//     prefix / collision count, the RSA key hash, the 8-byte
+//     timestamp and the nonce — while the public-key and
+//     signature blobs are surfaced as raw hex (cryptographic
+//     CGA / signature validation is higher-level work). NB: the
+//     Timestamp option is Type 13 and the Nonce option is Type
+//     14 (RFC 3971 §5.3.1/§5.3.2); scapy's Timestamp field size
+//     is non-conformant, so the RFC's 6-byte-reserved + 8-byte-
+//     timestamp layout is followed.
 //   - **DAD (Duplicate Address Detection)** state-machine —
 //     the per-address tentative / preferred / deprecated /
 //     invalid state machine is a higher-level concern.
@@ -240,6 +253,16 @@ type Option struct {
 
 	// Route Information
 	RoutePreference string `json:"route_preference,omitempty"`
+
+	// SeND (RFC 3971)
+	CGAModifier       string `json:"cga_modifier,omitempty"`        // 16-byte modifier
+	CGASubnetPrefix   string `json:"cga_subnet_prefix,omitempty"`   // 64-bit subnet prefix as IPv6 /64
+	CGACollisionCount *int   `json:"cga_collision_count,omitempty"` // 0..2 per RFC 3972
+	CGAPublicKeyHex   string `json:"cga_public_key_hex,omitempty"`  // DER public key + extensions (raw)
+	RSAKeyHash        string `json:"rsa_key_hash,omitempty"`        // SHA-1 hash of the signing public key
+	RSASignatureHex   string `json:"rsa_signature_hex,omitempty"`   // signature + padding (raw)
+	TimestampHex      string `json:"timestamp_hex,omitempty"`       // 8-byte anti-replay timestamp
+	NonceHex          string `json:"nonce_hex,omitempty"`
 }
 
 // Decode parses an ICMPv6 NDP message from a hex string starting
@@ -375,6 +398,43 @@ func decodeOption(o *Option, raw []byte) {
 			// body[0:2] reserved; body[2:6] MTU.
 			o.MTU = binary.BigEndian.Uint32(body[2:6])
 		}
+	case 11: // CGA option (RFC 3971 §5.1)
+		// body[0] Pad Length; body[1] reserved; then CGA Parameters
+		// (modifier 16 + subnet prefix 8 + collision count 1 + public
+		// key DER + extensions) followed by Pad-Length bytes of padding.
+		if len(body) >= 27 {
+			padLen := int(body[0])
+			o.CGAModifier = strings.ToUpper(hex.EncodeToString(body[2:18]))
+			o.CGASubnetPrefix = subnetPrefix64(body[18:26])
+			cc := int(body[26])
+			o.CGACollisionCount = &cc
+			// The public key + extensions occupy the rest, minus the
+			// trailing padding (Pad Length bytes).
+			end := len(body) - padLen
+			if end > 27 && end <= len(body) {
+				o.CGAPublicKeyHex = strings.ToUpper(hex.EncodeToString(body[27:end]))
+			}
+		}
+	case 12: // RSA Signature option (RFC 3971 §5.2)
+		// body[0:2] reserved; body[2:18] Key Hash (SHA-1 of the public
+		// key); body[18:] Digital Signature + padding.
+		if len(body) >= 18 {
+			o.RSAKeyHash = strings.ToUpper(hex.EncodeToString(body[2:18]))
+			if len(body) > 18 {
+				o.RSASignatureHex = strings.ToUpper(hex.EncodeToString(body[18:]))
+			}
+		}
+	case 13: // Timestamp option (RFC 3971 §5.3.1)
+		// body[0:6] reserved; body[6:14] the 48-bit-seconds + 16-bit-
+		// fraction anti-replay timestamp (the RFC layout; scapy's field
+		// size is non-conformant so it is not used as the oracle here).
+		if len(body) >= 14 {
+			o.TimestampHex = strings.ToUpper(hex.EncodeToString(body[6:14]))
+		}
+	case 14: // Nonce option (RFC 3971 §5.3.2)
+		if len(body) > 0 {
+			o.NonceHex = strings.ToUpper(hex.EncodeToString(body))
+		}
 	case 24: // Route Information (RFC 4191)
 		if len(body) >= 6 {
 			o.PrefixLength = int(body[0])
@@ -458,6 +518,16 @@ func typeName(t int) string {
 	return fmt.Sprintf("non-NDP ICMPv6 type %d", t)
 }
 
+// subnetPrefix64 renders an 8-byte (64-bit) subnet prefix as an IPv6 /64.
+func subnetPrefix64(b []byte) string {
+	if len(b) != 8 {
+		return strings.ToUpper(hex.EncodeToString(b))
+	}
+	full := make([]byte, 16)
+	copy(full, b)
+	return net.IP(full).String() + "/64"
+}
+
 func raPreferenceName(p int) string {
 	switch p {
 	case 0:
@@ -484,7 +554,13 @@ func optionTypeName(t int) string {
 		return "Redirected_Header"
 	case 5:
 		return "MTU"
+	case 11:
+		return "CGA"
+	case 12:
+		return "RSA_Signature"
 	case 13:
+		return "Timestamp"
+	case 14:
 		return "Nonce"
 	case 24:
 		return "Route_Information"

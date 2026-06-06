@@ -57,9 +57,10 @@ var ndpDecodeSpec = Spec{
 		"next-hop) + Destination Address (original destination).\n" +
 		"- **NDP Options TLV walker** (RFC 4861 §4.6): each option is byte 0 " +
 		"Type + byte 1 Length-in-8-byte-units + payload.\n" +
-		"- **9-entry NDP Option type name table**: 1 Source_Link_Layer_Address / " +
+		"- **12-entry NDP Option type name table**: 1 Source_Link_Layer_Address / " +
 		"2 Target_Link_Layer_Address / 3 Prefix_Information / 4 " +
-		"Redirected_Header / 5 MTU / 13 Nonce (RFC 3971 SeND) / 24 " +
+		"Redirected_Header / 5 MTU / 11 CGA / 12 RSA_Signature / 13 Timestamp / " +
+		"14 Nonce (the four RFC 3971 SeND options) / 24 " +
 		"Route_Information (RFC 4191) / 25 RDNSS (RFC 8106 Recursive DNS " +
 		"Server) / 31 DNSSL (RFC 8106 DNS Search List).\n" +
 		"- **Per-option decoders**: SLLA/TLLA → 6-byte MAC; Prefix Information " +
@@ -68,7 +69,11 @@ var ndpDecodeSpec = Spec{
 		"list (the leak target for mitm6 + rogue RA attacks); DNSSL → lifetime " +
 		"+ DNS search-domain list (length-prefixed labels with 0x00 root " +
 		"terminator per RFC 1035 §3.1); Route Information → PrefixLength + " +
-		"Preference + Route Lifetime + Prefix.\n\n" +
+		"Preference + Route Lifetime + Prefix; **SeND (RFC 3971)** → CGA " +
+		"(modifier + subnet prefix + collision count + raw public key), RSA " +
+		"Signature (key hash + raw signature), Timestamp (8-byte anti-replay " +
+		"value) and Nonce — the IPv6 ND security posture (SeND is the THC-IPv6 " +
+		"`sendpees6` attack surface).\n\n" +
 		"Pure offline parser — operators paste NDP bytes (starting at the " +
 		"ICMPv6 Type byte; after the IPv6 header strip — Next Header = 58) " +
 		"from a `tcpdump -X icmp6` line or a Wireshark ICMPv6/NDP dissector " +
@@ -80,9 +85,10 @@ var ndpDecodeSpec = Spec{
 		"covered by the existing icmp_packet_decode Spec or out of scope); " +
 		"checksum verification (ICMPv6 checksum computed over IPv6 pseudo-" +
 		"header + ICMPv6 message — out of scope unless we have the L3 pseudo-" +
-		"header); SeND Secure Neighbor Discovery (RFC 3971 CGA + RSA Signature " +
-		"options — Nonce option name surfaces but CGA + RSA Signature options " +
-		"are not decoded); DAD Duplicate Address Detection state-machine " +
+		"header); SeND cryptographic validation (RFC 3971 — the CGA / RSA " +
+		"Signature / Timestamp / Nonce option framing is now decoded, but the " +
+		"public-key and signature blobs are surfaced raw and CGA / signature " +
+		"verification is higher-level work); DAD Duplicate Address Detection state-machine " +
 		"reasoning (per-address tentative / preferred / deprecated / invalid " +
 		"state machine — higher-level analysis).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (IPv6 reconnaissance + mitm6 " +
