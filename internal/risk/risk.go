@@ -2464,6 +2464,15 @@ var toolLevels = func() map[string]Level {
 		// transmits nothing, so it is Low. Structural fields verified vs
 		// scapy.
 		"aoe_decode",
+		// v0.578 (industrial Anybus device-discovery / reconfig recon):
+		// hicp_decode — HMS Anybus Host IP Configuration Protocol (UDP
+		// 3250). Decodes the text Key=value messages: Module Scan /
+		// Response (asset inventory: fieldbus / MAC / IP / hostname, +
+		// PSWD=OFF unauthenticated-reconfig flag) / Configure / status; the
+		// profinetdcp-analog OT device-discovery decoder. Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it
+		// is Low. Verified vs scapy.
+		"hicp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

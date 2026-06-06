@@ -2374,7 +2374,12 @@ func TestRegistrySize(t *testing.T) {
 	// tag) + ATA command (READ/WRITE/IDENTIFY + 48-bit LBA) / Query-Config;
 	// storage attack-surface recon. Structural fields verified vs scapy.
 	// internal/aoe).
-	const expected = 576
+	// v0.578.0 added hicp_decode (HMS Anybus Host IP Configuration Protocol,
+	// UDP 3250 — text Key=value device discovery/reconfig: Module Scan /
+	// Response (asset inventory + PSWD=OFF unauth-reconfig flag) / Configure;
+	// the profinetdcp-analog OT device-discovery decoder. Verified vs scapy.
+	// internal/hicp).
+	const expected = 577
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
