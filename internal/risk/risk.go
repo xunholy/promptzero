@@ -2328,6 +2328,13 @@ var toolLevels = func() map[string]Level {
 		// of pasted bytes; reads a string, transmits nothing, so it is Low.
 		// Verified vs scapy.
 		"pfcp_decode",
+		// v0.560 (Cisco VoIP call-flow / dialed-number recon): skinny_decode
+		// — Skinny/SCCP (Cisco IP phone <-> CUCM, TCP 2000). Framed walk +
+		// 132-entry message-name table (code-generated from scapy) +
+		// KeypadButton dialed-digit decode; other bodies surfaced raw. Pure
+		// offline decode of pasted bytes; reads a string, transmits nothing,
+		// so it is Low. Verified vs scapy.
+		"skinny_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

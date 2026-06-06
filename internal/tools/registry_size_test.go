@@ -2302,7 +2302,11 @@ func TestRegistrySize(t *testing.T) {
 	// protocol — header (version/flags/type/SEID/seq) + IE TLV walk with
 	// TS 29.244 names (code-generated from scapy) + Cause decode; the
 	// session-manipulation attack surface. Verified vs scapy. internal/pfcp).
-	const expected = 560
+	// v0.560.0 added skinny_decode (Skinny/SCCP Cisco IP-phone signalling —
+	// framed walk + 132-entry message-name table (code-generated from scapy)
+	// + KeypadButton dialed-digit decode; VoIP call-flow/dialed-number recon.
+	// Verified vs scapy. internal/skinny).
+	const expected = 561
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
