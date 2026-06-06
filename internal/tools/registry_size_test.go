@@ -2323,7 +2323,11 @@ func TestRegistrySize(t *testing.T) {
 	// MikroTik/Aruba remote wireless-capture encapsulation: 4-byte header +
 	// tag walk (RSSI/SNR/rate/channel/FCS) + raw encapsulated frame; wireless
 	// sniffer recon. Verified vs scapy. internal/tzsp).
-	const expected = 565
+	// v0.565.0 added ripng_decode (RIPng / RFC 2080 IPv6 RIP, UDP 521 — the
+	// IPv6 sibling of rip: 4-byte header + 20-byte route table entries with
+	// the next-hop (metric 0xFF) + infinity (16) special RTEs; IPv6 routing
+	// recon / route-injection surface. Verified vs scapy. internal/ripng).
+	const expected = 566
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

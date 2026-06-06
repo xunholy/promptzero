@@ -2370,6 +2370,15 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low. Verified
 		// vs scapy.
 		"tzsp_decode",
+		// v0.565 (IPv6 routing-protocol recon): ripng_decode — RIPng
+		// (RFC 2080), the IPv6 distance-vector routing protocol (UDP 521),
+		// the IPv6 sibling of rip. Decodes the 4-byte header + the 20-byte
+		// route table entries (prefix / route tag / prefix length / metric)
+		// incl. the next-hop (metric 0xFF) and infinity (16) special RTEs,
+		// revealing the routes a router advertises. Pure offline decode of
+		// pasted bytes; reads a string, transmits nothing, so it is Low.
+		// Verified vs scapy.
+		"ripng_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
