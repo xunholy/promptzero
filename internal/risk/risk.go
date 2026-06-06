@@ -2509,6 +2509,17 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low. Verified
 		// vs scapy + ISO 15118-3.
 		"homepluggp_decode",
+		// v0.583 (RDMA / InfiniBand fabric recon):
+		// roce_decode — RoCE (RDMA over Converged Ethernet) InfiniBand
+		// Base Transport Header, RoCEv2 over UDP 4791. Decodes the fixed
+		// 12-byte BTH: the opcode + name (RDMA READ / WRITE / ATOMIC /
+		// SEND / ACK / CNP), the transport service (RC / UC / RD / UD),
+		// the Partition Key (fabric isolation domain), the destination
+		// Queue Pair, the FECN/BECN congestion flags and the PSN; the
+		// extended transport headers + payload are surfaced raw. Pure
+		// offline decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Verified vs scapy.
+		"roce_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

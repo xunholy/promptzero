@@ -2399,7 +2399,14 @@ func TestRegistrySize(t *testing.T) {
 	// material from the match/set-key messages; EV-charging-security recon
 	// extending the powerline domain. Body layouts verified vs scapy + ISO
 	// 15118-3. internal/homepluggp).
-	const expected = 581
+	// v0.583.0 added roce_decode (RoCE / InfiniBand Base Transport Header —
+	// RDMA over Converged Ethernet, RoCEv2 over UDP 4791: the fixed 12-byte BTH
+	// (opcode → RDMA READ/WRITE/ATOMIC/SEND/ACK/CNP + transport service RC/UC/
+	// RD/UD, P_Key isolation domain, destination Queue Pair, FECN/BECN, PSN);
+	// datacenter RDMA-fabric recon, a distinct domain. 12-byte layout + 57-entry
+	// opcode table verified vs scapy (80-row differential, 0 mismatches).
+	// internal/roce).
+	const expected = 582
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
