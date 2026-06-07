@@ -2661,6 +2661,16 @@ var toolLevels = func() map[string]Level {
 		// with i2c_scan. Pure offline decode of pasted bytes; reads a string,
 		// transmits nothing, so it is Low. Verified vs the PMBus spec.
 		"pmbus_decode",
+		// v0.603 (Bluetooth-stack / btsnoop HCI recon):
+		// bt_hci_decode — Bluetooth HCI (Host Controller Interface, H4) the
+		// host↔controller transport in btsnoop / hcidump captures. Decodes
+		// the packet type + the command opcode (OGF/OCF + well-known name) /
+		// the event code (incl. the Command Complete/Status embedded opcode
+		// and the LE Meta sub-event) / the ACL connection handle; the
+		// offline-decode companion to the live bt_hci_info. Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it
+		// is Low. Verified vs the Bluetooth Core spec.
+		"bt_hci_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

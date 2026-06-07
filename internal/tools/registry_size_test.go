@@ -2511,7 +2511,13 @@ func TestRegistrySize(t *testing.T) {
 	// and STATUS bit-fields decoded; VOUT (ULINEAR16/VOUT_MODE) surfaced raw.
 	// Pairs with i2c_scan. Command set + LINEAR11 verified vs the PMBus spec.
 	// internal/pmbus).
-	const expected = 596
+	// v0.603.0 added bt_hci_decode (Bluetooth HCI / H4 — the host↔controller
+	// transport in btsnoop/hcidump: the packet type + command opcode (OGF/OCF +
+	// well-known name) / event code (incl. Command Complete/Status embedded
+	// opcode + LE Meta sub-event) / ACL handle; the offline-decode companion to
+	// the live bt_hci_info, beneath the BLE decoders. Opcode/event/sub-event
+	// tables per the Bluetooth Core spec. internal/hci).
+	const expected = 597
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
