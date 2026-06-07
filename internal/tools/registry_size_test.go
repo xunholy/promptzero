@@ -2491,7 +2491,13 @@ func TestRegistrySize(t *testing.T) {
 	// definitive BadUSB tell (a declared Generic-Desktop/Keyboard usage). The
 	// deepest layer of USB device identity, completing usb_descriptor + usbhid.
 	// Verified vs the canonical boot-keyboard descriptor. internal/hidreport).
-	const expected = 593
+	// v0.600.0 added usb_pd_decode (USB Power Delivery — the USB-C CC-line power-
+	// negotiation protocol: the 16-bit header (control/data dispatch by data-
+	// object count, message type, roles, spec rev) + Source/Sink Capabilities
+	// Power Data Objects (Fixed voltage/current+flags, Variable, Battery);
+	// emerging hardware-attack surface (malicious chargers). Augmented PDO /
+	// Request RDO / VDM surfaced raw. Verified vs the USB-PD spec. internal/usbpd).
+	const expected = 594
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

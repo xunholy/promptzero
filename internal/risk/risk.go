@@ -2632,6 +2632,15 @@ var toolLevels = func() map[string]Level {
 		// offline decode of pasted bytes; reads a string, transmits
 		// nothing, so it is Low. Verified vs the USB HID spec.
 		"usb_hid_report_descriptor_decode",
+		// v0.600 (USB-C power-delivery / malicious-charger recon):
+		// usb_pd_decode — USB Power Delivery (the USB-C CC-line power-
+		// negotiation protocol). Decodes the 16-bit header (message type
+		// with control/data dispatch, roles, spec revision) and the
+		// Source/Sink Capabilities Power Data Objects (Fixed voltage/current
+		// + flags, Variable, Battery); Augmented PDO / Request RDO / VDM
+		// surfaced raw. Pure offline decode of pasted bytes; reads a string,
+		// transmits nothing, so it is Low. Verified vs the USB-PD spec.
+		"usb_pd_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
