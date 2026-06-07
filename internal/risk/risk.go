@@ -2703,6 +2703,18 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it
 		// is Low. Verified vs the Bluetooth Core spec.
 		"bt_att_decode",
+		// bt_adv_decode — Bluetooth advertising / scan-response payload, the
+		// GAP AD-structure list (same length-type-value format as BR/EDR EIR).
+		// The recon headline a passive BLE scan surfaces first: per-structure
+		// decode of Flags, 16/32/128-bit service-UUID + solicitation lists,
+		// Local Name, Tx Power, Appearance, LE Role, URI, Service Data (with
+		// Eddystone UID/URL/TLM for UUID 0xFEAA), and Manufacturer Specific
+		// Data (company name + Apple iBeacon proximity UUID/major/minor/power);
+		// undocumented value-spaces surfaced raw. Advertising-layer complement
+		// to the BT-stack chain (hci → l2cap → att). Pure offline decode of
+		// pasted bytes; reads a string, transmits nothing, so it is Low.
+		// Verified vs the Bluetooth Assigned Numbers + iBeacon / Eddystone specs.
+		"bt_adv_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

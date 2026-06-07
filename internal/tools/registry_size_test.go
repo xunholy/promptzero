@@ -2537,7 +2537,16 @@ func TestRegistrySize(t *testing.T) {
 	// value), Notification/Indication; service-discovery responses + values
 	// surfaced raw. Completes hci→l2cap→att, pairs with bluetooth_gatt_uuid_
 	// lookup. Per the BT Core spec Vol 3 Part F. internal/att).
-	const expected = 600
+	// v0.607.0 added bt_adv_decode (Bluetooth advertising / scan-response — the
+	// GAP AD-structure list, same format as BR/EDR EIR: the recon headline a
+	// passive BLE scan surfaces first. Per-structure decode — Flags, 16/32/128-
+	// bit service-UUID + solicitation lists, Local Name, Tx Power, Appearance,
+	// LE Role, URI, Service Data (with Eddystone UID/URL/TLM for UUID 0xFEAA),
+	// and Manufacturer Specific Data (company name + Apple iBeacon proximity
+	// UUID/major/minor/power). Undocumented value-spaces surfaced raw + noted.
+	// Advertising-layer complement to hci→l2cap→att. Per the Bluetooth Assigned
+	// Numbers + iBeacon / Eddystone specs. internal/bleadv).
+	const expected = 601
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
