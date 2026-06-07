@@ -2592,6 +2592,16 @@ var toolLevels = func() map[string]Level {
 		// bytes; reads a string, transmits nothing, so it is Low. Tables
 		// code-genned from scapy.contrib.automotive.xcp.
 		"xcp_decode",
+		// v0.593 (automotive Ethernet-diagnostics recon):
+		// doip_decode — DoIP (Diagnostics over IP, ISO 13400), the
+		// Ethernet/IP transport that carries vehicle diagnostics (UDS) in
+		// modern cars. Decodes the 8-byte header + the payload-type body:
+		// vehicle identification (VIN / EID / GID), routing activation
+		// (the access-control gate), alive-check / entity-status / power-
+		// mode, and the diagnostic message (the UDS payload surfaced raw
+		// for uds_decode). Pure offline decode of pasted bytes; reads a
+		// string, transmits nothing, so it is Low. Verified vs ISO 13400.
+		"doip_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

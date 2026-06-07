@@ -2462,7 +2462,14 @@ func TestRegistrySize(t *testing.T) {
 	// commands flagged; joins the uds/kwp/obd2 automotive family. Command /
 	// error / event code tables code-genned from scapy.contrib.automotive.xcp.
 	// internal/xcp).
-	const expected = 589
+	// v0.593.0 added doip_decode (DoIP — Diagnostics over IP, ISO 13400 — the
+	// Ethernet/IP transport carrying vehicle diagnostics (UDS) in modern cars:
+	// the 8-byte header + payload-type body — vehicle identification (leaks VIN/
+	// EID/GID), routing activation (auth gate), alive-check / entity-status /
+	// power-mode, and the diagnostic message (UDS payload surfaced raw for
+	// uds_decode); joins the automotive family. Header + payload-type + sub-code
+	// tables code-genned from scapy.contrib.automotive.doip. internal/doip).
+	const expected = 590
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
