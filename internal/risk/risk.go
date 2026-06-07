@@ -86,6 +86,12 @@ var toolLevels = func() map[string]Level {
 		// ioprox_decode. Generation only, no write/TX (the Flipper firmware
 		// writes it to a T5577), so it stays Low like the decoder.
 		"ioprox_encode",
+		// jablotron_encode builds the 64-bit Jablotron block from a card
+		// number (BCD-encode + sum-XOR-0x3A checksum + 0xFFFF preamble) — the
+		// inverse of jablotron_decode. Generation only, no write/TX (the
+		// Flipper firmware writes it to a T5577), so it stays Low like the
+		// decoder.
+		"jablotron_encode",
 		// v0.404 (NATIVE-fit NFC gap): nfc_t2t_decode dissects the NFC
 		// Forum Type 2 Tag structure (NTAG21x / Ultralight) from a dump —
 		// 7-byte UID + BCC0/BCC1 validation (hand-computable XOR), static

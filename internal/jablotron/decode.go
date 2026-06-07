@@ -133,6 +133,36 @@ func Decode(input string) (*Result, error) {
 	return r, nil
 }
 
+// Encode builds the 64-bit (8-byte) Jablotron block from a printed card number,
+// returning it as an upper-case hex string. The card number is BCD-encoded into
+// the five card-data bytes (two decimal digits per byte, the inverse of the
+// decoder's render), then the checksum (sum of the card bytes XOR 0x3A) and the
+// 0xFFFF preamble are prepended/appended. It is the inverse of Decode:
+// Decode(Encode(n)).CardID == n for any n that fits ten BCD digits.
+func Encode(cardID uint64) (string, error) {
+	if cardID > 9_999_999_999 {
+		return "", fmt.Errorf("jablotron: card number %d exceeds the 10-digit (5-byte BCD) range", cardID)
+	}
+	card := make([]byte, 5)
+	div := uint64(100_000_000) // 100^4
+	for i := 0; i < 5; i++ {
+		group := (cardID / div) % 100 // 0..99
+		card[i] = byte(group/10)<<4 | byte(group%10)
+		div /= 100
+	}
+	var sum byte
+	for _, x := range card {
+		sum += x
+	}
+	crc := sum ^ 0x3A
+
+	b := make([]byte, 0, 8)
+	b = append(b, 0xFF, 0xFF)
+	b = append(b, card...)
+	b = append(b, crc)
+	return strings.ToUpper(hex.EncodeToString(b)), nil
+}
+
 func normaliseHex(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "0x")

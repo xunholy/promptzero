@@ -2596,7 +2596,12 @@ func TestRegistrySize(t *testing.T) {
 	// with the decoder + reproduces the hand-traced vector; closes the ioProx
 	// reader-cloning loop alongside em4100_encode / rfid_pacs_encode).
 	// internal/ioprox.Encode.
-	const expected = 609
+	// v0.617.0 added jablotron_encode (card number -> 64-bit Jablotron block,
+	// the inverse of jablotron_decode; BCD-encodes the card + sum-XOR-0x3A
+	// checksum + 0xFFFF preamble, round-trip-verified with the decoder +
+	// reproduces its vector; extends the LF clone set em4100/pacs/ioprox).
+	// internal/jablotron.Encode.
+	const expected = 610
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
