@@ -194,6 +194,77 @@ func nibbleCount(v uint32) int {
 	return n
 }
 
+// Encode builds the 96-bit (12-byte) Noralsy block from a printed card number
+// and a year, returning it as an upper-case hex string. The card number is
+// BCD-encoded into the 28-bit packed field (placed non-contiguously per the
+// layout), the year is BCD-encoded, and the two nibble checksums + the
+// 0xBB0214FF preamble are written. It is the inverse of Decode:
+// Decode(Encode(card, year)) reproduces them with both checksums valid.
+func Encode(cardID uint64, year int) (string, error) {
+	if cardID > 9_999_999 {
+		return "", fmt.Errorf("noralsy: card number %d exceeds the 7-digit BCD range", cardID)
+	}
+	if year < 1961 || year > 2060 {
+		// Outside this window the decoder's >60 century heuristic would not
+		// round-trip, so reject rather than emit a block that re-decodes to a
+		// different year.
+		return "", fmt.Errorf("noralsy: year %d is outside the round-trippable 1961-2060 range", year)
+	}
+	packed := uint32(bcdEncode(cardID, 7)) // 28-bit BCD card id
+	yearBCD := uint32(bcdEncode(uint64(year%100), 2))
+
+	idUpper := (packed >> 16) & 0xFFF
+	idMiddle := (packed >> 8) & 0xFF
+	idLower := packed & 0xFF
+
+	raw2 := idUpper<<20 | yearBCD<<12 | idMiddle // bits 52-55 (unknown) left 0
+	raw3 := idLower << 24                        // chk nibbles + trailer filled below
+
+	b := make([]byte, 12)
+	binary.BigEndian.PutUint32(b[0:4], preamble)
+	binary.BigEndian.PutUint32(b[4:8], raw2)
+	binary.BigEndian.PutUint32(b[8:12], raw3)
+
+	// chk1 over bits 32-71, then chk2 over bits 0-75 (which includes chk1).
+	setNibble(b, 72, nibbleXOR(b, 32, 40))
+	setNibble(b, 76, nibbleXOR(b, 0, 76))
+
+	return strings.ToUpper(hex.EncodeToString(b)), nil
+}
+
+// bcdEncode packs the low `nibbles` decimal digits of v (MSB-first) into a BCD
+// integer (each nibble a decimal digit).
+func bcdEncode(v uint64, nibbles int) uint64 {
+	var out uint64
+	for i := nibbles - 1; i >= 0; i-- {
+		digit := (v / pow10(i)) % 10
+		out = out<<4 | digit
+	}
+	return out
+}
+
+func pow10(n int) uint64 {
+	p := uint64(1)
+	for i := 0; i < n; i++ {
+		p *= 10
+	}
+	return p
+}
+
+// setNibble writes the low 4 bits of v at bit position pos (MSB-first).
+func setNibble(b []byte, pos int, v byte) {
+	for i := 0; i < 4; i++ {
+		bit := (v >> uint(3-i)) & 1
+		idx := pos + i
+		mask := byte(1) << (7 - uint(idx%8))
+		if bit == 1 {
+			b[idx/8] |= mask
+		} else {
+			b[idx/8] &^= mask
+		}
+	}
+}
+
 func normaliseHex(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "0x")

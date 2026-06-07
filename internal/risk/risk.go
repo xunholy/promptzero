@@ -97,6 +97,12 @@ var toolLevels = func() map[string]Level {
 		// Generation only, no write/TX (the Flipper firmware writes it to a
 		// T5577), so it stays Low like the decoder.
 		"viking_encode",
+		// noralsy_encode builds the 96-bit Noralsy block from a card number +
+		// year (BCD-encode + non-contiguous packing + two nibble checksums +
+		// 0xBB0214FF preamble) — the inverse of noralsy_decode. Generation
+		// only, no write/TX (the Flipper firmware writes it to a T5577), so it
+		// stays Low like the decoder.
+		"noralsy_encode",
 		// v0.404 (NATIVE-fit NFC gap): nfc_t2t_decode dissects the NFC
 		// Forum Type 2 Tag structure (NTAG21x / Ultralight) from a dump —
 		// 7-byte UID + BCC0/BCC1 validation (hand-computable XOR), static

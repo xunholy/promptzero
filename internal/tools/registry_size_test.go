@@ -2605,7 +2605,12 @@ func TestRegistrySize(t *testing.T) {
 	// inverse of viking_decode; 0xF20000 preamble + XOR checksum (all bytes XOR
 	// == 0xA8), round-trip-verified + reproduces its vector; extends the LF
 	// clone set em4100/pacs/ioprox/jablotron). internal/viking.Encode.
-	const expected = 611
+	// v0.619.0 added noralsy_encode (card + year -> 96-bit Noralsy block, the
+	// inverse of noralsy_decode; BCD-encodes the card non-contiguously + the
+	// year + the two nibble checksums + 0xBB0214FF preamble, round-trip-verified
+	// + reproduces its vector; completes the LF clone set em4100/pacs/ioprox/
+	// jablotron/viking). internal/noralsy.Encode.
+	const expected = 612
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
