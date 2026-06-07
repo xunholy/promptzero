@@ -2612,6 +2612,16 @@ var toolLevels = func() map[string]Level {
 		// nothing, so it is Low. Tables code-genned from
 		// scapy.contrib.automotive.ccp.
 		"ccp_decode",
+		// v0.598 (USB device fingerprinting / BadUSB descriptor analysis):
+		// usb_descriptor_decode — USB descriptors (device / configuration /
+		// interface / endpoint / HID / string). Decodes the VID:PID
+		// fingerprint, the device + per-interface class, and the endpoints,
+		// and flags the HID-boot-keyboard (BadUSB / rubber-ducky) and
+		// composite-device patterns; the device-fingerprinting companion to
+		// the usbhid / badusb tooling. Pure offline decode of pasted bytes;
+		// reads a string, transmits nothing, so it is Low. Verified vs the
+		// USB spec descriptor layouts.
+		"usb_descriptor_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

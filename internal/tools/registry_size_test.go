@@ -2476,7 +2476,15 @@ func TestRegistrySize(t *testing.T) {
 	// (CRM + return code / event / DAQ data, slave→master). Direction-dependent
 	// like XCP. Command + return-code tables code-genned from
 	// scapy.contrib.automotive.ccp. internal/ccp).
-	const expected = 591
+	// (v0.595.0 / v0.596.0 / v0.597.0 were chaining enhancements — DoIP→UDS,
+	// ISO-TP→UDS, ERSPAN→IP — not new tools, so the count was unchanged.)
+	// v0.598.0 added usb_descriptor_decode (USB descriptors — device / config /
+	// interface / endpoint / HID / string of USB 2.0/3.x: VID:PID fingerprint,
+	// device + per-interface class, endpoints; flags the HID-boot-keyboard
+	// (BadUSB / rubber-ducky) and composite-device patterns. Deterministic
+	// USB-spec layouts, byte-checkable; the device-fingerprinting companion to
+	// the usbhid / badusb tooling. internal/usbdesc).
+	const expected = 592
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
