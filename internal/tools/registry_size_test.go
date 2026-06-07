@@ -2565,7 +2565,14 @@ func TestRegistrySize(t *testing.T) {
 	// set (em4100 / fdxb / ioprox / jablotron / PACS). Layout + checksum agree
 	// byte-for-byte between the Proxmark3 and Flipper Zero references.
 	// internal/viking).
-	const expected = 604
+	// v0.611.0 added noralsy_decode (Noralsy 125 kHz LF access credential —
+	// decodes the 96-bit block: 0xBB0214FF preamble + 28-bit packed card ID +
+	// 8-bit BCD year + two 4-bit nibble-XOR checksums. Card-ID presentation
+	// differs between references (Proxmark BCD-decimal vs Flipper hex) so both
+	// surfaced. Continues the LF reader-cloning set. Layout + masks + checksums
+	// agree byte-for-byte between the Proxmark3 and Flipper Zero references.
+	// internal/noralsy).
+	const expected = 605
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

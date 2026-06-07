@@ -141,6 +141,12 @@ var toolLevels = func() map[string]Level {
 		// Offline deterministic bit extraction of an operator-supplied block;
 		// transmits nothing, so it is Low.
 		"viking_decode",
+		// Noralsy (French/EU) 125 kHz LF access-control credential decode from
+		// its 96-bit block (0xBB0214FF preamble + 28-bit packed card ID +
+		// 8-bit BCD year + two 4-bit nibble-XOR checksums). Offline
+		// deterministic bit extraction of an operator-supplied block;
+		// transmits nothing, so it is Low.
+		"noralsy_decode",
 		// T5577 / ATA5577 configuration-register (block 0) decode
 		// (modulation / bit rate / flags). Offline deterministic
 		// bit-field parse of an operator-supplied word; transmits
