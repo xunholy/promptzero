@@ -2587,7 +2587,11 @@ func TestRegistrySize(t *testing.T) {
 	// 0x006D->38029Hz + the burst->µs math. internal/ir.DecodePronto).
 	// (v0.613.0 added Kaseikyo to the existing ir_raw_decode tool — registry
 	// unchanged there, an enhancement not a new tool.)
-	const expected = 607
+	// v0.615.0 added ir_pronto_encode (raw IR timings -> Pronto HEX, the inverse
+	// of ir_pronto_decode; documented Pronto arithmetic inverted, round-trip-
+	// verified with the decoder; the IR companion to em4100_encode / pacs_encode
+	// / weather_synth). internal/ir.EncodePronto.
+	const expected = 608
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

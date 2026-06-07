@@ -54,7 +54,7 @@ var toolLevels = func() map[string]Level {
 		"discover_apps",
 		"analyze_image",
 		"list_apps",
-		"ir_decode_file", "ir_universal_list", "ir_raw_decode", "ir_pronto_decode",
+		"ir_decode_file", "ir_universal_list", "ir_raw_decode", "ir_pronto_decode", "ir_pronto_encode",
 		"rfid_raw_analyze",
 		"onewire_search",
 		"i2c_scan",

@@ -119,6 +119,53 @@ func DecodePronto(input string) (*ProntoResult, error) {
 	return r, nil
 }
 
+// EncodePronto is the inverse of DecodePronto: it converts a raw IR timing
+// sequence (space/comma-separated microsecond mark/space durations) and a
+// carrier frequency into a raw-oscillated (format 0x0000) Pronto HEX code with
+// no repeat sequence. It round-trips with DecodePronto (decode of the emitted
+// code reproduces the input timings within carrier-period rounding).
+func EncodePronto(timings string, carrierHz int) (string, error) {
+	t, err := parseTimings(timings)
+	if err != nil {
+		return "", err
+	}
+	if len(t) < 2 {
+		return "", fmt.Errorf("ir: need at least one mark/space pair; got %d timing(s)", len(t))
+	}
+	if len(t)%2 != 0 {
+		return "", fmt.Errorf("ir: Pronto needs an even number of timings (mark/space pairs); got %d", len(t))
+	}
+	if carrierHz <= 0 {
+		return "", fmt.Errorf("ir: carrier frequency must be positive (Hz); got %d", carrierHz)
+	}
+
+	freqWord := int(math.Round(1_000_000 / (float64(carrierHz) * prontoClockUS)))
+	if freqWord < 1 || freqWord > 0xFFFF {
+		return "", fmt.Errorf("ir: carrier %d Hz maps to out-of-range Pronto frequency word %d", carrierHz, freqWord)
+	}
+	period := float64(freqWord) * prontoClockUS
+
+	pairs := len(t) / 2
+	words := make([]uint16, 0, 4+len(t))
+	words = append(words, 0x0000, uint16(freqWord), uint16(pairs), 0x0000)
+	for _, us := range t {
+		burst := int(math.Round(float64(us) / period))
+		if burst < 1 {
+			burst = 1 // a sub-cycle duration still needs at least one carrier cycle
+		}
+		if burst > 0xFFFF {
+			return "", fmt.Errorf("ir: timing %dµs exceeds the Pronto burst range at %d Hz", us, carrierHz)
+		}
+		words = append(words, uint16(burst))
+	}
+
+	parts := make([]string, len(words))
+	for i, w := range words {
+		parts[i] = fmt.Sprintf("%04X", w)
+	}
+	return strings.Join(parts, " "), nil
+}
+
 func burstsToUS(bursts []uint16, period float64) []int {
 	out := make([]int, len(bursts))
 	for i, b := range bursts {

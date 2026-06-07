@@ -52,3 +52,12 @@ func FuzzDecodePronto(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, s string) { _, _ = DecodePronto(s) })
 }
+
+// FuzzEncodePronto exercises the Pronto encoder — timing parsing, the even-pair
+// and carrier validation and the burst conversion must never panic.
+func FuzzEncodePronto(f *testing.F) {
+	for _, s := range []string{"9000 4500", "9000 4500 560 560 560 1690", "", "9000", "abc"} {
+		f.Add(s, 38000)
+	}
+	f.Fuzz(func(t *testing.T, s string, hz int) { _, _ = EncodePronto(s, hz) })
+}
