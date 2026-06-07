@@ -2517,7 +2517,13 @@ func TestRegistrySize(t *testing.T) {
 	// opcode + LE Meta sub-event) / ACL handle; the offline-decode companion to
 	// the live bt_hci_info, beneath the BLE decoders. Opcode/event/sub-event
 	// tables per the Bluetooth Core spec. internal/hci).
-	const expected = 597
+	// v0.604.0 added bt_l2cap_decode (Bluetooth L2CAP — the channel-mux layer
+	// inside HCI ACL, bridging bt_hci_decode and the GATT tooling: the basic
+	// header (length + CID) + a CID dispatch — signaling channel (codes), ATT
+	// (GATT opcode), SMP (pairing code), dynamic. Per-operation params surfaced
+	// raw. CID / signaling / ATT / SMP tables per the Bluetooth Core spec.
+	// internal/l2cap).
+	const expected = 598
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

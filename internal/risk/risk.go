@@ -2671,6 +2671,16 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it
 		// is Low. Verified vs the Bluetooth Core spec.
 		"bt_hci_decode",
+		// v0.604 (Bluetooth-stack L2CAP recon):
+		// bt_l2cap_decode — Bluetooth L2CAP, the channel-multiplexing layer
+		// inside HCI ACL that carries the higher Bluetooth protocols.
+		// Decodes the basic header (length + CID) and dispatches by CID:
+		// the signaling channel (commands), ATT (the GATT opcode), SMP (the
+		// pairing code) or a dynamic channel; per-operation params surfaced
+		// raw. Bridges bt_hci_decode and the GATT tooling. Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it
+		// is Low. Verified vs the Bluetooth Core spec.
+		"bt_l2cap_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
