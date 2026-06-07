@@ -124,6 +124,12 @@ var toolLevels = func() map[string]Level {
 		// Offline deterministic parse of an operator-supplied block;
 		// transmits nothing, so it is Low.
 		"fdxb_decode",
+		// IO Prox (Kantech XSF) 125 kHz LF access-control credential
+		// decode from its 64-bit block (facility code + version + 16-bit
+		// card number + 8-bit checksum, with a structural marker/separator
+		// gate). Offline deterministic bit extraction of an operator-
+		// supplied block; transmits nothing, so it is Low.
+		"ioprox_decode",
 		// T5577 / ATA5577 configuration-register (block 0) decode
 		// (modulation / bit rate / flags). Offline deterministic
 		// bit-field parse of an operator-supplied word; transmits

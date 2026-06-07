@@ -2546,7 +2546,14 @@ func TestRegistrySize(t *testing.T) {
 	// UUID/major/minor/power). Undocumented value-spaces surfaced raw + noted.
 	// Advertising-layer complement to hci→l2cap→att. Per the Bluetooth Assigned
 	// Numbers + iBeacon / Eddystone specs. internal/bleadv).
-	const expected = 601
+	// v0.608.0 added ioprox_decode (IO Prox / Kantech XSF 125 kHz LF access
+	// credential — decodes the 64-bit block: facility code + version + 16-bit
+	// card number + 8-bit checksum, with a structural marker/separator gate.
+	// Closes the LF reader-cloning gap left by the HID/Indala/AWID PACS
+	// coverage; complements em4100_decode / fdxb_decode. Layout + checksum
+	// agree byte-for-byte between the Proxmark3 and Flipper Zero references.
+	// internal/ioprox).
+	const expected = 602
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
