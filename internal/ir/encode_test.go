@@ -20,6 +20,35 @@ func TestEncodeRawNECRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEncodeRawNECExtendedRoundTrip(t *testing.T) {
+	// 16-bit address where high byte != ~low byte (so it stays NEC-extended).
+	s, err := EncodeRaw("NEC-extended", 0x1234, 0x56, EncodeOptions{})
+	if err != nil {
+		t.Fatalf("EncodeRaw NECext: %v", err)
+	}
+	r, err := DecodeRaw(s)
+	if err != nil {
+		t.Fatalf("DecodeRaw(NECext): %v", err)
+	}
+	if r.Protocol != "NEC-extended" || r.Address != 0x1234 || r.Command != 0x56 || !r.ChecksumValid {
+		t.Errorf("NECext round-trip -> %s addr=0x%X cmd=0x%X valid=%v", r.Protocol, r.Address, r.Command, r.ChecksumValid)
+	}
+}
+
+func TestEncodeRawNECRepeat(t *testing.T) {
+	s, err := EncodeRaw("NEC-repeat", 0, 0, EncodeOptions{})
+	if err != nil {
+		t.Fatalf("EncodeRaw NEC-repeat: %v", err)
+	}
+	r, err := DecodeRaw(s)
+	if err != nil {
+		t.Fatalf("DecodeRaw(NEC-repeat): %v", err)
+	}
+	if r.Protocol != "NEC-repeat" {
+		t.Errorf("NEC-repeat round-trip -> %s", r.Protocol)
+	}
+}
+
 func TestEncodeRawSamsungRoundTrip(t *testing.T) {
 	s, err := EncodeRaw("Samsung32", 0x07, 0x02, EncodeOptions{})
 	if err != nil {

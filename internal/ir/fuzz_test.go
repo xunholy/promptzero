@@ -71,6 +71,8 @@ func FuzzEncodeRaw(f *testing.F) {
 	f.Add("SIRC", 18, 5, 20, 0, 3, 0)
 	f.Add("RC5", 20, 64, 0, 1, 0, 0)
 	f.Add("Kaseikyo", 0x123, 0x45, 0, 0, 0, 0x2002)
+	f.Add("NEC-extended", 0x1234, 0x56, 0, 0, 0, 0)
+	f.Add("NEC-repeat", 0, 0, 0, 0, 0, 0)
 	f.Add("BOGUS", 0, 0, 0, 0, 0, 0)
 	f.Fuzz(func(t *testing.T, proto string, addr, cmd, bits, toggle, ext, vendor int) {
 		s, err := EncodeRaw(proto, addr, cmd, EncodeOptions{SIRCBits: bits, Toggle: toggle, Ext: ext, Vendor: vendor})

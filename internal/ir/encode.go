@@ -24,6 +24,7 @@ type EncodeOptions struct {
 // timings can be fed to EncodePronto to produce a shareable Pronto code.
 //
 // Supported: NEC (8-bit address + command, both inverse-byte checksums emitted),
+// NEC-extended (16-bit address, command inversion only), the NEC-repeat code,
 // Samsung32 (address·address·command·~command), Sony SIRC (12/15/20-bit),
 // Philips RC5 / RC5X (14-bit Manchester; a command > 63 emits an RC5X frame),
 // and Kaseikyo (Panasonic/Denon/JVC/Sharp/Mitsubishi — 48-bit, vendor via
@@ -39,6 +40,21 @@ func EncodeRaw(protocol string, address, command int, opt EncodeOptions) (string
 		}
 		bytes := []byte{byte(address), byte(address) ^ 0xFF, byte(command), byte(command) ^ 0xFF}
 		return joinInts(emitPDC(necLeaderMark, necLeaderSpace, bytes)), nil
+
+	case "NECEXT", "NEC-EXTENDED", "NECX":
+		if err := inRange("address", address, 0, 0xFFFF); err != nil { // 16-bit, no inversion
+			return "", err
+		}
+		if err := inRange("command", command, 0, 255); err != nil {
+			return "", err
+		}
+		bytes := []byte{byte(address), byte(address >> 8), byte(command), byte(command) ^ 0xFF}
+		return joinInts(emitPDC(necLeaderMark, necLeaderSpace, bytes)), nil
+
+	case "NEC-REPEAT", "NEC-RPT", "NECREPEAT":
+		// The NEC repeat code: leader mark + the shorter 2250µs repeat space +
+		// a single stop mark. Carries no address/command.
+		return joinInts([]int{necLeaderMark, necRepeatSpace, necBitMark}), nil
 
 	case "SAMSUNG", "SAMSUNG32":
 		if err := inRange("address", address, 0, 255); err != nil {

@@ -2629,6 +2629,9 @@ func TestRegistrySize(t *testing.T) {
 	// EM4100/HID reference configs; completes the offline clone-prep chain —
 	// the config word that sets a T5577 blank up for the right protocol before
 	// writing the cloned data blocks). internal/t55xx.EncodeHex.
+	// v0.624.0 added NEC-extended (16-bit address) + NEC-repeat to ir_raw_encode
+	// so the encoder now covers the full NEC family the decoder handles —
+	// registry unchanged, an enhancement not a new tool.
 	const expected = 615
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

@@ -29,7 +29,8 @@ var irRawEncodeSpec = Spec{
 		"device-side `ir_build` (which writes a Flipper .ir file). The emitted timings round-trip through " +
 		"`ir_raw_decode` to the same protocol + address + command, and can be fed to `ir_pronto_encode` to " +
 		"produce a shareable Pronto code.\n\n" +
-		"Supports **NEC** (8-bit address + command — both inverse-byte checksums are emitted), **Samsung32** " +
+		"Supports **NEC** (8-bit address + command — both inverse-byte checksums are emitted), **NEC-extended** " +
+		"(16-bit address, command inversion only), the **NEC-repeat** code, **Samsung32** " +
 		"(address·address·command·~command), **Sony SIRC** (12 / 15 / 20-bit via `bits`, with the 20-bit `ext`), " +
 		"**Philips RC5 / RC5X** (14-bit Manchester; a command > 63 emits an RC5X frame, `toggle` selects the " +
 		"toggle bit), and **Kaseikyo** (Panasonic / Denon / JVC / Sharp / Mitsubishi — 48-bit; `vendor` sets the " +
@@ -47,7 +48,7 @@ var irRawEncodeSpec = Spec{
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"protocol":{"type":"string","description":"NEC, Samsung32, SIRC (Sony), RC5 or Kaseikyo."},
+			"protocol":{"type":"string","description":"NEC, NEC-extended, NEC-repeat, Samsung32, SIRC (Sony), RC5 or Kaseikyo."},
 			"address":{"type":"integer","description":"Address / device code (range depends on protocol)."},
 			"command":{"type":"integer","description":"Command / key code (range depends on protocol)."},
 			"bits":{"type":"integer","description":"Sony SIRC frame width: 12 (default), 15 or 20."},
