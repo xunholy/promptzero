@@ -2504,7 +2504,14 @@ func TestRegistrySize(t *testing.T) {
 	// the chip-dump / firmware-extraction decoder, decoding what
 	// buspirate_spi_dump captures. Command set + manufacturer codes verified vs
 	// vendor datasheets. internal/spiflash).
-	const expected = 595
+	// v0.602.0 added pmbus_decode (PMBus — Power Management Bus over SMBus/I2C:
+	// the command set (OPERATION / VOUT_COMMAND / VOUT_MARGIN / fault limits /
+	// READ_* telemetry / STATUS_* / MFR_ID), with the voltage-setting writes
+	// flagged (the PMFault overvolt vector), LINEAR11 telemetry values decoded
+	// and STATUS bit-fields decoded; VOUT (ULINEAR16/VOUT_MODE) surfaced raw.
+	// Pairs with i2c_scan. Command set + LINEAR11 verified vs the PMBus spec.
+	// internal/pmbus).
+	const expected = 596
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

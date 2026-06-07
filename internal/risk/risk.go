@@ -2652,6 +2652,15 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Verified vs
 		// vendor SPI NOR datasheets.
 		"spi_flash_decode",
+		// v0.602 (power-rail / PMBus PMFault recon):
+		// pmbus_decode — PMBus (Power Management Bus over SMBus/I2C). Decodes
+		// the command (OPERATION / VOUT_COMMAND / VOUT_MARGIN / fault limits /
+		// READ_* telemetry / STATUS_* / MFR_ID), flags the voltage-setting
+		// writes (the PMFault overvolt vector), decodes LINEAR11 telemetry
+		// values and STATUS fault bits; VOUT (ULINEAR16) surfaced raw. Pairs
+		// with i2c_scan. Pure offline decode of pasted bytes; reads a string,
+		// transmits nothing, so it is Low. Verified vs the PMBus spec.
+		"pmbus_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
