@@ -28,10 +28,11 @@ func init() { //nolint:gochecknoinits
 
 var subghzClassifySpec = Spec{
 	Name: "subghz_classify",
-	Description: "Classify a Flipper .sub capture file against the 20 most common Sub-GHz protocols " +
+	Description: "Classify a Flipper .sub capture file against the 27 most common Sub-GHz protocols " +
 		"(Princeton PT2262, CAME, Holtek HT12E, Linear, NICE FloR-S, KeeLoq HCS, FAAC SLH, Beninca, " +
 		"Prastel, Ansonic, Smartgate, Aerolite, Doitrand, Security+ v1, Magicode, Honeywell WS, " +
-		"Princeton-Holtek, CAME TWIN, Aprimatic, Phoenix V2). Returns top-N matches with confidence " +
+		"Princeton-Holtek, CAME TWIN, Aprimatic, Phoenix V2, NICE FLO, BFT Mitto, Somfy RTS, Marantec, " +
+		"BETT, Security+ v2, Gate TX). Returns top-N matches with confidence " +
 		"scores and decoded payloads (address, serial, button, rolling code, etc.). " +
 		"Pure Go — no Docker required. Use urh_decode_sub as fallback for unmatched captures.",
 	Schema: json.RawMessage(`{

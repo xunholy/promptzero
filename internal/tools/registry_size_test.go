@@ -2640,6 +2640,10 @@ func TestRegistrySize(t *testing.T) {
 	// {1110,1101,1011,0111}) per the Flipper firmware; the second non-Dallas
 	// iButton format ibutton_decode deferred — completes the iButton family).
 	// internal/cyfral.
+	// v0.627.0 added the Gate TX protocol decoder to subghz_classify (24-bit
+	// fixed-code OOK/PWM -> code + 20-bit serial + 4-bit button, per the Flipper
+	// reference, round-trip-verified) — registry unchanged, a new protocol in
+	// the existing classifier, not a new tool. internal/subghz/protocols.
 	const expected = 617
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

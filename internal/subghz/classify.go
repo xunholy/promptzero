@@ -69,6 +69,7 @@ func NewClassifier() *Classifier {
 			protocols.Marantec{},
 			protocols.BETT{},
 			protocols.SecplusV2{},
+			protocols.GateTX{},
 		},
 	}
 }

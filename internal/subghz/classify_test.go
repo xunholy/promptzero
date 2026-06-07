@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func TestNewClassifierHas26Protocols(t *testing.T) {
+func TestNewClassifierHas27Protocols(t *testing.T) {
 	c := NewClassifier()
-	if got := len(c.protos); got != 26 {
-		t.Errorf("NewClassifier has %d protocols, want 26", got)
+	if got := len(c.protos); got != 27 {
+		t.Errorf("NewClassifier has %d protocols, want 27", got)
 	}
 }
 
