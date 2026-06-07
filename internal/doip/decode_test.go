@@ -81,6 +81,13 @@ func TestDiagnosticMessageUDSPayload(t *testing.T) {
 	if r.UDSPayloadHex != "1003" {
 		t.Errorf("UDSPayloadHex = %q, want 1003 (UDS DiagnosticSessionControl)", r.UDSPayloadHex)
 	}
+	// The inner UDS payload (10 03) is chained to the UDS decoder.
+	if r.UDS == nil {
+		t.Fatalf("expected chained UDS decode, got nil (err=%q)", r.UDSDecodeError)
+	}
+	if r.UDS.ServiceID != 0x10 || r.UDS.Service != "DiagnosticSessionControl" {
+		t.Errorf("chained UDS = 0x%02X/%q, want 0x10/DiagnosticSessionControl", r.UDS.ServiceID, r.UDS.Service)
+	}
 }
 
 func TestGenericNACK(t *testing.T) {

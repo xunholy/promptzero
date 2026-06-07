@@ -32,10 +32,13 @@
 //	VIN/GID status, diagnostic NACK) are code-generated from scapy's
 //	authoritative DoIP layer (scapy.contrib.automotive.doip) and verified
 //	field-for-field against ISO 13400 message vectors. Only the standardised
-//	fields are decoded; the **diagnostic-message user data is the UDS payload
-//	and is surfaced as raw hex** for handoff to the UDS decoder (never
-//	reinterpreted here), and any trailing previous-message echo is surfaced
-//	raw. The inverse-version byte is validated (must be the one's-complement
+//	fields are decoded; the **diagnostic-message user data is a UDS message
+//	and is chained to the UDS decoder** (internal/uds) so the diagnostic
+//	service is decoded inline — the raw hex is kept alongside and a UDS
+//	decode failure degrades to an error + the raw hex (the established
+//	chain-to-inner-decoder pattern, cf. nsh/gre → ipdecode). Any trailing
+//	previous-message echo is surfaced raw. The inverse-version byte is
+//	validated (must be the one's-complement
 //	of the version); a declared payload length disagreeing with the buffer, or
 //	a body too short for the payload type, is reported, not guessed.
 package doip
@@ -45,6 +48,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/uds"
 )
 
 // Result is the decoded view of a DoIP message.
@@ -73,10 +78,12 @@ type Result struct {
 	RoutingActivationResp string `json:"routing_activation_response,omitempty"`
 
 	// Diagnostic message
-	TargetAddr    string `json:"target_address,omitempty"`
-	UDSPayloadHex string `json:"uds_payload_hex,omitempty"`
-	DiagACKCode   string `json:"diagnostic_ack_code,omitempty"`
-	DiagNACKCode  string `json:"diagnostic_nack_code,omitempty"`
+	TargetAddr     string   `json:"target_address,omitempty"`
+	UDSPayloadHex  string   `json:"uds_payload_hex,omitempty"`
+	UDS            *uds.UDS `json:"uds,omitempty"`
+	UDSDecodeError string   `json:"uds_decode_error,omitempty"`
+	DiagACKCode    string   `json:"diagnostic_ack_code,omitempty"`
+	DiagNACKCode   string   `json:"diagnostic_nack_code,omitempty"`
 
 	// Generic NACK
 	NACKCode string `json:"nack_code,omitempty"`
@@ -183,6 +190,14 @@ func decodeBody(r *Result, pt uint16, body []byte) {
 			r.TargetAddr = addr(body[2:4])
 			if len(body) > 4 {
 				r.UDSPayloadHex = hexUpper(body[4:])
+				// The diagnostic-message user data IS a UDS message — chain it
+				// to the UDS decoder so the service is decoded inline (the recon
+				// headline). Degrade to the raw hex + an error on failure.
+				if u, err := uds.DecodeBytes(body[4:]); err == nil {
+					r.UDS = u
+				} else {
+					r.UDSDecodeError = err.Error()
+				}
 			}
 		}
 	case 0x8002: // Diagnostic message ACK

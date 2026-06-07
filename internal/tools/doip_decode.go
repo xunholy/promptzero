@@ -37,14 +37,18 @@ var doipDecodeSpec = Spec{
 		"`isotp_decode`, `canbus_fd_decode`).\n\n" +
 		"A captured DoIP message identifies the **operation** — vehicle identification (+ the leaked VIN / EID " +
 		"/ GID), routing activation (request type + response code), an alive check, an entity-status or " +
-		"power-mode query, or a diagnostic message — and, for a diagnostic message, lifts out the **UDS " +
-		"payload** for handoff to `uds_decode`.\n\n" +
+		"power-mode query, or a diagnostic message — and, for a diagnostic message, **chains the inner UDS " +
+		"payload to the UDS decoder** so the diagnostic service (ReadDataByIdentifier, SecurityAccess, " +
+		"RoutineControl, …) is decoded inline (the recon headline), with the raw hex kept alongside and a UDS " +
+		"decode failure degrading to an error + the raw hex.\n\n" +
 		"No confidently-wrong output: the header layout, the payload-type table and the sub-code tables " +
 		"(generic NACK, routing-activation type / response, further-action, VIN/GID status, diagnostic NACK) " +
 		"are code-generated from scapy's authoritative DoIP layer (`scapy.contrib.automotive.doip`) and " +
 		"verified field-for-field against ISO 13400 vectors. Only the standardised fields are decoded; the " +
-		"**diagnostic-message user data is the UDS payload and is surfaced as raw hex** (never reinterpreted " +
-		"here), and any trailing previous-message echo is surfaced raw. The inverse-version byte is validated " +
+		"**diagnostic-message user data is a UDS message and is chained to the UDS decoder** (the diagnostic " +
+		"service is decoded inline, the raw hex kept alongside, and a UDS decode failure degrades to an error " +
+		"+ the raw hex — the established chain-to-inner-decoder pattern), and any trailing previous-message " +
+		"echo is surfaced raw. The inverse-version byte is validated " +
 		"(must be the one's-complement of the version); a declared payload length disagreeing with the buffer, " +
 		"or a body too short for the payload type, is reported, not guessed. No network, no device, transmits " +
 		"nothing, so it is Low risk. The input is the DoIP message starting at the protocol-version byte. ':' " +
