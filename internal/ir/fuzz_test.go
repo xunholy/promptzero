@@ -33,3 +33,22 @@ func FuzzDecodeRaw(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, s string) { _, _ = DecodeRaw(s) })
 }
+
+// FuzzDecodePronto exercises the Pronto HEX decoder — word parsing, the
+// burst-pair count validation, the carrier/timings conversion and the chained
+// protocol decode must never panic on malformed / truncated / non-hex input.
+func FuzzDecodePronto(f *testing.F) {
+	for _, s := range []string{
+		necPronto,
+		"0000 006D 0001 0000 0157 00AB",
+		"5000 006D 0000 0000",
+		"0100 006D 0001 0000 0157 00AB",
+		"0000 0000 0001 0000 0157 00AB",
+		"",
+		"zzzz",
+		"0000 006D 0022 0000",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) { _, _ = DecodePronto(s) })
+}

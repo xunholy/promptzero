@@ -2578,7 +2578,16 @@ func TestRegistrySize(t *testing.T) {
 	// 96-bit structural gate. Single-reference (Proxmark cmdlfpresco.c
 	// encoder+decoder, internally inverse; Flipper mainline lacks Presco).
 	// Continues the LF reader-cloning set. internal/presco).
-	const expected = 606
+	// v0.614.0 added ir_pronto_decode (Pronto HEX / CCF IR-code decoder — the
+	// universal textual IR format used by remote DBs / Logitech Harmony / JP1:
+	// converts the code to its carrier frequency + intro/repeat µs timings per
+	// the documented 0.241246µs Pronto clock, and chains the intro timings into
+	// the raw-IR protocol decoder to name the protocol. Raw formats only; a
+	// predefined-code format word is reported, not mis-converted. Anchored on
+	// 0x006D->38029Hz + the burst->µs math. internal/ir.DecodePronto).
+	// (v0.613.0 added Kaseikyo to the existing ir_raw_decode tool — registry
+	// unchanged there, an enhancement not a new tool.)
+	const expected = 607
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
