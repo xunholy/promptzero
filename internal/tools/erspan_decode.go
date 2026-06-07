@@ -34,8 +34,10 @@ var erspanDecodeSpec = Spec{
 		"Decodes the **Type II** (8-octet) and **Type III** (12-octet) headers: version, source **VLAN**, " +
 		"class of service, the truncated flag, the **session id**, and (II) the port index / (III) the " +
 		"32-bit timestamp. Accepts the ERSPAN header itself, or a **GRE packet** (protocol 0x88BE / 0x22EB) " +
-		"whose payload is ERSPAN — the GRE header is stripped. The **mirrored Ethernet frame** is surfaced " +
-		"as hex (feed it to the relevant L2/L3 decoder).\n\n" +
+		"whose payload is ERSPAN — the GRE header is stripped. The **mirrored Ethernet frame** is now " +
+		"**decoded inline** — dst/src MAC + EtherType (one 802.1Q VLAN tag peeled), and the IPv4/IPv6 payload " +
+		"**chained to the IP decoder** (the chain-to-inner-decoder convention, cf. `gre`/`nsh`) — so the " +
+		"mirrored traffic is visible in one shot; the raw `mirrored_frame_hex` is kept for non-IP payloads.\n\n" +
 		"No confidently-wrong output: the Type III platform-specific sub-header flags beyond the timestamp " +
 		"are left in the raw remainder rather than decoded into possibly-wrong fields. No network, no " +
 		"device, transmits nothing, so it is Low risk. ':' / '-' / '_' / whitespace separators and a '0x' " +

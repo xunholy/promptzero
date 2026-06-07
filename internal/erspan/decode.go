@@ -27,8 +27,10 @@
 //	service, the truncated flag, the session id, and (II) the
 //	port index / (III) the 32-bit timestamp — verified field-for-field
 //	against scapy's ERSPAN_II / ERSPAN_III layers. The encapsulated
-//	mirrored Ethernet frame is surfaced as raw hex (it can be fed to
-//	the relevant L2/L3 decoder). The Type III platform-specific
+//	mirrored Ethernet frame is decoded inline (dst/src MAC + EtherType,
+//	one 802.1Q tag peeled, the IPv4/IPv6 payload chained to internal/
+//	ipdecode — the chain-to-inner-decoder convention, cf. nsh); the raw
+//	mirrored_frame_hex is kept for non-IP payloads. The Type III platform-specific
 //	sub-header flags beyond the timestamp are left in the raw
 //	remainder rather than decoded into possibly-wrong fields.
 package erspan
@@ -37,7 +39,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/ipdecode"
 )
 
 // Result is the decoded view of an ERSPAN header.
@@ -55,8 +60,45 @@ type Result struct {
 	// Type III only.
 	Timestamp *uint32 `json:"timestamp,omitempty"`
 
-	MirroredFrameHex string   `json:"mirrored_frame_hex,omitempty"`
-	Notes            []string `json:"notes,omitempty"`
+	MirroredFrameHex string `json:"mirrored_frame_hex,omitempty"`
+
+	// Decoded inner (mirrored) Ethernet frame.
+	InnerDstMAC      string           `json:"inner_dst_mac,omitempty"`
+	InnerSrcMAC      string           `json:"inner_src_mac,omitempty"`
+	InnerVLAN        *int             `json:"inner_vlan,omitempty"`
+	InnerEtherType   string           `json:"inner_ether_type,omitempty"`
+	InnerPacket      *ipdecode.Packet `json:"inner_packet,omitempty"`
+	InnerDecodeError string           `json:"inner_decode_error,omitempty"`
+
+	Notes []string `json:"notes,omitempty"`
+}
+
+// decodeInner decodes the mirrored Ethernet frame: dst/src MAC + EtherType
+// (peeling one 802.1Q VLAN tag), and chains the IPv4/IPv6 payload to ipdecode
+// (the chain-to-inner-decoder convention, cf. nsh). Non-IP EtherTypes and a
+// failed IP parse leave the raw mirrored_frame_hex in place.
+func decodeInner(r *Result, frame []byte) {
+	if len(frame) < 14 {
+		return
+	}
+	r.InnerDstMAC = net.HardwareAddr(frame[0:6]).String()
+	r.InnerSrcMAC = net.HardwareAddr(frame[6:12]).String()
+	et := binary.BigEndian.Uint16(frame[12:14])
+	off := 14
+	if et == 0x8100 && len(frame) >= 18 { // 802.1Q VLAN tag
+		vlan := int(binary.BigEndian.Uint16(frame[14:16]) & 0x0FFF)
+		r.InnerVLAN = &vlan
+		et = binary.BigEndian.Uint16(frame[16:18])
+		off = 18
+	}
+	r.InnerEtherType = fmt.Sprintf("0x%04X", et)
+	if et == 0x0800 || et == 0x86DD {
+		if pkt, err := ipdecode.DecodeBytes(frame[off:]); err == nil {
+			r.InnerPacket = pkt
+		} else {
+			r.InnerDecodeError = err.Error()
+		}
+	}
 }
 
 const (
@@ -100,6 +142,7 @@ func Decode(input string) (*Result, error) {
 		idx := int(binary.BigEndian.Uint32(b[4:8]) & 0x000FFFFF)
 		r.Index = &idx
 		r.MirroredFrameHex = strings.ToUpper(hex.EncodeToString(b[8:]))
+		decodeInner(r, b[8:])
 	case 2:
 		r.Type = "Type III"
 		if len(b) < 12 {
@@ -113,12 +156,13 @@ func Decode(input string) (*Result, error) {
 		ts := binary.BigEndian.Uint32(b[4:8])
 		r.Timestamp = &ts
 		r.MirroredFrameHex = strings.ToUpper(hex.EncodeToString(b[12:]))
+		decodeInner(r, b[12:])
 		r.Notes = append(r.Notes, "Type III platform-specific sub-header flags (bytes 8-11) beyond the timestamp are left in the raw remainder, not decoded")
 	default:
 		return nil, fmt.Errorf("erspan: version %d is not ERSPAN Type II (1) or Type III (2)", ver)
 	}
 	r.Notes = append(r.Notes,
-		"the mirrored Ethernet frame is surfaced as hex (feed it to the relevant L2/L3 decoder)",
+		"the mirrored Ethernet frame is decoded inline (dst/src MAC + EtherType, one 802.1Q tag peeled, IPv4/IPv6 chained to the IP decoder); the raw mirrored_frame_hex is kept for non-IP payloads",
 		"ERSPAN means a SPAN/port-mirror session is exporting traffic over GRE — note the monitoring topology (session id + source VLAN)")
 	return r, nil
 }

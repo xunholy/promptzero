@@ -101,3 +101,50 @@ func FuzzDecode(f *testing.F) {
 		_, _ = Decode(s)
 	})
 }
+
+// TestDecodeInnerIPv4 pins the inline decode of the mirrored Ethernet frame:
+// dst/src MAC + EtherType, and the IPv4 payload chained to ipdecode.
+func TestDecodeInnerIPv4(t *testing.T) {
+	// Type II header (8 bytes) + mirrored Ethernet: dst aa.. / src 11.. /
+	// EtherType 0x0800 + a minimal 20-byte IPv4 (ICMP, src 1.2.3.4 dst 5.6.7.8).
+	const v = "1064682a00003039" +
+		"aabbccddeeff" + "112233445566" + "0800" +
+		"45000014000000004001000001020304" + "05060708"
+	r, err := Decode(v)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.InnerDstMAC != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("InnerDstMAC = %q", r.InnerDstMAC)
+	}
+	if r.InnerSrcMAC != "11:22:33:44:55:66" {
+		t.Errorf("InnerSrcMAC = %q", r.InnerSrcMAC)
+	}
+	if r.InnerEtherType != "0x0800" {
+		t.Errorf("InnerEtherType = %q", r.InnerEtherType)
+	}
+	if r.InnerPacket == nil {
+		t.Fatalf("expected chained inner IPv4 packet, got nil (err=%q)", r.InnerDecodeError)
+	}
+}
+
+// TestDecodeInnerVLAN pins the 802.1Q tag peel on the mirrored frame.
+func TestDecodeInnerVLAN(t *testing.T) {
+	// EtherType 0x8100 (VLAN 100 = 0x064) then 0x0800 + IPv4.
+	const v = "1064682a00003039" +
+		"aabbccddeeff" + "112233445566" + "8100" + "0064" + "0800" +
+		"45000014000000004001000001020304" + "05060708"
+	r, err := Decode(v)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.InnerVLAN == nil || *r.InnerVLAN != 100 {
+		t.Errorf("InnerVLAN = %v, want 100", r.InnerVLAN)
+	}
+	if r.InnerEtherType != "0x0800" {
+		t.Errorf("InnerEtherType = %q, want 0x0800 (after the VLAN tag)", r.InnerEtherType)
+	}
+	if r.InnerPacket == nil {
+		t.Fatalf("expected chained inner IPv4 packet after VLAN tag, got nil (err=%q)", r.InnerDecodeError)
+	}
+}
