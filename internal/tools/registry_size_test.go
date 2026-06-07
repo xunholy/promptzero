@@ -2635,7 +2635,12 @@ func TestRegistrySize(t *testing.T) {
 	// v0.625.0 added metakom_decode (Metakom 4-byte iButton key — per-byte
 	// even-parity validity gate per the Flipper firmware; the non-Dallas iButton
 	// width that ibutton_decode deferred). internal/metakom.
-	const expected = 616
+	// v0.626.0 added cyfral_decode (Cyfral on-wire iButton frame -> 16-bit key;
+	// the strong nibble-pattern gate (start/stop 0b0001 + 8 data nibbles each in
+	// {1110,1101,1011,0111}) per the Flipper firmware; the second non-Dallas
+	// iButton format ibutton_decode deferred — completes the iButton family).
+	// internal/cyfral.
+	const expected = 617
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

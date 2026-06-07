@@ -509,6 +509,12 @@ var toolLevels = func() map[string]Level {
 		// validity gate per the Flipper firmware. Pure offline parse of an
 		// operator-supplied key; transmits nothing, so it is Low.
 		"metakom_decode",
+		// cyfral_decode — the on-wire Cyfral iButton frame (the second
+		// non-Dallas iButton format ibutton_decode deferred). Strong
+		// nibble-pattern gate (start/stop 0b0001 + 8 data nibbles each in
+		// {1110,1101,1011,0111}) per the Flipper firmware. Pure offline parse
+		// of an operator-supplied frame; transmits nothing, so it is Low.
+		"cyfral_decode",
 		// v0.385 (offline inverse of ibutton_decode): builds a
 		// well-formed 8-byte Dallas ROM ID from family + 48-bit
 		// serial, computing the Maxim CRC-8 (shared with the
