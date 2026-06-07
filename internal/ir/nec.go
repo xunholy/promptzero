@@ -28,16 +28,18 @@
 // # Covered / deferred
 //
 // The NEC family (standard, extended, and the repeat code), Sony SIRC
-// (12 / 15 / 20-bit), Samsung, and Philips RC5 / RC5X (14-bit Manchester) are
-// covered — the most common consumer-IR protocols across the three encoding
-// families (pulse-distance, pulse-width, and bi-phase). NEC is gated by its
-// address/command inverse-byte checksum; the checksum-less protocols are gated
-// structurally instead — SIRC by its 2400µs leader + exact 12/15/20-bit count,
-// and RC5 by an exact 28-half-bit Manchester reconstruction with a valid S1
-// start bit (a polarity-inverted or non-RC5 train fails the bit-pair or S1
-// gate and is rejected, not mis-decoded). RC6 (a more complex Manchester
-// variant with a double-width toggle) and the Pronto/`ir_build` parsed formats
-// are deliberately not decoded here yet.
+// (12 / 15 / 20-bit), Samsung, Philips RC5 / RC5X (14-bit Manchester), and
+// Kaseikyo (the 48-bit pulse-distance frame shared by Panasonic / Denon / JVC /
+// Sharp / Mitsubishi) are covered — the most common consumer-IR protocols
+// across the three encoding families (pulse-distance, pulse-width, and
+// bi-phase). NEC is gated by its address/command inverse-byte checksum;
+// Kaseikyo by BOTH its 4-bit vendor parity and its 8-bit frame parity; the
+// checksum-less protocols are gated structurally instead — SIRC by its 2400µs
+// leader + exact 12/15/20-bit count, and RC5 by an exact 28-half-bit Manchester
+// reconstruction with a valid S1 start bit (a polarity-inverted or non-RC5
+// train fails the bit-pair or S1 gate and is rejected, not mis-decoded). RC6
+// (a more complex Manchester variant with a double-width toggle) and the
+// Pronto/`ir_build` parsed formats are deliberately not decoded here yet.
 package ir
 
 import (
@@ -66,6 +68,9 @@ type Result struct {
 	CommandHex    string   `json:"command_hex"`
 	Bits          int      `json:"bits"`
 	ChecksumValid bool     `json:"checksum_valid"`
+	Vendor        int      `json:"vendor,omitempty"`
+	VendorHex     string   `json:"vendor_hex,omitempty"`
+	VendorName    string   `json:"vendor_name,omitempty"`
 	RawBytesHex   string   `json:"raw_bytes_hex,omitempty"`
 	Notes         []string `json:"notes,omitempty"`
 }
@@ -84,6 +89,14 @@ func DecodeRaw(timings string) (*Result, error) {
 	switch {
 	case within(t[0], necLeaderMark):
 		return decodeNEC(t)
+	case within(t[0], kaseikyoHeaderMark) && within(t[1], kaseikyoHeaderSpace):
+		// Kaseikyo (Panasonic/Denon/JVC/Sharp/Mitsubishi) — 3456µs/1728µs
+		// header. Checked before Samsung: the 3456µs mark falls inside
+		// Samsung's wide 4500±30% window, but the 1728µs header space
+		// (vs Samsung's 4500µs) disambiguates, so this combined mark+space
+		// gate claims Kaseikyo frames before Samsung sees them while Samsung's
+		// own 4500µs mark stays outside Kaseikyo's window.
+		return decodeKaseikyo(t)
 	case within(t[0], samsungLeaderMark):
 		return decodeSamsung(t)
 	case within(t[0], rc5HalfBit) || within(t[0], rc5FullBit):
