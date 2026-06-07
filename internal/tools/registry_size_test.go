@@ -2469,7 +2469,14 @@ func TestRegistrySize(t *testing.T) {
 	// power-mode, and the diagnostic message (UDS payload surfaced raw for
 	// uds_decode); joins the automotive family. Header + payload-type + sub-code
 	// tables code-genned from scapy.contrib.automotive.doip. internal/doip).
-	const expected = 590
+	// v0.594.0 added ccp_decode (CCP — CAN Calibration Protocol, the CAN-native
+	// XCP predecessor still in production ECUs: the 8-byte CAN payload — a CRO
+	// command (CONNECT / GET_SEED / UNLOCK / UPLOAD / DNLOAD / PROGRAM, master→
+	// slave, with CONNECT's LE station address + security flags) or a DTO
+	// (CRM + return code / event / DAQ data, slave→master). Direction-dependent
+	// like XCP. Command + return-code tables code-genned from
+	// scapy.contrib.automotive.ccp. internal/ccp).
+	const expected = 591
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

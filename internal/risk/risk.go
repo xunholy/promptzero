@@ -2602,6 +2602,16 @@ var toolLevels = func() map[string]Level {
 		// for uds_decode). Pure offline decode of pasted bytes; reads a
 		// string, transmits nothing, so it is Low. Verified vs ISO 13400.
 		"doip_decode",
+		// v0.594 (automotive ECU calibration/flash-bus recon):
+		// ccp_decode — CCP (CAN Calibration Protocol), the CAN-native
+		// predecessor of XCP still in production ECUs. Decodes the CRO
+		// command (CONNECT / GET_SEED / UNLOCK / UPLOAD / DNLOAD / PROGRAM,
+		// with the CONNECT station address + security flags) or the DTO
+		// (Command Return Message + return code / event / DAQ data). Pure
+		// offline decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Tables code-genned from
+		// scapy.contrib.automotive.ccp.
+		"ccp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
