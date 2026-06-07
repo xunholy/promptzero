@@ -61,3 +61,23 @@ func FuzzEncodePronto(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, s string, hz int) { _, _ = EncodePronto(s, hz) })
 }
+
+// FuzzEncodeRaw exercises the IR raw-timing encoder; it must never panic on
+// arbitrary protocol strings / address / command, and any successful encode
+// must produce timings the decoder can parse without error.
+func FuzzEncodeRaw(f *testing.F) {
+	f.Add("NEC", 4, 8, 12, 0, 0)
+	f.Add("Samsung32", 7, 2, 0, 0, 0)
+	f.Add("SIRC", 18, 5, 20, 0, 3)
+	f.Add("RC5", 20, 64, 0, 1, 0)
+	f.Add("BOGUS", 0, 0, 0, 0, 0)
+	f.Fuzz(func(t *testing.T, proto string, addr, cmd, bits, toggle, ext int) {
+		s, err := EncodeRaw(proto, addr, cmd, EncodeOptions{SIRCBits: bits, Toggle: toggle, Ext: ext})
+		if err != nil {
+			return
+		}
+		if _, derr := DecodeRaw(s); derr != nil {
+			t.Fatalf("encoded %q %d/%d but decode failed: %v\ntimings: %s", proto, addr, cmd, derr, s)
+		}
+	})
+}

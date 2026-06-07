@@ -2615,7 +2615,12 @@ func TestRegistrySize(t *testing.T) {
 	// full code, no checksum, round-trip-verified + reproduces its vector;
 	// COMPLETES the LF clone-generation set em4100/pacs/ioprox/jablotron/viking/
 	// noralsy/presco). internal/presco.Encode.
-	const expected = 613
+	// v0.621.0 added ir_raw_encode (protocol + address + command -> raw IR µs
+	// timings, the inverse of ir_raw_decode; NEC / Samsung32 / Sony SIRC /
+	// Philips RC5-RC5X, round-trip- and fuzz-verified against the decoder;
+	// offline complement to the device-side ir_build, feeds ir_pronto_encode).
+	// internal/ir.EncodeRaw.
+	const expected = 614
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
