@@ -2632,7 +2632,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.624.0 added NEC-extended (16-bit address) + NEC-repeat to ir_raw_encode
 	// so the encoder now covers the full NEC family the decoder handles —
 	// registry unchanged, an enhancement not a new tool.
-	const expected = 615
+	// v0.625.0 added metakom_decode (Metakom 4-byte iButton key — per-byte
+	// even-parity validity gate per the Flipper firmware; the non-Dallas iButton
+	// width that ibutton_decode deferred). internal/metakom.
+	const expected = 616
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

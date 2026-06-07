@@ -504,6 +504,11 @@ var toolLevels = func() map[string]Level {
 		// CRC-8 validation (poly 0x31 reflected). Pure offline
 		// parser. Pairs with ibutton_read for live captures.
 		"ibutton_decode",
+		// metakom_decode — the 4-byte Metakom iButton key (the non-Dallas
+		// iButton width ibutton_decode deferred). Per-byte even-parity
+		// validity gate per the Flipper firmware. Pure offline parse of an
+		// operator-supplied key; transmits nothing, so it is Low.
+		"metakom_decode",
 		// v0.385 (offline inverse of ibutton_decode): builds a
 		// well-formed 8-byte Dallas ROM ID from family + 48-bit
 		// serial, computing the Maxim CRC-8 (shared with the
