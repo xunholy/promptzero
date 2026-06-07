@@ -2553,7 +2553,13 @@ func TestRegistrySize(t *testing.T) {
 	// coverage; complements em4100_decode / fdxb_decode. Layout + checksum
 	// agree byte-for-byte between the Proxmark3 and Flipper Zero references.
 	// internal/ioprox).
-	const expected = 602
+	// v0.609.0 added jablotron_decode (Jablotron 125 kHz LF access credential —
+	// decodes the 64-bit block: 0xFFFF preamble + 40-bit card data + 8-bit
+	// checksum (sum XOR 0x3A), with the BCD printed-number render and a
+	// not-BCD flag. Continues the LF reader-cloning set (em4100 / fdxb /
+	// ioprox / PACS). Layout + checksum + BCD render agree byte-for-byte
+	// between the Proxmark3 and Flipper Zero references. internal/jablotron).
+	const expected = 603
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

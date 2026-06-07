@@ -130,6 +130,12 @@ var toolLevels = func() map[string]Level {
 		// gate). Offline deterministic bit extraction of an operator-
 		// supplied block; transmits nothing, so it is Low.
 		"ioprox_decode",
+		// Jablotron (Czech/EU) 125 kHz LF access-control credential decode
+		// from its 64-bit block (0xFFFF preamble + 40-bit card data + 8-bit
+		// checksum, with the BCD printed-number render). Offline deterministic
+		// bit extraction of an operator-supplied block; transmits nothing, so
+		// it is Low.
+		"jablotron_decode",
 		// T5577 / ATA5577 configuration-register (block 0) decode
 		// (modulation / bit rate / flags). Offline deterministic
 		// bit-field parse of an operator-supplied word; transmits
