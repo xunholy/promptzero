@@ -16,8 +16,11 @@
 // explicitly takes an already-reassembled PDU and notes ISO-TP framing as
 // out of scope — this provides exactly that reassembly: feed a captured CAN
 // frame's data field (single frame), or the ordered First + Consecutive
-// frames of a multi-frame message, and get the application PDU to hand to
-// uds_decode / obd2_pid_decode / obd2_dtc_decode.
+// frames of a multi-frame message, and get the application PDU. When the
+// reassembly is complete the PDU is chained to the UDS decoder inline (the
+// chain-to-inner-decoder convention, cf. doip → uds); ISO-TP is a generic
+// transport (also KWP2000 / OBD-II), so the UDS interpretation is a hedged
+// best effort and the raw payload is kept for obd2 / kwp.
 //
 // # Covered / deferred
 //
@@ -36,6 +39,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+
+	"github.com/xunholy/promptzero/internal/uds"
 )
 
 // Frame is one decoded ISO-TP transport frame.
@@ -133,11 +138,39 @@ func upper(b []byte) string { return strings.ToUpper(hex.EncodeToString(b)) }
 // Reassembly is the result of reassembling an ISO-TP message from an
 // ordered list of CAN frame data fields.
 type Reassembly struct {
-	Frames     []Frame  `json:"frames"`
-	Complete   bool     `json:"complete"`
-	Length     int      `json:"length,omitempty"`      // declared total length
-	PayloadHex string   `json:"payload_hex,omitempty"` // reassembled application PDU
-	Notes      []string `json:"notes,omitempty"`
+	Frames     []Frame `json:"frames"`
+	Complete   bool    `json:"complete"`
+	Length     int     `json:"length,omitempty"`      // declared total length
+	PayloadHex string  `json:"payload_hex,omitempty"` // reassembled application PDU
+	// UDS is the application PDU interpreted as a UDS (ISO 14229) message,
+	// when the reassembly is complete. ISO-TP is a generic transport (it also
+	// carries KWP2000 / OBD-II / raw data), so this is a best-effort
+	// interpretation — see the note. nil when absent or undecodable.
+	UDS            *uds.UDS `json:"uds,omitempty"`
+	UDSDecodeError string   `json:"uds_decode_error,omitempty"`
+	Notes          []string `json:"notes,omitempty"`
+}
+
+// chainUDS interprets a complete reassembled application PDU as a UDS message
+// (the dominant ISO-TP diagnostic application protocol), following the
+// project's chain-to-inner-decoder convention. ISO-TP also carries KWP2000 /
+// OBD-II, so the interpretation is hedged with a note; the UDS decoder
+// degrades to "unknown service" for non-UDS payloads.
+func chainUDS(out *Reassembly) {
+	if !out.Complete || out.PayloadHex == "" {
+		return
+	}
+	b, err := hex.DecodeString(out.PayloadHex)
+	if err != nil || len(b) == 0 {
+		return
+	}
+	u, err := uds.DecodeBytes(b)
+	if err != nil {
+		out.UDSDecodeError = err.Error()
+		return
+	}
+	out.UDS = u
+	out.Notes = append(out.Notes, "application PDU interpreted as UDS (ISO 14229) as a best effort — ISO-TP also carries KWP2000 / OBD-II / raw data, so verify the application protocol")
 }
 
 // Reassemble decodes and reassembles an ordered sequence of CAN frame data
@@ -173,6 +206,7 @@ func Reassemble(framesData [][]byte) (*Reassembly, error) {
 			out.Length = f.Length
 			out.PayloadHex = f.PayloadHex
 			out.Complete = len(b) >= f.Length
+			chainUDS(out)
 			return out, nil
 		case "FirstFrame":
 			if started {
@@ -214,5 +248,6 @@ func Reassemble(framesData [][]byte) (*Reassembly, error) {
 	if !out.Complete {
 		out.Notes = append(out.Notes, fmt.Sprintf("incomplete: have %d of %d bytes", len(payload), total))
 	}
+	chainUDS(out)
 	return out, nil
 }

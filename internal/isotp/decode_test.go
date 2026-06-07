@@ -154,3 +154,48 @@ func TestReassemble_Empty(t *testing.T) {
 		t.Error("expected error for empty input")
 	}
 }
+
+// TestReassemble_ChainsUDS pins the UDS chaining: a Single Frame carrying a
+// UDS ReadDataByIdentifier (0x22 F1 90) is interpreted inline as UDS.
+func TestReassemble_ChainsUDS(t *testing.T) {
+	r, err := Reassemble([][]byte{mustHex(t, "0322F190")})
+	if err != nil {
+		t.Fatalf("Reassemble: %v", err)
+	}
+	if !r.Complete {
+		t.Fatal("expected complete reassembly")
+	}
+	if r.UDS == nil {
+		t.Fatalf("expected chained UDS, got nil (err=%q)", r.UDSDecodeError)
+	}
+	if r.UDS.ServiceID != 0x22 || r.UDS.Service != "ReadDataByIdentifier" {
+		t.Errorf("chained UDS = 0x%02X/%q, want 0x22/ReadDataByIdentifier", r.UDS.ServiceID, r.UDS.Service)
+	}
+	if r.UDS.DataIdentifier == nil || *r.UDS.DataIdentifier != 0xF190 {
+		t.Errorf("DataIdentifier = %v, want 0xF190", r.UDS.DataIdentifier)
+	}
+}
+
+// TestReassemble_MultiFrameChainsUDS pins chaining on a reassembled FF+CF
+// message (UDS positive response to ReadDataByIdentifier).
+func TestReassemble_MultiFrameChainsUDS(t *testing.T) {
+	// FF: total length 0x00A, payload starts 62 F1 90 01 02 03; CF: 04 05 06 07.
+	r, err := Reassemble([][]byte{
+		mustHex(t, "100A62F190010203"),
+		mustHex(t, "2104050607"),
+	})
+	if err != nil {
+		t.Fatalf("Reassemble: %v", err)
+	}
+	if !r.Complete || r.UDS == nil {
+		t.Fatalf("expected complete reassembly with chained UDS (complete=%v err=%q)", r.Complete, r.UDSDecodeError)
+	}
+	// 0x62 is the positive response to ReadDataByIdentifier (0x22 | 0x40); the
+	// UDS decoder normalises it to the base service + a positive_response direction.
+	if r.UDS.ServiceID != 0x22 {
+		t.Errorf("chained UDS service = 0x%02X, want 0x22 (ReadDataByIdentifier)", r.UDS.ServiceID)
+	}
+	if r.UDS.Direction != "positive_response" {
+		t.Errorf("Direction = %q, want positive_response", r.UDS.Direction)
+	}
+}

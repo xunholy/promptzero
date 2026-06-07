@@ -34,7 +34,13 @@ var isotpDecodeSpec = Spec{
 		"This is the missing link between canbus_fd_decode (the CAN frame) and uds_decode / " +
 		"obd2_pid_decode / obd2_dtc_decode (the diagnostic application message): hand a Single Frame, " +
 		"or the ordered First + Consecutive frames of a multi-frame response, and the reassembled " +
-		"`payload_hex` is what you pass to those decoders.\n\n" +
+		"`payload_hex` is the application PDU. When the reassembly is **complete**, the PDU is " +
+		"**chained to the UDS decoder inline** (the `uds` field) — so the diagnostic service " +
+		"(ReadDataByIdentifier, SecurityAccess, RoutineControl, …) is decoded in one shot, the CAN-side " +
+		"parallel to doip_decode's UDS chaining. ISO-TP is a **generic transport** (it also carries " +
+		"KWP2000 / OBD-II / raw data), so the UDS interpretation is a best effort, flagged with a note; " +
+		"a non-UDS payload degrades to an unknown-service result. The raw `payload_hex` is kept for " +
+		"handing to obd2_* / kwp_decode when the application protocol is not UDS.\n\n" +
 		"Per-frame fields: the PCI type, the SF data length / FF total message length, the CF sequence " +
 		"number, and the FC flow-status (ContinueToSend / Wait / Overflow) + block size + STmin. " +
 		"Reassembly validates consecutive-frame sequence numbers (noting gaps), stops at the declared " +
