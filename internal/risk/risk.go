@@ -147,6 +147,11 @@ var toolLevels = func() map[string]Level {
 		// deterministic bit extraction of an operator-supplied block;
 		// transmits nothing, so it is Low.
 		"noralsy_decode",
+		// Presco 125 kHz LF access-control credential decode from its 128-bit
+		// block (0x10D00000 preamble + two zero words + 32-bit full code;
+		// site/user codes derived). Offline deterministic bit extraction of an
+		// operator-supplied block; transmits nothing, so it is Low.
+		"presco_decode",
 		// T5577 / ATA5577 configuration-register (block 0) decode
 		// (modulation / bit rate / flags). Offline deterministic
 		// bit-field parse of an operator-supplied word; transmits

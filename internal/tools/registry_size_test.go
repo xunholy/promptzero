@@ -2572,7 +2572,13 @@ func TestRegistrySize(t *testing.T) {
 	// surfaced. Continues the LF reader-cloning set. Layout + masks + checksums
 	// agree byte-for-byte between the Proxmark3 and Flipper Zero references.
 	// internal/noralsy).
-	const expected = 605
+	// v0.612.0 added presco_decode (Presco 125 kHz LF access credential —
+	// decodes the 128-bit block: 0x10D00000 preamble + two zero words + 32-bit
+	// full code; site/user codes derived. No checksum — integrity rests on the
+	// 96-bit structural gate. Single-reference (Proxmark cmdlfpresco.c
+	// encoder+decoder, internally inverse; Flipper mainline lacks Presco).
+	// Continues the LF reader-cloning set. internal/presco).
+	const expected = 606
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
