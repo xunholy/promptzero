@@ -2622,6 +2622,16 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Verified vs the
 		// USB spec descriptor layouts.
 		"usb_descriptor_decode",
+		// v0.599 (USB HID device-identity / BadUSB descriptor analysis):
+		// usb_hid_report_descriptor_decode — the USB HID Report Descriptor
+		// (USB HID 1.11 §6.2.2), the item-based structure declaring what a
+		// HID device is. Decodes Main/Global/Local items, the Usage Page +
+		// Usage (keyboard / mouse / …), collections, report size/count and
+		// the Input/Output/Feature data flags, and flags the BadUSB
+		// keyboard tell; the deepest layer of USB device identity. Pure
+		// offline decode of pasted bytes; reads a string, transmits
+		// nothing, so it is Low. Verified vs the USB HID spec.
+		"usb_hid_report_descriptor_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

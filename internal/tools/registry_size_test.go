@@ -2484,7 +2484,14 @@ func TestRegistrySize(t *testing.T) {
 	// (BadUSB / rubber-ducky) and composite-device patterns. Deterministic
 	// USB-spec layouts, byte-checkable; the device-fingerprinting companion to
 	// the usbhid / badusb tooling. internal/usbdesc).
-	const expected = 592
+	// v0.599.0 added usb_hid_report_descriptor_decode (USB HID Report Descriptor,
+	// USB HID 1.11 §6.2.2 — the item-based structure declaring what a HID device
+	// IS: Main/Global/Local items, Usage Page + Usage (keyboard/mouse/…),
+	// collections, report size/count, Input/Output/Feature data flags; the
+	// definitive BadUSB tell (a declared Generic-Desktop/Keyboard usage). The
+	// deepest layer of USB device identity, completing usb_descriptor + usbhid.
+	// Verified vs the canonical boot-keyboard descriptor. internal/hidreport).
+	const expected = 593
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
