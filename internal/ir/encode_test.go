@@ -77,6 +77,30 @@ func TestEncodeRawRC5RoundTrip(t *testing.T) {
 	}
 }
 
+func TestEncodeRawKaseikyoRoundTrip(t *testing.T) {
+	// Reproduce the v0.613 Kaseikyo decode vector: Panasonic 0x2002, addr 0x123,
+	// cmd 0x45 -> the kaseikyoOK timing string.
+	s, err := EncodeRaw("Kaseikyo", 0x123, 0x45, EncodeOptions{Vendor: 0x2002})
+	if err != nil {
+		t.Fatalf("EncodeRaw Kaseikyo: %v", err)
+	}
+	if s != kaseikyoOK {
+		t.Errorf("Kaseikyo encode != kaseikyoOK vector\n got: %s\nwant: %s", s, kaseikyoOK)
+	}
+	r, err := DecodeRaw(s)
+	if err != nil {
+		t.Fatalf("DecodeRaw(Kaseikyo): %v", err)
+	}
+	if r.Protocol != "Kaseikyo" || r.Vendor != 0x2002 || r.Address != 0x123 || r.Command != 0x45 || !r.ChecksumValid {
+		t.Errorf("Kaseikyo round-trip -> %s vendor=0x%04X %d/%d valid=%v", r.Protocol, r.Vendor, r.Address, r.Command, r.ChecksumValid)
+	}
+	// default vendor (0) -> Panasonic
+	s2, err := EncodeRaw("Kaseikyo", 0x123, 0x45, EncodeOptions{})
+	if err != nil || s2 != s {
+		t.Errorf("default vendor should be Panasonic 0x2002")
+	}
+}
+
 func TestEncodeRawErrors(t *testing.T) {
 	cases := []struct {
 		proto  string

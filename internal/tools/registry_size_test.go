@@ -2620,6 +2620,10 @@ func TestRegistrySize(t *testing.T) {
 	// Philips RC5-RC5X, round-trip- and fuzz-verified against the decoder;
 	// offline complement to the device-side ir_build, feeds ir_pronto_encode).
 	// internal/ir.EncodeRaw.
+	// v0.622.0 added Kaseikyo to ir_raw_encode (vendor+address+command -> 48-bit
+	// timings, both parities computed; the encoder is now symmetric with the
+	// decoder's Kaseikyo support) — registry unchanged, an enhancement not a new
+	// tool.
 	const expected = 614
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

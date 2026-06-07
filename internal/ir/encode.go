@@ -14,6 +14,7 @@ type EncodeOptions struct {
 	SIRCBits int // 12 (default), 15 or 20 — Sony SIRC frame width
 	Toggle   int // 0/1 — RC5 toggle bit
 	Ext      int // SIRC 20-bit extension byte
+	Vendor   int // Kaseikyo 16-bit vendor ID (default 0x2002 Panasonic)
 }
 
 // EncodeRaw generates the raw IR timing sequence (space-separated microsecond
@@ -23,8 +24,10 @@ type EncodeOptions struct {
 // timings can be fed to EncodePronto to produce a shareable Pronto code.
 //
 // Supported: NEC (8-bit address + command, both inverse-byte checksums emitted),
-// Samsung32 (address·address·command·~command), Sony SIRC (12/15/20-bit) and
-// Philips RC5 / RC5X (14-bit Manchester; a command > 63 emits an RC5X frame).
+// Samsung32 (address·address·command·~command), Sony SIRC (12/15/20-bit),
+// Philips RC5 / RC5X (14-bit Manchester; a command > 63 emits an RC5X frame),
+// and Kaseikyo (Panasonic/Denon/JVC/Sharp/Mitsubishi — 48-bit, vendor via
+// opt.Vendor, both the vendor parity and the frame parity computed).
 func EncodeRaw(protocol string, address, command int, opt EncodeOptions) (string, error) {
 	switch strings.ToUpper(strings.TrimSpace(protocol)) {
 	case "NEC":
@@ -52,6 +55,9 @@ func EncodeRaw(protocol string, address, command int, opt EncodeOptions) (string
 
 	case "RC5", "RC5X":
 		return encodeRC5(address, command, opt.Toggle)
+
+	case "KASEIKYO", "PANASONIC":
+		return encodeKaseikyo(address, command, opt.Vendor)
 
 	default:
 		return "", fmt.Errorf("ir: unsupported encode protocol %q (NEC, Samsung32, SIRC, RC5)", protocol)
@@ -163,6 +169,44 @@ func encodeRC5(address, command, toggle int) (string, error) {
 		i = j
 	}
 	return joinInts(out), nil
+}
+
+// encodeKaseikyo emits a 48-bit Kaseikyo frame (the inverse of decodeKaseikyo).
+// vendor defaults to Panasonic (0x2002) when 0.
+func encodeKaseikyo(address, command, vendor int) (string, error) {
+	if vendor == 0 {
+		vendor = 0x2002 // Panasonic
+	}
+	if err := inRange("vendor", vendor, 0, 0xFFFF); err != nil {
+		return "", err
+	}
+	if err := inRange("address", address, 0, 0xFFF); err != nil { // 12-bit
+		return "", err
+	}
+	if err := inRange("command", command, 0, 0xFF); err != nil { // 8-bit
+		return "", err
+	}
+	v := uint16(vendor)
+	var b [6]byte
+	b[0] = byte(v)
+	b[1] = byte(v >> 8)
+	b[2] = (kaseikyoVendorParity(v) & 0x0F) | byte((address&0xF)<<4)
+	b[3] = byte(address >> 4)
+	b[4] = byte(command)
+	b[5] = b[2] ^ b[3] ^ b[4] // frame parity
+
+	t := []int{kaseikyoHeaderMark, kaseikyoHeaderSpace}
+	for _, by := range b {
+		for bit := 0; bit < 8; bit++ {
+			t = append(t, kaseikyoBitMark)
+			if by&(1<<uint(bit)) != 0 {
+				t = append(t, kaseikyoOneSpace)
+			} else {
+				t = append(t, kaseikyoZeroSpace)
+			}
+		}
+	}
+	return joinInts(t), nil
 }
 
 func maxExt(extBits int) int {

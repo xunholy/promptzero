@@ -31,25 +31,29 @@ var irRawEncodeSpec = Spec{
 		"produce a shareable Pronto code.\n\n" +
 		"Supports **NEC** (8-bit address + command — both inverse-byte checksums are emitted), **Samsung32** " +
 		"(address·address·command·~command), **Sony SIRC** (12 / 15 / 20-bit via `bits`, with the 20-bit `ext`), " +
-		"and **Philips RC5 / RC5X** (14-bit Manchester; a command > 63 emits an RC5X frame, `toggle` selects the " +
-		"toggle bit). No confidently-wrong output: each generator is the exact inverse of the corresponding " +
+		"**Philips RC5 / RC5X** (14-bit Manchester; a command > 63 emits an RC5X frame, `toggle` selects the " +
+		"toggle bit), and **Kaseikyo** (Panasonic / Denon / JVC / Sharp / Mitsubishi — 48-bit; `vendor` sets the " +
+		"16-bit vendor ID, default Panasonic 0x2002; both the vendor parity and the frame parity are computed). " +
+		"No confidently-wrong output: each generator is the exact inverse of the corresponding " +
 		"`ir_raw_decode` reader (the encode↔decode pair is round-trip- and fuzz-verified — every successful " +
 		"encode decodes back to the same protocol/address/command), and out-of-range address/command/bits are " +
 		"rejected. No network, no device, transmits nothing (the actual replay is a separate device step), so it " +
 		"is Low risk.\n\n" +
-		"Inputs: **protocol** (NEC / Samsung32 / SIRC / RC5), **address**, **command**, and optional **bits** " +
-		"(SIRC width 12/15/20), **toggle** (RC5), **ext** (SIRC 20-bit extension).\n\n" +
+		"Inputs: **protocol** (NEC / Samsung32 / SIRC / RC5 / Kaseikyo), **address**, **command**, and optional " +
+		"**bits** (SIRC width 12/15/20), **toggle** (RC5), **ext** (SIRC 20-bit extension), **vendor** (Kaseikyo " +
+		"16-bit vendor ID).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (the offline inverse of ir_raw_decode). Wrap-vs-native: native — " +
 		"per-protocol timing emission, stdlib only, no new go.mod dep.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"protocol":{"type":"string","description":"NEC, Samsung32, SIRC (Sony) or RC5."},
+			"protocol":{"type":"string","description":"NEC, Samsung32, SIRC (Sony), RC5 or Kaseikyo."},
 			"address":{"type":"integer","description":"Address / device code (range depends on protocol)."},
 			"command":{"type":"integer","description":"Command / key code (range depends on protocol)."},
 			"bits":{"type":"integer","description":"Sony SIRC frame width: 12 (default), 15 or 20."},
 			"toggle":{"type":"integer","description":"RC5 toggle bit (0 or 1)."},
-			"ext":{"type":"integer","description":"Sony SIRC 20-bit extension byte."}
+			"ext":{"type":"integer","description":"Sony SIRC 20-bit extension byte."},
+			"vendor":{"type":"integer","description":"Kaseikyo 16-bit vendor ID (default Panasonic 0x2002)."}
 		},
 		"required":["protocol","address","command"]
 	}`),
@@ -82,6 +86,9 @@ func irRawEncodeHandler(_ context.Context, _ *Deps, p map[string]any) (string, e
 	}
 	if v, ok := p["ext"].(float64); ok {
 		opt.Ext = int(v)
+	}
+	if v, ok := p["vendor"].(float64); ok {
+		opt.Vendor = int(v)
 	}
 	timings, err := ir.EncodeRaw(protocol, addr, cmd, opt)
 	if err != nil {
