@@ -136,6 +136,11 @@ var toolLevels = func() map[string]Level {
 		// bit extraction of an operator-supplied block; transmits nothing, so
 		// it is Low.
 		"jablotron_decode",
+		// Viking 125 kHz LF access-control credential decode from its 64-bit
+		// block (0xF20000 preamble + 32-bit card ID + 8-bit XOR checksum).
+		// Offline deterministic bit extraction of an operator-supplied block;
+		// transmits nothing, so it is Low.
+		"viking_decode",
 		// T5577 / ATA5577 configuration-register (block 0) decode
 		// (modulation / bit rate / flags). Offline deterministic
 		// bit-field parse of an operator-supplied word; transmits
