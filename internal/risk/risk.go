@@ -92,6 +92,11 @@ var toolLevels = func() map[string]Level {
 		// Flipper firmware writes it to a T5577), so it stays Low like the
 		// decoder.
 		"jablotron_encode",
+		// viking_encode builds the 64-bit Viking block from a 32-bit card ID
+		// (0xF20000 preamble + XOR checksum) — the inverse of viking_decode.
+		// Generation only, no write/TX (the Flipper firmware writes it to a
+		// T5577), so it stays Low like the decoder.
+		"viking_encode",
 		// v0.404 (NATIVE-fit NFC gap): nfc_t2t_decode dissects the NFC
 		// Forum Type 2 Tag structure (NTAG21x / Ultralight) from a dump —
 		// 7-byte UID + BCC0/BCC1 validation (hand-computable XOR), static

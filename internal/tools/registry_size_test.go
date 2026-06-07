@@ -2601,7 +2601,11 @@ func TestRegistrySize(t *testing.T) {
 	// checksum + 0xFFFF preamble, round-trip-verified with the decoder +
 	// reproduces its vector; extends the LF clone set em4100/pacs/ioprox).
 	// internal/jablotron.Encode.
-	const expected = 610
+	// v0.618.0 added viking_encode (32-bit card ID -> 64-bit Viking block, the
+	// inverse of viking_decode; 0xF20000 preamble + XOR checksum (all bytes XOR
+	// == 0xA8), round-trip-verified + reproduces its vector; extends the LF
+	// clone set em4100/pacs/ioprox/jablotron). internal/viking.Encode.
+	const expected = 611
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

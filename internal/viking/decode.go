@@ -99,6 +99,18 @@ func Decode(input string) (*Result, error) {
 	return r, nil
 }
 
+// Encode builds the 64-bit (8-byte) Viking block from a 32-bit card ID,
+// returning it as an upper-case hex string. It is the inverse of Decode:
+// Decode(Encode(id)).CardID == id with a valid checksum. The checksum is set so
+// the XOR of all eight bytes equals 0xA8.
+func Encode(cardID uint32) string {
+	b := make([]byte, 8)
+	b[0] = 0xF2 // preamble
+	binary.BigEndian.PutUint32(b[3:7], cardID)
+	b[7] = b[3] ^ b[4] ^ b[5] ^ b[6] ^ 0xF2 ^ 0xA8
+	return strings.ToUpper(hex.EncodeToString(b))
+}
+
 func normaliseHex(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "0x")
