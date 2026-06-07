@@ -2497,7 +2497,14 @@ func TestRegistrySize(t *testing.T) {
 	// Power Data Objects (Fixed voltage/current+flags, Variable, Battery);
 	// emerging hardware-attack surface (malicious chargers). Augmented PDO /
 	// Request RDO / VDM surfaced raw. Verified vs the USB-PD spec. internal/usbpd).
-	const expected = 594
+	// v0.601.0 added spi_flash_decode (SPI NOR flash transactions — the command
+	// set (RDID / READ / FAST_READ / PAGE_PROGRAM / erases / status / dual-quad
+	// reads / SFDP / 4-byte mode) + the JEDEC RDID identification (single-byte
+	// manufacturer — Winbond/Macronix/Micron/… — + typical 2^code capacity);
+	// the chip-dump / firmware-extraction decoder, decoding what
+	// buspirate_spi_dump captures. Command set + manufacturer codes verified vs
+	// vendor datasheets. internal/spiflash).
+	const expected = 595
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

@@ -2641,6 +2641,17 @@ var toolLevels = func() map[string]Level {
 		// surfaced raw. Pure offline decode of pasted bytes; reads a string,
 		// transmits nothing, so it is Low. Verified vs the USB-PD spec.
 		"usb_pd_decode",
+		// v0.601 (chip-dump / firmware-extraction recon):
+		// spi_flash_decode — SPI NOR flash transactions. Decodes the
+		// command (RDID / READ / FAST_READ / PAGE_PROGRAM / erases /
+		// status / dual-quad reads / SFDP / 4-byte-address mode), the
+		// 24-bit read/program/erase address, and the JEDEC RDID
+		// identification (single-byte manufacturer + typical capacity);
+		// the chip-dump member of the hardware-bus tooling, decoding what
+		// buspirate_spi_dump captures. Pure offline decode of pasted bytes;
+		// reads a string, transmits nothing, so it is Low. Verified vs
+		// vendor SPI NOR datasheets.
+		"spi_flash_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
