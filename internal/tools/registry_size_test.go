@@ -2610,7 +2610,12 @@ func TestRegistrySize(t *testing.T) {
 	// year + the two nibble checksums + 0xBB0214FF preamble, round-trip-verified
 	// + reproduces its vector; completes the LF clone set em4100/pacs/ioprox/
 	// jablotron/viking). internal/noralsy.Encode.
-	const expected = 612
+	// v0.620.0 added presco_encode (32-bit full code -> 128-bit Presco block,
+	// the inverse of presco_decode; fixed 0x10D00000 preamble + two zero words +
+	// full code, no checksum, round-trip-verified + reproduces its vector;
+	// COMPLETES the LF clone-generation set em4100/pacs/ioprox/jablotron/viking/
+	// noralsy/presco). internal/presco.Encode.
+	const expected = 613
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

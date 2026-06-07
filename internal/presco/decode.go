@@ -104,6 +104,19 @@ func Decode(input string) (*Result, error) {
 	return r, nil
 }
 
+// Encode builds the 128-bit (16-byte) Presco block from a 32-bit full code,
+// returning it as an upper-case hex string: the 0x10D00000 preamble, two zero
+// words, then the full code. It is the inverse of Decode:
+// Decode(Encode(full)).FullCode == full. (Presco carries no checksum, so the
+// structural frame is the only integrity gate — see the package doc.)
+func Encode(full uint32) string {
+	b := make([]byte, 16)
+	binary.BigEndian.PutUint32(b[0:4], preamble)
+	// b[4:12] left zero
+	binary.BigEndian.PutUint32(b[12:16], full)
+	return strings.ToUpper(hex.EncodeToString(b))
+}
+
 func normaliseHex(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "0x")

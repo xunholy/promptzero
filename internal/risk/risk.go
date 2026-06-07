@@ -103,6 +103,11 @@ var toolLevels = func() map[string]Level {
 		// only, no write/TX (the Flipper firmware writes it to a T5577), so it
 		// stays Low like the decoder.
 		"noralsy_encode",
+		// presco_encode builds the 128-bit Presco block from a 32-bit full
+		// code (fixed 0x10D00000 preamble + two zero words + full code) — the
+		// inverse of presco_decode. Generation only, no write/TX (the Flipper
+		// firmware writes it to a T5577), so it stays Low like the decoder.
+		"presco_encode",
 		// v0.404 (NATIVE-fit NFC gap): nfc_t2t_decode dissects the NFC
 		// Forum Type 2 Tag structure (NTAG21x / Ultralight) from a dump —
 		// 7-byte UID + BCC0/BCC1 validation (hand-computable XOR), static
