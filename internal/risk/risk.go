@@ -2692,6 +2692,17 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Verified vs the
 		// Bluetooth Core spec.
 		"bt_smp_decode",
+		// v0.606 (BLE GATT-traffic recon):
+		// bt_att_decode — Bluetooth ATT (Attribute Protocol, the protocol
+		// behind GATT) on L2CAP CID 0x0004, the application layer of BLE.
+		// Field-decodes the common opcodes (Error Response, Exchange MTU,
+		// Find Information, Read By (Group) Type requests with start/end
+		// handle + UUID, Read / Write with handle + value, Notification /
+		// Indication); attribute values + discovery-response lists surfaced
+		// raw. Completes the BT-stack chain (hci → l2cap → att). Pure offline
+		// decode of pasted bytes; reads a string, transmits nothing, so it
+		// is Low. Verified vs the Bluetooth Core spec.
+		"bt_att_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port

@@ -2530,7 +2530,14 @@ func TestRegistrySize(t *testing.T) {
 	// SC), the Pairing Failed reason, the Identity Address, and key material raw;
 	// completes the BT-stack chain hci→l2cap→smp. Per the BT Core spec Vol 3
 	// Part H. internal/smp).
-	const expected = 599
+	// v0.606.0 added bt_att_decode (Bluetooth ATT / GATT — the L2CAP CID-0x0004
+	// Attribute Protocol, the application layer of BLE: per-opcode field decode
+	// — Error Response, Exchange MTU, Find Information, Read By (Group) Type
+	// requests (start/end handle + 16/128-bit UUID), Read / Write (handle +
+	// value), Notification/Indication; service-discovery responses + values
+	// surfaced raw. Completes hci→l2cap→att, pairs with bluetooth_gatt_uuid_
+	// lookup. Per the BT Core spec Vol 3 Part F. internal/att).
+	const expected = 600
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
