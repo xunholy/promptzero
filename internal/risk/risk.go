@@ -81,6 +81,11 @@ var toolLevels = func() map[string]Level {
 		// write/TX (the Flipper firmware does this for `rfid write EM4100`),
 		// so it stays Low like the decoder.
 		"em4100_encode",
+		// ioprox_encode builds the 64-bit IO Prox (Kantech XSF) block from
+		// FC/version/card (recomputing the checksum) — the inverse of
+		// ioprox_decode. Generation only, no write/TX (the Flipper firmware
+		// writes it to a T5577), so it stays Low like the decoder.
+		"ioprox_encode",
 		// v0.404 (NATIVE-fit NFC gap): nfc_t2t_decode dissects the NFC
 		// Forum Type 2 Tag structure (NTAG21x / Ultralight) from a dump —
 		// 7-byte UID + BCC0/BCC1 validation (hand-computable XOR), static

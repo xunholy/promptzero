@@ -131,6 +131,43 @@ func Decode(input string) (*Result, error) {
 	return r, nil
 }
 
+// Encode builds the 64-bit (8-byte) IO Prox block from a facility code, version
+// and 16-bit card number, returning it as an upper-case hex string. It is the
+// inverse of Decode: Decode(Encode(...)) reproduces the inputs with a valid
+// checksum. The checksum is recomputed (0xFF - (0xF0 + facility + version +
+// cardHi + cardLo)), so the emitted block always carries a correct CRC.
+func Encode(facility, version byte, card uint16) string {
+	b := make([]byte, 8)
+	setBits(b, 9, 8, 0xF0) // marker
+	// framing separator bits
+	for _, p := range []int{17, 26, 35, 44, 53, 62, 63} {
+		setBits(b, p, 1, 1)
+	}
+	cardHi := byte(card >> 8)
+	cardLo := byte(card)
+	setBits(b, 18, 8, facility)
+	setBits(b, 27, 8, version)
+	setBits(b, 36, 8, cardHi)
+	setBits(b, 45, 8, cardLo)
+	crc := byte(0xFF - (0xF0 + facility + version + cardHi + cardLo))
+	setBits(b, 54, 8, crc)
+	return strings.ToUpper(hex.EncodeToString(b))
+}
+
+// setBits writes the low n bits of v (MSB-first) starting at bit position pos.
+func setBits(b []byte, pos, n int, v byte) {
+	for i := 0; i < n; i++ {
+		bit := (v >> uint(n-1-i)) & 1
+		idx := pos + i
+		mask := byte(1) << (7 - uint(idx%8))
+		if bit == 1 {
+			b[idx/8] |= mask
+		} else {
+			b[idx/8] &^= mask
+		}
+	}
+}
+
 // getBits reads n bits (MSB-first) starting at bit position pos from b.
 func getBits(b []byte, pos, n int) byte {
 	var v byte

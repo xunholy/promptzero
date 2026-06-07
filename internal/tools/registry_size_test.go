@@ -2591,7 +2591,12 @@ func TestRegistrySize(t *testing.T) {
 	// of ir_pronto_decode; documented Pronto arithmetic inverted, round-trip-
 	// verified with the decoder; the IR companion to em4100_encode / pacs_encode
 	// / weather_synth). internal/ir.EncodePronto.
-	const expected = 608
+	// v0.616.0 added ioprox_encode (FC/version/card -> 64-bit IO Prox block, the
+	// inverse of ioprox_decode; recomputes the checksum, round-trip-verified
+	// with the decoder + reproduces the hand-traced vector; closes the ioProx
+	// reader-cloning loop alongside em4100_encode / rfid_pacs_encode).
+	// internal/ioprox.Encode.
+	const expected = 609
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
