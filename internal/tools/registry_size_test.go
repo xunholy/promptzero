@@ -2523,7 +2523,14 @@ func TestRegistrySize(t *testing.T) {
 	// (GATT opcode), SMP (pairing code), dynamic. Per-operation params surfaced
 	// raw. CID / signaling / ATT / SMP tables per the Bluetooth Core spec.
 	// internal/l2cap).
-	const expected = 598
+	// v0.605.0 added bt_smp_decode (Bluetooth LE SMP / pairing — the L2CAP
+	// CID-0x0006 Security Manager: the Pairing Request/Response IO capability +
+	// AuthReq (bonding/MITM/Secure-Connections) + key size + key distribution,
+	// with a derived security posture (Just Works vs authenticated, Legacy vs
+	// SC), the Pairing Failed reason, the Identity Address, and key material raw;
+	// completes the BT-stack chain hci→l2cap→smp. Per the BT Core spec Vol 3
+	// Part H. internal/smp).
+	const expected = 599
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

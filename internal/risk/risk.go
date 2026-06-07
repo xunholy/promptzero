@@ -2681,6 +2681,17 @@ var toolLevels = func() map[string]Level {
 		// decode of pasted bytes; reads a string, transmits nothing, so it
 		// is Low. Verified vs the Bluetooth Core spec.
 		"bt_l2cap_decode",
+		// v0.605 (BLE-pairing security recon):
+		// bt_smp_decode — Bluetooth LE SMP (Security Manager Protocol /
+		// pairing) on L2CAP CID 0x0006. Decodes the Pairing Request/Response
+		// IO capability + AuthReq (bonding / MITM / Secure Connections) + key
+		// size + key distribution, with a derived security posture (Just
+		// Works vs authenticated, Legacy vs SC), the Pairing Failed reason,
+		// the Identity Address, and key material raw; completes the BT-stack
+		// chain (hci → l2cap → smp). Pure offline decode of pasted bytes;
+		// reads a string, transmits nothing, so it is Low. Verified vs the
+		// Bluetooth Core spec.
+		"bt_smp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
