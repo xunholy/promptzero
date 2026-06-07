@@ -2624,7 +2624,12 @@ func TestRegistrySize(t *testing.T) {
 	// timings, both parities computed; the encoder is now symmetric with the
 	// decoder's Kaseikyo support) — registry unchanged, an enhancement not a new
 	// tool.
-	const expected = 614
+	// v0.623.0 added t5577_config_encode (raw fields -> 32-bit T5577 config word,
+	// the inverse of t5577_config_decode; round-trip-verified + reproduces the
+	// EM4100/HID reference configs; completes the offline clone-prep chain —
+	// the config word that sets a T5577 blank up for the right protocol before
+	// writing the cloned data blocks). internal/t55xx.EncodeHex.
+	const expected = 615
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

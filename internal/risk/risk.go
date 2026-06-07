@@ -184,6 +184,11 @@ var toolLevels = func() map[string]Level {
 		// bit-field parse of an operator-supplied word; transmits
 		// nothing, so it is Low.
 		"t5577_config_decode",
+		// T5577 / ATA5577 configuration-word build (the inverse of
+		// t5577_config_decode) — raw modulation/bit-rate/flag fields ->
+		// 32-bit config word. Offline deterministic bit-field placement;
+		// generation only, transmits nothing, so it is Low.
+		"t5577_config_encode",
 		// NTAG21x (NTAG213/215/216) configuration-page decode
 		// (password protection / lock / NFC counter / mirror). Offline
 		// deterministic bit-field parse of operator-supplied pages;

@@ -84,6 +84,67 @@ type Config struct {
 	Notes              []string `json:"notes,omitempty"`
 }
 
+// EncodeParams are the raw field values for building a T5577 basic-mode config
+// word (the inverse of Decode's raw fields).
+type EncodeParams struct {
+	MasterKey          int  // 0-15 (bits 28-31)
+	DataBitRateRaw     int  // 0-7  (bits 18-20) — RF/8..RF/128
+	ModulationRaw      int  // 0-31 (bits 12-16)
+	PSKClock           int  // 0-3  (bits 10-11) — only used for PSK modulations (1-3)
+	AnswerOnRequest    bool // bit 9
+	MaxBlock           int  // 0-7  (bits 5-7)
+	PasswordEnabled    bool // bit 4
+	SequenceTerminator bool // bit 3
+}
+
+// Encode builds a 32-bit T5577 basic-mode config word from the raw field values
+// — the inverse of Decode. Decode(Encode(p)) reproduces p's fields. The PSK
+// clock bits are only written for the PSK modulations (1-3), matching how Decode
+// surfaces them. Out-of-range fields are rejected.
+func Encode(p EncodeParams) (uint32, error) {
+	for _, f := range []struct {
+		name  string
+		v, hi int
+	}{
+		{"master_key", p.MasterKey, 15},
+		{"data_bit_rate_raw", p.DataBitRateRaw, 7},
+		{"modulation_raw", p.ModulationRaw, 31},
+		{"psk_clock", p.PSKClock, 3},
+		{"max_block", p.MaxBlock, 7},
+	} {
+		if f.v < 0 || f.v > f.hi {
+			return 0, fmt.Errorf("t55xx: %s %d out of range [0, %d]", f.name, f.v, f.hi)
+		}
+	}
+	var b uint32
+	b |= uint32(p.MasterKey&0x0F) << 28
+	b |= uint32(p.DataBitRateRaw&0x07) << 18
+	b |= uint32(p.ModulationRaw&0x1F) << 12
+	if p.ModulationRaw >= 1 && p.ModulationRaw <= 3 {
+		b |= uint32(p.PSKClock&0x03) << 10
+	}
+	if p.AnswerOnRequest {
+		b |= 1 << 9
+	}
+	b |= uint32(p.MaxBlock&0x07) << 5
+	if p.PasswordEnabled {
+		b |= 1 << 4
+	}
+	if p.SequenceTerminator {
+		b |= 1 << 3
+	}
+	return b, nil
+}
+
+// EncodeHex is Encode rendered as an 8-hex-digit upper-case config word.
+func EncodeHex(p EncodeParams) (string, error) {
+	b, err := Encode(p)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%08X", b), nil
+}
+
 // DecodeHex decodes a hex-encoded 32-bit config word (8 hex digits;
 // ':' / '-' / '_' / whitespace and an optional 0x prefix tolerated).
 func DecodeHex(s string) (*Config, error) {
