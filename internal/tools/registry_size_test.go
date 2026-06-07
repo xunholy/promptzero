@@ -2455,7 +2455,14 @@ func TestRegistrySize(t *testing.T) {
 	// (WTX/DESELECT) + CID/NAD + INF; completes the NFC stack identify → ATS →
 	// T=CL → APDU. PCB coding verified vs ISO 14443-4 §7.1 + Proxmark/libnfc
 	// canonical values. internal/tcl).
-	const expected = 588
+	// v0.592.0 added xcp_decode (ASAM XCP Universal Measurement and Calibration
+	// Protocol — the ECU calibration/measurement/flash bus: the PID → command
+	// (CONNECT / GET_SEED / UNLOCK / UPLOAD / DOWNLOAD / PROGRAM / DAQ) master→
+	// slave, or RES/ERR/EV/SERV/DAQ slave→master, with security-relevant
+	// commands flagged; joins the uds/kwp/obd2 automotive family. Command /
+	// error / event code tables code-genned from scapy.contrib.automotive.xcp.
+	// internal/xcp).
+	const expected = 589
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

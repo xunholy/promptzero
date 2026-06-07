@@ -2582,6 +2582,16 @@ var toolLevels = func() map[string]Level {
 		// → APDU. Pure offline decode of pasted bytes; reads a string,
 		// transmits nothing, so it is Low. Verified vs ISO 14443-4 §7.1.
 		"nfc_tcl_decode",
+		// v0.592 (automotive ECU calibration/flash-bus recon):
+		// xcp_decode — ASAM XCP (Universal Measurement and Calibration
+		// Protocol), the master/slave ECU calibration/measurement/flash
+		// bus. Decodes the PID into the command (CONNECT / SEED&KEY /
+		// UPLOAD / DOWNLOAD / PROGRAM / DAQ) or the slave response
+		// (RES / ERR + error code / EV + event / SERV / DAQ), flagging
+		// the security-relevant operations. Pure offline decode of pasted
+		// bytes; reads a string, transmits nothing, so it is Low. Tables
+		// code-genned from scapy.contrib.automotive.xcp.
+		"xcp_decode",
 		// v0.325 native-fit gap: hart_ip_decode is a
 		// pure offline dissector for HART-IP per HART
 		// Foundation HCF_SPEC-085 — UDP/TCP port
