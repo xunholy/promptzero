@@ -1,0 +1,36 @@
+# Keep the build context small and the image reproducible: ship only what
+# `go build ./cmd/promptzero` needs. The embedded web assets under
+# internal/web/static are source files and are intentionally NOT excluded.
+
+# VCS + CI + tooling
+.git
+.github
+.gitignore
+.pre-commit-config.yaml
+.golangci.yml
+.golangci.yaml
+
+# Build outputs / local artifacts
+dist
+bin
+coverage.out
+coverage.txt
+*.test
+*.out
+
+# Docs and non-build assets
+docs
+*.md
+LICENSE
+install.sh
+
+# Editor / local agent state
+.claude
+.vscode
+.idea
+.DS_Store
+
+# The Dockerfile itself and compose files don't belong in the context
+Dockerfile
+.dockerignore
+docker-compose*.yml

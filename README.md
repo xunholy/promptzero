@@ -126,6 +126,8 @@ Dark-themed browser interface at `http://localhost:8080`. Includes the chat surf
 > [!IMPORTANT]
 > **Auth.** Set `web.token` in your config or `PROMPTZERO_WEB_TOKEN` in env. The browser picks up `#token=…` from the URL fragment on first load and caches it in `sessionStorage`. Empty token + non-loopback bind → server prints a red warning. PromptZero speaks plain HTTP — terminate TLS at a reverse proxy (Caddy / Traefik / nginx) or a Tailscale / Cloudflare tunnel.
 
+**Host it with Docker.** Multi-arch images (`distroless`, signed, with SBOM + provenance) are published to `ghcr.io/xunholy/promptzero` on every release — see [docs/deploy/docker.md](docs/deploy/docker.md).
+
 ### Voice — `promptzero --voice`
 
 Push-to-talk in CLI mode. Press Enter with no text to record (requires `sox`); audio is transcribed via OpenAI Whisper, then processed as a normal command.

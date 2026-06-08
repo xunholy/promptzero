@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -427,6 +428,18 @@ func Load(path string) (*Config, error) {
 	}
 	if tok := os.Getenv("PROMPTZERO_WEB_TOKEN"); tok != "" {
 		cfg.Web.Token = tok
+	}
+	// PROMPTZERO_WEB_HOST / PROMPTZERO_WEB_PORT let a container or other
+	// 12-factor deployment bind the web UI without mounting a config file —
+	// set PROMPTZERO_WEB_HOST=0.0.0.0 (plus a token) to expose it. An invalid
+	// or out-of-range port is ignored so a typo can't silently bind port 0.
+	if host := os.Getenv("PROMPTZERO_WEB_HOST"); host != "" {
+		cfg.Web.Host = host
+	}
+	if p := os.Getenv("PROMPTZERO_WEB_PORT"); p != "" {
+		if port, perr := strconv.Atoi(p); perr == nil && port > 0 && port <= 65535 {
+			cfg.Web.Port = port
+		}
 	}
 
 	return cfg, nil

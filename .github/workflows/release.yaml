@@ -11,6 +11,16 @@ name: Release
 #
 # The CycloneDX SBOM (promptzero.cdx.json) is attached for dependency auditing.
 #
+# The `docker` job publishes a multi-arch (linux/amd64+arm64) web-GUI image to
+# GHCR (ghcr.io/<owner>/promptzero) on every tag, with a buildx SBOM + SLSA
+# provenance attestation, a GitHub build-provenance attestation pushed to the
+# registry, and a keyless cosign signature. Consumers verify with:
+#
+#   gh attestation verify oci://ghcr.io/xunholy/promptzero:<tag> -R xunholy/promptzero
+#   cosign verify ghcr.io/xunholy/promptzero:<tag> \
+#     --certificate-identity-regexp 'https://github.com/xunholy/promptzero/\.github/workflows/release\.yaml@refs/tags/v.*' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+#
 # Build topology: darwin targets are built on macOS runners with CGO
 # enabled so tinygo.org/x/bluetooth's CoreBluetooth bindings link
 # correctly — cross-compiling darwin from Linux strips CGO and silently
@@ -260,3 +270,91 @@ jobs:
             dist/install.sh
             dist/install.sh.sig
             dist/install.sh.pem
+
+  # Publish the web-GUI container image to GHCR with full supply-chain metadata.
+  # Builds from source (multi-stage Dockerfile) rather than the release binaries
+  # so the image is self-validating — a broken build fails this job too. Gated
+  # on `build` so an image is only published when the canonical matrix compiles.
+  docker:
+    name: docker image (ghcr)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # push image + attestations to GHCR
+      id-token: write # cosign keyless + OIDC for attestations
+      attestations: write # actions/attest-build-provenance
+    steps:
+      - uses: actions/checkout@v5
+
+      # Match the binary ldflags: 7-char commit + UTC build date.
+      - name: Build metadata
+        id: vars
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "commit=${COMMIT_SHA:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ steps.vars.outputs.commit }}
+            DATE=${{ steps.vars.outputs.date }}
+          # In-registry SBOM + max-mode SLSA provenance attestations.
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.1
+        with:
+          cosign-release: v2.6.3
+
+      # --recursive signs the index *and* each per-arch child manifest, so a
+      # consumer pulling either arch gets a verifiable signature.
+      - name: Sign image (cosign keyless)
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes --recursive "${IMAGE}@${DIGEST}"
+
+      - name: Attest build provenance (GitHub)
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

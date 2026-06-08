@@ -247,6 +247,36 @@ func TestLoad_EnvVarsOverrideConfig(t *testing.T) {
 	}
 }
 
+func TestLoadWebHostPortEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	t.Setenv("PROMPTZERO_WEB_HOST", "0.0.0.0")
+	t.Setenv("PROMPTZERO_WEB_PORT", "9090")
+	cfg, err := Load(filepath.Join(dir, "nonexistent.yaml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Web.Host != "0.0.0.0" {
+		t.Errorf("PROMPTZERO_WEB_HOST did not override: %q", cfg.Web.Host)
+	}
+	if cfg.Web.Port != 9090 {
+		t.Errorf("PROMPTZERO_WEB_PORT did not override: %d", cfg.Web.Port)
+	}
+
+	// An invalid or out-of-range port is ignored, leaving the default intact.
+	for _, bad := range []string{"not-a-number", "0", "70000", "-1"} {
+		t.Setenv("PROMPTZERO_WEB_PORT", bad)
+		cfg, err := Load(filepath.Join(dir, "nonexistent.yaml"))
+		if err != nil {
+			t.Fatalf("Load(%q): %v", bad, err)
+		}
+		if cfg.Web.Port != 8080 {
+			t.Errorf("PROMPTZERO_WEB_PORT=%q should be ignored, got port %d", bad, cfg.Web.Port)
+		}
+	}
+}
+
 func TestRequireAPIKey(t *testing.T) {
 	cfg := &Config{}
 	if err := cfg.RequireAPIKey(); err == nil {
