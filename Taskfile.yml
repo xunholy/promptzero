@@ -66,6 +66,11 @@ tasks:
     cmds:
       - golangci-lint run ./...
 
+  claude-usage:
+    desc: Refresh the Claude usage/cost badge JSON from local CLI transcripts.
+    cmds:
+      - python3 scripts/claude-usage.py
+
   vet:
     desc: go vet across the module.
     cmds:

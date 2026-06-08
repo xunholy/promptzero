@@ -6,7 +6,10 @@
   <a href="https://github.com/xunholy/promptzero/releases/latest"><img src="https://img.shields.io/github/v/release/xunholy/promptzero?label=release" alt="Latest release"></a>
   <a href="https://github.com/xunholy/promptzero/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0"></a>
   <a href="https://github.com/xunholy/promptzero/actions/workflows/ci.yaml"><img src="https://github.com/xunholy/promptzero/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+  <a href="scripts/claude-usage.py"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/xunholy/promptzero/main/.github/claude-usage.json" alt="Claude usage"></a>
 </p>
+
+<sub align="center">_Claude usage/cost is an estimate aggregated from the maintainer's local Claude Code transcripts (`task claude-usage`); it reflects this machine's sessions only._</sub>
 
 > **Describe it. Generate it. Deploy it. Run it.**
 
