@@ -48,7 +48,11 @@ var pocsagDecodeSpec = Spec{
 		"from a Flipper-side analyzer or a recorded scan.\n\n" +
 		"Decodes numeric pages via the 4-bit BCD-plus-extended table (space, U, -, ), (), and " +
 		"alphanumeric pages as 7-bit ASCII with LSB-first packing across codeword boundaries. " +
-		"Reports parity-error count and the bit offsets where syncs were found so operators can " +
+		"Applies BCH(31,21,2) maximum-likelihood correction — up to two bit errors per " +
+		"codeword are repaired so a noisy capture decodes to the right address / message instead " +
+		"of a silently-wrong one; codewords with 3+ errors are reported (uncorrectable) and " +
+		"decoded best-effort, not mis-corrected. " +
+		"Reports corrected / uncorrectable / parity-error counts and the sync bit-offsets so operators can " +
 		"verify their bit-stream alignment. Pure offline parser — no Flipper / SDR required. " +
 		"Accepts ':' '-' '_' / whitespace separators in `bits`.\n\n" +
 		"Source: docs/catalog/gap-analysis.md §3 rank 4 (subghz_pocsag_decode). Wrap-vs-native: " +

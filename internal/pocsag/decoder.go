@@ -23,15 +23,20 @@
 //     across codeword boundaries)
 //   - Codeword input form for callers who already have 32-bit
 //     codewords from a Flipper-side analyzer
+//   - BCH(31,21,2) error correction — maximum-likelihood
+//     (minimum-Hamming-weight) correction of up to two bit errors
+//     per codeword, so a noisy over-the-air capture decodes to the
+//     right address / message instead of a silently-wrong one. The
+//     correction is unique for ≤2 errors (the code's minimum
+//     distance is 5); ≥3-error words are flagged uncorrectable and
+//     left untouched rather than mis-corrected.
 //
 // What this package does NOT cover (deliberately out of scope):
 //   - FSK demodulation (operators bring a pre-demodulated bit
 //     stream via multimon-ng -a POCSAG1200, rtl_433, or a Flipper
 //     FSK sub-GHz capture pre-extracted to bits)
-//   - BCH error correction (we report parity validity; one- /
-//     two-bit error correction can be layered on later if a caller
-//     materialises with noisy captures that need it)
-//   - Re-encode / page transmission
+//   - Page transmission (Synth builds a valid bit-stream — preamble
+//   - sync + batch — but an RF TX stage is a separate concern)
 package pocsag
 
 import (
@@ -108,8 +113,17 @@ type Result struct {
 	IdleCount int `json:"idle_count"`
 	// ParityErrors counts codewords whose even-parity bit didn't
 	// match the rest of the codeword — a cheap data-integrity
-	// indicator without doing full BCH correction.
+	// indicator, measured on the raw (pre-correction) codeword.
 	ParityErrors int `json:"parity_errors"`
+	// Corrected counts codewords the BCH(31,21,2) decoder repaired
+	// (1- or 2-bit errors). These pages decoded from the recovered
+	// codeword, not the raw one.
+	Corrected int `json:"corrected"`
+	// Uncorrectable counts codewords with a non-zero BCH syndrome
+	// that no ≤2-bit correction resolved (≥3 bit errors). Such
+	// codewords are left untouched and decoded best-effort from
+	// their raw bits — treat the resulting page as suspect.
+	Uncorrectable int `json:"uncorrectable"`
 	// SyncOffsets records the bit offsets at which SyncWord
 	// matches were found. Useful for operators verifying their
 	// bit-stream alignment.
@@ -209,6 +223,8 @@ func walkBitStream(bits string) (Result, error) {
 		res.CodewordCount += batchRes.CodewordCount
 		res.IdleCount += batchRes.IdleCount
 		res.ParityErrors += batchRes.ParityErrors
+		res.Corrected += batchRes.Corrected
+		res.Uncorrectable += batchRes.Uncorrectable
 		res.Batches++
 		off = batchStart + BatchCodewords*CodewordBits
 	}
@@ -233,6 +249,17 @@ func processCodewords(words []uint32, startFrame int) (Result, error) {
 		if frame >= BatchFrames {
 			frame = frame % BatchFrames
 		}
+		// BCH(31,21,2) correction up front, before classification, so a
+		// corrupted idle (or address / message) word is recovered rather
+		// than mis-read. Clean codewords have a zero syndrome and pass
+		// through unchanged; ≥3-error words are flagged and left raw.
+		raw := w
+		if cw, nfix, ok := bchCorrect(raw); !ok {
+			res.Uncorrectable++
+		} else if nfix > 0 {
+			res.Corrected++
+			w = cw
+		}
 		if w == IdleWord {
 			res.IdleCount++
 			if current != nil {
@@ -243,7 +270,7 @@ func processCodewords(words []uint32, startFrame int) (Result, error) {
 			continue
 		}
 		res.CodewordCount++
-		if !parityOK(w) {
+		if !parityOK(raw) {
 			res.ParityErrors++
 		}
 		if (w & 0x80000000) == 0 {
@@ -352,6 +379,52 @@ func decodeAlphanumeric(bitStr string) string {
 		sb.WriteByte(b)
 	}
 	return sb.String()
+}
+
+// bchSyndrome computes the BCH(31,21) syndrome of a codeword — the
+// remainder of its 31-bit code part (bits 31..1; bit 0 is the
+// separate even-parity bit, outside the BCH code) modulo the
+// generator g(x) = bchGenerator. A valid codeword yields 0.
+func bchSyndrome(w uint32) uint32 {
+	reg := w >> 1 // 31-bit BCH code part: x^30 (bit 31) … x^0 (bit 1)
+	for i := 30; i >= 10; i-- {
+		if reg&(1<<uint(i)) != 0 {
+			reg ^= bchGenerator << uint(i-10)
+		}
+	}
+	return reg & 0x3FF
+}
+
+// bchCorrect performs maximum-likelihood BCH(31,21,2) decoding: it
+// returns the minimum-Hamming-weight codeword within two bit-flips
+// of w (searching the 31 BCH-protected bit positions 1..31). The
+// code's minimum distance is 5, so for any error of weight ≤2 the
+// coset leader is unique — the first match found is provably the
+// maximum-likelihood codeword, never an ambiguous guess.
+//
+// Returns (corrected, errorsFixed, true) when w is a valid codeword
+// (errorsFixed 0) or correctable (1 or 2). Returns (w, 0, false)
+// when the syndrome is non-zero and no ≤2-bit flip clears it (≥3
+// errors) — the caller leaves the word raw rather than mis-correct.
+func bchCorrect(w uint32) (uint32, int, bool) {
+	if bchSyndrome(w) == 0 {
+		return w, 0, true
+	}
+	// Single-bit errors (positions 1..31; bit 0 is parity, not BCH).
+	for i := 1; i <= 31; i++ {
+		if bchSyndrome(w^(1<<uint(i))) == 0 {
+			return w ^ (1 << uint(i)), 1, true
+		}
+	}
+	// Two-bit errors.
+	for i := 1; i <= 31; i++ {
+		for j := i + 1; j <= 31; j++ {
+			if bchSyndrome(w^(1<<uint(i))^(1<<uint(j))) == 0 {
+				return w ^ (1 << uint(i)) ^ (1 << uint(j)), 2, true
+			}
+		}
+	}
+	return w, 0, false // uncorrectable (≥3 bit errors)
 }
 
 // parityOK confirms the codeword's bit-0 even-parity bit matches

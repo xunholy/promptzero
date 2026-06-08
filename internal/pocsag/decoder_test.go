@@ -351,27 +351,21 @@ func makeAddressCodeword(t *testing.T, ric uint32, fn int, frame int) uint32 {
 			"the spec encodes frame in the bottom 3 bits of the address",
 			ric, ric&0x7, frame)
 	}
-	addrMSB := (ric >> 3) & 0x3FFFF
-	data := (addrMSB << 2) | uint32(fn&0x3)
-	// Address codewords have bit 31 = 0.
-	w := (data << 11) & 0x7FFFF800
-	// Bit 0 = even parity over bits 31..1.
-	p := bits.OnesCount32(w) % 2
-	w |= uint32(p)
-	return w
+	// Delegate to the real constructor so the codeword carries valid
+	// BCH(31,21) check bits — a BCH-aware decoder must see a zero
+	// syndrome on clean test input, or correction would alter it.
+	return addressCodeword(ric, fn)
 }
 
 // makeMessageCodeword builds a message codeword from a 20-bit
-// data field. Sets bit 31 (message marker) and even parity.
+// data field. Delegates to the real constructor so the codeword
+// carries valid BCH(31,21) check bits (bit 31 = message marker).
 func makeMessageCodeword(t *testing.T, data20 uint32) uint32 {
 	t.Helper()
 	if data20 > 0xFFFFF {
 		t.Fatalf("data 0x%X exceeds 20-bit range", data20)
 	}
-	w := uint32(0x80000000) | (data20 << 11)
-	p := bits.OnesCount32(w) % 2
-	w |= uint32(p)
-	return w
+	return messageCodeword(data20)
 }
 
 // packNumericDigits packs the given numeric-page digits into a
