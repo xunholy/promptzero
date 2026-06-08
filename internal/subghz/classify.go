@@ -39,7 +39,7 @@ type Classifier struct {
 	protos []Protocol
 }
 
-// NewClassifier returns a Classifier pre-loaded with all 31 protocol decoders.
+// NewClassifier returns a Classifier pre-loaded with all 32 protocol decoders.
 func NewClassifier() *Classifier {
 	return &Classifier{
 		protos: []Protocol{
@@ -74,6 +74,7 @@ func NewClassifier() *Classifier {
 			protocols.Megacode{},
 			protocols.Magellan{},
 			protocols.Mastercode{},
+			protocols.GangQi{},
 		},
 	}
 }
