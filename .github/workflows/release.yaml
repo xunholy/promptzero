@@ -14,10 +14,12 @@ name: Release
 # The `docker` job publishes a multi-arch (linux/amd64+arm64) web-GUI image to
 # GHCR (ghcr.io/<owner>/promptzero) on every tag, with a buildx SBOM + SLSA
 # provenance attestation, a GitHub build-provenance attestation pushed to the
-# registry, and a keyless cosign signature. Consumers verify with:
+# registry, and a keyless cosign signature. Image tags drop the leading `v`
+# of the git tag (container-semver convention) — v0.630.0 -> :0.630.0.
+# Consumers verify with (substitute the version or use :latest):
 #
-#   gh attestation verify oci://ghcr.io/xunholy/promptzero:<tag> -R xunholy/promptzero
-#   cosign verify ghcr.io/xunholy/promptzero:<tag> \
+#   gh attestation verify oci://ghcr.io/xunholy/promptzero:0.630.0 -R xunholy/promptzero
+#   cosign verify ghcr.io/xunholy/promptzero:0.630.0 \
 #     --certificate-identity-regexp 'https://github.com/xunholy/promptzero/\.github/workflows/release\.yaml@refs/tags/v.*' \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 #

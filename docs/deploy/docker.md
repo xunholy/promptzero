@@ -8,11 +8,14 @@ provenance, a GitHub build-provenance attestation, and a keyless cosign
 signature (see [Verify supply-chain metadata](#verify-supply-chain-metadata)).
 
 ```
-ghcr.io/xunholy/promptzero:<version>   # immutable, e.g. v0.630.0  ← pin this in prod
-ghcr.io/xunholy/promptzero:<major>.<minor>
+ghcr.io/xunholy/promptzero:<version>   # immutable, e.g. 0.630.0  ← pin this in prod
+ghcr.io/xunholy/promptzero:<major>.<minor>   # e.g. 0.630
 ghcr.io/xunholy/promptzero:latest
 ghcr.io/xunholy/promptzero:sha-<short>
 ```
+
+> Image tags follow the container-semver convention and **drop the leading `v`**
+> of the git tag — release `v0.630.0` publishes `:0.630.0` (not `:v0.630.0`).
 
 Platforms: `linux/amd64`, `linux/arm64`.
 
