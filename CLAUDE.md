@@ -42,3 +42,16 @@ Run `task dev:setup` after cloning to install required dev tools
 Slow timing-sensitive tests are gated behind `testing.Short()`. Use
 `task test` for the quick suite and `task test:full` when you need
 the full coverage CI runs.
+
+## Documentation style
+
+Keep doc comments **blocked above** the function, type, var/const, or
+logical code section they describe — this keeps the executable lines
+clean and scannable. Follow Go convention: exported-symbol comments
+start with the symbol name (e.g. `// Decode attempts …`).
+
+Reserve **trailing/inline** comments (`x := f() // …`) for the rare
+case where the explanation belongs to that exact line and would lose
+its meaning if moved — a non-obvious constant, a tricky single
+expression. Default to a block comment above; only inline when the
+note is genuinely line-specific.
