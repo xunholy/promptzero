@@ -2654,7 +2654,12 @@ func TestRegistrySize(t *testing.T) {
 	// creation timestamp + 16-byte payload, per segmentio/ksuid, anchored to
 	// its documented example; completes the identifier info-leak family
 	// uuid/objectid/ulid/snowflake/ksuid). internal/ksuid.
-	const expected = 618
+	// v0.636.0 added otpauth_migration_decode (Google Authenticator export
+	// payload otpauth-migration://offline?data=… -> the list of 2FA accounts
+	// it carries, bulk-recovering every TOTP/HOTP secret; public-schema
+	// protobuf parsed with protowire, anchored to the canonical example secret
+	// JBSWY3DPEHPK3PXP; pairs with totp_generate). internal/otpmigration.
+	const expected = 619
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

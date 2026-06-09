@@ -910,6 +910,13 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.636 — Google Authenticator export decoder: parses an
+		// otpauth-migration://offline?data=… payload (a public-schema
+		// protobuf) into the 2FA accounts it carries (issuer/name/secret/
+		// algorithm/digits/type/counter), bulk-recovering every seed. Like
+		// totp_generate it is an offline parse of operator-supplied loot —
+		// reads a string, transmits nothing, so it is Low.
+		"otpauth_migration_decode",
 		"hmac_compute",
 		// v0.444 — WPA/WPA2-PSK PMK derivation
 		// (PBKDF2-HMAC-SHA1(passphrase, SSID, 4096, 32) per IEEE
