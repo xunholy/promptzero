@@ -2731,7 +2731,11 @@ func TestRegistrySize(t *testing.T) {
 	// enforcement posture from p/sp/pct + alignment + rua/ruf; p=none flagged
 	// monitoring-only; RFC 7489 defaults; pinned to live google/paypal/github
 	// records). internal/dmarc.
-	const expected = 636
+	// v0.655.0 added spf_record_decode (SPF v=spf1 static analysis: mechanisms +
+	// terminal `all` qualifier + direct DNS-lookup count vs RFC 7208 limit;
+	// completes the email-auth triad; pinned to live google/github records +
+	// the dig multi-string join). internal/spf.
+	const expected = 637
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

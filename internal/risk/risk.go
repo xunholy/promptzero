@@ -910,6 +910,10 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.655 — SPF record decoder/analyser: statically analyses a v=spf1 DNS
+		// TXT record (mechanisms, the terminal `all` qualifier, direct DNS-lookup
+		// count), offline. Reads a record, transmits nothing, so it is Low.
+		"spf_record_decode",
 		// v0.654 — DMARC policy record decoder: parses a DMARC DNS TXT record
 		// into its anti-spoofing enforcement posture (p/sp/pct/alignment/rua),
 		// offline. Reads a record, transmits nothing, so it is Low.
