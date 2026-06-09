@@ -910,6 +910,11 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.649 — OpenSSH public-key / authorized_keys / known_hosts triage:
+		// fingerprints (SHA256/MD5) + type/size, surfaces the RSA modulus for
+		// roca_detect chaining, and tests a candidate hostname against a hashed
+		// known_hosts entry. Reads keys, transmits nothing, so it is Low.
+		"ssh_pubkey_decode",
 		// v0.648 — ROCA (CVE-2017-15361) weak-RSA-key detector: runs the
 		// Infineon RSALib fingerprint test over an RSA modulus / public key /
 		// certificate / ssh-rsa line, offline (no network, no factorisation).

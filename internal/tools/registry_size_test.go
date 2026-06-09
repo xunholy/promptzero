@@ -2706,7 +2706,12 @@ func TestRegistrySize(t *testing.T) {
 	// Estonian/Slovak eID; accepts modulus/PEM/cert/ssh-rsa, offline; ported
 	// verbatim from crocs-muni/roca detect.py and validated against its ten
 	// fingerprint-positive test moduli). internal/roca.
-	const expected = 630
+	// v0.649.0 added ssh_pubkey_decode (OpenSSH public-key / authorized_keys /
+	// known_hosts triage: SHA256+MD5 fingerprints exactly as ssh-keygen -l,
+	// type/size, RSA modulus surfaced for roca_detect chaining, and a hashed
+	// known_hosts |1|salt|hash entry tested against a candidate hostname via
+	// HMAC-SHA1; native RFC 4253 wire parse, no x/crypto/ssh). internal/sshpub.
+	const expected = 631
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
