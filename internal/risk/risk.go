@@ -910,6 +910,12 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.639 — Bech32/Bech32m decoder: decodes a SegWit address
+		// (bc1…/tb1…) / Nostr / Lightning Bech32 string (HRP + payload +
+		// BCH checksum variant + witness version/program). Like
+		// base58check_decode it is an offline parse over operator-supplied
+		// loot — reads a string, transmits nothing, Low.
+		"bech32_decode",
 		// v0.638 — Base58Check decoder: decodes a WIF private key / legacy
 		// Bitcoin address / BIP-32 extended key (version + payload + double-
 		// SHA-256 checksum). Like bip39_decode it is an offline parse over

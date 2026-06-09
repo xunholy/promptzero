@@ -2667,7 +2667,11 @@ func TestRegistrySize(t *testing.T) {
 	// address / BIP-32 extended key -> version + payload + double-SHA-256
 	// checksum + type id; anchored to the canonical WIF + genesis-address
 	// vectors; the Base58Check companion to bip39_decode). internal/base58check.
-	const expected = 621
+	// v0.639.0 added bech32_decode (Bech32/Bech32m SegWit address / Nostr /
+	// Lightning string -> HRP + payload + BCH checksum variant + witness
+	// version/program + address type; anchored to the BIP-173/350 vectors; the
+	// Bech32 companion to base58check_decode). internal/bech32.
+	const expected = 622
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
