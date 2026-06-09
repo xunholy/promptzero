@@ -2739,6 +2739,12 @@ func TestRegistrySize(t *testing.T) {
 	// triad: detects SPF/DKIM/DMARC by the v= version tag — DKIM by p=/k= when
 	// v= is absent — and routes to the matching decoder; the secret_identify
 	// pattern for email records; native orchestration). internal/emailauth.
+	// v0.657.0 extended ir_raw_decode + ir_raw_encode with the RCA protocol
+	// (24-bit pulse-distance, distinct 4000/4000µs leader, 4-bit address + 8-bit
+	// command with both inverse-field checksums; anchored to the Flipper
+	// firmware RCA test vector 0x0F/0x54 + encode↔decode round-trip). Extends
+	// existing tools — registry unchanged, an enhancement not a new tool.
+	// internal/ir.
 	const expected = 638
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

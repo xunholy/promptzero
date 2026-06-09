@@ -28,18 +28,20 @@
 // # Covered / deferred
 //
 // The NEC family (standard, extended, and the repeat code), Sony SIRC
-// (12 / 15 / 20-bit), Samsung, Philips RC5 / RC5X (14-bit Manchester), and
+// (12 / 15 / 20-bit), Samsung, Philips RC5 / RC5X (14-bit Manchester),
 // Kaseikyo (the 48-bit pulse-distance frame shared by Panasonic / Denon / JVC /
-// Sharp / Mitsubishi) are covered — the most common consumer-IR protocols
-// across the three encoding families (pulse-distance, pulse-width, and
-// bi-phase). NEC is gated by its address/command inverse-byte checksum;
-// Kaseikyo by BOTH its 4-bit vendor parity and its 8-bit frame parity; the
-// checksum-less protocols are gated structurally instead — SIRC by its 2400µs
-// leader + exact 12/15/20-bit count, and RC5 by an exact 28-half-bit Manchester
-// reconstruction with a valid S1 start bit (a polarity-inverted or non-RC5
-// train fails the bit-pair or S1 gate and is rejected, not mis-decoded). RC6
-// (a more complex Manchester variant with a double-width toggle) and the
-// Pronto/`ir_build` parsed formats are deliberately not decoded here yet.
+// Sharp / Mitsubishi), and RCA (24-bit pulse-distance, 4-bit address + 8-bit
+// command, distinct 4000µs leader) are covered — the most common consumer-IR
+// protocols across the three encoding families (pulse-distance, pulse-width,
+// and bi-phase). NEC is gated by its address/command inverse-byte checksum,
+// RCA by its 4-bit/8-bit inverse-field checksums; Kaseikyo by BOTH its 4-bit
+// vendor parity and its 8-bit frame parity; the checksum-less protocols are
+// gated structurally instead — SIRC by its 2400µs leader + exact 12/15/20-bit
+// count, and RC5 by an exact 28-half-bit Manchester reconstruction with a valid
+// S1 start bit (a polarity-inverted or non-RC5 train fails the bit-pair or S1
+// gate and is rejected, not mis-decoded). RC6 (a more complex Manchester
+// variant with a double-width toggle) and the Pronto/`ir_build` parsed formats
+// are deliberately not decoded here yet.
 package ir
 
 import (
@@ -97,6 +99,12 @@ func DecodeRaw(timings string) (*Result, error) {
 		// gate claims Kaseikyo frames before Samsung sees them while Samsung's
 		// own 4500µs mark stays outside Kaseikyo's window.
 		return decodeKaseikyo(t)
+	case withinTol(t[0], rcaPreambleMark, 350) && withinTol(t[1], rcaPreambleSpace, 350):
+		// RCA: 4000µs/4000µs leader. Checked before Samsung with a tight
+		// absolute tolerance because RCA's 4000µs falls inside Samsung's wide
+		// 4500±30% window — but a real Samsung 4500µs leader is outside RCA's
+		// 4000±350µs window, so it falls through to the Samsung case.
+		return decodeRCA(t)
 	case within(t[0], samsungLeaderMark):
 		return decodeSamsung(t)
 	case within(t[0], rc5HalfBit) || within(t[0], rc5FullBit):
@@ -188,6 +196,12 @@ func readPDC32(t []int) ([4]byte, error) {
 func within(v, nominal int) bool {
 	d := nominal * tolerancePct / 100
 	return v >= nominal-d && v <= nominal+d
+}
+
+// withinTol matches v against nominal within an absolute ±tol µs bound — used
+// where the percentage band would overlap a neighbouring protocol's leader.
+func withinTol(v, nominal, tol int) bool {
+	return v >= nominal-tol && v <= nominal+tol
 }
 
 func parseTimings(s string) ([]int, error) {

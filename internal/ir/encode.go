@@ -75,8 +75,17 @@ func EncodeRaw(protocol string, address, command int, opt EncodeOptions) (string
 	case "KASEIKYO", "PANASONIC":
 		return encodeKaseikyo(address, command, opt.Vendor)
 
+	case "RCA":
+		if err := inRange("address", address, 0, 0xF); err != nil { // 4-bit
+			return "", err
+		}
+		if err := inRange("command", command, 0, 0xFF); err != nil {
+			return "", err
+		}
+		return joinInts(encodeRCA(address, command)), nil
+
 	default:
-		return "", fmt.Errorf("ir: unsupported encode protocol %q (NEC, Samsung32, SIRC, RC5)", protocol)
+		return "", fmt.Errorf("ir: unsupported encode protocol %q (NEC, Samsung32, SIRC, RC5, RCA)", protocol)
 	}
 }
 
