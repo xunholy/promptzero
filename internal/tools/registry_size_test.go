@@ -2647,7 +2647,14 @@ func TestRegistrySize(t *testing.T) {
 	// v0.628.0 added the SMC5326 (PT2262-family) protocol decoder to
 	// subghz_classify (25-bit fixed-code OOK/PWM -> code + 16-bit address per
 	// the Flipper reference, round-trip-verified) — registry unchanged.
-	const expected = 617
+	// v0.629.0-v0.634.0 extended existing tools (MegaCode/Magellan/Mastercode/
+	// GangQi protocols in subghz_classify; BCH(31,21,2) error correction in
+	// subghz_pocsag_decode) — registry unchanged.
+	// v0.635.0 added ksuid_decode (27-char base62 K-Sortable ID -> 32-bit
+	// creation timestamp + 16-byte payload, per segmentio/ksuid, anchored to
+	// its documented example; completes the identifier info-leak family
+	// uuid/objectid/ulid/snowflake/ksuid). internal/ksuid.
+	const expected = 618
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

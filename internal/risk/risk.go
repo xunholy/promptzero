@@ -650,6 +650,12 @@ var toolLevels = func() map[string]Level {
 		// none). Offline parse of a pasted ID; reads a string, transmits
 		// nothing, so it is Low.
 		"snowflake_decode",
+		// v0.635 — KSUID decoder: 32-bit creation timestamp + 16-byte
+		// payload from a 27-char base62 K-Sortable ID (segmentio/ksuid;
+		// the recon value is the timestamp). Completes the identifier
+		// info-leak family. Offline parse of a pasted ID; reads a string,
+		// transmits nothing, so it is Low.
+		"ksuid_decode",
 		// v0.512 — GPS/GNSS NMEA 0183 sentence decode (GGA/RMC/GLL/
 		// VTG/GSA/GSV): the offline complement to the device-side
 		// gps_* / marauder_nmea stream tools — paste a captured NMEA
