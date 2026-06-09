@@ -2711,7 +2711,11 @@ func TestRegistrySize(t *testing.T) {
 	// type/size, RSA modulus surfaced for roca_detect chaining, and a hashed
 	// known_hosts |1|salt|hash entry tested against a candidate hostname via
 	// HMAC-SHA1; native RFC 4253 wire parse, no x/crypto/ssh). internal/sshpub.
-	const expected = 631
+	// v0.650.0 added ja3_fingerprint (JA3 TLS-client fingerprint from a captured
+	// ClientHello: the IDS/threat-intel string + MD5 digest, GREASE-stripped;
+	// native ClientHello wire walk + crypto/md5, pinned to the salesforce pyja3
+	// reference on a real openssl hello and a GREASE-bearing one). internal/ja3.
+	const expected = 632
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

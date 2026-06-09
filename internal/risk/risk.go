@@ -910,6 +910,10 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.650 — JA3 TLS-client fingerprint: parses a captured ClientHello
+		// and computes the IDS/threat-intel JA3 string + MD5 digest, offline.
+		// Reads bytes, transmits nothing, so it is Low.
+		"ja3_fingerprint",
 		// v0.649 — OpenSSH public-key / authorized_keys / known_hosts triage:
 		// fingerprints (SHA256/MD5) + type/size, surfaces the RSA modulus for
 		// roca_detect chaining, and tests a candidate hostname against a hashed
