@@ -910,6 +910,11 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.645 — GitHub token identifier/validator: identifies the token
+		// type by prefix and validates the CRC32 checksum (classic ghp_/gho_/
+		// ghu_/ghs_/ghr_) offline (no GitHub API call). Reads a string,
+		// transmits nothing, so it is Low.
+		"github_token_decode",
 		// v0.644 — Azure Storage SAS token decoder: decodes a SAS query
 		// string into its blast radius (permissions/expiry/scope/IP/protocol)
 		// — offline cloud-IR triage of a leaked token; the HMAC sig is opaque.

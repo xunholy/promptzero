@@ -2689,7 +2689,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.644.0 added azure_sas_decode (Azure Storage SAS query string -> blast
 	// radius: SAS type + context-aware permissions + window + scope + IP/proto;
 	// anchored to the Microsoft SAS reference worked example). internal/azuresas.
-	const expected = 626
+	// v0.645.0 added github_token_decode (GitHub token prefix ID + CRC32-Base62
+	// checksum validation for classic ghp_/gho_/ghu_/ghs_/ghr_ tokens, offline;
+	// anchored to the canonical ghp_…0mLq17 vector). internal/githubtoken.
+	const expected = 627
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
