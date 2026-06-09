@@ -80,6 +80,7 @@ func NewClassifier() *Classifier {
 			protocols.Magellan{},
 			protocols.Mastercode{},
 			protocols.GangQi{},
+			protocols.Dooya{},
 		},
 	}
 }

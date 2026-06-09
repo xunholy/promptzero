@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func TestNewClassifierHas33Protocols(t *testing.T) {
+func TestNewClassifierHas34Protocols(t *testing.T) {
 	c := NewClassifier()
-	if got := len(c.protos); got != 33 {
-		t.Errorf("NewClassifier has %d protocols, want 33", got)
+	if got := len(c.protos); got != 34 {
+		t.Errorf("NewClassifier has %d protocols, want 34", got)
 	}
 }
 
@@ -84,6 +84,33 @@ func TestClassifyHormannTopMatch(t *testing.T) {
 	}
 	if matches[0].Protocol != "Hormann HSM" {
 		t.Errorf("top match = %q (conf %.3f), want Hormann HSM; got %v",
+			matches[0].Protocol, matches[0].Confidence, matchNames(matches))
+	}
+}
+
+// TestClassifyDooyaTopMatch confirms a Dooya frame surfaces Dooya as the top
+// match (the protocol is wired and no other decoder shadows it). The frame is
+// rendered inline (13×te_short guard + 40 PWM bits) to keep this test
+// independent of the protocols package.
+func TestClassifyDooyaTopMatch(t *testing.T) {
+	const teShort, teLong = 366, 733
+	const code = 0xE1DC030533 // firmware example: serial 0xE1DC03, ch 5, long press down
+	pulses := []int{13 * teShort, -(2 * teLong)}
+	for k := 39; k >= 0; k-- {
+		if (code>>uint(k))&1 == 1 {
+			pulses = append(pulses, teLong, -teShort)
+		} else {
+			pulses = append(pulses, teShort, -teLong)
+		}
+	}
+	pulses = append(pulses, 13*teShort)
+
+	matches := NewClassifier().Classify(pulses, 3)
+	if len(matches) == 0 {
+		t.Fatal("expected at least one match for a Dooya frame")
+	}
+	if matches[0].Protocol != "Dooya" {
+		t.Errorf("top match = %q (conf %.3f), want Dooya; got %v",
 			matches[0].Protocol, matches[0].Confidence, matchNames(matches))
 	}
 }
