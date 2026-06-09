@@ -910,6 +910,11 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.638 — Base58Check decoder: decodes a WIF private key / legacy
+		// Bitcoin address / BIP-32 extended key (version + payload + double-
+		// SHA-256 checksum). Like bip39_decode it is an offline parse over
+		// operator-supplied loot — reads a string, transmits nothing, Low.
+		"base58check_decode",
 		// v0.637 — BIP-39 mnemonic decoder: validates a wallet seed phrase
 		// (word count + wordlist + SHA-256 checksum) and derives the BIP-39
 		// seed (PBKDF2-HMAC-SHA512). Like totp_generate it is an offline

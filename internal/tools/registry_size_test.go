@@ -2663,7 +2663,11 @@ func TestRegistrySize(t *testing.T) {
 	// SHA-256 checksum validity + PBKDF2-HMAC-SHA512 seed; embedded official
 	// 2048-word English list, anchored to the Trezor BIP-39 test vectors).
 	// internal/bip39.
-	const expected = 620
+	// v0.638.0 added base58check_decode (WIF private key / legacy Bitcoin
+	// address / BIP-32 extended key -> version + payload + double-SHA-256
+	// checksum + type id; anchored to the canonical WIF + genesis-address
+	// vectors; the Base58Check companion to bip39_decode). internal/base58check.
+	const expected = 621
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
