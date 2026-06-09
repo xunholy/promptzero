@@ -910,6 +910,11 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.641 — OpenPGP packet decoder: walks the RFC 4880 packet stream
+		// of a PGP key/message (tags, lengths, key fingerprint/keyID/algo/
+		// creation, user IDs, signatures). Offline parse of operator-supplied
+		// loot — reads a string, transmits nothing, so it is Low.
+		"pgp_packet_decode",
 		// v0.640 — Ethereum V3 keystore decryptor: recovers a private key
 		// from an encrypted wallet file (scrypt/pbkdf2 + AES-128-CTR +
 		// Keccak-256 MAC gate) with the operator's passphrase. Like the

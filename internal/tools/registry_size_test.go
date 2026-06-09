@@ -2675,7 +2675,11 @@ func TestRegistrySize(t *testing.T) {
 	// passphrase -> private key; scrypt/pbkdf2 + AES-128-CTR + Keccak-256 MAC
 	// gate, anchored to the canonical Web3 Secret Storage PBKDF2 vector; the
 	// ETH companion to bip39_decode / base58check_decode). internal/ethkeystore.
-	const expected = 623
+	// v0.641.0 added pgp_packet_decode (OpenPGP RFC 4880 packet stream of a PGP
+	// key/message -> per-packet tag/length + key fingerprint/keyID/algo/creation
+	// + user IDs + signature fields; native walker cross-checked against
+	// x/crypto/openpgp as a test oracle). internal/pgppacket.
+	const expected = 624
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
