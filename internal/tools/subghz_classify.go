@@ -6,7 +6,7 @@
 // (or base64-encoded data) and returns the top-N matched protocols with
 // decoded payloads. No Docker required — this is the fast pure-Go path.
 // urh_decode_sub (Docker/urh-ng bridge) remains the fallback for exotic
-// protocols not covered by the 34 built-in decoders.
+// protocols not covered by the 35 built-in decoders.
 
 package tools
 

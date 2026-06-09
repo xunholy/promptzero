@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func TestNewClassifierHas34Protocols(t *testing.T) {
+func TestNewClassifierHas35Protocols(t *testing.T) {
 	c := NewClassifier()
-	if got := len(c.protos); got != 34 {
-		t.Errorf("NewClassifier has %d protocols, want 34", got)
+	if got := len(c.protos); got != 35 {
+		t.Errorf("NewClassifier has %d protocols, want 35", got)
 	}
 }
 
@@ -111,6 +111,32 @@ func TestClassifyDooyaTopMatch(t *testing.T) {
 	}
 	if matches[0].Protocol != "Dooya" {
 		t.Errorf("top match = %q (conf %.3f), want Dooya; got %v",
+			matches[0].Protocol, matches[0].Confidence, matchNames(matches))
+	}
+}
+
+// TestClassifyMarantec24TopMatch confirms a Marantec24 frame surfaces
+// Marantec24 as the top match. The frame is rendered inline (a 9×te_long gap +
+// 24 PWM bits) to keep this test independent of the protocols package.
+func TestClassifyMarantec24TopMatch(t *testing.T) {
+	const teShort, teLong = 800, 1600
+	const code = 0xABCDE5 // serial 0xABCDE, button 0x5
+	pulses := []int{-(9 * teLong)}
+	for k := 23; k >= 0; k-- {
+		if (code>>uint(k))&1 == 1 {
+			pulses = append(pulses, teShort, -(2 * teLong))
+		} else {
+			pulses = append(pulses, teLong, -(3 * teShort))
+		}
+	}
+	pulses = append(pulses, -(9 * teLong))
+
+	matches := NewClassifier().Classify(pulses, 3)
+	if len(matches) == 0 {
+		t.Fatal("expected at least one match for a Marantec24 frame")
+	}
+	if matches[0].Protocol != "Marantec24" {
+		t.Errorf("top match = %q (conf %.3f), want Marantec24; got %v",
 			matches[0].Protocol, matches[0].Confidence, matchNames(matches))
 	}
 }
