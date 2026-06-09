@@ -115,6 +115,53 @@ func TestPublicKeyCrossCheck(t *testing.T) {
 			t.Errorf("fingerprint %s: key id = %q; oracle says %q (native parser diverges from x/crypto)", fp, got[fp], kid)
 		}
 	}
+
+	// Cross-check signature subpackets (creation time + issuer key ID) against
+	// the reference implementation's parsed packet.Signature objects.
+	wantSigs := oracleSignatures(t, buf.Bytes())
+	var gotSigs []string
+	for _, p := range res.Packets {
+		if p.Tag == 2 {
+			if p.SigCreatedUTC == "" || p.IssuerKeyID == "" {
+				t.Errorf("signature packet missing subpacket fields: created=%q issuer=%q", p.SigCreatedUTC, p.IssuerKeyID)
+			}
+			gotSigs = append(gotSigs, p.SigCreatedUTC+"/"+p.IssuerKeyID)
+		}
+	}
+	for _, w := range wantSigs {
+		if !contains(gotSigs, w) {
+			t.Errorf("signature %q not reproduced by the native parser (got %v)", w, gotSigs)
+		}
+	}
+}
+
+// oracleSignatures returns "created/issuerKeyID" for each signature the
+// reference implementation parses — the independent ground truth for the
+// subpacket fields.
+func oracleSignatures(t *testing.T, data []byte) []string {
+	t.Helper()
+	var out []string
+	r := packet.NewReader(bytes.NewReader(data))
+	for {
+		p, err := r.Next()
+		if err != nil {
+			break
+		}
+		if s, ok := p.(*packet.Signature); ok && s.IssuerKeyId != nil {
+			out = append(out, s.CreationTime.UTC().Format("2006-01-02T15:04:05Z07:00")+"/"+
+				strings.ToUpper(hex.EncodeToString(uint64ToBytes(*s.IssuerKeyId))))
+		}
+	}
+	return out
+}
+
+func contains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 // TestSecretKeyCrossCheck does the same for a serialized PRIVATE entity, proving

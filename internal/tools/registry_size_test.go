@@ -2679,6 +2679,10 @@ func TestRegistrySize(t *testing.T) {
 	// key/message -> per-packet tag/length + key fingerprint/keyID/algo/creation
 	// + user IDs + signature fields; native walker cross-checked against
 	// x/crypto/openpgp as a test oracle). internal/pgppacket.
+	// v0.642.0 extended pgp_packet_decode with signature subpacket parsing
+	// (creation time, issuer key ID/fingerprint, key/sig expiry, key flags),
+	// cross-checked against x/crypto/openpgp's packet.Signature — registry
+	// unchanged, an enhancement not a new tool.
 	const expected = 624
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

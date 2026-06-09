@@ -32,7 +32,9 @@
 //     (RSA / DSA / Elgamal) — an ECC secret key's fingerprint is flagged rather
 //     than guessed, since that OID/point layout is not exercised by the oracle.
 //   - User ID text; Signature header fields (version, type, public-key + hash
-//     algorithm).
+//     algorithm) plus the v4/v5 subpackets that matter for forensics: signature
+//     creation time, issuer key ID + fingerprint (which key signed it), key /
+//     signature expiry, and key flags.
 //   - v3 keys are surfaced (version + creation + algorithm) but their MD5
 //     fingerprint is not computed (legacy, rare); MPI bodies of signatures and
 //     session-key packets are not deep-parsed (the recon value is the framing +
@@ -78,8 +80,14 @@ type Packet struct {
 	UserID string `json:"user_id,omitempty"`
 
 	// Signature (tag 2).
-	SignatureType string `json:"signature_type,omitempty"`
-	HashAlgorithm string `json:"hash_algorithm,omitempty"`
+	SignatureType     string `json:"signature_type,omitempty"`
+	HashAlgorithm     string `json:"hash_algorithm,omitempty"`
+	SigCreatedUTC     string `json:"sig_created_utc,omitempty"`
+	IssuerKeyID       string `json:"issuer_key_id,omitempty"`
+	IssuerFingerprint string `json:"issuer_fingerprint,omitempty"`
+	KeyLifetimeSecs   uint32 `json:"key_lifetime_secs,omitempty"`
+	SigLifetimeSecs   uint32 `json:"sig_lifetime_secs,omitempty"`
+	KeyFlags          string `json:"key_flags,omitempty"`
 
 	Note string `json:"note,omitempty"`
 }
@@ -370,22 +378,134 @@ func publicPortionEndV4(body []byte) int {
 	return off
 }
 
-// parseSignature extracts the v4 signature header fields.
+// parseSignature extracts the signature header fields and walks the v4/v5
+// hashed + unhashed subpacket areas for the forensic fields (creation time,
+// issuer key ID / fingerprint, key/signature expiry, key flags).
 func parseSignature(p *Packet, body []byte) {
 	if len(body) < 1 {
 		return
 	}
 	p.KeyVersion = int(body[0])
-	if body[0] == 4 && len(body) >= 4 {
+	switch body[0] {
+	case 4, 5:
+		if len(body) < 6 {
+			return
+		}
 		p.SignatureType = sigType(body[1])
 		p.Algorithm = pubKeyAlgo(body[2])
 		p.HashAlgorithm = hashAlgo(body[3])
-	} else if body[0] == 3 && len(body) >= 19 {
-		// v3: type at offset 2, pubkey algo 15, hash 16.
-		p.SignatureType = sigType(body[2])
-		p.Algorithm = pubKeyAlgo(body[15])
-		p.HashAlgorithm = hashAlgo(body[16])
+		hashedLen := int(binary.BigEndian.Uint16(body[4:6]))
+		off := 6
+		if off+hashedLen <= len(body) {
+			parseSubpackets(p, body[off:off+hashedLen])
+			off += hashedLen
+		}
+		if off+2 <= len(body) {
+			unhashedLen := int(binary.BigEndian.Uint16(body[off : off+2]))
+			off += 2
+			if off+unhashedLen <= len(body) {
+				parseSubpackets(p, body[off:off+unhashedLen])
+			}
+		}
+	case 3:
+		// v3: [1]=hashed-material length(5), [2]=type, [3:7]=created,
+		// [7:15]=issuer key ID, [15]=pubkey algo, [16]=hash algo.
+		if len(body) >= 19 {
+			p.SignatureType = sigType(body[2])
+			p.SigCreatedUTC = unixUTC(binary.BigEndian.Uint32(body[3:7]))
+			p.IssuerKeyID = strings.ToUpper(hex.EncodeToString(body[7:15]))
+			p.Algorithm = pubKeyAlgo(body[15])
+			p.HashAlgorithm = hashAlgo(body[16])
+		}
 	}
+}
+
+// parseSubpackets walks a signature subpacket area (RFC 4880 §5.2.3.1) and
+// applies each recognised subpacket to the packet.
+func parseSubpackets(p *Packet, data []byte) {
+	i := 0
+	for i < len(data) {
+		l := int(data[i])
+		i++
+		var slen int
+		switch {
+		case l < 192:
+			slen = l
+		case l < 255:
+			if i >= len(data) {
+				return
+			}
+			slen = ((l - 192) << 8) + int(data[i]) + 192
+			i++
+		default: // 0xFF: 4-byte length
+			if i+4 > len(data) {
+				return
+			}
+			slen = int(binary.BigEndian.Uint32(data[i:]))
+			i += 4
+		}
+		if slen < 1 || i+slen > len(data) {
+			return
+		}
+		applySubpacket(p, data[i]&0x7f, data[i+1:i+slen]) // high bit of type = critical flag
+		i += slen
+	}
+}
+
+// applySubpacket sets the packet field for a recognised subpacket type.
+func applySubpacket(p *Packet, typ byte, sub []byte) {
+	switch typ {
+	case 2: // Signature Creation Time
+		if len(sub) >= 4 {
+			p.SigCreatedUTC = unixUTC(binary.BigEndian.Uint32(sub))
+		}
+	case 3: // Signature Expiration Time (seconds after creation)
+		if len(sub) >= 4 {
+			p.SigLifetimeSecs = binary.BigEndian.Uint32(sub)
+		}
+	case 9: // Key Expiration Time (seconds after key creation)
+		if len(sub) >= 4 {
+			p.KeyLifetimeSecs = binary.BigEndian.Uint32(sub)
+		}
+	case 16: // Issuer (8-byte key ID)
+		if len(sub) >= 8 && p.IssuerKeyID == "" {
+			p.IssuerKeyID = strings.ToUpper(hex.EncodeToString(sub[:8]))
+		}
+	case 27: // Key Flags
+		if len(sub) >= 1 {
+			p.KeyFlags = keyFlags(sub[0])
+		}
+	case 33: // Issuer Fingerprint (1-byte version + fingerprint)
+		if len(sub) >= 21 {
+			p.IssuerFingerprint = hex.EncodeToString(sub[1:])
+			if p.IssuerKeyID == "" { // v4 key ID = last 8 bytes of the fingerprint
+				p.IssuerKeyID = strings.ToUpper(hex.EncodeToString(sub[len(sub)-8:]))
+			}
+		}
+	}
+}
+
+// keyFlags renders the Key Flags subpacket bits (RFC 4880 §5.2.3.21).
+func keyFlags(b byte) string {
+	var f []string
+	for _, m := range []struct {
+		bit  byte
+		name string
+	}{
+		{0x01, "certify"}, {0x02, "sign"}, {0x04, "encrypt-comms"},
+		{0x08, "encrypt-storage"}, {0x10, "split"}, {0x20, "authenticate"},
+		{0x80, "group"},
+	} {
+		if b&m.bit != 0 {
+			f = append(f, m.name)
+		}
+	}
+	return strings.Join(f, ",")
+}
+
+// unixUTC renders a 32-bit OpenPGP timestamp as RFC 3339 UTC.
+func unixUTC(secs uint32) string {
+	return time.Unix(int64(secs), 0).UTC().Format(time.RFC3339)
 }
 
 func tagName(t int) string {

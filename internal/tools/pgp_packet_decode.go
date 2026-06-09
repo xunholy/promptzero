@@ -33,7 +33,9 @@ var pgpPacketDecodeSpec = Spec{
 		"creation time, fingerprint, and 64-bit key ID**. A captured PGP key or message (a `.asc` / `.gpg` " +
 		"file, an armored block pasted from an email or a key dump) is real credential-forensics / IR loot: " +
 		"identifying a key's **fingerprint / key ID**, its algorithm and creation time, and the user IDs it " +
-		"certifies is standard triage — and a **secret-key packet is the private key itself**.\n\n" +
+		"certifies is standard triage — and a **secret-key packet is the private key itself**. Signature " +
+		"packets surface the forensic subpackets — **signature creation time, issuer key ID + fingerprint** " +
+		"(which key signed it), key/signature expiry, and key flags.\n\n" +
 		"Accepts an ASCII-armored block (`-----BEGIN PGP …`), a base64 body, a hex string, or raw binary " +
 		"bytes. For a public-key packet the fingerprint hashes the whole body (correct for every " +
 		"algorithm); for a secret-key packet the public portion is isolated by walking the public MPIs " +
