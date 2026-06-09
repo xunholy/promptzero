@@ -2692,7 +2692,11 @@ func TestRegistrySize(t *testing.T) {
 	// v0.645.0 added github_token_decode (GitHub token prefix ID + CRC32-Base62
 	// checksum validation for classic ghp_/gho_/ghu_/ghs_/ghr_ tokens, offline;
 	// anchored to the canonical ghp_…0mLq17 vector). internal/githubtoken.
-	const expected = 627
+	// v0.646.0 added secret_identify (credential triage front end: routes a
+	// captured string to the in-tree decoders aws/github/azure/bip39/jwt +
+	// structural PEM detection + a documented vendor-prefix table; the
+	// credential analogue of hash_identify). internal/secretid.
+	const expected = 628
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

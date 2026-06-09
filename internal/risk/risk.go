@@ -910,6 +910,11 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.646 — secret/credential identifier: routes a captured string to
+		// the in-tree decoders + a vendor-prefix table to name the secret type
+		// (and validate where a checksum exists). The credential analogue of
+		// hash_identify. Reads a string, transmits nothing, so it is Low.
+		"secret_identify",
 		// v0.645 — GitHub token identifier/validator: identifies the token
 		// type by prefix and validates the CRC32 checksum (classic ghp_/gho_/
 		// ghu_/ghs_/ghr_) offline (no GitHub API call). Reads a string,
