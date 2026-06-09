@@ -2,7 +2,10 @@
 
 package ir
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestEncodeRawNECRoundTrip(t *testing.T) {
 	for _, c := range []struct{ a, cmd int }{{0x04, 0x08}, {0, 0}, {255, 255}, {0x1A, 0x7F}} {
@@ -145,6 +148,35 @@ func TestEncodeRawErrors(t *testing.T) {
 	for _, c := range cases {
 		if _, err := EncodeRaw(c.proto, c.a, c.cmd, c.opt); err == nil {
 			t.Errorf("EncodeRaw(%s,%d,%d,%+v) expected error", c.proto, c.a, c.cmd, c.opt)
+		}
+	}
+}
+
+// TestEncodeRawSupportedList guards the EncodeProtocols advertised list against
+// drifting from the actual dispatch switch (the failure mode that left RCA and
+// NEC42 absent from the error message and docs after they were added). Every
+// advertised name must encode without the "unsupported protocol" error using
+// in-range address/command; conversely an unknown protocol's error must name
+// the full canonical list.
+func TestEncodeRawSupportedList(t *testing.T) {
+	for _, proto := range EncodeProtocols {
+		// 1/1 is in range for every protocol's address/command; NEC-repeat
+		// ignores both. The point is to prove the name is dispatched, not the
+		// timing (per-protocol round-trips are covered by the tests above).
+		if _, err := EncodeRaw(proto, 1, 1, EncodeOptions{}); err != nil {
+			if strings.Contains(err.Error(), "unsupported encode protocol") {
+				t.Errorf("advertised protocol %q is not dispatched by EncodeRaw: %v", proto, err)
+			}
+		}
+	}
+
+	_, err := EncodeRaw("DEFINITELY-NOT-A-PROTOCOL", 0, 0, EncodeOptions{})
+	if err == nil {
+		t.Fatal("expected error for unknown protocol")
+	}
+	for _, proto := range EncodeProtocols {
+		if !strings.Contains(err.Error(), proto) {
+			t.Errorf("unsupported-protocol error omits %q: %s", proto, err.Error())
 		}
 	}
 }

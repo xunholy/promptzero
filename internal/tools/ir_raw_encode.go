@@ -42,7 +42,7 @@ var irRawEncodeSpec = Spec{
 		"encode decodes back to the same protocol/address/command), and out-of-range address/command/bits are " +
 		"rejected. No network, no device, transmits nothing (the actual replay is a separate device step), so it " +
 		"is Low risk.\n\n" +
-		"Inputs: **protocol** (NEC / NEC42 / Samsung32 / SIRC / RC5 / Kaseikyo / RCA), **address**, **command**, and optional " +
+		"Inputs: **protocol** (NEC / NEC-extended / NEC-repeat / NEC42 / Samsung32 / SIRC / RC5 / Kaseikyo / RCA), **address**, **command**, and optional " +
 		"**bits** (SIRC width 12/15/20), **toggle** (RC5), **ext** (SIRC 20-bit extension), **vendor** (Kaseikyo " +
 		"16-bit vendor ID).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (the offline inverse of ir_raw_decode). Wrap-vs-native: native — " +

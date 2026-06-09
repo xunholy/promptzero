@@ -17,18 +17,29 @@ type EncodeOptions struct {
 	Vendor   int // Kaseikyo 16-bit vendor ID (default 0x2002 Panasonic)
 }
 
+// EncodeProtocols lists every protocol EncodeRaw accepts, by canonical name, in
+// one place so the error message and tool docs cannot drift from the switch
+// below as protocols are added (TestEncodeRawSupportedList guards that every
+// listed name is actually dispatched).
+var EncodeProtocols = []string{
+	"NEC", "NEC-extended", "NEC-repeat", "Samsung32",
+	"SIRC", "RC5", "Kaseikyo", "RCA", "NEC42",
+}
+
 // EncodeRaw generates the raw IR timing sequence (space-separated microsecond
 // mark/space durations) for a consumer-IR frame — the inverse of DecodeRaw. The
 // emitted timings round-trip through DecodeRaw to the same protocol + address +
 // command. It is the offline complement to the device-side ir_build, and the
 // timings can be fed to EncodePronto to produce a shareable Pronto code.
 //
-// Supported: NEC (8-bit address + command, both inverse-byte checksums emitted),
-// NEC-extended (16-bit address, command inversion only), the NEC-repeat code,
-// Samsung32 (address·address·command·~command), Sony SIRC (12/15/20-bit),
-// Philips RC5 / RC5X (14-bit Manchester; a command > 63 emits an RC5X frame),
-// and Kaseikyo (Panasonic/Denon/JVC/Sharp/Mitsubishi — 48-bit, vendor via
-// opt.Vendor, both the vendor parity and the frame parity computed).
+// Supported (EncodeProtocols): NEC (8-bit address + command, both inverse-byte
+// checksums emitted), NEC-extended (16-bit address, command inversion only),
+// the NEC-repeat code, Samsung32 (address·address·command·~command), Sony SIRC
+// (12/15/20-bit), Philips RC5 / RC5X (14-bit Manchester; a command > 63 emits an
+// RC5X frame), Kaseikyo (Panasonic/Denon/JVC/Sharp/Mitsubishi — 48-bit, vendor
+// via opt.Vendor, both the vendor parity and the frame parity computed), RCA
+// (24-bit; 4-bit address + 8-bit command, both inverse fields emitted), and
+// NEC42 (42-bit; 13-bit address + 8-bit command, both inverse fields emitted).
 func EncodeRaw(protocol string, address, command int, opt EncodeOptions) (string, error) {
 	switch strings.ToUpper(strings.TrimSpace(protocol)) {
 	case "NEC":
@@ -94,7 +105,7 @@ func EncodeRaw(protocol string, address, command int, opt EncodeOptions) (string
 		return joinInts(encodeNEC42(address, command)), nil
 
 	default:
-		return "", fmt.Errorf("ir: unsupported encode protocol %q (NEC, Samsung32, SIRC, RC5, RCA)", protocol)
+		return "", fmt.Errorf("ir: unsupported encode protocol %q (supported: %s)", protocol, strings.Join(EncodeProtocols, ", "))
 	}
 }
 
