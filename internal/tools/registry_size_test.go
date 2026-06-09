@@ -2735,7 +2735,11 @@ func TestRegistrySize(t *testing.T) {
 	// terminal `all` qualifier + direct DNS-lookup count vs RFC 7208 limit;
 	// completes the email-auth triad; pinned to live google/github records +
 	// the dig multi-string join). internal/spf.
-	const expected = 637
+	// v0.656.0 added email_auth_decode (unified front-end over the email-auth
+	// triad: detects SPF/DKIM/DMARC by the v= version tag — DKIM by p=/k= when
+	// v= is absent — and routes to the matching decoder; the secret_identify
+	// pattern for email records; native orchestration). internal/emailauth.
+	const expected = 638
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

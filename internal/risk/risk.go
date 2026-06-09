@@ -910,6 +910,10 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.656 — unified email-auth record router: detects an email-auth DNS
+		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
+		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
+		"email_auth_decode",
 		// v0.655 — SPF record decoder/analyser: statically analyses a v=spf1 DNS
 		// TXT record (mechanisms, the terminal `all` qualifier, direct DNS-lookup
 		// count), offline. Reads a record, transmits nothing, so it is Low.
