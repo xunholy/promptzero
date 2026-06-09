@@ -910,6 +910,11 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.648 — ROCA (CVE-2017-15361) weak-RSA-key detector: runs the
+		// Infineon RSALib fingerprint test over an RSA modulus / public key /
+		// certificate / ssh-rsa line, offline (no network, no factorisation).
+		// Reads a key, transmits nothing, so it is Low.
+		"roca_detect",
 		// v0.647 — Discord token decoder: recovers the owning account (user ID
 		// + creation time via the snowflake) from a leaked token, offline (no
 		// Discord API call). Reads a string, transmits nothing, so it is Low.

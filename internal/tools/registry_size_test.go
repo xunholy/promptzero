@@ -2700,7 +2700,13 @@ func TestRegistrySize(t *testing.T) {
 	// account user ID + creation time via the in-tree snowflake decoder; the
 	// dominant infostealer artifact; also wired into secret_identify).
 	// internal/discordtoken.
-	const expected = 629
+	// v0.648.0 added roca_detect (CVE-2017-15361 weak-RSA-key detector: the
+	// Infineon RSALib fingerprint test over 38 small-prime residues, flagging
+	// factorable public keys from Yubikey 4/Neo, Infineon TPMs, Gemalto, and
+	// Estonian/Slovak eID; accepts modulus/PEM/cert/ssh-rsa, offline; ported
+	// verbatim from crocs-muni/roca detect.py and validated against its ten
+	// fingerprint-positive test moduli). internal/roca.
+	const expected = 630
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
