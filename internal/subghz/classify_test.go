@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func TestNewClassifierHas32Protocols(t *testing.T) {
+func TestNewClassifierHas33Protocols(t *testing.T) {
 	c := NewClassifier()
-	if got := len(c.protos); got != 32 {
-		t.Errorf("NewClassifier has %d protocols, want 32", got)
+	if got := len(c.protos); got != 33 {
+		t.Errorf("NewClassifier has %d protocols, want 33", got)
 	}
 }
 
@@ -58,6 +58,33 @@ func TestClassifyGangQiTopMatch(t *testing.T) {
 	}
 	if matches[0].Confidence != 1.0 {
 		t.Errorf("GangQi confidence = %v, want 1.0", matches[0].Confidence)
+	}
+}
+
+// TestClassifyHormannTopMatch confirms a Hormann HSM frame surfaces Hormann as
+// the top match (the protocol is wired and no other decoder shadows it). The
+// frame is rendered inline (24×te_short guard + 44 PWM bits) to keep this test
+// independent of the protocols package.
+func TestClassifyHormannTopMatch(t *testing.T) {
+	const teShort, teLong = 500, 1000
+	const code = 0xFFABCDEF703 // satisfies the fixed pattern; button = 0x7
+	pulses := []int{24 * teShort, -teShort}
+	for k := 43; k >= 0; k-- {
+		if (code>>uint(k))&1 == 1 {
+			pulses = append(pulses, teLong, -teShort)
+		} else {
+			pulses = append(pulses, teShort, -teLong)
+		}
+	}
+	pulses = append(pulses, 24*teShort)
+
+	matches := NewClassifier().Classify(pulses, 3)
+	if len(matches) == 0 {
+		t.Fatal("expected at least one match for a Hormann frame")
+	}
+	if matches[0].Protocol != "Hormann HSM" {
+		t.Errorf("top match = %q (conf %.3f), want Hormann HSM; got %v",
+			matches[0].Protocol, matches[0].Confidence, matchNames(matches))
 	}
 }
 

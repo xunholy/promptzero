@@ -56,6 +56,11 @@ func NewClassifier() *Classifier {
 			protocols.Smartgate{},
 			protocols.Aerolite{},
 			protocols.Doitrand{},
+			// Hormann's strict fixed-pattern gate (0xFF000000003) makes it the
+			// most specific 44-bit PWM match; ordered before SecplusV1, whose
+			// gate-less 40-bit rolling-code reader also accepts a Hormann
+			// frame's prefix, so the more-specific protocol wins the tie.
+			protocols.Hormann{},
 			protocols.SecplusV1{},
 			protocols.Magicode{},
 			protocols.HoneywellWS{},
