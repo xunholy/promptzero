@@ -70,9 +70,24 @@ func Decode(hexInput string) (*Result, error) {
 	return FromClientHello(raw)
 }
 
-// FromClientHello computes the JA3 from raw ClientHello bytes. The input may be
-// a full TLS record (record-layer header stripped) or a bare handshake message.
-func FromClientHello(b []byte) (*Result, error) {
+// Hello is the parsed view of a ClientHello that both JA3 and JA4 derive from.
+// Cipher and extension lists retain GREASE (each fingerprint filters as its own
+// spec dictates).
+type Hello struct {
+	LegacyVersion     int
+	CiphersRaw        []uint16 // in offer order, GREASE retained
+	ExtOrder          []uint16 // extension types in appearance order, GREASE retained
+	Curves            []int    // supported_groups (ext 10), GREASE removed
+	PointFormats      []int    // ec_point_formats (ext 11)
+	SNI               string
+	SNIPresent        bool
+	ALPN              []string // application_layer_protocol_negotiation (ext 16)
+	SupportedVersions []uint16 // supported_versions (ext 43), GREASE retained
+	SigAlgs           []uint16 // signature_algorithms (ext 13), in order, GREASE retained
+}
+
+// parse walks a ClientHello (record-unwrapped if needed) into a Hello.
+func parse(b []byte) (*Hello, error) {
 	hs, err := unwrap(b)
 	if err != nil {
 		return nil, err
@@ -92,8 +107,30 @@ func FromClientHello(b []byte) (*Result, error) {
 	if hsLen > len(body) {
 		return nil, fmt.Errorf("handshake length %d exceeds %d available bytes (fragmented capture?)", hsLen, len(body))
 	}
-	body = body[:hsLen]
-	return parseBody(body)
+	return parseBody(body[:hsLen])
+}
+
+// FromClientHello computes the JA3 from raw ClientHello bytes. The input may be
+// a full TLS record (record-layer header stripped) or a bare handshake message.
+func FromClientHello(b []byte) (*Result, error) {
+	h, err := parse(b)
+	if err != nil {
+		return nil, err
+	}
+	res := &Result{
+		TLSVersion:   h.LegacyVersion,
+		Ciphers:      filterGREASE(h.CiphersRaw),
+		Extensions:   filterGREASE(h.ExtOrder),
+		Curves:       h.Curves,
+		PointFormats: h.PointFormats,
+		SNI:          h.SNI,
+	}
+	res.JA3 = buildString(res)
+	sum := md5.Sum([]byte(res.JA3)) //nolint:gosec // JA3 digest.
+	res.JA3Digest = hex.EncodeToString(sum[:])
+	res.Note = "JA3 client fingerprint. GREASE values (RFC 8701) are removed from " +
+		"ciphers/extensions/curves; the digest identifies the TLS client stack, not the host."
+	return res, nil
 }
 
 // unwrap strips a TLS record-layer header (0x16 = handshake) if present,
@@ -116,16 +153,16 @@ func unwrap(b []byte) ([]byte, error) {
 	return b, nil
 }
 
-// parseBody walks the ClientHello body and assembles the JA3.
-func parseBody(body []byte) (*Result, error) {
+// parseBody walks the ClientHello body into a Hello.
+func parseBody(body []byte) (*Hello, error) {
 	c := &cursor{b: body}
-	res := &Result{}
+	h := &Hello{}
 
 	ver, err := c.u16()
 	if err != nil {
 		return nil, fmt.Errorf("version: %w", err)
 	}
-	res.TLSVersion = int(ver)
+	h.LegacyVersion = int(ver)
 
 	if err := c.skip(32); err != nil { // random
 		return nil, fmt.Errorf("random: %w", err)
@@ -138,7 +175,7 @@ func parseBody(body []byte) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cipher_suites: %w", err)
 	}
-	res.Ciphers = u16ListNoGREASE(cipherBytes)
+	h.CiphersRaw = u16List(cipherBytes)
 
 	if err := c.skipVec8(); err != nil { // compression_methods
 		return nil, fmt.Errorf("compression: %w", err)
@@ -150,23 +187,16 @@ func parseBody(body []byte) (*Result, error) {
 		if err != nil {
 			return nil, fmt.Errorf("extensions: %w", err)
 		}
-		if err := parseExtensions(extBlock, res); err != nil {
+		if err := parseExtensions(extBlock, h); err != nil {
 			return nil, err
 		}
 	}
-
-	res.JA3 = buildString(res)
-	sum := md5.Sum([]byte(res.JA3)) //nolint:gosec // JA3 digest.
-	res.JA3Digest = hex.EncodeToString(sum[:])
-	res.Note = "JA3 client fingerprint. GREASE values (RFC 8701) are removed from " +
-		"ciphers/extensions/curves; the digest identifies the TLS client stack, not the host."
-	return res, nil
+	return h, nil
 }
 
-// parseExtensions walks the extension TLV block, recording extension types
-// (GREASE removed) and the supported_groups / ec_point_formats / server_name
-// contents.
-func parseExtensions(block []byte, res *Result) error {
+// parseExtensions walks the extension TLV block, recording extension types (in
+// order, GREASE retained) and the contents JA3/JA4 need.
+func parseExtensions(block []byte, h *Hello) error {
 	ec := &cursor{b: block}
 	for ec.remaining() > 0 {
 		extType, err := ec.u16()
@@ -177,20 +207,29 @@ func parseExtensions(block []byte, res *Result) error {
 		if err != nil {
 			return fmt.Errorf("extension %d body: %w", extType, err)
 		}
-		if !isGREASE(extType) {
-			res.Extensions = append(res.Extensions, int(extType))
-		}
+		h.ExtOrder = append(h.ExtOrder, extType)
 		switch extType {
+		case 0x0000: // server_name
+			h.SNIPresent = true
+			h.SNI = parseSNI(data)
 		case 0x000a: // supported_groups: uint16 list, length-prefixed
 			if inner, err := vec16Of(data); err == nil {
-				res.Curves = u16ListNoGREASE(inner)
+				h.Curves = u16ListNoGREASEInt(inner)
 			}
 		case 0x000b: // ec_point_formats: uint8 list, length-prefixed
 			if inner, err := vec8Of(data); err == nil {
-				res.PointFormats = u8List(inner)
+				h.PointFormats = u8List(inner)
 			}
-		case 0x0000: // server_name
-			res.SNI = parseSNI(data)
+		case 0x000d: // signature_algorithms: uint16 list, length-prefixed
+			if inner, err := vec16Of(data); err == nil {
+				h.SigAlgs = u16List(inner)
+			}
+		case 0x0010: // ALPN
+			h.ALPN = parseALPN(data)
+		case 0x002b: // supported_versions: uint8-length-prefixed uint16 list
+			if inner, err := vec8Of(data); err == nil {
+				h.SupportedVersions = u16List(inner)
+			}
 		}
 	}
 	return nil
@@ -215,12 +254,25 @@ func isGREASE(v uint16) bool {
 	return hi == lo && hi&0x0f == 0x0a
 }
 
-// u16ListNoGREASE reads a flat list of uint16 values, dropping GREASE. A
-// trailing odd byte is ignored.
-func u16ListNoGREASE(b []byte) []int {
-	out := []int{}
+// u16List reads a flat list of uint16 values, GREASE retained. A trailing odd
+// byte is ignored.
+func u16List(b []byte) []uint16 {
+	out := []uint16{}
 	for i := 0; i+1 < len(b); i += 2 {
-		v := uint16(b[i])<<8 | uint16(b[i+1])
+		out = append(out, uint16(b[i])<<8|uint16(b[i+1]))
+	}
+	return out
+}
+
+// u16ListNoGREASEInt reads a flat uint16 list, dropping GREASE, as ints.
+func u16ListNoGREASEInt(b []byte) []int {
+	return filterGREASE(u16List(b))
+}
+
+// filterGREASE drops GREASE values from a uint16 list, returning ints.
+func filterGREASE(xs []uint16) []int {
+	out := []int{}
+	for _, v := range xs {
 		if !isGREASE(v) {
 			out = append(out, int(v))
 		}
@@ -233,6 +285,30 @@ func u8List(b []byte) []int {
 	out := make([]int, len(b))
 	for i, x := range b {
 		out[i] = int(x)
+	}
+	return out
+}
+
+// parseALPN extracts the protocol list from an ALPN extension body
+// (ProtocolNameList: vec16 of vec8 strings).
+func parseALPN(data []byte) []string {
+	inner, err := vec16Of(data)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	c := &cursor{b: inner}
+	for c.remaining() > 0 {
+		if c.pos >= len(c.b) {
+			break
+		}
+		n := int(c.b[c.pos])
+		c.pos++
+		if c.pos+n > len(c.b) {
+			break
+		}
+		out = append(out, string(c.b[c.pos:c.pos+n]))
+		c.pos += n
 	}
 	return out
 }

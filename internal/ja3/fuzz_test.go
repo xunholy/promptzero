@@ -16,6 +16,19 @@ func FuzzDecode(f *testing.F) {
 	})
 }
 
+// FuzzJA4Decode drives arbitrary hex through the JA4 parser.
+func FuzzJA4Decode(f *testing.F) {
+	for _, s := range []string{"", "01", "16030100", realHello, greaseHello, ja4SNIHello, ja4SocksHello} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, in string) {
+		res, err := JA4Decode(in)
+		if err == nil && res == nil {
+			t.Fatalf("JA4Decode(%q): nil error and nil result", in)
+		}
+	})
+}
+
 // FuzzFromClientHello drives arbitrary bytes through the wire parser.
 func FuzzFromClientHello(f *testing.F) {
 	for _, s := range []string{realHello, greaseHello} {

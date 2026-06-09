@@ -2715,7 +2715,11 @@ func TestRegistrySize(t *testing.T) {
 	// ClientHello: the IDS/threat-intel string + MD5 digest, GREASE-stripped;
 	// native ClientHello wire walk + crypto/md5, pinned to the salesforce pyja3
 	// reference on a real openssl hello and a GREASE-bearing one). internal/ja3.
-	const expected = 632
+	// v0.651.0 added ja4_fingerprint (JA4 TLS-client fingerprint — the modern
+	// FoxIO successor to JA3: sorted ciphers/extensions + SHA-256, human-readable
+	// JA4_a; shares the internal/ja3 ClientHello parser; pinned to FoxIO's own
+	// test fixtures incl. the raw JA4_r form). internal/ja3.
+	const expected = 633
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

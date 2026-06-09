@@ -910,6 +910,10 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.651 — JA4 TLS-client fingerprint: the modern (FoxIO) successor to
+		// JA3, computed from a captured ClientHello (sorted ciphers/extensions,
+		// SHA-256), offline. Reads bytes, transmits nothing, so it is Low.
+		"ja4_fingerprint",
 		// v0.650 — JA3 TLS-client fingerprint: parses a captured ClientHello
 		// and computes the IDS/threat-intel JA3 string + MD5 digest, offline.
 		// Reads bytes, transmits nothing, so it is Low.
