@@ -2671,7 +2671,11 @@ func TestRegistrySize(t *testing.T) {
 	// Lightning string -> HRP + payload + BCH checksum variant + witness
 	// version/program + address type; anchored to the BIP-173/350 vectors; the
 	// Bech32 companion to base58check_decode). internal/bech32.
-	const expected = 622
+	// v0.640.0 added eth_keystore_decrypt (Ethereum V3 keystore JSON +
+	// passphrase -> private key; scrypt/pbkdf2 + AES-128-CTR + Keccak-256 MAC
+	// gate, anchored to the canonical Web3 Secret Storage PBKDF2 vector; the
+	// ETH companion to bip39_decode / base58check_decode). internal/ethkeystore.
+	const expected = 623
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

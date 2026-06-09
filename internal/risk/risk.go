@@ -910,6 +910,12 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.640 — Ethereum V3 keystore decryptor: recovers a private key
+		// from an encrypted wallet file (scrypt/pbkdf2 + AES-128-CTR +
+		// Keccak-256 MAC gate) with the operator's passphrase. Like the
+		// other wallet-loot tools it is an offline decrypt over operator-
+		// supplied loot — reads a string, transmits nothing, Low.
+		"eth_keystore_decrypt",
 		// v0.639 — Bech32/Bech32m decoder: decodes a SegWit address
 		// (bc1…/tb1…) / Nostr / Lightning Bech32 string (HRP + payload +
 		// BCH checksum variant + witness version/program). Like
