@@ -35,6 +35,7 @@ import (
 	"github.com/xunholy/promptzero/internal/awskey"
 	"github.com/xunholy/promptzero/internal/azuresas"
 	"github.com/xunholy/promptzero/internal/bip39"
+	"github.com/xunholy/promptzero/internal/discordtoken"
 	"github.com/xunholy/promptzero/internal/githubtoken"
 	"github.com/xunholy/promptzero/internal/jwtdecode"
 )
@@ -108,6 +109,18 @@ func Identify(s string) *Result {
 				Validated: true, Valid: true,
 				Detail: "alg=" + t.HeaderAlgorithm,
 			}
+		}
+	}
+
+	// 4b. Discord user/bot/MFA token (mfa.-prefixed, or first segment decodes to a
+	//     user-ID snowflake — checked after JWT, whose first segment is JSON).
+	if strings.HasPrefix(in, "mfa.") || strings.Count(in, ".") >= 1 {
+		if d, err := discordtoken.Decode(in); err == nil {
+			res := &Result{Matched: true, Type: d.Type, Category: "token-discord", Validated: false}
+			if d.UserID != "" {
+				res.Detail = fmt.Sprintf("user %s, account created %s", d.UserID, d.AccountCreatedUTC)
+			}
+			return res
 		}
 	}
 

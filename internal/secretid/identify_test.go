@@ -106,6 +106,22 @@ func TestIdentifyBIP39(t *testing.T) {
 	}
 }
 
+func TestIdentifyDiscordToken(t *testing.T) {
+	// base64url("175928847299117063").seg2.hmac — first segment is a user ID.
+	seg1 := "MTc1OTI4ODQ3Mjk5MTE3MDYz"
+	r := secretid.Identify(seg1 + ".G3xxxx.HmAcSiG")
+	if !r.Matched || r.Category != "token-discord" {
+		t.Fatalf("Discord: %+v", r)
+	}
+	if !strings.Contains(r.Detail, "175928847299117063") {
+		t.Errorf("Discord detail missing user ID: %q", r.Detail)
+	}
+	// A JWT must still be classified as JWT, not Discord (header is JSON, not digits).
+	if j := secretid.Identify("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.sig"); j.Category != "token-jwt" {
+		t.Errorf("JWT misclassified as %q", j.Category)
+	}
+}
+
 func TestUnrecognised(t *testing.T) {
 	cases := []string{"", "hello world this is just text", "0123456789abcdef0123456789abcdef01234567"}
 	for _, in := range cases {

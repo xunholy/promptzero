@@ -910,6 +910,10 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.647 — Discord token decoder: recovers the owning account (user ID
+		// + creation time via the snowflake) from a leaked token, offline (no
+		// Discord API call). Reads a string, transmits nothing, so it is Low.
+		"discord_token_decode",
 		// v0.646 — secret/credential identifier: routes a captured string to
 		// the in-tree decoders + a vendor-prefix table to name the secret type
 		// (and validate where a checksum exists). The credential analogue of

@@ -2696,7 +2696,11 @@ func TestRegistrySize(t *testing.T) {
 	// captured string to the in-tree decoders aws/github/azure/bip39/jwt +
 	// structural PEM detection + a documented vendor-prefix table; the
 	// credential analogue of hash_identify). internal/secretid.
-	const expected = 628
+	// v0.647.0 added discord_token_decode (Discord user/bot token -> owning
+	// account user ID + creation time via the in-tree snowflake decoder; the
+	// dominant infostealer artifact; also wired into secret_identify).
+	// internal/discordtoken.
+	const expected = 629
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
