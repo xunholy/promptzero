@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func TestNewClassifierHas35Protocols(t *testing.T) {
+func TestNewClassifierHas36Protocols(t *testing.T) {
 	c := NewClassifier()
-	if got := len(c.protos); got != 35 {
-		t.Errorf("NewClassifier has %d protocols, want 35", got)
+	if got := len(c.protos); got != 36 {
+		t.Errorf("NewClassifier has %d protocols, want 36", got)
 	}
 }
 
@@ -137,6 +137,32 @@ func TestClassifyMarantec24TopMatch(t *testing.T) {
 	}
 	if matches[0].Protocol != "Marantec24" {
 		t.Errorf("top match = %q (conf %.3f), want Marantec24; got %v",
+			matches[0].Protocol, matches[0].Confidence, matchNames(matches))
+	}
+}
+
+// TestClassifyIntertechnoV3TopMatch confirms an Intertechno V3 frame surfaces
+// Intertechno V3 as the top match — its distinctive four-phase encoding means
+// no simple-PWM decoder shadows it. The frame is rendered inline.
+func TestClassifyIntertechnoV3TopMatch(t *testing.T) {
+	const teShort, teLong = 275, 1375
+	const code = 0x3F86C59F // 32-bit firmware example
+	pulses := []int{-(37 * teShort), teShort, -(10 * teShort)}
+	for k := 31; k >= 0; k-- {
+		if (code>>uint(k))&1 == 1 {
+			pulses = append(pulses, teShort, -teLong, teShort, -teShort)
+		} else {
+			pulses = append(pulses, teShort, -teShort, teShort, -teLong)
+		}
+	}
+	pulses = append(pulses, teShort, -(38 * teShort))
+
+	matches := NewClassifier().Classify(pulses, 3)
+	if len(matches) == 0 {
+		t.Fatal("expected at least one match for an Intertechno V3 frame")
+	}
+	if matches[0].Protocol != "Intertechno V3" {
+		t.Errorf("top match = %q (conf %.3f), want Intertechno V3; got %v",
 			matches[0].Protocol, matches[0].Confidence, matchNames(matches))
 	}
 }

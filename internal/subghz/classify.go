@@ -82,6 +82,7 @@ func NewClassifier() *Classifier {
 			protocols.GangQi{},
 			protocols.Dooya{},
 			protocols.Marantec24{},
+			protocols.IntertechnoV3{},
 		},
 	}
 }
