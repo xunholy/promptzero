@@ -910,6 +910,10 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.653 — DKIM public-key record decoder: parses a DKIM DNS TXT record
+		// into its signing-key forensics (type/size, weak-key flag, RSA modulus
+		// for roca chaining), offline. Reads a record, transmits nothing — Low.
+		"dkim_record_decode",
 		// v0.652 — JA4S TLS-server fingerprint: the server-side companion to
 		// ja4_fingerprint, computed from a captured ServerHello (single cipher
 		// + in-order extension hash), offline. Reads bytes, transmits nothing.

@@ -2723,7 +2723,11 @@ func TestRegistrySize(t *testing.T) {
 	// server-side companion: single chosen cipher + in-order, GREASE-retained
 	// extension hash from a ServerHello; pairs with ja4 to fingerprint both ends
 	// of a handshake; pinned to FoxIO's JA4S/JA4S_r fixtures). internal/ja3.
-	const expected = 634
+	// v0.653.0 added dkim_record_decode (DKIM public-key DNS record forensics:
+	// key type/size, weak-key flag vs RFC 8301, RSA modulus surfaced for
+	// roca_detect chaining; email anti-spoofing domain; pinned to openssl
+	// records + the RFC 8463 Ed25519 vector). internal/dkim.
+	const expected = 635
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
