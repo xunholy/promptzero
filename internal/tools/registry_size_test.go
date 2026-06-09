@@ -2727,7 +2727,11 @@ func TestRegistrySize(t *testing.T) {
 	// key type/size, weak-key flag vs RFC 8301, RSA modulus surfaced for
 	// roca_detect chaining; email anti-spoofing domain; pinned to openssl
 	// records + the RFC 8463 Ed25519 vector). internal/dkim.
-	const expected = 635
+	// v0.654.0 added dmarc_record_decode (DMARC policy DNS record forensics:
+	// enforcement posture from p/sp/pct + alignment + rua/ruf; p=none flagged
+	// monitoring-only; RFC 7489 defaults; pinned to live google/paypal/github
+	// records). internal/dmarc.
+	const expected = 636
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
