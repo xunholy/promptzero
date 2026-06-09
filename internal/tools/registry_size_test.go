@@ -2745,6 +2745,12 @@ func TestRegistrySize(t *testing.T) {
 	// firmware RCA test vector 0x0F/0x54 + encode↔decode round-trip). Extends
 	// existing tools — registry unchanged, an enhancement not a new tool.
 	// internal/ir.
+	// v0.658.0 extended ir_raw_decode + ir_raw_encode with NEC42 / NEC42ext
+	// (42-bit NEC variant, same 9000/4500µs leader distinguished by bit count;
+	// 13-bit address + 8-bit command with both inverse-field checksums; layout
+	// ported from the Flipper firmware interpret, verified by round-trip across
+	// its test values + a hand-built vector + NEC-32 regression). Registry
+	// unchanged, an enhancement not a new tool. internal/ir.
 	const expected = 638
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",

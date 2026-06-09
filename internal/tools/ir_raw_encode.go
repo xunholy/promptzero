@@ -35,13 +35,14 @@ var irRawEncodeSpec = Spec{
 		"**Philips RC5 / RC5X** (14-bit Manchester; a command > 63 emits an RC5X frame, `toggle` selects the " +
 		"toggle bit), **Kaseikyo** (Panasonic / Denon / JVC / Sharp / Mitsubishi — 48-bit; `vendor` sets the " +
 		"16-bit vendor ID, default Panasonic 0x2002; both the vendor parity and the frame parity are computed), " +
-		"and **RCA** (24-bit; 4-bit address + 8-bit command, both inverse-field checksums emitted). " +
+		"**RCA** (24-bit; 4-bit address + 8-bit command, both inverse-field checksums emitted), and **NEC42** " +
+		"(42-bit; 13-bit address + 8-bit command, both inverse fields emitted). " +
 		"No confidently-wrong output: each generator is the exact inverse of the corresponding " +
 		"`ir_raw_decode` reader (the encode↔decode pair is round-trip- and fuzz-verified — every successful " +
 		"encode decodes back to the same protocol/address/command), and out-of-range address/command/bits are " +
 		"rejected. No network, no device, transmits nothing (the actual replay is a separate device step), so it " +
 		"is Low risk.\n\n" +
-		"Inputs: **protocol** (NEC / Samsung32 / SIRC / RC5 / Kaseikyo / RCA), **address**, **command**, and optional " +
+		"Inputs: **protocol** (NEC / NEC42 / Samsung32 / SIRC / RC5 / Kaseikyo / RCA), **address**, **command**, and optional " +
 		"**bits** (SIRC width 12/15/20), **toggle** (RC5), **ext** (SIRC 20-bit extension), **vendor** (Kaseikyo " +
 		"16-bit vendor ID).\n\n" +
 		"Source: docs/catalog/gap-analysis.md (the offline inverse of ir_raw_decode). Wrap-vs-native: native — " +
@@ -49,7 +50,7 @@ var irRawEncodeSpec = Spec{
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"protocol":{"type":"string","description":"NEC, NEC-extended, NEC-repeat, Samsung32, SIRC (Sony), RC5, Kaseikyo or RCA."},
+			"protocol":{"type":"string","description":"NEC, NEC-extended, NEC42, NEC-repeat, Samsung32, SIRC (Sony), RC5, Kaseikyo or RCA."},
 			"address":{"type":"integer","description":"Address / device code (range depends on protocol)."},
 			"command":{"type":"integer","description":"Command / key code (range depends on protocol)."},
 			"bits":{"type":"integer","description":"Sony SIRC frame width: 12 (default), 15 or 20."},

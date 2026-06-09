@@ -25,6 +25,7 @@ func FuzzDecodeRaw(f *testing.F) {
 		"3456 1728 432 432",
 		rcaVector,
 		"4000 4000 500 1000 500 2000",
+		joinInts(encodeNEC42(0x0AAA, 0x55)),
 		"abc def",
 		"9000",
 		"-9000 -4500 560 560",
@@ -72,6 +73,7 @@ func FuzzEncodeRaw(f *testing.F) {
 	f.Add("Samsung32", 7, 2, 0, 0, 0, 0)
 	f.Add("SIRC", 18, 5, 20, 0, 3, 0)
 	f.Add("RCA", 15, 0x54, 0, 0, 0, 0)
+	f.Add("NEC42", 0x0AAA, 0x55, 0, 0, 0, 0)
 	f.Add("RC5", 20, 64, 0, 1, 0, 0)
 	f.Add("Kaseikyo", 0x123, 0x45, 0, 0, 0, 0x2002)
 	f.Add("NEC-extended", 0x1234, 0x56, 0, 0, 0, 0)

@@ -30,12 +30,12 @@ var irRawDecodeSpec = Spec{
 		"durations from ir_receive raw, a Flipper RAW .ir entry, or a logic-analyser trace) into its " +
 		"protocol + address/command — the IR analogue of subghz_decode, and the complement to " +
 		"ir_decode_file (which only reads a .ir file's already-parsed entries).\n\n" +
-		"Decodes NEC, Kaseikyo (Panasonic/Denon/JVC/Sharp/Mitsubishi), Samsung32, RCA, Sony SIRC, and Philips RC5/RC5X, dispatched by the leader pulse (NEC ~9000µs, Kaseikyo ~3456/1728µs, Samsung " +
+		"Decodes NEC (incl. NEC42), Kaseikyo (Panasonic/Denon/JVC/Sharp/Mitsubishi), Samsung32, RCA, Sony SIRC, and Philips RC5/RC5X, dispatched by the leader pulse (NEC ~9000µs, Kaseikyo ~3456/1728µs, Samsung " +
 		"~4500µs, RCA ~4000/4000µs, SIRC ~2400µs). NEC: standard NEC (8-bit address + command, each followed by its " +
 		"bitwise inverse), NEC-extended (16-bit address, command inversion only), and the NEC repeat " +
 		"code — NEC's inverse-byte pairs are a built-in checksum, so a frame is reported as standard NEC " +
 		"only when BOTH inversions hold, as NEC-extended when only the command inversion holds, and " +
-		"otherwise the raw 4 bytes are surfaced with a note. Samsung32: a 32-bit address·address·command·" +
+		"otherwise the raw 4 bytes are surfaced with a note. NEC42: a 42-bit NEC frame (same 9000/4500 leader, distinguished by bit count) carrying a 13-bit address + 8-bit command each followed by its inverse — reported as NEC42 only when BOTH inversions hold, else NEC42ext (26-bit address + 16-bit command, no inversion). Samsung32: a 32-bit address·address·command·" +
 		"~command frame (NEC bit encoding, 4500/4500 leader) — the command byte's bitwise inverse is the " +
 		"checksum, reported as Samsung32 only when byte3 == ~byte2 (a 16-bit-address variant when the " +
 		"address bytes differ). Sony SIRC (12 / 15 / 20-bit): 7 command bits + address (+ a 20-bit " +

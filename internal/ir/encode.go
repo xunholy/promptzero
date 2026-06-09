@@ -84,6 +84,15 @@ func EncodeRaw(protocol string, address, command int, opt EncodeOptions) (string
 		}
 		return joinInts(encodeRCA(address, command)), nil
 
+	case "NEC42":
+		if err := inRange("address", address, 0, 0x1FFF); err != nil { // 13-bit
+			return "", err
+		}
+		if err := inRange("command", command, 0, 0xFF); err != nil {
+			return "", err
+		}
+		return joinInts(encodeNEC42(address, command)), nil
+
 	default:
 		return "", fmt.Errorf("ir: unsupported encode protocol %q (NEC, Samsung32, SIRC, RC5, RCA)", protocol)
 	}

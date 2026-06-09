@@ -27,7 +27,7 @@
 //
 // # Covered / deferred
 //
-// The NEC family (standard, extended, and the repeat code), Sony SIRC
+// The NEC family (standard, extended, NEC42 / NEC42ext, and the repeat code), Sony SIRC
 // (12 / 15 / 20-bit), Samsung, Philips RC5 / RC5X (14-bit Manchester),
 // Kaseikyo (the 48-bit pulse-distance frame shared by Panasonic / Denon / JVC /
 // Sharp / Mitsubishi), and RCA (24-bit pulse-distance, 4-bit address + 8-bit
@@ -131,6 +131,12 @@ func decodeNEC(t []int) (*Result, error) {
 	}
 	if !within(t[1], necLeaderSpace) {
 		return nil, fmt.Errorf("ir: leader space %dµs is not NEC (~4500µs)", t[1])
+	}
+
+	// NEC42 shares NEC's 9000/4500 leader; it is distinguished only by carrying
+	// 42 bits instead of 32. Route on the bit count before the 32-bit path.
+	if countNECBits(t) == 42 {
+		return decodeNEC42(t)
 	}
 
 	b, err := readPDC32(t)
