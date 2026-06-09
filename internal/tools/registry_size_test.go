@@ -2659,7 +2659,11 @@ func TestRegistrySize(t *testing.T) {
 	// it carries, bulk-recovering every TOTP/HOTP secret; public-schema
 	// protobuf parsed with protowire, anchored to the canonical example secret
 	// JBSWY3DPEHPK3PXP; pairs with totp_generate). internal/otpmigration.
-	const expected = 619
+	// v0.637.0 added bip39_decode (BIP-39 wallet seed phrase -> entropy +
+	// SHA-256 checksum validity + PBKDF2-HMAC-SHA512 seed; embedded official
+	// 2048-word English list, anchored to the Trezor BIP-39 test vectors).
+	// internal/bip39.
+	const expected = 620
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

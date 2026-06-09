@@ -910,6 +910,12 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.637 — BIP-39 mnemonic decoder: validates a wallet seed phrase
+		// (word count + wordlist + SHA-256 checksum) and derives the BIP-39
+		// seed (PBKDF2-HMAC-SHA512). Like totp_generate it is an offline
+		// parse/derivation over operator-supplied loot — reads a string,
+		// transmits nothing, so it is Low.
+		"bip39_decode",
 		// v0.636 — Google Authenticator export decoder: parses an
 		// otpauth-migration://offline?data=… payload (a public-schema
 		// protobuf) into the 2FA accounts it carries (issuer/name/secret/
