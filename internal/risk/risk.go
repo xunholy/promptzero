@@ -910,6 +910,11 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.644 — Azure Storage SAS token decoder: decodes a SAS query
+		// string into its blast radius (permissions/expiry/scope/IP/protocol)
+		// — offline cloud-IR triage of a leaked token; the HMAC sig is opaque.
+		// Reads a string, transmits nothing, so it is Low.
+		"azure_sas_decode",
 		// v0.643 — AWS access key ID decoder: recovers the AWS account ID
 		// bit-packed in a key ID + the credential type (AKIA/ASIA/AROA/…),
 		// offline (no sts:GetAccessKeyInfo call). Reads a string, transmits

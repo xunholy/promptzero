@@ -2686,7 +2686,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.643.0 added aws_key_decode (AWS access key ID -> embedded account ID +
 	// credential type via base32 + mask + shift, offline; anchored to the
 	// published ASIA…→account vectors). internal/awskey.
-	const expected = 625
+	// v0.644.0 added azure_sas_decode (Azure Storage SAS query string -> blast
+	// radius: SAS type + context-aware permissions + window + scope + IP/proto;
+	// anchored to the Microsoft SAS reference worked example). internal/azuresas.
+	const expected = 626
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
