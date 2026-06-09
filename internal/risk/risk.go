@@ -910,6 +910,11 @@ var toolLevels = func() map[string]Level {
 		"manchester_decode",
 		"checksum_compute",
 		"totp_generate",
+		// v0.643 — AWS access key ID decoder: recovers the AWS account ID
+		// bit-packed in a key ID + the credential type (AKIA/ASIA/AROA/…),
+		// offline (no sts:GetAccessKeyInfo call). Reads a string, transmits
+		// nothing, so it is Low.
+		"aws_key_decode",
 		// v0.641 — OpenPGP packet decoder: walks the RFC 4880 packet stream
 		// of a PGP key/message (tags, lengths, key fingerprint/keyID/algo/
 		// creation, user IDs, signatures). Offline parse of operator-supplied

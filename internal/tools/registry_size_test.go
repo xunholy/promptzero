@@ -2683,7 +2683,10 @@ func TestRegistrySize(t *testing.T) {
 	// (creation time, issuer key ID/fingerprint, key/sig expiry, key flags),
 	// cross-checked against x/crypto/openpgp's packet.Signature — registry
 	// unchanged, an enhancement not a new tool.
-	const expected = 624
+	// v0.643.0 added aws_key_decode (AWS access key ID -> embedded account ID +
+	// credential type via base32 + mask + shift, offline; anchored to the
+	// published ASIA…→account vectors). internal/awskey.
+	const expected = 625
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
