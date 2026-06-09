@@ -14,6 +14,26 @@ func TestNewClassifierHas36Protocols(t *testing.T) {
 	}
 }
 
+// TestProtocolNames asserts ProtocolNames mirrors the registered roster exactly
+// (same length, same order, every entry non-empty). This is the source of truth
+// the tool description and docs generate from, so drift here is caught at the
+// classifier rather than downstream.
+func TestProtocolNames(t *testing.T) {
+	c := NewClassifier()
+	names := c.ProtocolNames()
+	if len(names) != len(c.protos) {
+		t.Fatalf("ProtocolNames returned %d names, want %d", len(names), len(c.protos))
+	}
+	for i, p := range c.protos {
+		if names[i] != p.Name() {
+			t.Errorf("name[%d] = %q, want %q (order must match roster)", i, names[i], p.Name())
+		}
+		if names[i] == "" {
+			t.Errorf("name[%d] is empty", i)
+		}
+	}
+}
+
 // TestClassifyGangQiTopMatch builds a checksum-valid GangQi frame and confirms
 // the classifier surfaces GangQi as the top match — a regression guard against a
 // future decoder shadowing it. The frame is rendered inline (mirroring the

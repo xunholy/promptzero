@@ -6,7 +6,7 @@
 // (or base64-encoded data) and returns the top-N matched protocols with
 // decoded payloads. No Docker required — this is the fast pure-Go path.
 // urh_decode_sub (Docker/urh-ng bridge) remains the fallback for exotic
-// protocols not covered by the 36 built-in decoders.
+// protocols not covered by the built-in decoders.
 
 package tools
 
@@ -26,16 +26,24 @@ func init() { //nolint:gochecknoinits
 	Register(subghzClassifySpec)
 }
 
+// subghzClassifyDescription generates the tool description from the classifier's
+// own protocol roster, so the count and protocol list can never drift out of
+// sync with the decoders actually registered (TestSubghzClassifyDescription
+// guards the invariant). Built once at init.
+func subghzClassifyDescription() string {
+	names := subghz.NewClassifier().ProtocolNames()
+	return fmt.Sprintf(
+		"Classify a Flipper .sub capture file against the %d most common Sub-GHz protocols "+
+			"(%s). "+
+			"Returns top-N matches with confidence "+
+			"scores and decoded payloads (address, serial, button, rolling code, etc.). "+
+			"Pure Go — no Docker required. Use urh_decode_sub as fallback for unmatched captures.",
+		len(names), strings.Join(names, ", "))
+}
+
 var subghzClassifySpec = Spec{
-	Name: "subghz_classify",
-	Description: "Classify a Flipper .sub capture file against the 32 most common Sub-GHz protocols " +
-		"(Princeton PT2262, CAME, Holtek HT12E, Linear, NICE FloR-S, KeeLoq HCS, FAAC SLH, Beninca, " +
-		"Prastel, Ansonic, Smartgate, Aerolite, Doitrand, Security+ v1, Magicode, Honeywell WS, " +
-		"Princeton-Holtek, CAME TWIN, Aprimatic, Phoenix V2, NICE FLO, BFT Mitto, Somfy RTS, Marantec, " +
-		"BETT, Security+ v2, Gate TX, SMC5326, MegaCode, Magellan, Mastercode, GangQi). " +
-		"Returns top-N matches with confidence " +
-		"scores and decoded payloads (address, serial, button, rolling code, etc.). " +
-		"Pure Go — no Docker required. Use urh_decode_sub as fallback for unmatched captures.",
+	Name:        "subghz_classify",
+	Description: subghzClassifyDescription(),
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{

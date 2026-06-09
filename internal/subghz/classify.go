@@ -39,7 +39,8 @@ type Classifier struct {
 	protos []Protocol
 }
 
-// NewClassifier returns a Classifier pre-loaded with all 32 protocol decoders.
+// NewClassifier returns a Classifier pre-loaded with every built-in protocol
+// decoder.
 func NewClassifier() *Classifier {
 	return &Classifier{
 		protos: []Protocol{
@@ -85,6 +86,19 @@ func NewClassifier() *Classifier {
 			protocols.IntertechnoV3{},
 		},
 	}
+}
+
+// ProtocolNames returns the Name() of every registered decoder, in classifier
+// (priority) order. It is the single source of truth for tool descriptions and
+// docs that enumerate the supported protocols, so those can be generated rather
+// than hand-maintained (which historically drifted out of sync as protocols
+// were added).
+func (c *Classifier) ProtocolNames() []string {
+	names := make([]string, len(c.protos))
+	for i, p := range c.protos {
+		names[i] = p.Name()
+	}
+	return names
 }
 
 // Classify attempts every registered protocol decoder against pulses and
