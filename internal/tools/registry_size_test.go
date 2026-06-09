@@ -2719,7 +2719,11 @@ func TestRegistrySize(t *testing.T) {
 	// FoxIO successor to JA3: sorted ciphers/extensions + SHA-256, human-readable
 	// JA4_a; shares the internal/ja3 ClientHello parser; pinned to FoxIO's own
 	// test fixtures incl. the raw JA4_r form). internal/ja3.
-	const expected = 633
+	// v0.652.0 added ja4s_fingerprint (JA4S TLS-server fingerprint — the
+	// server-side companion: single chosen cipher + in-order, GREASE-retained
+	// extension hash from a ServerHello; pairs with ja4 to fingerprint both ends
+	// of a handshake; pinned to FoxIO's JA4S/JA4S_r fixtures). internal/ja3.
+	const expected = 634
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

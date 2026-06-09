@@ -101,6 +101,183 @@ func JA4FromClientHello(b []byte) (*JA4Result, error) {
 	return res, nil
 }
 
+// JA4SResult is the outcome of a JA4S (server) computation.
+type JA4SResult struct {
+	// JA4S is the server fingerprint: ja4s_a_ja4s_b_ja4s_c.
+	JA4S string `json:"ja4s"`
+	// JA4SR is the raw (un-hashed) form a_<cipher>_<extensions in order>.
+	JA4SR string `json:"ja4s_r"`
+	A     string `json:"ja4s_a"`
+	B     string `json:"ja4s_b"`
+	C     string `json:"ja4s_c"`
+	// TLSVersion is the negotiated TLS version label.
+	TLSVersion string `json:"tls_version"`
+	// Cipher is the server's single chosen cipher suite (4-hex).
+	Cipher string `json:"cipher"`
+	// ALPN is the server's chosen ALPN protocol, if any.
+	ALPN string `json:"alpn,omitempty"`
+	Note string `json:"note,omitempty"`
+}
+
+// serverHello is the parsed view of a ServerHello that JA4S derives from.
+type serverHello struct {
+	legacyVersion     int
+	cipher            uint16
+	extOrder          []uint16 // in appearance order, GREASE retained (JA4S keeps GREASE)
+	supportedVersions []uint16
+	alpn              []string
+}
+
+// JA4SDecode accepts a ServerHello as hex (a full TLS record or a bare
+// handshake) and returns its JA4S fingerprint.
+func JA4SDecode(hexInput string) (*JA4SResult, error) {
+	clean := strings.NewReplacer(" ", "", "\n", "", "\t", "", "\r", "", ":", "").Replace(hexInput)
+	if clean == "" {
+		return nil, errors.New("empty input")
+	}
+	raw, err := hex.DecodeString(clean)
+	if err != nil {
+		return nil, fmt.Errorf("input is not valid hex: %w", err)
+	}
+	return JA4SFromServerHello(raw)
+}
+
+// JA4SFromServerHello computes the JA4S (FoxIO) from raw ServerHello bytes.
+// Unlike client JA4, JA4S hashes the extension list in ServerHello order and
+// retains GREASE (per FoxIO's reference to_ja4s).
+func JA4SFromServerHello(b []byte) (*JA4SResult, error) {
+	sh, err := parseServerHello(b)
+	if err != nil {
+		return nil, err
+	}
+
+	verLabel := tlsVersionLabel(serverVersion(sh))
+	// extension count + hash retain GREASE and keep ServerHello order.
+	extHex := make([]int, len(sh.extOrder))
+	for i, e := range sh.extOrder {
+		extHex[i] = int(e)
+	}
+	extRaw := hexListInOrder(extHex)
+	var c12 string
+	if len(extHex) == 0 {
+		c12 = "000000000000"
+	} else {
+		c12 = truncHash(extRaw)
+	}
+	cipher := fmt.Sprintf("%04x", sh.cipher)
+	alpn := ja4ALPN(sh.alpn)
+	a := fmt.Sprintf("t%s%02d%s", verLabel, capCount(len(sh.extOrder)), alpn)
+
+	res := &JA4SResult{
+		JA4S:       a + "_" + cipher + "_" + c12,
+		JA4SR:      a + "_" + cipher + "_" + extRaw,
+		A:          a,
+		B:          cipher,
+		C:          c12,
+		TLSVersion: verLabel,
+		Cipher:     cipher,
+		Note: "JA4S server fingerprint (FoxIO). Extensions are hashed in ServerHello order with " +
+			"GREASE retained (server side); pairs with ja4_fingerprint to fingerprint both ends of a handshake.",
+	}
+	if len(sh.alpn) > 0 {
+		res.ALPN = sh.alpn[0]
+	}
+	return res, nil
+}
+
+// parseServerHello walks a ServerHello (record-unwrapped if needed) into a
+// serverHello.
+func parseServerHello(b []byte) (*serverHello, error) {
+	hs, err := unwrap(b)
+	if err != nil {
+		return nil, err
+	}
+	if len(hs) < 4 {
+		return nil, errors.New("truncated handshake header")
+	}
+	switch hs[0] {
+	case 0x02: // ServerHello
+	case 0x01:
+		return nil, errors.New("this is a ClientHello (handshake type 1); use ja4_fingerprint")
+	default:
+		return nil, fmt.Errorf("not a ServerHello (handshake type %d)", hs[0])
+	}
+	hsLen := int(hs[1])<<16 | int(hs[2])<<8 | int(hs[3])
+	body := hs[4:]
+	if hsLen > len(body) {
+		return nil, fmt.Errorf("handshake length %d exceeds %d available bytes (fragmented capture?)", hsLen, len(body))
+	}
+	body = body[:hsLen]
+
+	c := &cursor{b: body}
+	sh := &serverHello{}
+	ver, err := c.u16()
+	if err != nil {
+		return nil, fmt.Errorf("version: %w", err)
+	}
+	sh.legacyVersion = int(ver)
+	if err := c.skip(32); err != nil { // random
+		return nil, fmt.Errorf("random: %w", err)
+	}
+	if err := c.skipVec8(); err != nil { // session_id
+		return nil, fmt.Errorf("session_id: %w", err)
+	}
+	cipher, err := c.u16() // single chosen cipher
+	if err != nil {
+		return nil, fmt.Errorf("cipher: %w", err)
+	}
+	sh.cipher = cipher
+	if err := c.skip(1); err != nil { // compression_method (single byte)
+		return nil, fmt.Errorf("compression: %w", err)
+	}
+	if c.remaining() > 0 {
+		extBlock, err := c.vec16()
+		if err != nil {
+			return nil, fmt.Errorf("extensions: %w", err)
+		}
+		ec := &cursor{b: extBlock}
+		for ec.remaining() > 0 {
+			extType, err := ec.u16()
+			if err != nil {
+				return nil, fmt.Errorf("extension type: %w", err)
+			}
+			data, err := ec.vec16()
+			if err != nil {
+				return nil, fmt.Errorf("extension %d body: %w", extType, err)
+			}
+			sh.extOrder = append(sh.extOrder, extType)
+			switch extType {
+			case 0x002b: // supported_versions: a single selected uint16 in ServerHello
+				if len(data) >= 2 {
+					sh.supportedVersions = append(sh.supportedVersions, uint16(data[0])<<8|uint16(data[1]))
+				}
+			case 0x0010: // ALPN: server's chosen protocol
+				sh.alpn = parseALPN(data)
+			}
+		}
+	}
+	return sh, nil
+}
+
+// serverVersion returns the version JA4S uses: the highest non-GREASE
+// supported_versions value if the ServerHello carried that extension, else the
+// legacy ServerHello version.
+func serverVersion(sh *serverHello) int {
+	best := -1
+	for _, v := range sh.supportedVersions {
+		if isGREASE(v) {
+			continue
+		}
+		if int(v) > best {
+			best = int(v)
+		}
+	}
+	if best >= 0 {
+		return best
+	}
+	return sh.legacyVersion
+}
+
 // ja4Version returns the version value JA4_a uses: the highest non-GREASE
 // supported_versions entry if present, else the legacy ClientHello version.
 func ja4Version(h *Hello) int {
