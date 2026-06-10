@@ -2787,7 +2787,13 @@ func TestRegistrySize(t *testing.T) {
 	// routes each through secret_identify, reporting type + line + validity with
 	// the secret value redacted; format-confirmed matches only, output bounded
 	// with explicit truncation; the trufflehog/gitleaks analogue). internal/secretid.
-	const expected = 644
+	// v0.672.0 added kdbx_decode (KeePass .kdbx outer-header decoder → crack
+	// triage: version / cipher / KDF + cost — AES-KDF transform rounds or Argon2
+	// iterations/memory/parallelism — plus hashcat mode 13400; base64/hex input,
+	// outer header only, no key derivation or $keepass$ hash; KDBX4
+	// VariantDictionary parse anchored to a real pykeepass-generated file).
+	// internal/kdbx.
+	const expected = 645
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
