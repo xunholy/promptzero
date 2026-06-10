@@ -183,3 +183,17 @@ func TestParseCaveat_Unknown(t *testing.T) {
 		t.Errorf("got kind=%q raw=%q, want unknown + raw preserved", r.Kind, r.Raw)
 	}
 }
+
+func FuzzDecode(f *testing.F) {
+	f.Add(tokWide)
+	f.Add(tokMulti)
+	f.Add("pypi-" + "not-base64-@@@")
+	f.Add("pypi-")
+	f.Add("")
+	// A token whose macaroon body is a v2 macaroon with a bogus caveat shape.
+	f.Add("pypi-" + "AgEIcHlwaS5vcmcCBHRlc3QAAAYgAAAA")
+	f.Fuzz(func(_ *testing.T, tok string) {
+		// Must never panic regardless of input.
+		_, _ = Decode(tok)
+	})
+}
