@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.673 — encrypted-ZIP crack-triage: decodes the ZIP central directory
+		// into its encryption scheme (ZipCrypto vs WinZip-AES + strength) and the
+		// matching hashcat mode (13600 / 17200-family), offline; encryption
+		// posture only, no crack/decrypt, no zip2john hash emitted. Reads a
+		// string, transmits nothing, so it is Low.
+		"zip_crack_triage",
 		// v0.672 — KeePass .kdbx header decoder: parses the outer header into the
 		// crack-triage facts (version / cipher / KDF + cost — AES-KDF rounds or
 		// Argon2 iterations/memory/parallelism) + hashcat mode 13400, offline;

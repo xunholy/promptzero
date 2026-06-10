@@ -2793,7 +2793,13 @@ func TestRegistrySize(t *testing.T) {
 	// outer header only, no key derivation or $keepass$ hash; KDBX4
 	// VariantDictionary parse anchored to a real pykeepass-generated file).
 	// internal/kdbx.
-	const expected = 645
+	// v0.673.0 added zip_crack_triage (encrypted-ZIP crack triage → encryption
+	// scheme + hashcat mode: walks the ZIP central directory, distinguishes
+	// ZipCrypto (17200/17210/17220/17225 family) from WinZip-AES (13600, with
+	// AE version + key strength), reports encrypted-entry count; base64/hex
+	// input, posture only, no crack/decrypt/zip2john hash; anchored to real
+	// zip -P + 7z archives). internal/ziptriage.
+	const expected = 646
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
