@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.666 — GCP service-account key decoder: parses the JSON key into its
+		// identity (project / client_email / key-id), classifies the account
+		// (flagging default Compute/AppEngine SAs), validates the embedded PKCS#8
+		// RSA key + reports a SPKI fingerprint, and runs the ROCA weak-key test —
+		// offline (no GCP API call). Reads a string, transmits nothing, so Low.
+		"gcp_service_account_decode",
 		// v0.665 — PyPI API token decoder: parses the macaroon inside a pypi-
 		// token and its first-party JSON caveats into the token's blast radius
 		// (account-wide vs scoped to projects/date/user), offline (no PyPI API

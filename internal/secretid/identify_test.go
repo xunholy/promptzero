@@ -134,6 +134,24 @@ func TestIdentifyPyPIToken(t *testing.T) {
 	}
 }
 
+func TestIdentifyGCPServiceAccount(t *testing.T) {
+	// A redacted-key SA JSON: routing + graceful downgrade (identity surfaces,
+	// not asserted genuine) without embedding a full private key.
+	in := `{"type":"service_account","project_id":"prod-app-42",` +
+		`"client_email":"ci@prod-app-42.iam.gserviceaccount.com",` +
+		`"private_key":"-----BEGIN PRIVATE KEY-----\nREDACTED\n-----END PRIVATE KEY-----\n"}`
+	r := secretid.Identify(in)
+	if !r.Matched || r.Category != "cloud-gcp" {
+		t.Fatalf("GCP: %+v", r)
+	}
+	if r.Validated {
+		t.Error("redacted-key SA must not be Validated")
+	}
+	if !strings.Contains(r.Detail, "prod-app-42") || !strings.Contains(r.Detail, "user-managed") {
+		t.Errorf("Detail missing project/kind: %q", r.Detail)
+	}
+}
+
 func TestUnrecognised(t *testing.T) {
 	cases := []string{"", "hello world this is just text", "0123456789abcdef0123456789abcdef01234567"}
 	for _, in := range cases {

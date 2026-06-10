@@ -2757,7 +2757,13 @@ func TestRegistrySize(t *testing.T) {
 	// verification; macaroon v1/v2 binary parser anchored to pymacaroons'
 	// cross-implementation vectors, caveat decode anchored to real
 	// pypitoken-generated tokens). internal/macaroon + internal/pypitoken.
-	const expected = 639
+	// v0.666.0 added gcp_service_account_decode (GCP service-account JSON key →
+	// identity + blast radius: project/client_email/key-id, account-kind
+	// classification flagging the broadly-privileged default Compute/AppEngine
+	// SAs, embedded PKCS#8 RSA key validation + SPKI SHA-256 fingerprint, and a
+	// ROCA weak-key test; offline, no GCP call; fingerprint anchored to an
+	// openssl-computed vector). internal/gcpsakey.
+	const expected = 640
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
