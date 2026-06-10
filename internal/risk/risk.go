@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.670 — bulk secret scanner: extracts candidate secrets from arbitrary
+		// text via high-signal patterns and routes each through secret_identify,
+		// reporting type + line + validity (secret values redacted), offline.
+		// The trufflehog/gitleaks analogue over the in-tree decoders. Reads a
+		// string, transmits nothing, so it is Low.
+		"secret_scan",
 		// v0.669 — Docker registry config decoder: parses config.json / legacy
 		// .dockercfg / k8s dockerconfigjson into the registries + usernames it
 		// authenticates as, flagging embedded creds vs credHelpers/credsStore,

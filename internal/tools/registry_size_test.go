@@ -2781,7 +2781,13 @@ func TestRegistrySize(t *testing.T) {
 	// identity token) vs external credHelpers/credsStore; offline, no registry
 	// contacted, the decoded password is not emitted; malformed auth flagged).
 	// internal/dockercfg.
-	const expected = 643
+	// v0.670.0 added secret_scan (bulk secret scanner — the capstone over the
+	// credential-decoder suite: extracts candidate secrets from arbitrary text
+	// via high-signal structural patterns + the documented vendor prefixes and
+	// routes each through secret_identify, reporting type + line + validity with
+	// the secret value redacted; format-confirmed matches only, output bounded
+	// with explicit truncation; the trufflehog/gitleaks analogue). internal/secretid.
+	const expected = 644
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
