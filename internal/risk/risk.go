@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.667 — generic macaroon decoder: parses the libmacaroons v1/v2
+		// binary serialization of any macaroon (Lightning L402/LSAT, PyPI,
+		// Ubuntu SSO) into location/identifier/caveats/signature, offline; does
+		// not verify the signature chain. Reads a string, transmits nothing —
+		// Low.
+		"macaroon_decode",
 		// v0.666 — GCP service-account key decoder: parses the JSON key into its
 		// identity (project / client_email / key-id), classifies the account
 		// (flagging default Compute/AppEngine SAs), validates the embedded PKCS#8

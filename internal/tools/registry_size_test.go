@@ -2763,7 +2763,13 @@ func TestRegistrySize(t *testing.T) {
 	// SAs, embedded PKCS#8 RSA key validation + SPKI SHA-256 fingerprint, and a
 	// ROCA weak-key test; offline, no GCP call; fingerprint anchored to an
 	// openssl-computed vector). internal/gcpsakey.
-	const expected = 640
+	// v0.667.0 added macaroon_decode (generic libmacaroon v1/v2 binary decoder
+	// for any macaroon — Lightning L402/LSAT, PyPI, Ubuntu SSO — surfacing
+	// location/identifier/caveats/signature + the L402 scheme/preimage split;
+	// structure only, no signature-chain verification; wraps the gold-vector-
+	// verified internal/macaroon parser shipped in v0.665.0). Also closed the
+	// internal/pypitoken fuzz gap. internal/macaroon.
+	const expected = 641
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
