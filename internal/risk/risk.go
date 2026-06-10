@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.669 — Docker registry config decoder: parses config.json / legacy
+		// .dockercfg / k8s dockerconfigjson into the registries + usernames it
+		// authenticates as, flagging embedded creds vs credHelpers/credsStore,
+		// offline — no registry contacted, the decoded password is not emitted.
+		// Reads a string, transmits nothing, so it is Low.
+		"dockercfg_decode",
 		// v0.668 — Kubernetes kubeconfig decoder: parses a kubeconfig into its
 		// cluster endpoints + TLS posture (insecure-skip-tls-verify) and the
 		// credential kind each user carries (embedded key/token/password vs

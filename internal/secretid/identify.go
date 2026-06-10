@@ -36,6 +36,7 @@ import (
 	"github.com/xunholy/promptzero/internal/azuresas"
 	"github.com/xunholy/promptzero/internal/bip39"
 	"github.com/xunholy/promptzero/internal/discordtoken"
+	"github.com/xunholy/promptzero/internal/dockercfg"
 	"github.com/xunholy/promptzero/internal/gcpsakey"
 	"github.com/xunholy/promptzero/internal/githubtoken"
 	"github.com/xunholy/promptzero/internal/jwtdecode"
@@ -84,6 +85,20 @@ func Identify(s string) *Result {
 				Validated: r.PrivateKeyValid, Valid: r.PrivateKeyValid,
 				Detail: fmt.Sprintf("project %s, %s (%s)", emptyDash(r.ProjectID), emptyDash(r.ClientEmail), r.AccountKind),
 				Note:   "full decode + ROCA check via gcp_service_account_decode; liveness/IAM needs a GCP call",
+			}
+		}
+	}
+
+	// 1c. Docker registry config (config.json / .dockercfg) — a JSON object
+	//     carrying registry auth (auths/credHelpers/credsStore or a registry map).
+	if strings.HasPrefix(in, "{") && (strings.Contains(in, `"auths"`) ||
+		strings.Contains(in, `"credsStore"`) || strings.Contains(in, `"credHelpers"`)) {
+		if r, err := dockercfg.Decode(in); err == nil {
+			return &Result{
+				Matched: true, Type: "Docker registry config", Category: "cloud-docker",
+				Validated: r.HasEmbeddedCredentials, Valid: r.HasEmbeddedCredentials,
+				Detail: fmt.Sprintf("%d registries, embedded credentials: %t", len(r.Registries), r.HasEmbeddedCredentials),
+				Note:   "registries + usernames via dockercfg_decode; the decoded password is not emitted",
 			}
 		}
 	}

@@ -2775,7 +2775,13 @@ func TestRegistrySize(t *testing.T) {
 	// contexts with the current one marked; offline, no API server contacted,
 	// secret values flagged not emitted; gopkg.in/yaml.v3 already a direct dep).
 	// internal/kubeconfig.
-	const expected = 642
+	// v0.669.0 added dockercfg_decode (Docker registry config → registries +
+	// usernames: handles modern config.json, legacy .dockercfg, and the k8s
+	// dockerconfigjson pull-secret payload; flags embedded creds (password /
+	// identity token) vs external credHelpers/credsStore; offline, no registry
+	// contacted, the decoded password is not emitted; malformed auth flagged).
+	// internal/dockercfg.
+	const expected = 643
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
