@@ -42,10 +42,14 @@ func estimateTE(pulses []int, minUS, maxUS int) (int, bool) {
 	if len(counts) == 0 {
 		return 0, false
 	}
+	// Pick the most-common bucket. Map iteration order is randomized, so on a
+	// count tie break deterministically toward the smaller bucket — otherwise
+	// the estimated TE (and every confidence derived from it) varies run-to-run,
+	// which surfaced as flaky classification when two pulse widths tie.
 	best := 0
 	bestN := 0
 	for bucket, n := range counts {
-		if n > bestN {
+		if n > bestN || (n == bestN && bucket < best) {
 			bestN = n
 			best = bucket
 		}
