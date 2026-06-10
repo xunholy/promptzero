@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pb "github.com/xunholy/promptzero/internal/flipper/rpc/pb"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 func TestFramingRoundTrip(t *testing.T) {
@@ -103,5 +104,32 @@ func TestFramingVarintEdgeCases(t *testing.T) {
 	}
 	if got.CommandId != 7 {
 		t.Errorf("CommandId: got %d, want 7", got.CommandId)
+	}
+}
+
+// TestFramingOversizedLengthRejected guards the unbounded-allocation hazard: a
+// garbage length prefix (stream desync / hostile peer) must be rejected, not
+// fed straight into make([]byte, msgLen) and OOM the process.
+func TestFramingOversizedLengthRejected(t *testing.T) {
+	// A varint declaring a 4 GiB frame, with no body following.
+	prefix := protowire.AppendVarint(nil, 4<<30)
+	if _, err := readFramed(bytes.NewReader(prefix)); err == nil {
+		t.Fatal("expected oversized frame length to be rejected, got nil error")
+	}
+
+	// A frame exactly at the cap boundary + 1 is rejected before allocation.
+	overByOne := protowire.AppendVarint(nil, uint64(maxFrameBytes)+1)
+	if _, err := readFramed(bytes.NewReader(overByOne)); err == nil {
+		t.Fatal("expected length just over maxFrameBytes to be rejected")
+	}
+
+	// A legitimately-sized frame still round-trips (cap does not over-reject).
+	var buf bytes.Buffer
+	msg := &pb.Main{CommandId: 9, Content: &pb.Main_SystemPingRequest{SystemPingRequest: &pb.PingRequest{}}}
+	if err := writeFramed(&buf, msg); err != nil {
+		t.Fatalf("writeFramed: %v", err)
+	}
+	if _, err := readFramed(&buf); err != nil {
+		t.Fatalf("legit frame rejected: %v", err)
 	}
 }
