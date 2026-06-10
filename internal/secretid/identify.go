@@ -36,6 +36,7 @@ import (
 	"github.com/xunholy/promptzero/internal/azuresas"
 	"github.com/xunholy/promptzero/internal/bip39"
 	"github.com/xunholy/promptzero/internal/discordtoken"
+	"github.com/xunholy/promptzero/internal/gcpsakey"
 	"github.com/xunholy/promptzero/internal/githubtoken"
 	"github.com/xunholy/promptzero/internal/jwtdecode"
 	"github.com/xunholy/promptzero/internal/pypitoken"
@@ -72,6 +73,19 @@ func Identify(s string) *Result {
 	// 1. PEM / ASCII-armor blocks (PGP, SSH, private keys, certificates).
 	if strings.HasPrefix(in, "-----BEGIN ") {
 		return identifyPEM(in)
+	}
+
+	// 1b. GCP service-account JSON key (a JSON object declaring the
+	//     service_account type with an embedded private key).
+	if strings.HasPrefix(in, "{") && strings.Contains(in, `"service_account"`) {
+		if r, err := gcpsakey.Decode(in); err == nil {
+			return &Result{
+				Matched: true, Type: "GCP service-account key", Category: "cloud-gcp",
+				Validated: r.PrivateKeyValid, Valid: r.PrivateKeyValid,
+				Detail: fmt.Sprintf("project %s, %s (%s)", emptyDash(r.ProjectID), emptyDash(r.ClientEmail), r.AccountKind),
+				Note:   "full decode + ROCA check via gcp_service_account_decode; liveness/IAM needs a GCP call",
+			}
+		}
 	}
 
 	// 2. AWS access key ID (20 chars, known prefix, Base32 body — checksum-free
