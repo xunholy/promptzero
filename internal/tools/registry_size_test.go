@@ -2799,7 +2799,13 @@ func TestRegistrySize(t *testing.T) {
 	// AE version + key strength), reports encrypted-entry count; base64/hex
 	// input, posture only, no crack/decrypt/zip2john hash; anchored to real
 	// zip -P + 7z archives). internal/ziptriage.
-	const expected = 646
+	// v0.675.0 added pdf_crack_triage (encrypted-PDF crack triage → cipher +
+	// hashcat mode: reads the PDF Standard security dictionary (V/R/Length/CFM)
+	// and maps to RC4-40 (10400) / RC4-128 (10500) / AES-128 (10600) / AES-256
+	// (10700); base64/hex input, parameters only, no crack/decrypt/pdf2john
+	// hash; non-Standard handlers named but not given a mode; anchored to real
+	// pikepdf/qpdf encrypted PDFs). internal/pdftriage.
+	const expected = 647
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
