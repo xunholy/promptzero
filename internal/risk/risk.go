@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.668 — Kubernetes kubeconfig decoder: parses a kubeconfig into its
+		// cluster endpoints + TLS posture (insecure-skip-tls-verify) and the
+		// credential kind each user carries (embedded key/token/password vs
+		// exec/auth-provider), offline — no API server contacted, secret values
+		// not emitted. Reads a string, transmits nothing, so it is Low.
+		"kubeconfig_decode",
 		// v0.667 — generic macaroon decoder: parses the libmacaroons v1/v2
 		// binary serialization of any macaroon (Lightning L402/LSAT, PyPI,
 		// Ubuntu SSO) into location/identifier/caveats/signature, offline; does
