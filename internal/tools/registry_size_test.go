@@ -2751,7 +2751,13 @@ func TestRegistrySize(t *testing.T) {
 	// ported from the Flipper firmware interpret, verified by round-trip across
 	// its test values + a hand-built vector + NEC-32 regression). Registry
 	// unchanged, an enhancement not a new tool. internal/ir.
-	const expected = 638
+	// v0.665.0 added pypi_token_decode (PyPI API token → blast radius: decodes
+	// the "pypi-" macaroon and its first-party JSON caveats into account-wide
+	// vs project/date/user scope; offline, no PyPI call, no signature
+	// verification; macaroon v1/v2 binary parser anchored to pymacaroons'
+	// cross-implementation vectors, caveat decode anchored to real
+	// pypitoken-generated tokens). internal/macaroon + internal/pypitoken.
+	const expected = 639
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
