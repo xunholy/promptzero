@@ -2805,7 +2805,12 @@ func TestRegistrySize(t *testing.T) {
 	// (10700); base64/hex input, parameters only, no crack/decrypt/pdf2john
 	// hash; non-Standard handlers named but not given a mode; anchored to real
 	// pikepdf/qpdf encrypted PDFs). internal/pdftriage.
-	const expected = 647
+	// v0.676.0 added crack_triage (unified crack-triage front-end → detects an
+	// encrypted artifact by file magic — KeePass .kdbx / ZIP / PDF — and routes
+	// to kdbx_decode / zip_crack_triage / pdf_crack_triage, returning artifact
+	// type + hashcat mode + per-format detail; the crack-triage analogue of
+	// secret_identify; native orchestration, no new dep). internal/cracktriage.
+	const expected = 648
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
