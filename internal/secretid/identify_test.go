@@ -152,6 +152,18 @@ func TestIdentifyGCPServiceAccount(t *testing.T) {
 	}
 }
 
+func TestIdentifyDockerConfig(t *testing.T) {
+	// base64("user:pass") = dXNlcjpwYXNz
+	const cfg = `{"auths":{"registry.example.com":{"auth":"dXNlcjpwYXNz"}}}`
+	r := secretid.Identify(cfg)
+	if !r.Matched || r.Category != "cloud-docker" {
+		t.Fatalf("Docker: %+v", r)
+	}
+	if !r.Validated || !strings.Contains(r.Detail, "1 registries") {
+		t.Errorf("Docker detail/validated wrong: validated=%v detail=%q", r.Validated, r.Detail)
+	}
+}
+
 func TestUnrecognised(t *testing.T) {
 	cases := []string{"", "hello world this is just text", "0123456789abcdef0123456789abcdef01234567"}
 	for _, in := range cases {
