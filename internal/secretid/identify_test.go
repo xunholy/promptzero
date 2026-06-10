@@ -122,6 +122,18 @@ func TestIdentifyDiscordToken(t *testing.T) {
 	}
 }
 
+func TestIdentifyPyPIToken(t *testing.T) {
+	// A real pypitoken-generated account-wide token (throwaway key).
+	const tok = "pypi-" + "AgEIcHlwaS5vcmcCJGExYjJjM2Q0LTAwMDAtMTExMS0yMjIyLTMzMzM0NDQ0NTU1NQAABiAHDTZ5To_nbqcpj8ZXaDuSqPs1kwW7qq2gFvHjqUW2xQ"
+	r := secretid.Identify(tok)
+	if !r.Matched || r.Category != "api-key" || !strings.Contains(r.Type, "PyPI") {
+		t.Fatalf("PyPI: %+v", r)
+	}
+	if !r.Validated || !strings.Contains(r.Detail, "account-wide") {
+		t.Errorf("PyPI detail/validated wrong: validated=%v detail=%q", r.Validated, r.Detail)
+	}
+}
+
 func TestUnrecognised(t *testing.T) {
 	cases := []string{"", "hello world this is just text", "0123456789abcdef0123456789abcdef01234567"}
 	for _, in := range cases {

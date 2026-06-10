@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.665 — PyPI API token decoder: parses the macaroon inside a pypi-
+		// token and its first-party JSON caveats into the token's blast radius
+		// (account-wide vs scoped to projects/date/user), offline (no PyPI API
+		// call, no signature verification). Reads a string, transmits nothing,
+		// so it is Low.
+		"pypi_token_decode",
 		// v0.655 — SPF record decoder/analyser: statically analyses a v=spf1 DNS
 		// TXT record (mechanisms, the terminal `all` qualifier, direct DNS-lookup
 		// count), offline. Reads a record, transmits nothing, so it is Low.

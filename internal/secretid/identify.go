@@ -38,6 +38,7 @@ import (
 	"github.com/xunholy/promptzero/internal/discordtoken"
 	"github.com/xunholy/promptzero/internal/githubtoken"
 	"github.com/xunholy/promptzero/internal/jwtdecode"
+	"github.com/xunholy/promptzero/internal/pypitoken"
 )
 
 // Result is the identification outcome.
@@ -136,6 +137,18 @@ func Identify(s string) *Result {
 		}
 	}
 
+	// 5b. PyPI API token (pypi- + a macaroon whose caveats decode to a scope).
+	if strings.HasPrefix(in, "pypi-") {
+		if r, err := pypitoken.Decode(in); err == nil {
+			return &Result{
+				Matched: true, Type: "PyPI API token (macaroon)", Category: "api-key",
+				Validated: r.WellFormed, Valid: r.WellFormed,
+				Detail: "scope: " + r.Scope,
+				Note:   "full caveat breakdown via pypi_token_decode; liveness needs a PyPI call",
+			}
+		}
+	}
+
 	// 6. Vendor prefix formats (no checksum to validate — a format match).
 	if m := matchVendorPrefix(in); m != nil {
 		return m
@@ -202,6 +215,7 @@ var vendorPrefixes = []struct{ prefix, typ, category string }{
 	{"gldt-", "GitLab deploy token", "vcs"},
 	{"glrt-", "GitLab runner token", "vcs"},
 	{"npm_", "npm access token", "api-key"},
+	{"pypi-", "PyPI API token (macaroon)", "api-key"},
 	{"dop_v1_", "DigitalOcean personal access token", "cloud"},
 	{"doo_v1_", "DigitalOcean OAuth token", "cloud"},
 	{"shpat_", "Shopify access token", "api-key"},
