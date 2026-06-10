@@ -2769,7 +2769,13 @@ func TestRegistrySize(t *testing.T) {
 	// structure only, no signature-chain verification; wraps the gold-vector-
 	// verified internal/macaroon parser shipped in v0.665.0). Also closed the
 	// internal/pypitoken fuzz gap. internal/macaroon.
-	const expected = 641
+	// v0.668.0 added kubeconfig_decode (Kubernetes kubeconfig → attack surface:
+	// cluster API endpoints + TLS posture (insecure-skip-tls-verify), the
+	// credential kind each user carries with an embedded-credential flag, and
+	// contexts with the current one marked; offline, no API server contacted,
+	// secret values flagged not emitted; gopkg.in/yaml.v3 already a direct dep).
+	// internal/kubeconfig.
+	const expected = 642
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
