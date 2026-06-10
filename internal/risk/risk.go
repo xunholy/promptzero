@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.676 — unified crack-triage front-end: detects an encrypted artifact
+		// by file magic (KeePass .kdbx / ZIP / PDF) and routes to the matching
+		// in-tree decoder, returning the artifact type + hashcat mode + detail,
+		// offline. The crack-triage analogue of secret_identify. Reads a string,
+		// transmits nothing, so it is Low.
+		"crack_triage",
 		// v0.675 — encrypted-PDF crack-triage: reads the PDF Standard security
 		// dictionary (V/R/Length/CFM) into the cipher (RC4/AES-128/AES-256) and
 		// the matching hashcat mode (10400/10500/10600/10700), offline;
