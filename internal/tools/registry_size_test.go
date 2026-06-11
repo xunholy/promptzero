@@ -2820,7 +2820,12 @@ func TestRegistrySize(t *testing.T) {
 	// /etc/config/wireless UCI file — the two highest-frequency remaining loot
 	// sources (rooted phones, router pivots). Registry unchanged, an enhancement
 	// not a new tool. internal/wificonfig.
-	const expected = 649
+	// v0.679.0 added bluez_pairing_decode (Bluetooth pairing-key extractor → the
+	// BLE analogue of wifi_config_decode: parses a Linux BlueZ device info file
+	// into its bonded-device keys — BR/EDR LinkKey, LE LTK / IRK / CSRK — plus
+	// transport; keys surfaced verbatim, unpaired/cleared files rejected; native
+	// GKeyFile scanner over the documented BlueZ storage format). internal/bluezkeys.
+	const expected = 650
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
