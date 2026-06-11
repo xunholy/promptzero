@@ -914,6 +914,11 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.680 — VPN-config credential extractor: parses WireGuard .conf /
+		// OpenVPN .ovpn into the interface PrivateKey / embedded client key /
+		// inline user-pass + peers/remotes, offline — the host's VPN access is a
+		// direct network pivot. Reads a string, transmits nothing, so it is Low.
+		"vpn_config_decode",
 		// v0.679 — BlueZ pairing-key extractor: parses a Linux BlueZ device info
 		// file into its bonded-device keys (BR/EDR LinkKey, LE LTK / IRK / CSRK)
 		// + transport, offline. The BLE analogue of wifi_config_decode. Reads a
