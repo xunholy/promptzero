@@ -2825,7 +2825,12 @@ func TestRegistrySize(t *testing.T) {
 	// into its bonded-device keys — BR/EDR LinkKey, LE LTK / IRK / CSRK — plus
 	// transport; keys surfaced verbatim, unpaired/cleared files rejected; native
 	// GKeyFile scanner over the documented BlueZ storage format). internal/bluezkeys.
-	const expected = 650
+	// v0.680.0 added vpn_config_decode (VPN-config credential extractor → parses
+	// WireGuard .conf and OpenVPN .ovpn into the interface PrivateKey / embedded
+	// client key / inline user-pass plus peers/remotes + auth method; the host's
+	// VPN access is a direct network pivot; key surfaced verbatim, format
+	// detected by syntax, neither-format input rejected). internal/vpnconfig.
+	const expected = 651
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
