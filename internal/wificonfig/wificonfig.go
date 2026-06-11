@@ -1,7 +1,8 @@
-// Package wificonfig extracts stored WiFi network credentials from the three
+// Package wificonfig extracts stored WiFi network credentials from the five
 // config formats found on compromised hosts: wpa_supplicant.conf (Linux /
-// embedded / routers), NetworkManager `.nmconnection` (Linux desktop), and the
-// Windows `netsh wlan export profile` XML.
+// embedded / routers), NetworkManager `.nmconnection` (Linux desktop), the
+// Windows `netsh wlan export profile` XML, the Android WifiConfigStore.xml
+// (`/data/misc/wifi/`), and the OpenWrt `/etc/config/wireless` UCI file.
 //
 // This is the host-side complement to the project's RF-side WiFi tooling: once
 // an operator has a foothold on a host, its saved WiFi configs hand over the
@@ -70,14 +71,18 @@ func Decode(input string) (*Result, error) {
 	var res *Result
 	var err error
 	switch {
-	case strings.Contains(s, "<WLANProfile") || (strings.HasPrefix(s, "<?xml") && strings.Contains(s, "WLANProfile")):
+	case strings.Contains(s, "<WLANProfile"):
 		res, err = parseWindowsXML(s)
+	case strings.Contains(s, "WifiConfigStore") || strings.Contains(s, "<WifiConfiguration"):
+		res, err = parseAndroidXML(s)
 	case strings.Contains(s, "network={"):
 		res = parseWpaSupplicant(s)
+	case strings.Contains(s, "config wifi-iface"):
+		res = parseOpenWrt(s)
 	case strings.Contains(s, "[wifi]") || (strings.Contains(s, "[connection]") && strings.Contains(s, "type=wifi")):
 		res = parseNetworkManager(s)
 	default:
-		return nil, fmt.Errorf("wificonfig: unrecognised WiFi config (not wpa_supplicant / NetworkManager / Windows WLAN XML)")
+		return nil, fmt.Errorf("wificonfig: unrecognised WiFi config (not wpa_supplicant / NetworkManager / OpenWrt / Android / Windows WLAN XML)")
 	}
 	if err != nil {
 		return nil, err
@@ -207,6 +212,136 @@ func parseWindowsXML(s string) (*Result, error) {
 		}
 	}
 	return &Result{Format: "windows-wlan-xml", Networks: []Network{n}}, nil
+}
+
+// androidStore mirrors the Android WifiConfigStore.xml schema (the subset we
+// need). The root element differs by Android version (WifiConfigStore vs
+// WifiConfigStoreData), so it is matched loosely via XMLName.
+type androidStore struct {
+	Networks []struct {
+		Config struct {
+			Strings []struct {
+				Name  string `xml:"name,attr"`
+				Value string `xml:",chardata"`
+			} `xml:"string"`
+		} `xml:"WifiConfiguration"`
+	} `xml:"NetworkList>Network"`
+}
+
+// parseAndroidXML extracts networks from an Android WifiConfigStore.xml. SSID and
+// PreSharedKey are stored as XML-escaped, quote-wrapped <string name="…"> values.
+func parseAndroidXML(s string) (*Result, error) {
+	var store androidStore
+	if err := xml.Unmarshal([]byte(s), &store); err != nil {
+		return nil, fmt.Errorf("wificonfig: invalid Android WifiConfigStore XML: %w", err)
+	}
+	res := &Result{Format: "android-wificonfigstore"}
+	for _, net := range store.Networks {
+		n := Network{KeyMgmt: "OPEN"}
+		for _, f := range net.Config.Strings {
+			v := unquote(strings.TrimSpace(f.Value))
+			switch f.Name {
+			case "SSID":
+				n.SSID = v
+			case "PreSharedKey":
+				n.PSK, n.PSKType = parsePSK(strings.TrimSpace(f.Value))
+			case "KeyMgmt":
+				// rarely a string; tolerate it
+			}
+		}
+		if n.PSK != "" {
+			n.KeyMgmt = "WPA-PSK"
+		}
+		res.Networks = append(res.Networks, n)
+	}
+	return res, nil
+}
+
+// parseOpenWrt extracts `config wifi-iface` blocks from an OpenWrt
+// /etc/config/wireless (UCI). `config wifi-device` blocks (radio config, no
+// SSID) are skipped.
+func parseOpenWrt(s string) *Result {
+	res := &Result{Format: "openwrt-uci"}
+	lines := strings.Split(s, "\n")
+	var cur *Network
+	flush := func() {
+		if cur != nil {
+			if cur.KeyMgmt == "" {
+				cur.KeyMgmt = "OPEN"
+			}
+			res.Networks = append(res.Networks, *cur)
+			cur = nil
+		}
+	}
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "config wifi-iface"):
+			flush()
+			cur = &Network{}
+		case strings.HasPrefix(t, "config "):
+			flush() // a non-iface section ends the current iface
+		case cur != nil && strings.HasPrefix(t, "option "):
+			key, val := uciOption(t)
+			switch key {
+			case "ssid":
+				cur.SSID = val
+			case "key":
+				cur.PSK, cur.PSKType = parsePSK(val)
+			case "encryption":
+				cur.KeyMgmt = openwrtEncryption(val)
+			case "eap_type":
+				cur.EAPMethod = val
+			case "identity":
+				cur.Identity = val
+			case "auth_secret", "password":
+				cur.EAPPassword = val
+			case "hidden":
+				cur.Hidden = val == "1"
+			}
+		}
+	}
+	flush()
+	// A PSK present but encryption unset/none ⇒ still PSK-secured.
+	for i := range res.Networks {
+		if res.Networks[i].PSK != "" && res.Networks[i].KeyMgmt == "OPEN" {
+			res.Networks[i].KeyMgmt = "WPA-PSK"
+		}
+	}
+	return res
+}
+
+// openwrtEncryption maps a UCI `option encryption` value to a normal label.
+func openwrtEncryption(v string) string {
+	t := strings.ToLower(strings.TrimSpace(v))
+	switch {
+	case t == "" || t == "none":
+		return "OPEN"
+	case strings.HasPrefix(t, "wpa"), strings.HasPrefix(t, "wpa2-eap"), strings.Contains(t, "eap"):
+		if strings.Contains(t, "eap") {
+			return "WPA-EAP"
+		}
+		return "WPA-PSK"
+	case strings.HasPrefix(t, "psk"), strings.HasPrefix(t, "sae"):
+		return "WPA-PSK"
+	case strings.HasPrefix(t, "wep"):
+		return "WEP"
+	default:
+		return strings.TrimSpace(v)
+	}
+}
+
+// uciOption parses a UCI `option <key> '<value>'` (or "value") line.
+func uciOption(line string) (key, val string) {
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "option"))
+	sp := strings.IndexByte(rest, ' ')
+	if sp < 0 {
+		return rest, ""
+	}
+	key = strings.TrimSpace(rest[:sp])
+	val = strings.TrimSpace(rest[sp+1:])
+	val = strings.Trim(val, "'\"")
+	return key, val
 }
 
 // --- helpers ---

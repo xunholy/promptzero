@@ -181,6 +181,92 @@ func TestDecode_WindowsXMLProtected(t *testing.T) {
 	}
 }
 
+const androidStoreXML = `<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<WifiConfigStoreData>
+<int name="Version" value="3" />
+<NetworkList>
+<Network>
+<WifiConfiguration>
+<string name="ConfigKey">&quot;HomePhone&quot;WPA_PSK</string>
+<string name="SSID">&quot;HomePhone&quot;</string>
+<null name="BSSID" />
+<string name="PreSharedKey">&quot;androidpass1&quot;</string>
+<boolean name="Shared" value="true" />
+</WifiConfiguration>
+</Network>
+<Network>
+<WifiConfiguration>
+<string name="SSID">&quot;OpenCafe&quot;</string>
+<null name="PreSharedKey" />
+</WifiConfiguration>
+</Network>
+</NetworkList>
+</WifiConfigStoreData>`
+
+func TestDecode_AndroidStore(t *testing.T) {
+	r, err := Decode(androidStoreXML)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.Format != "android-wificonfigstore" || len(r.Networks) != 2 {
+		t.Fatalf("format=%q networks=%d", r.Format, len(r.Networks))
+	}
+	home := find(t, r.Networks, "HomePhone")
+	if home.PSK != "androidpass1" || home.KeyMgmt != "WPA-PSK" || home.PSKType != "passphrase" {
+		t.Errorf("HomePhone = %+v", home)
+	}
+	cafe := find(t, r.Networks, "OpenCafe")
+	if cafe.KeyMgmt != "OPEN" || cafe.HasCredential() {
+		t.Errorf("OpenCafe = %+v, want open/no-cred", cafe)
+	}
+	if r.CredentialCount != 1 {
+		t.Errorf("credential count = %d, want 1", r.CredentialCount)
+	}
+}
+
+const openwrtWireless = `config wifi-device 'radio0'
+	option type 'mac80211'
+	option channel '36'
+
+config wifi-iface 'default_radio0'
+	option device 'radio0'
+	option network 'lan'
+	option mode 'ap'
+	option ssid 'RouterAP'
+	option encryption 'psk2'
+	option key 'routerpass99'
+
+config wifi-iface 'guest'
+	option device 'radio0'
+	option mode 'ap'
+	option ssid 'GuestNet'
+	option encryption 'none'
+`
+
+func TestDecode_OpenWrt(t *testing.T) {
+	r, err := Decode(openwrtWireless)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if r.Format != "openwrt-uci" {
+		t.Fatalf("format = %q", r.Format)
+	}
+	if len(r.Networks) != 2 { // the wifi-device block is skipped
+		t.Fatalf("networks = %d, want 2", len(r.Networks))
+	}
+	ap := find(t, r.Networks, "RouterAP")
+	if ap.PSK != "routerpass99" || ap.KeyMgmt != "WPA-PSK" {
+		t.Errorf("RouterAP = %+v", ap)
+	}
+	guest := find(t, r.Networks, "GuestNet")
+	if guest.KeyMgmt != "OPEN" || guest.HasCredential() {
+		t.Errorf("GuestNet = %+v, want open/no-cred", guest)
+	}
+	if r.CredentialCount != 1 {
+		t.Errorf("credential count = %d, want 1", r.CredentialCount)
+	}
+}
+
 func TestDecode_Errors(t *testing.T) {
 	for name, in := range map[string]string{
 		"empty":     "",
@@ -197,6 +283,9 @@ func FuzzDecode(f *testing.F) {
 	f.Add(wpaSupplicant)
 	f.Add(nmConnection)
 	f.Add(winXMLPlain)
+	f.Add(androidStoreXML)
+	f.Add(openwrtWireless)
+	f.Add("config wifi-iface 'x'")
 	f.Add("network={")
 	f.Add("")
 	f.Fuzz(func(_ *testing.T, in string) {

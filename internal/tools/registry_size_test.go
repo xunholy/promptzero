@@ -2815,6 +2815,11 @@ func TestRegistrySize(t *testing.T) {
 	// NetworkManager .nmconnection, and Windows WLAN-profile XML; the host-side
 	// complement to the RF WiFi tooling; DPAPI-protected keys flagged encrypted
 	// not invented; native scanners + stdlib encoding/xml). internal/wificonfig.
+	// v0.678.0 extended wifi_config_decode with two more stored-WiFi formats —
+	// Android WifiConfigStore.xml (/data/misc/wifi/) and the OpenWrt
+	// /etc/config/wireless UCI file — the two highest-frequency remaining loot
+	// sources (rooted phones, router pivots). Registry unchanged, an enhancement
+	// not a new tool. internal/wificonfig.
 	const expected = 649
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
