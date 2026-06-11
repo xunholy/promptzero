@@ -28,11 +28,12 @@ var wifiConfigDecodeSpec = Spec{
 	Description: "Extract **stored WiFi network credentials** from a host config file — the host-side " +
 		"complement to the project's RF-side WiFi tooling. Once an operator has a foothold on a host, its " +
 		"saved WiFi configs hand over the **pre-shared keys directly** — no handshake capture or cracking " +
-		"required. Recognises the three standard formats: **wpa_supplicant.conf** (Linux / embedded / " +
-		"routers), **NetworkManager `.nmconnection`** keyfiles (Linux desktop), and the **Windows `netsh wlan " +
-		"export profile` XML**. For each network it reports the **SSID**, the security type (WPA-PSK / WPA-EAP " +
-		"/ WEP / OPEN), the recovered **PSK** (passphrase or 64-hex PMK), and for enterprise networks the EAP " +
-		"method + **identity** + password.\n\n" +
+		"required. Recognises the five standard formats: **wpa_supplicant.conf** (Linux / embedded / " +
+		"routers), **NetworkManager `.nmconnection`** keyfiles (Linux desktop), the **Windows `netsh wlan " +
+		"export profile` XML**, the **Android `WifiConfigStore.xml`** (`/data/misc/wifi/`), and the **OpenWrt " +
+		"`/etc/config/wireless`** UCI file. For each network it reports the **SSID**, the security type " +
+		"(WPA-PSK / WPA-EAP / WEP / OPEN), the recovered **PSK** (passphrase or 64-hex PMK), and for " +
+		"enterprise networks the EAP method + **identity** + password.\n\n" +
 		"The recovered key is the **explicit extraction goal**, so — unlike the credential-*container* " +
 		"decoders that only flag a secret's presence — the passphrase **is** surfaced (it is the loot). **No " +
 		"confidently-wrong output**: the format is detected by its unambiguous syntax; a Windows key stored " +
