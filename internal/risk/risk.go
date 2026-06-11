@@ -914,6 +914,11 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.679 — BlueZ pairing-key extractor: parses a Linux BlueZ device info
+		// file into its bonded-device keys (BR/EDR LinkKey, LE LTK / IRK / CSRK)
+		// + transport, offline. The BLE analogue of wifi_config_decode. Reads a
+		// string, transmits nothing, so it is Low.
+		"bluez_pairing_decode",
 		// v0.677 — stored-WiFi-credential extractor: parses wpa_supplicant.conf /
 		// NetworkManager .nmconnection / Windows WLAN-profile XML into SSID +
 		// security + recovered PSK / EAP identity, offline; DPAPI-protected keys
