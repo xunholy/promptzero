@@ -2830,7 +2830,13 @@ func TestRegistrySize(t *testing.T) {
 	// client key / inline user-pass plus peers/remotes + auth method; the host's
 	// VPN access is a direct network pivot; key surfaced verbatim, format
 	// detected by syntax, neither-format input rejected). internal/vpnconfig.
-	const expected = 651
+	// v0.681.0 added ansible_vault_decode (Ansible Vault crack-triage → parses
+	// the $ANSIBLE_VAULT header into version (1.1/1.2) / cipher (AES256) /
+	// vault-id + envelope size + hashcat mode 16900; the DevOps/IaC crack-triage
+	// sibling of zip_crack_triage; magic-gated, params only, no
+	// crack/decrypt/ansible2john hash; anchored to real ansible-vault output).
+	// internal/ansiblevault.
+	const expected = 652
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
