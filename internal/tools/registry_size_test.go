@@ -2810,7 +2810,12 @@ func TestRegistrySize(t *testing.T) {
 	// to kdbx_decode / zip_crack_triage / pdf_crack_triage, returning artifact
 	// type + hashcat mode + per-format detail; the crack-triage analogue of
 	// secret_identify; native orchestration, no new dep). internal/cracktriage.
-	const expected = 648
+	// v0.677.0 added wifi_config_decode (stored-WiFi-credential extractor →
+	// SSID + security + recovered PSK / EAP identity from wpa_supplicant.conf,
+	// NetworkManager .nmconnection, and Windows WLAN-profile XML; the host-side
+	// complement to the RF WiFi tooling; DPAPI-protected keys flagged encrypted
+	// not invented; native scanners + stdlib encoding/xml). internal/wificonfig.
+	const expected = 649
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
