@@ -914,6 +914,12 @@ var toolLevels = func() map[string]Level {
 		// TXT record's kind (SPF/DKIM/DMARC) and dispatches to the matching
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
+		// v0.677 — stored-WiFi-credential extractor: parses wpa_supplicant.conf /
+		// NetworkManager .nmconnection / Windows WLAN-profile XML into SSID +
+		// security + recovered PSK / EAP identity, offline; DPAPI-protected keys
+		// flagged encrypted, not invented. Reads a string, transmits nothing —
+		// Low.
+		"wifi_config_decode",
 		// v0.676 — unified crack-triage front-end: detects an encrypted artifact
 		// by file magic (KeePass .kdbx / ZIP / PDF) and routes to the matching
 		// in-tree decoder, returning the artifact type + hashcat mode + detail,
