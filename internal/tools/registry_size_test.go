@@ -2910,7 +2910,12 @@ func TestRegistrySize(t *testing.T) {
 	// the logical object: NSDictionary/NSArray/NSData/NSDate/NSString/$null; the
 	// resolution layer on top of bplist_decode; cycle/budget-guarded, unmapped
 	// class surfaced, anchored to bpylist2 archives). internal/nskeyed.
-	const expected = 665
+	// v0.699.0 added elf_decode (ELF Linux/IoT malware triage → stdlib debug/elf
+	// parse + analysis: class/endianness/type/CPU arch (MIPS/ARM/… for IoT),
+	// entry, interp/static, stripped, NEEDED libs + RPATH, imported symbols with
+	// suspicious libc/syscall wrappers flagged, per-section Shannon entropy for
+	// packing; never executes; anchored to real gcc-built ELFs). internal/elftriage.
+	const expected = 666
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

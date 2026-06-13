@@ -1362,6 +1362,11 @@ var toolLevels = func() map[string]Level {
 		// dangerous attachments, body URLs). Offline parse of the raw .eml text;
 		// transmits nothing, never opens an attachment, so Low.
 		"eml_decode",
+		// v0.699 — ELF Linux/IoT malware triage: stdlib debug/elf parse + analysis
+		// (CPU arch, imports with dangerous libc/syscall wrappers flagged, section
+		// entropy for packing, stripped/static). Offline parse of a base64 blob;
+		// transmits nothing, never executes the binary, so Low.
+		"elf_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
