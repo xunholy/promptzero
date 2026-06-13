@@ -2889,7 +2889,12 @@ func TestRegistrySize(t *testing.T) {
 	// (name/relpath/workdir/arguments/icon), LinkInfo target, env-block target,
 	// and a LOLBin/staging-technique flag on the command line; never executes;
 	// anchored to pylnk3/LnkParse3 vectors). internal/lnk.
-	const expected = 661
+	// v0.695.0 added pdf_malware_scan (malicious-PDF triage, the in-tree pdfid →
+	// counts active-content keywords (/JavaScript, /OpenAction, /AA, /Launch,
+	// /EmbeddedFile, /XFA, /SubmitForm, …) with PDF #XX name hex-escape
+	// de-obfuscation, flags auto-run/payload signatures + name obfuscation, never
+	// renders or executes; complements pdf_crack_triage). internal/pdfscan.
+	const expected = 662
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

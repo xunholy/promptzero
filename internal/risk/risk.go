@@ -1341,6 +1341,12 @@ var toolLevels = func() map[string]Level {
 		// runs (arguments / target / icon) and flags LOLBins. Offline parse of a
 		// base64 blob; transmits nothing, never executes the shortcut, so Low.
 		"lnk_decode",
+		// v0.695 — malicious-PDF triage (the in-tree pdfid): counts active-content
+		// keywords (/JavaScript, /OpenAction, /Launch, /EmbeddedFile, …) with PDF
+		// #XX name hex-escape de-obfuscation and flags auto-run/payload signatures.
+		// Offline byte scan of a base64 blob; transmits nothing, never renders or
+		// executes, so Low.
+		"pdf_malware_scan",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
