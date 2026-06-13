@@ -1324,6 +1324,12 @@ var toolLevels = func() map[string]Level {
 		// parse of a pasted hex blob; reads bytes, transmits nothing,
 		// so it is Low.
 		"bson_decode",
+		// v0.692 — Python-pickle opcode disassembler + malicious-pickle triage:
+		// walks the documented opcode stream (never unpickling) and flags
+		// code-exec opcodes (GLOBAL/STACK_GLOBAL/REDUCE/…) + dangerous imports.
+		// Offline parse of a pasted base64 blob; reads bytes, transmits nothing,
+		// never executes the stream, so it is Low.
+		"pickle_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
