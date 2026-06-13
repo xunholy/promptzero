@@ -1329,6 +1329,11 @@ var toolLevels = func() map[string]Level {
 		// for iOS/macOS forensics; the bplist sibling of cbor/msgpack/bson. Offline
 		// parse of a pasted base64 blob; reads bytes, transmits nothing, so Low.
 		"bplist_decode",
+		// v0.698 — NSKeyedArchiver resolver: walks the $archiver/$objects/$top UID
+		// graph (composing bplist_decode) and reconstructs the logical iOS/macOS
+		// object (NSDictionary/NSArray/NSData/NSDate/…). Offline parse of a base64
+		// blob; reads bytes, transmits nothing, so Low.
+		"nskeyedarchiver_decode",
 		// v0.692 — Python-pickle opcode disassembler + malicious-pickle triage:
 		// walks the documented opcode stream (never unpickling) and flags
 		// code-exec opcodes (GLOBAL/STACK_GLOBAL/REDUCE/…) + dangerous imports.

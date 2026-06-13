@@ -2905,7 +2905,12 @@ func TestRegistrySize(t *testing.T) {
 	// the bplist sibling of cbor/msgpack/bson for the iOS/macOS forensics domain;
 	// bounds-checked + depth/budget-capped, anchored to stdlib plistlib).
 	// internal/bplist.
-	const expected = 664
+	// v0.698.0 added nskeyedarchiver_decode (NSKeyedArchiver resolver → walks the
+	// $archiver/$objects/$top UID graph (composing bplist_decode) and reconstructs
+	// the logical object: NSDictionary/NSArray/NSData/NSDate/NSString/$null; the
+	// resolution layer on top of bplist_decode; cycle/budget-guarded, unmapped
+	// class surfaced, anchored to bpylist2 archives). internal/nskeyed.
+	const expected = 665
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
