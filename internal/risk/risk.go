@@ -926,6 +926,12 @@ var toolLevels = func() map[string]Level {
 		// reversible) plus surfaces plaintext secrets (S3 keys, OAuth tokens).
 		// Reads a string, transmits nothing, so it is Low.
 		"rclone_config_decode",
+		// v0.684 — Java KeyStore forensic triage: bounds-checked parse of a .jks
+		// container into version / entries (alias, type, created) / embedded X.509
+		// cert identities + hashcat -m 15500 (keystore2john), offline. Never cracks
+		// or decrypts any key/password. Reads a base64 string, transmits nothing,
+		// so it is Low.
+		"jks_decode",
 		// v0.680 — VPN-config credential extractor: parses WireGuard .conf /
 		// OpenVPN .ovpn into the interface PrivateKey / embedded client key /
 		// inline user-pass + peers/remotes, offline — the host's VPN access is a

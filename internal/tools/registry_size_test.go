@@ -2843,7 +2843,13 @@ func TestRegistrySize(t *testing.T) {
 	// non-printable/undecodable values never claimed as passwords; key+algorithm
 	// from rclone fs/config/obscure, anchored to rclone's reveal vectors).
 	// internal/rcloneconfig.
-	const expected = 653
+	// v0.684.0 added jks_decode (Java KeyStore forensic triage → bounds-checked
+	// parse of the Sun JKS binary container: version, entries (alias/type/created),
+	// embedded X.509 cert identities via crypto/x509, and hashcat -m 15500 /
+	// keystore2john; magic+version gated, every read bounds-checked, cert parse
+	// failures recorded not asserted; anchored to a real keytool keystore).
+	// internal/jks.
+	const expected = 654
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
