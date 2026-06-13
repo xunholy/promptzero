@@ -1347,6 +1347,11 @@ var toolLevels = func() map[string]Level {
 		// Offline byte scan of a base64 blob; transmits nothing, never renders or
 		// executes, so Low.
 		"pdf_malware_scan",
+		// v0.696 — phishing-email triage: stdlib net/mail + MIME parse with a
+		// phishing-analysis layer (From/Reply-To mismatch, SPF/DKIM/DMARC,
+		// dangerous attachments, body URLs). Offline parse of the raw .eml text;
+		// transmits nothing, never opens an attachment, so Low.
+		"eml_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
