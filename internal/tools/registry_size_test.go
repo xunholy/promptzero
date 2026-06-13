@@ -2867,7 +2867,13 @@ func TestRegistrySize(t *testing.T) {
 	// pure Go from decoded-handshake fields, removing the hcxpcapngtool shell-out
 	// for the field-in-hand case; malformed field rejected; anchored byte-for-byte
 	// on hashcat's published 22000 EAPOL example). internal/hashcat.
-	const expected = 657
+	// v0.690.0 added wifi_pmkid_pcap (native PMKID-from-pcap extractor → walks a
+	// classic-libpcap 802.11/radiotap capture, pulls the RSN PMKID KDE from each
+	// EAPOL message-1, pairs it with the ESSID from a beacon, and builds the
+	// WPA*01 hashcat-22000 line; composes the in-tree pcap reader + DS-correct
+	// 802.11 parser + EAPOL dissector + hashcat builder; zero/encrypted/no-ESSID
+	// cases handled, pcapng deferred to hcxpcapngtool). internal/pmkidcap.
+	const expected = 658
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
