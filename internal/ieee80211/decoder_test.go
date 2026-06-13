@@ -415,3 +415,81 @@ func TestResolveAddresses_DSBits(t *testing.T) {
 		})
 	}
 }
+
+// TestDecode_OrderHTCBeacon — a beacon with the Order (+HTC) bit set carries 4
+// HT-Control bytes before the body. The decoder must skip them (header length
+// 28, not 24) or it mis-reads the timestamp / interval / capabilities and
+// invents phantom IEs.
+func TestDecode_OrderHTCBeacon(t *testing.T) {
+	b := []byte{0x80, 0x80, 0x00, 0x00} // mgmt(0) beacon(8) + Order bit (0x8000)
+	b = append(b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)
+	b = append(b, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55)
+	b = append(b, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55)
+	b = append(b, 0x00, 0x10)             // Sequence Control
+	b = append(b, 0xAA, 0xBB, 0xCC, 0xDD) // HT Control (present due to Order)
+	b = append(b, 0, 0, 0, 0, 0, 0, 0, 0) // timestamp
+	b = append(b, 0x64, 0x00)             // beacon interval = 100
+	b = append(b, 0x01, 0x00)             // capabilities (ESS)
+	b = append(b, 0x00, 0x04, 'w', 'i', 'f', 'i')
+
+	f, err := DecodeBytes(b)
+	if err != nil {
+		t.Fatalf("DecodeBytes: %v", err)
+	}
+	if f.HeaderLength != 28 {
+		t.Errorf("HeaderLength = %d, want 28 (24 + 4 HT Control)", f.HeaderLength)
+	}
+	if f.BeaconInterval == nil || *f.BeaconInterval != 100 {
+		t.Errorf("BeaconInterval = %v, want 100 (HT Control must be skipped)", f.BeaconInterval)
+	}
+	if len(f.InformationElements) != 1 || f.InformationElements[0].ID != 0 {
+		t.Errorf("IEs = %+v, want exactly one SSID IE (no phantom IEs)", f.InformationElements)
+	}
+}
+
+func TestMACHeaderLength(t *testing.T) {
+	mk := func(typ, subtype int, toDS, fromDS, order bool) FrameControl {
+		return FrameControl{Type: typ, Subtype: subtype, ToDS: toDS, FromDS: fromDS, Order: order}
+	}
+	cases := []struct {
+		name string
+		fc   FrameControl
+		want int
+	}{
+		{"mgmt plain", mk(0, 8, false, false, false), 24},
+		{"mgmt +HTC", mk(0, 8, false, false, true), 28},
+		{"data plain", mk(2, 0, false, true, false), 24},
+		{"data QoS", mk(2, 8, false, true, false), 26},
+		{"data WDS (4-addr)", mk(2, 0, true, true, false), 30},
+		{"data QoS+WDS", mk(2, 8, true, true, false), 32},
+		{"data QoS+HTC", mk(2, 8, false, true, true), 30},
+		{"non-QoS data ignores Order", mk(2, 0, false, true, true), 24},
+		{"data QoS+WDS+HTC", mk(2, 8, true, true, true), 36},
+	}
+	for _, c := range cases {
+		if got := macHeaderLength(c.fc, 1500); got != c.want {
+			t.Errorf("%s: macHeaderLength = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// TestDecode_DataFramePayload — a data frame surfaces the body after the
+// correctly-sized header as MACBodyHex, with HeaderLength accounting for QoS.
+func TestDecode_DataFramePayload(t *testing.T) {
+	// QoS data (subtype 8), FromDS, header = 26 bytes, then a 4-byte payload.
+	b := makeDataFrame(false, true, false) // 24-byte plain-data header
+	// Promote to QoS data: set subtype 8 (FC byte0 high nibble) and add QoS Control.
+	b[0] = 0x88                                                  // type=2 data, subtype=8 (QoS data)
+	b = append(b[:24], append([]byte{0x00, 0x00}, b[24:]...)...) // insert QoS Control at offset 24
+	b = append(b, 0xDE, 0xAD, 0xBE, 0xEF)                        // payload
+	f, err := DecodeBytes(b)
+	if err != nil {
+		t.Fatalf("DecodeBytes: %v", err)
+	}
+	if f.HeaderLength != 26 {
+		t.Errorf("HeaderLength = %d, want 26 (24 + 2 QoS Control)", f.HeaderLength)
+	}
+	if f.MACBodyHex != "DEADBEEF" {
+		t.Errorf("MACBodyHex = %q, want DEADBEEF", f.MACBodyHex)
+	}
+}
