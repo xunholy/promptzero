@@ -2873,7 +2873,13 @@ func TestRegistrySize(t *testing.T) {
 	// WPA*01 hashcat-22000 line; composes the in-tree pcap reader + DS-correct
 	// 802.11 parser + EAPOL dissector + hashcat builder; zero/encrypted/no-ESSID
 	// cases handled, pcapng deferred to hcxpcapngtool). internal/pmkidcap.
-	const expected = 658
+	// (v0.691.0 added pcapng support to wifi_pmkid_pcap — registry unchanged.)
+	// v0.692.0 added pickle_decode (Python-pickle opcode disassembler + malicious-
+	// pickle triage → walks the documented opcode stream, never unpickling, and
+	// flags code-exec opcodes (GLOBAL/STACK_GLOBAL/REDUCE/…) + dangerous imports
+	// (os/subprocess/builtins.eval); the AI-supply-chain RCE-triage tool, anchored
+	// opcode-for-opcode to CPython pickletools). internal/pickle.
+	const expected = 659
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
