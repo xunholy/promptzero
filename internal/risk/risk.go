@@ -932,6 +932,12 @@ var toolLevels = func() map[string]Level {
 		// or decrypts any key/password. Reads a base64 string, transmits nothing,
 		// so it is Low.
 		"jks_decode",
+		// v0.685 — PKCS#12 / PFX forensic triage: bounded encoding/asn1 walk of a
+		// .p12 into version / MAC params (pfx2john crack target) / per-safe
+		// plaintext-vs-encrypted / plaintext-bag X.509 identities + an
+		// unshrouded-key finding, offline. Never cracks or decrypts any
+		// key/password. Reads a base64 string, transmits nothing, so it is Low.
+		"pkcs12_decode",
 		// v0.680 — VPN-config credential extractor: parses WireGuard .conf /
 		// OpenVPN .ovpn into the interface PrivateKey / embedded client key /
 		// inline user-pass + peers/remotes, offline — the host's VPN access is a
