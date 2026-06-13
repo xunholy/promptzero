@@ -288,6 +288,12 @@ var toolLevels = func() map[string]Level {
 		// operator already holds. Pure host-side string assembly — no
 		// capture, no radio — anchored on hashcat's published example.
 		"wifi_pmkid_hc22000",
+		// v0.687 (native type-02 counterpart of wifi_pmkid_hc22000): builds a
+		// hashcat mode-22000 EAPOL 4-way-handshake line
+		// (WPA*02*mic*ap*sta*essid*anonce*eapol*mp) in pure Go from decoded-
+		// handshake fields. Pure host-side string assembly — no capture, no
+		// radio — anchored on hashcat's published EAPOL example.
+		"wifi_eapol_hc22000",
 		// v0.391 (NATIVE-fit WiFi recon gap): WPS / Wi-Fi Simple Config
 		// data-element dissector — walks the WSC attribute TLVs in a WPS
 		// IE (version, setup state, AP-setup-locked, device password ID,

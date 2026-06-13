@@ -73,3 +73,73 @@ func TestPMKID_Errors(t *testing.T) {
 		}
 	}
 }
+
+// TestEAPOL_CanonicalVector anchors the type-02 builder against hashcat's own
+// published mode-22000 EAPOL example (ESSID hex decodes to "TP-LINK_HASHCAT_TEST").
+func TestEAPOL_CanonicalVector(t *testing.T) {
+	const eapol = "0103007502010a0000000000000000000148ce2ccba9c1fda130ff2fbbfb4fd3b063d1a93920b0f7df54a5cbf787b16171000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001630140100000fac040100000fac040100000fac028000"
+	got, err := EAPOL(
+		"024022795224bffca545276c3762686f",
+		"6466b38ec3fc",
+		"225edc49b7aa",
+		[]byte("TP-LINK_HASHCAT_TEST"),
+		"10e3be3b005a629e89de088d6a2fdc489db83ad4764f2d186b9cde15446e972e",
+		eapol,
+		"a2",
+	)
+	if err != nil {
+		t.Fatalf("EAPOL: %v", err)
+	}
+	want := "WPA*02*024022795224bffca545276c3762686f*6466b38ec3fc*225edc49b7aa*" +
+		"54502d4c494e4b5f484153484341545f54455354*" +
+		"10e3be3b005a629e89de088d6a2fdc489db83ad4764f2d186b9cde15446e972e*" + eapol + "*a2"
+	if got != want {
+		t.Errorf("EAPOL line =\n %s\nwant\n %s", got, want)
+	}
+}
+
+// TestEAPOL_NormalisesInput confirms separators / case / 0x on hex fields are tolerated.
+func TestEAPOL_NormalisesInput(t *testing.T) {
+	const eapol = "0103007502010a00"
+	a, err := EAPOL("024022795224BFFCA545276C3762686F", "64:66:b3:8e:c3:fc", "0x225edc49b7aa",
+		[]byte("net"), "10E3BE3B005A629E89DE088D6A2FDC489DB83AD4764F2D186B9CDE15446E972E", "0x"+eapol, "A2")
+	if err != nil {
+		t.Fatalf("EAPOL: %v", err)
+	}
+	b, err := EAPOL("024022795224bffca545276c3762686f", "6466b38ec3fc", "225edc49b7aa",
+		[]byte("net"), "10e3be3b005a629e89de088d6a2fdc489db83ad4764f2d186b9cde15446e972e", eapol, "a2")
+	if err != nil {
+		t.Fatalf("EAPOL: %v", err)
+	}
+	if a != b {
+		t.Errorf("input normalisation diverged:\n %s\n %s", a, b)
+	}
+}
+
+func TestEAPOL_Errors(t *testing.T) {
+	const (
+		mic    = "024022795224bffca545276c3762686f"
+		ap     = "6466b38ec3fc"
+		sta    = "225edc49b7aa"
+		anonce = "10e3be3b005a629e89de088d6a2fdc489db83ad4764f2d186b9cde15446e972e"
+		eapol  = "0103007502010a00"
+		mp     = "a2"
+	)
+	cases := []struct {
+		name                            string
+		mic, ap, sta, anonce, eapol, mp string
+		essid                           []byte
+	}{
+		{"short mic", "024022", ap, sta, anonce, eapol, mp, []byte("n")},
+		{"short anonce", mic, ap, sta, "10e3be", eapol, mp, []byte("n")},
+		{"bad mp len", mic, ap, sta, anonce, eapol, "a2a2", []byte("n")},
+		{"empty eapol", mic, ap, sta, anonce, "", mp, []byte("n")},
+		{"empty essid", mic, ap, sta, anonce, eapol, mp, nil},
+		{"oversize essid", mic, ap, sta, anonce, eapol, mp, make([]byte, 33)},
+	}
+	for _, c := range cases {
+		if _, err := EAPOL(c.mic, c.ap, c.sta, c.essid, c.anonce, c.eapol, c.mp); err == nil {
+			t.Errorf("%s: expected error, got nil", c.name)
+		}
+	}
+}

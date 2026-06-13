@@ -2861,7 +2861,13 @@ func TestRegistrySize(t *testing.T) {
 	// classified by documented crypt id, unknown never guessed, hashcat mode only
 	// when native (yescrypt is John-only), locked-but-hashed flagged crackable;
 	// anchored to real openssl crypt hashes). internal/shadow.
-	const expected = 656
+	// v0.687.0 added wifi_eapol_hc22000 (native hashcat -m 22000 type-02 EAPOL
+	// 4-way-handshake line builder → the client-handshake counterpart of
+	// wifi_pmkid_hc22000; assembles WPA*02*mic*ap*sta*essid*anonce*eapol*mp in
+	// pure Go from decoded-handshake fields, removing the hcxpcapngtool shell-out
+	// for the field-in-hand case; malformed field rejected; anchored byte-for-byte
+	// on hashcat's published 22000 EAPOL example). internal/hashcat.
+	const expected = 657
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

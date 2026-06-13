@@ -22,15 +22,19 @@
 // # Covered
 //
 //   - PMKID lines (message type 01): WPA*01*PMKID*AP_MAC*STA_MAC*ESSID***.
+//   - EAPOL 4-way-handshake lines (message type 02):
+//     WPA*02*MIC*AP_MAC*STA_MAC*ESSID*ANONCE*EAPOL*MESSAGEPAIR. Built from the
+//     fields an operator already holds once a handshake is decoded (MIC, AP
+//     nonce, the EAPOL frame bytes, the message-pair byte). Anchored on
+//     hashcat's published mode-22000 EAPOL example (the ESSID decodes to ASCII
+//     "TP-LINK_HASHCAT_TEST").
 //
 // # Deliberately deferred
 //
-//   - EAPOL 4-way-handshake lines (type 02) require extracting the MIC,
-//     nonces, the EAPOL frame bytes, and computing the message-pair byte
-//     from a capture — that capture-parsing step is what hcxpcapngtool does
-//     and is a separate, larger native-pcapng effort; without a reference
-//     vector for those fields it is not added here (a wrong line is worse
-//     than none).
+//   - pcapng PARSING — extracting those type-02 fields from a raw capture
+//     (pairing M1/M2/M3/M4, computing the message-pair flags) is the larger
+//     native-pcapng effort hcxpcapngtool still does. This package assembles the
+//     line once the fields are in hand; it does not parse the capture.
 package hashcat
 
 import (
@@ -73,6 +77,77 @@ func PMKID(pmkid, apMAC, staMAC string, essid []byte) (string, error) {
 		hex.EncodeToString(ap),
 		hex.EncodeToString(sta),
 		hex.EncodeToString(essid)), nil
+}
+
+// EAPOL builds a hashcat mode-22000 EAPOL 4-way-handshake (type 02) line from
+// the fields of a decoded handshake. The output is the single line
+//
+//	WPA*02*<mic>*<ap_mac>*<sta_mac>*<essid_hex>*<anonce>*<eapol>*<message_pair>
+//
+// All hex is lower-cased. The caller adds a trailing newline when writing a
+// .hc22000 file.
+//
+// mic must be 16 bytes; apMAC and staMAC 6 bytes each; anonce 32 bytes;
+// messagePair 1 byte (separators and a 0x prefix are tolerated on every hex
+// field); essid 1..32 bytes; eapol 1..256 bytes (hashcat's EAPOL field cap). A
+// confidently-malformed field is rejected rather than emitted, so the line never
+// silently fails to crack.
+func EAPOL(mic, apMAC, staMAC string, essid []byte, anonce, eapol, messagePair string) (string, error) {
+	m, err := parseFixed(mic, 16, "mic")
+	if err != nil {
+		return "", err
+	}
+	ap, err := parseFixed(apMAC, 6, "ap_mac")
+	if err != nil {
+		return "", err
+	}
+	sta, err := parseFixed(staMAC, 6, "sta_mac")
+	if err != nil {
+		return "", err
+	}
+	an, err := parseFixed(anonce, 32, "anonce")
+	if err != nil {
+		return "", err
+	}
+	mp, err := parseFixed(messagePair, 1, "message_pair")
+	if err != nil {
+		return "", err
+	}
+	ea, err := parseVar(eapol, 1, 256, "eapol")
+	if err != nil {
+		return "", err
+	}
+	if len(essid) == 0 || len(essid) > 32 {
+		return "", fmt.Errorf("hashcat: essid must be 1..32 bytes; got %d", len(essid))
+	}
+	return fmt.Sprintf("WPA*02*%s*%s*%s*%s*%s*%s*%s",
+		hex.EncodeToString(m),
+		hex.EncodeToString(ap),
+		hex.EncodeToString(sta),
+		hex.EncodeToString(essid),
+		hex.EncodeToString(an),
+		hex.EncodeToString(ea),
+		hex.EncodeToString(mp)), nil
+}
+
+// parseVar strips separators / 0x, hex-decodes, and requires the byte length to
+// fall within [min, max], returning a clear error otherwise.
+func parseVar(s string, minLen, maxLen int, field string) ([]byte, error) {
+	clean := strings.NewReplacer(" ", "", ":", "", "-", "", "_", "").Replace(strings.TrimSpace(s))
+	if strings.HasPrefix(strings.ToLower(clean), "0x") {
+		clean = clean[2:]
+	}
+	if clean == "" {
+		return nil, fmt.Errorf("hashcat: %s is required (%d..%d bytes hex)", field, minLen, maxLen)
+	}
+	b, err := hex.DecodeString(clean)
+	if err != nil {
+		return nil, fmt.Errorf("hashcat: %s is not valid hex: %w", field, err)
+	}
+	if len(b) < minLen || len(b) > maxLen {
+		return nil, fmt.Errorf("hashcat: %s must be %d..%d bytes; got %d", field, minLen, maxLen, len(b))
+	}
+	return b, nil
 }
 
 // parseFixed strips separators / 0x, hex-decodes, and requires exactly n
