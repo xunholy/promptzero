@@ -55,7 +55,10 @@ var wifi80211DecodeSpec = Spec{
 		"Parameter Set (3, channel), Country (7), RSN (48 — WPA2/WPA3 with version + group / " +
 		"pairwise / AKM cipher-suite OUI/type decode), Vendor Specific (221 — OUI + type + " +
 		"well-known-vendor name lookup including Microsoft WPA/WPS subtypes).\n\n" +
-		"Non-management frames (Type=1 Control, Type=2 Data) decode the MAC header only. " +
+		"The **MAC header length** is computed from the QoS / Order(+HTC) / WDS bits (not a fixed " +
+		"24), so it is correct for QoS Data and HT frames; non-management frames (Type=1 Control, " +
+		"Type=2 Data) decode the header only and surface the body after it as `mac_body_hex` (the " +
+		"LLC/SNAP + EAPOL/IP payload). " +
 		"Pure offline parser — no WiFi adapter required. Pairs with wifi_eapol_decode for the " +
 		"key-exchange frames. Accepts ':' / '-' / '_' / whitespace separators.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (WiFi decode space). Wrap-vs-native: native — " +

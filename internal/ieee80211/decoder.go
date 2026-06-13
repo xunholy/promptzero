@@ -152,6 +152,10 @@ type Frame struct {
 	// Address 2 respectively, regardless of the DS bits.
 	RA string `json:"receiver_address"`
 	TA string `json:"transmitter_address"`
+	// HeaderLength is the MAC-header length in bytes, computed from the DS bits
+	// (Address 4 / WDS, +6), QoS Data subtype (QoS Control, +2), and the Order
+	// bit (HT Control, +4) — not a fixed 24. The body / payload begins here.
+	HeaderLength int `json:"header_length"`
 	// SequenceNumber (12 bits) and FragmentNumber (4 bits)
 	// from the Sequence Control field.
 	SequenceNumber int `json:"sequence_number"`
@@ -170,6 +174,11 @@ type Frame struct {
 	// PayloadHex is the raw input for callers that want to
 	// cross-reference with the original.
 	PayloadHex string `json:"payload_hex"`
+	// MACBodyHex is the frame body after the MAC header (HeaderLength onward),
+	// surfaced for non-management frames whose body is not otherwise dissected —
+	// e.g. the LLC/SNAP + EAPOL/IP payload of a data frame. Empty when the body
+	// is empty or already decoded into fields.
+	MACBodyHex string `json:"mac_body_hex,omitempty"`
 }
 
 // Decode parses a hex-encoded 802.11 management frame.
@@ -207,13 +216,22 @@ func DecodeBytes(b []byte) (Frame, error) {
 		FragmentNumber: int(binary.LittleEndian.Uint16(b[22:24]) & 0x0F),
 		PayloadHex:     hexString(b),
 	}
+	hdrLen := macHeaderLength(fc, len(b))
+	out.HeaderLength = hdrLen
 	if FrameType(fc.Type) != FrameTypeManagement {
 		// Non-management frames decode the header only; we don't
 		// walk the body because most data frames are encrypted
-		// and control frames have specialised shapes.
+		// and control frames have specialised shapes. The raw body
+		// (after the correctly-sized header) is surfaced for callers.
+		if hdrLen < len(b) {
+			out.MACBodyHex = hexString(b[hdrLen:])
+		}
 		return out, nil
 	}
-	body := b[macHeaderLen:]
+	if hdrLen > len(b) {
+		return out, fmt.Errorf("ieee80211: computed header length %d exceeds frame %d bytes", hdrLen, len(b))
+	}
+	body := b[hdrLen:]
 	switch fc.Subtype {
 	case 8: // Beacon
 		err := decodeBeaconOrProbeResp(&out, body)
@@ -284,6 +302,36 @@ func decodeBeaconOrProbeResp(out *Frame, body []byte) error {
 	out.Capabilities = &caps
 	out.InformationElements = parseIEs(body[12:])
 	return nil
+}
+
+// macHeaderLength computes the 802.11 MAC-header length in bytes from the Frame
+// Control flags, rather than assuming a fixed 24. Three variable parts can
+// follow the base 24-byte header before the body:
+//
+//   - Address 4 (+6): data frames with ToDS=1 and FromDS=1 (WDS / mesh).
+//   - QoS Control (+2): QoS Data subtype frames (data type, subtype bit 3 set).
+//   - HT Control (+4): when the Order (+HTC) bit is set — on management frames,
+//     and on QoS Data frames (never on non-QoS data).
+//
+// The result is capped at the frame length so a short/malformed frame cannot
+// produce an out-of-range body slice.
+func macHeaderLength(fc FrameControl, n int) int {
+	h := 24
+	ftype := FrameType(fc.Type)
+	isQoSData := ftype == FrameTypeData && fc.Subtype&0x08 != 0
+	if ftype == FrameTypeData && fc.ToDS && fc.FromDS {
+		h += 6 // Address 4
+	}
+	if isQoSData {
+		h += 2 // QoS Control
+	}
+	if fc.Order && (ftype == FrameTypeManagement || isQoSData) {
+		h += 4 // HT Control
+	}
+	if h > n {
+		h = n
+	}
+	return h
 }
 
 // resolveAddresses maps the 802.11 address fields to DA / SA / BSSID / RA / TA
