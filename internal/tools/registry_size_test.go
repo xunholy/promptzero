@@ -2849,7 +2849,13 @@ func TestRegistrySize(t *testing.T) {
 	// keystore2john; magic+version gated, every read bounds-checked, cert parse
 	// failures recorded not asserted; anchored to a real keytool keystore).
 	// internal/jks.
-	const expected = 654
+	// v0.685.0 added pkcs12_decode (PKCS#12 / PFX forensic triage → bounded
+	// encoding/asn1 walk of RFC 7292: version, MAC params (pfx2john crack target),
+	// each safe plaintext vs password-encrypted (PBE alg), plaintext-bag X.509
+	// identities via crypto/x509, and an unshrouded-private-key finding; asn1
+	// errors not panics, encrypted bags never guessed; the modern sibling of
+	// jks_decode, anchored to real openssl .p12 files). internal/pkcs12.
+	const expected = 655
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
