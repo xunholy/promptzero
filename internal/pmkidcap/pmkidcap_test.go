@@ -178,8 +178,90 @@ func TestExtract_RejectsNon80211(t *testing.T) {
 
 func FuzzExtract(f *testing.F) {
 	f.Add(buildPcap(f, pcap.LinkTypeIEEE802_11, beaconFrame(testBSSID, "n"), m1DataFrame(testBSSID, testSTA, realPMKID())))
+	f.Add(buildPcapng(105, beaconFrame(testBSSID, "n"), m1DataFrame(testBSSID, testSTA, realPMKID())))
 	f.Add([]byte{})
 	f.Fuzz(func(_ *testing.T, in []byte) {
 		_, _ = Extract(in)
 	})
+}
+
+// --- pcapng container tests ----------------------------------------------
+
+func u32le(v uint32) []byte { b := make([]byte, 4); binary.LittleEndian.PutUint32(b, v); return b }
+
+// ngBlock wraps a pcapng block-specific body in the outer Block Type + Total
+// Length framing (body padded to a 4-byte boundary).
+func ngBlock(blockType uint32, body []byte) []byte {
+	if pad := (4 - len(body)%4) % 4; pad != 0 {
+		body = append(body, make([]byte, pad)...)
+	}
+	total := uint32(12 + len(body))
+	out := append(u32le(blockType), u32le(total)...)
+	out = append(out, body...)
+	return append(out, u32le(total)...)
+}
+
+// buildPcapng assembles a minimal pcapng (SHB + IDB + one EPB per frame).
+func buildPcapng(linkType uint16, frames ...[]byte) []byte {
+	// SHB: byte-order magic + version 1.0 + section length -1.
+	shbBody := append(u32le(0x1A2B3C4D), []byte{0x01, 0x00, 0x00, 0x00}...)
+	shbBody = append(shbBody, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)
+	out := ngBlock(0x0A0D0D0A, shbBody)
+	// IDB: link type + reserved + snaplen.
+	idbBody := []byte{byte(linkType), byte(linkType >> 8), 0x00, 0x00}
+	idbBody = append(idbBody, u32le(0)...)
+	out = append(out, ngBlock(0x00000001, idbBody)...)
+	for _, f := range frames {
+		epb := u32le(0)                             // interface id 0
+		epb = append(epb, u32le(0)...)              // ts high
+		epb = append(epb, u32le(0)...)              // ts low
+		epb = append(epb, u32le(uint32(len(f)))...) // captured length
+		epb = append(epb, u32le(uint32(len(f)))...) // original length
+		epb = append(epb, f...)
+		out = append(out, ngBlock(0x00000006, epb)...)
+	}
+	return out
+}
+
+func TestExtract_PcapngRaw80211(t *testing.T) {
+	cap := buildPcapng(105,
+		beaconFrame(testBSSID, "NgNet"),
+		m1DataFrame(testBSSID, testSTA, realPMKID()),
+	)
+	r, err := Extract(cap)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if r.Format != "pcapng" {
+		t.Errorf("Format = %q, want pcapng", r.Format)
+	}
+	if len(r.PMKIDs) != 1 || r.PMKIDs[0].ESSID != "NgNet" {
+		t.Fatalf("pmkids = %+v", r.PMKIDs)
+	}
+	want := "WPA*01*a0a1a2a3a4a5a6a7a8a9aaabacadaeaf*aabbccddeeff*112233445566*4e674e6574***"
+	if r.PMKIDs[0].HC22000Line != want {
+		t.Errorf("line = %s\nwant %s", r.PMKIDs[0].HC22000Line, want)
+	}
+}
+
+func TestExtract_PcapngRadiotap(t *testing.T) {
+	rt := func(f []byte) []byte { return append(pcap.RadiotapHeader{}.Bytes(), f...) }
+	cap := buildPcapng(127,
+		rt(beaconFrame(testBSSID, "NgRt")),
+		rt(m1DataFrame(testBSSID, testSTA, realPMKID())),
+	)
+	r, err := Extract(cap)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if len(r.PMKIDs) != 1 || r.PMKIDs[0].ESSID != "NgRt" || r.PMKIDs[0].HC22000Line == "" {
+		t.Errorf("radiotap pcapng extraction failed: %+v", r.PMKIDs)
+	}
+}
+
+func TestExtract_PcapngNon80211Rejected(t *testing.T) {
+	cap := buildPcapng(1 /* Ethernet */, []byte{0x00, 0x01, 0x02, 0x03})
+	if _, err := Extract(cap); err == nil {
+		t.Error("expected an error for a pcapng with no 802.11 interface")
+	}
 }
