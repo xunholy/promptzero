@@ -294,10 +294,10 @@ var toolLevels = func() map[string]Level {
 		// handshake fields. Pure host-side string assembly — no capture, no
 		// radio — anchored on hashcat's published EAPOL example.
 		"wifi_eapol_hc22000",
-		// v0.690 (native PMKID-from-pcap extractor): walks a classic-libpcap
-		// 802.11 capture, pulls the RSN PMKID KDE from each EAPOL message-1, pairs
-		// it with the beacon ESSID, and builds the WPA*01 hashcat-22000 line.
-		// Reads a capture, transmits nothing, no device — Low.
+		// v0.690 (native PMKID-from-pcap extractor; v0.691 added pcapng): walks a
+		// libpcap or pcapng 802.11 capture, pulls the RSN PMKID KDE from each EAPOL
+		// message-1, pairs it with the beacon ESSID, and builds the WPA*01
+		// hashcat-22000 line. Reads a capture, transmits nothing, no device — Low.
 		"wifi_pmkid_pcap",
 		// v0.391 (NATIVE-fit WiFi recon gap): WPS / Wi-Fi Simple Config
 		// data-element dissector — walks the WSC attribute TLVs in a WPS

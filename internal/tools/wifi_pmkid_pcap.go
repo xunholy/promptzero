@@ -4,7 +4,7 @@
 // Wrap-vs-native: native — composes the in-tree pcap reader, the DS-bit-correct
 // 802.11 frame parser, the EAPOL-Key dissector, and the mode-22000 line builder;
 // no external binary. Removes the hcxpcapngtool shell-out for the dominant
-// clientless-PMKID case on a classic libpcap capture. Offline; no network or
+// clientless-PMKID case on a libpcap or pcapng capture. Offline; no network or
 // device.
 
 package tools
@@ -34,9 +34,10 @@ var wifiPMKIDPcapSpec = Spec{
 		"`WPA*01*…` line for each — completing the native pipeline `wifi_pmkid_hc22000` started.\n\n" +
 		"It composes the in-tree decoders: the pcap reader, the **DS-bit-correct** 802.11 frame parser (so the " +
 		"AP BSSID and station MAC are right), the EAPOL-Key dissector, and the mode-22000 line builder " +
-		"(anchored on hashcat's published example). **No confidently-wrong output**: only classic libpcap " +
-		"802.11 / radiotap captures are accepted (**pcapng is left to hcxpcapngtool** — use `marauder_handoff` " +
-		"for those); a PMKID is taken only from an EAPOL message-1 with **unencrypted** key data and a 16-byte " +
+		"(anchored on hashcat's published example). Both **classic libpcap** and **pcapng** (the format Marauder " +
+		"/ hcxdumptool actually write) are accepted. **No confidently-wrong output**: only 802.11 / radiotap " +
+		"link types are decoded (105 / 127); a PMKID is taken only from an EAPOL message-1 with **unencrypted** " +
+		"key data and a 16-byte " +
 		"RSN PMKID KDE; the **all-zero** PMKID hostapd sends when none is available is **dropped**; and the " +
 		"crackable line is built only once the ESSID has been seen (a PMKID with no ESSID is reported, with a " +
 		"note, but no line is fabricated). No network, no device, transmits nothing — Low risk.\n\n" +
@@ -47,7 +48,7 @@ var wifiPMKIDPcapSpec = Spec{
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"pcap_base64":{"type":"string","description":"The 802.11 packet capture (classic libpcap, LINKTYPE 105 or 127), base64-encoded."}
+			"pcap_base64":{"type":"string","description":"The 802.11 packet capture — classic libpcap or pcapng, LINKTYPE 105 / 127 — base64-encoded."}
 		},
 		"required":["pcap_base64"]
 	}`),
