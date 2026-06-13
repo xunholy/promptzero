@@ -2855,7 +2855,13 @@ func TestRegistrySize(t *testing.T) {
 	// identities via crypto/x509, and an unshrouded-private-key finding; asn1
 	// errors not panics, encrypted bags never guessed; the modern sibling of
 	// jks_decode, anchored to real openssl .p12 files). internal/pkcs12.
-	const expected = 655
+	// v0.686.0 added shadow_decode (/etc/shadow credential triage → per-user crypt
+	// scheme (sha512/256/md5crypt, bcrypt, yescrypt, descrypt, …) + hashcat mode /
+	// John format + account status (active/locked/no-password/disabled) + aging;
+	// classified by documented crypt id, unknown never guessed, hashcat mode only
+	// when native (yescrypt is John-only), locked-but-hashed flagged crackable;
+	// anchored to real openssl crypt hashes). internal/shadow.
+	const expected = 656
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

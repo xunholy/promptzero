@@ -938,6 +938,11 @@ var toolLevels = func() map[string]Level {
 		// unshrouded-key finding, offline. Never cracks or decrypts any
 		// key/password. Reads a base64 string, transmits nothing, so it is Low.
 		"pkcs12_decode",
+		// v0.686 — /etc/shadow credential triage: per-user crypt scheme + hashcat
+		// mode / John format + account status (active/locked/no-password/disabled)
+		// + aging, offline. Classifies by documented crypt id; never cracks a hash.
+		// Reads a string, transmits nothing, so it is Low.
+		"shadow_decode",
 		// v0.680 — VPN-config credential extractor: parses WireGuard .conf /
 		// OpenVPN .ovpn into the interface PrivateKey / embedded client key /
 		// inline user-pass + peers/remotes, offline — the host's VPN access is a
