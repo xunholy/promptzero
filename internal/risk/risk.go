@@ -1324,6 +1324,11 @@ var toolLevels = func() map[string]Level {
 		// parse of a pasted hex blob; reads bytes, transmits nothing,
 		// so it is Low.
 		"bson_decode",
+		// v0.697 — Apple binary property list (bplist00) decoder: recursive decode
+		// of every type (dict/array/set, string, int, real, bool, date, data, UID)
+		// for iOS/macOS forensics; the bplist sibling of cbor/msgpack/bson. Offline
+		// parse of a pasted base64 blob; reads bytes, transmits nothing, so Low.
+		"bplist_decode",
 		// v0.692 — Python-pickle opcode disassembler + malicious-pickle triage:
 		// walks the documented opcode stream (never unpickling) and flags
 		// code-exec opcodes (GLOBAL/STACK_GLOBAL/REDUCE/…) + dangerous imports.
