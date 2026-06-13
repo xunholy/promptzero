@@ -140,12 +140,18 @@ type Frame struct {
 	// Duration is the 2-byte duration field (microseconds or
 	// AID, context-dependent).
 	Duration int `json:"duration"`
-	// DA is the Destination Address (Address 1).
-	DA string `json:"destination_address"`
-	// SA is the Source Address (Address 2).
-	SA string `json:"source_address"`
-	// BSSID is the BSSID (Address 3).
+	// DA / SA / BSSID are resolved from the four address fields per the
+	// ToDS / FromDS bits (IEEE 802.11 §9.3.2.1). They are NOT fixed to
+	// Address 1/2/3 — on a from-DS data frame the BSSID is Address 2 and the
+	// SA is Address 3, and on a to-DS frame the BSSID is Address 1. BSSID is
+	// empty for a 4-address (WDS / mesh) frame, which has no single BSSID.
+	DA    string `json:"destination_address"`
+	SA    string `json:"source_address"`
 	BSSID string `json:"bssid"`
+	// RA / TA are the Receiver / Transmitter addresses — always Address 1 and
+	// Address 2 respectively, regardless of the DS bits.
+	RA string `json:"receiver_address"`
+	TA string `json:"transmitter_address"`
 	// SequenceNumber (12 bits) and FragmentNumber (4 bits)
 	// from the Sequence Control field.
 	SequenceNumber int `json:"sequence_number"`
@@ -188,12 +194,15 @@ func DecodeBytes(b []byte) (Frame, error) {
 			len(b), macHeaderLen)
 	}
 	fc := decodeFrameControl(binary.LittleEndian.Uint16(b[0:2]))
+	da, sa, bssid, ra, ta := resolveAddresses(b, fc.ToDS, fc.FromDS)
 	out := Frame{
 		FrameControl:   fc,
 		Duration:       int(binary.LittleEndian.Uint16(b[2:4])),
-		DA:             formatMAC(b[4:10]),
-		SA:             formatMAC(b[10:16]),
-		BSSID:          formatMAC(b[16:22]),
+		DA:             da,
+		SA:             sa,
+		BSSID:          bssid,
+		RA:             ra,
+		TA:             ta,
 		SequenceNumber: int(binary.LittleEndian.Uint16(b[22:24]) >> 4),
 		FragmentNumber: int(binary.LittleEndian.Uint16(b[22:24]) & 0x0F),
 		PayloadHex:     hexString(b),
@@ -275,6 +284,41 @@ func decodeBeaconOrProbeResp(out *Frame, body []byte) error {
 	out.Capabilities = &caps
 	out.InformationElements = parseIEs(body[12:])
 	return nil
+}
+
+// resolveAddresses maps the 802.11 address fields to DA / SA / BSSID / RA / TA
+// per the ToDS / FromDS bits (IEEE 802.11 §9.3.2.1 address table). Address 1 is
+// always the receiver (RA) and Address 2 always the transmitter (TA); DA / SA /
+// BSSID move between Address 1..4 with the DS bits — decoding a data frame as if
+// ToDS=FromDS=0 is the cause of the common "SA and BSSID look swapped" error.
+//
+//	ToDS FromDS  DA     SA     BSSID
+//	 0    0      Addr1  Addr2  Addr3   (IBSS / management)
+//	 0    1      Addr1  Addr3  Addr2   (from the DS — AP → STA)
+//	 1    0      Addr3  Addr2  Addr1   (to the DS — STA → AP)
+//	 1    1      Addr3  Addr4  —       (WDS / mesh — 4 addresses, no single BSSID)
+//
+// The caller has already guaranteed len(b) >= 24; Address 4 (WDS) lives at
+// b[24:30] after the Sequence Control field and is read only when present.
+func resolveAddresses(b []byte, toDS, fromDS bool) (da, sa, bssid, ra, ta string) {
+	a1 := formatMAC(b[4:10])
+	a2 := formatMAC(b[10:16])
+	a3 := formatMAC(b[16:22])
+	ra, ta = a1, a2
+	switch {
+	case !toDS && !fromDS:
+		da, sa, bssid = a1, a2, a3
+	case !toDS && fromDS:
+		da, sa, bssid = a1, a3, a2
+	case toDS && !fromDS:
+		da, sa, bssid = a3, a2, a1
+	default: // toDS && fromDS — 4-address frame
+		da, bssid = a3, ""
+		if len(b) >= 30 {
+			sa = formatMAC(b[24:30]) // Address 4
+		}
+	}
+	return da, sa, bssid, ra, ta
 }
 
 // decodeFrameControl unpacks the 16-bit Frame Control field.
