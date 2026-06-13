@@ -356,3 +356,62 @@ func TestReasonCodes(t *testing.T) {
 		}
 	}
 }
+
+// makeDataFrame builds a minimal 802.11 data frame header with the given DS bits
+// and four distinct addresses (Addr4 appended only for the WDS case), so the
+// address-resolution table can be checked end-to-end.
+func makeDataFrame(toDS, fromDS, wds bool) []byte {
+	var flags byte
+	if toDS {
+		flags |= 0x01
+	}
+	if fromDS {
+		flags |= 0x02
+	}
+	b := []byte{0x08, flags, 0x00, 0x00} // FC (type=2 data, subtype=0) + Duration
+	a1 := []byte{0x11, 0x11, 0x11, 0x11, 0x11, 0x11}
+	a2 := []byte{0x22, 0x22, 0x22, 0x22, 0x22, 0x22}
+	a3 := []byte{0x33, 0x33, 0x33, 0x33, 0x33, 0x33}
+	b = append(b, a1...)
+	b = append(b, a2...)
+	b = append(b, a3...)
+	b = append(b, 0x00, 0x10) // Sequence Control
+	if wds {
+		b = append(b, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44) // Address 4
+	}
+	return b
+}
+
+func TestResolveAddresses_DSBits(t *testing.T) {
+	const (
+		a1 = "11:11:11:11:11:11"
+		a2 = "22:22:22:22:22:22"
+		a3 = "33:33:33:33:33:33"
+		a4 = "44:44:44:44:44:44"
+	)
+	cases := []struct {
+		name              string
+		toDS, fromDS, wds bool
+		da, sa, bssid     string
+	}{
+		{"ibss/mgmt 00", false, false, false, a1, a2, a3},
+		{"from-DS 01", false, true, false, a1, a3, a2},
+		{"to-DS 10", true, false, false, a3, a2, a1},
+		{"wds 11", true, true, true, a3, a4, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := DecodeBytes(makeDataFrame(c.toDS, c.fromDS, c.wds))
+			if err != nil {
+				t.Fatalf("DecodeBytes: %v", err)
+			}
+			if f.DA != c.da || f.SA != c.sa || f.BSSID != c.bssid {
+				t.Errorf("DA/SA/BSSID = %q/%q/%q, want %q/%q/%q", f.DA, f.SA, f.BSSID, c.da, c.sa, c.bssid)
+			}
+			// RA / TA are always Address 1 / Address 2.
+			if f.RA != a1 || f.TA != a2 {
+				t.Errorf("RA/TA = %q/%q, want %q/%q", f.RA, f.TA, a1, a2)
+			}
+		})
+	}
+}

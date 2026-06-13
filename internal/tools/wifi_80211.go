@@ -39,8 +39,10 @@ var wifi80211DecodeSpec = Spec{
 		"- **Frame Control** (16 bits): Protocol Version + Type (Management / Control / Data / " +
 		"Extension) + Subtype with documented name lookup + ToDS / FromDS / More Fragments / " +
 		"Retry / Power Mgt / More Data / Protected Frame / Order flags.\n" +
-		"- **MAC header**: 2-byte duration, 6-byte Destination / Source / BSSID addresses, " +
-		"12-bit sequence number + 4-bit fragment number.\n" +
+		"- **MAC header**: 2-byte duration, the 6-byte addresses resolved to **DA / SA / BSSID** " +
+		"per the ToDS / FromDS bits (IEEE 802.11 §9.3.2.1 — so a from-DS data frame's BSSID is " +
+		"Address 2, not Address 3) plus **RA / TA** (always Address 1 / 2), 12-bit sequence number " +
+		"+ 4-bit fragment number.\n" +
 		"- **Per-subtype body decode**:\n" +
 		"  - Beacon / Probe Response: timestamp + beacon interval + capability info (ESS / " +
 		"IBSS / Privacy / Short Preamble / QoS / etc.) + Information Elements\n" +
