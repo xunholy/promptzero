@@ -2879,7 +2879,12 @@ func TestRegistrySize(t *testing.T) {
 	// flags code-exec opcodes (GLOBAL/STACK_GLOBAL/REDUCE/…) + dangerous imports
 	// (os/subprocess/builtins.eval); the AI-supply-chain RCE-triage tool, anchored
 	// opcode-for-opcode to CPython pickletools). internal/pickle.
-	const expected = 659
+	// v0.693.0 added pytorch_model_scan (ML-model malicious-pickle scanner → the
+	// picklescan/modelscan analogue: detects a PyTorch .pt/.ckpt ZIP (or raw
+	// pickle), disassembles every embedded .pkl / PROTO-prefixed member via
+	// internal/pickle (never torch.load), and aggregates the danger verdict).
+	// internal/modelscan.
+	const expected = 660
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
