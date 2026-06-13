@@ -915,10 +915,17 @@ var toolLevels = func() map[string]Level {
 		// in-tree decoder, offline. Reads a record, transmits nothing — Low.
 		"email_auth_decode",
 		// v0.681 — Ansible Vault crack-triage: parses the $ANSIBLE_VAULT header
-		// into version / cipher / vault-id + hashcat mode 16900, offline; header
-		// (envelope) parameters only, no crack/decrypt/ansible2john hash. Reads a
-		// string, transmits nothing, so it is Low.
+		// into version / cipher / vault-id + hashcat mode 16900, offline; v0.682
+		// also rebuilds the ansible2john hash ($ansible$0*0*…) offline from the
+		// envelope. Never cracks/decrypts (the password is never recovered). Reads
+		// a string, transmits nothing, so it is Low.
 		"ansible_vault_decode",
+		// v0.683 — rclone-config credential extractor: parses rclone.conf and
+		// reveals its obscured passwords offline (rclone obscures with AES-256-CTR
+		// under a hardcoded key — obfuscation, not encryption — so they are
+		// reversible) plus surfaces plaintext secrets (S3 keys, OAuth tokens).
+		// Reads a string, transmits nothing, so it is Low.
+		"rclone_config_decode",
 		// v0.680 — VPN-config credential extractor: parses WireGuard .conf /
 		// OpenVPN .ovpn into the interface PrivateKey / embedded client key /
 		// inline user-pass + peers/remotes, offline — the host's VPN access is a
