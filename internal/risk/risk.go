@@ -1330,6 +1330,12 @@ var toolLevels = func() map[string]Level {
 		// Offline parse of a pasted base64 blob; reads bytes, transmits nothing,
 		// never executes the stream, so it is Low.
 		"pickle_decode",
+		// v0.693 — ML-model malicious-pickle scanner (picklescan/modelscan
+		// analogue): detects a PyTorch .pt/.ckpt ZIP (or raw pickle) and
+		// disassembles every embedded pickle via internal/pickle, never
+		// torch.load. Offline parse of a base64 blob; transmits nothing, never
+		// executes, so it is Low.
+		"pytorch_model_scan",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
