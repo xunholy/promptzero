@@ -2894,7 +2894,12 @@ func TestRegistrySize(t *testing.T) {
 	// /EmbeddedFile, /XFA, /SubmitForm, …) with PDF #XX name hex-escape
 	// de-obfuscation, flags auto-run/payload signatures + name obfuscation, never
 	// renders or executes; complements pdf_crack_triage). internal/pdfscan.
-	const expected = 662
+	// v0.696.0 added eml_decode (phishing-email triage → stdlib net/mail + MIME
+	// parse layered with analysis: From/Reply-To/Return-Path domains + mismatches,
+	// SPF/DKIM/DMARC from Authentication-Results, received hops, attachments with
+	// executable/double-extension/archive danger flags, body URLs (IP/punycode
+	// flagged); the delivery envelope for the lnk/pdf/pickle payloads). internal/eml.
+	const expected = 663
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
