@@ -2884,7 +2884,12 @@ func TestRegistrySize(t *testing.T) {
 	// pickle), disassembles every embedded .pkl / PROTO-prefixed member via
 	// internal/pickle (never torch.load), and aggregates the danger verdict).
 	// internal/modelscan.
-	const expected = 660
+	// v0.694.0 added lnk_decode (Windows Shell Link .lnk decoder + malware triage
+	// → bounds-checked [MS-SHLLINK] walk: link flags, show command, StringData
+	// (name/relpath/workdir/arguments/icon), LinkInfo target, env-block target,
+	// and a LOLBin/staging-technique flag on the command line; never executes;
+	// anchored to pylnk3/LnkParse3 vectors). internal/lnk.
+	const expected = 661
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

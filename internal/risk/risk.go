@@ -1336,6 +1336,11 @@ var toolLevels = func() map[string]Level {
 		// torch.load. Offline parse of a base64 blob; transmits nothing, never
 		// executes, so it is Low.
 		"pytorch_model_scan",
+		// v0.694 — Windows Shell Link (.lnk) decoder + malware triage: a
+		// bounds-checked [MS-SHLLINK] walk that surfaces the command the shortcut
+		// runs (arguments / target / icon) and flags LOLBins. Offline parse of a
+		// base64 blob; transmits nothing, never executes the shortcut, so Low.
+		"lnk_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
