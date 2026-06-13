@@ -39,10 +39,9 @@ var wifiPMKIDHC22000Spec = Spec{
 		"Fields: **pmkid** (16 bytes / 32 hex), **ap_mac** + **sta_mac** (6 bytes each; separators " +
 		"and 0x tolerated), and the network name as either **essid** (UTF-8 string) or **essid_hex** " +
 		"(raw hex). A malformed field is rejected rather than emitted, so the line never silently " +
-		"fails to crack. Pure host-side — no capture, no radio. Deferred: EAPOL 4-way-handshake " +
-		"(type 02) lines, whose MIC/nonce/message-pair extraction is the pcap-parsing job " +
-		"hcxpcapngtool still does. Wrap-vs-native: native — a documented text format, no external " +
-		"binary, anchored on hashcat's published 22000 example.",
+		"fails to crack. Pure host-side — no capture, no radio. For the **client-handshake** case use " +
+		"`wifi_eapol_hc22000` (the type-02 EAPOL line builder). Wrap-vs-native: native — a documented " +
+		"text format, no external binary, anchored on hashcat's published 22000 example.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
