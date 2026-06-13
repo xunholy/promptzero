@@ -2899,7 +2899,13 @@ func TestRegistrySize(t *testing.T) {
 	// SPF/DKIM/DMARC from Authentication-Results, received hops, attachments with
 	// executable/double-extension/archive danger flags, body URLs (IP/punycode
 	// flagged); the delivery envelope for the lnk/pdf/pickle payloads). internal/eml.
-	const expected = 663
+	// v0.697.0 added bplist_decode (Apple binary property list bplist00 →
+	// recursive decode of every type (dict/array/set, ASCII+UTF-16 string, int
+	// 1/2/4/8/16-byte, real, bool, date→RFC3339, data→hex, NSKeyedArchiver UID);
+	// the bplist sibling of cbor/msgpack/bson for the iOS/macOS forensics domain;
+	// bounds-checked + depth/budget-capped, anchored to stdlib plistlib).
+	// internal/bplist.
+	const expected = 664
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
