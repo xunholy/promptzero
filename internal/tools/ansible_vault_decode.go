@@ -30,14 +30,18 @@ var ansibleVaultDecodeSpec = Spec{
 		"**common loot artifact** on a CI/ops host or in a pulled repo — and its password protects **every** " +
 		"value inside. This parses the header **offline** and reports the **version** (1.1 / 1.2), the " +
 		"**cipher** (AES256), the optional **vault-id** (the key label, useful for targeting), the envelope " +
-		"size, and the matching **hashcat mode (16900)**.\n\n" +
+		"size, and — for a well-formed AES256 envelope — the **ready-to-crack `ansible2john` hash** " +
+		"(`$ansible$0*0*…`, **hashcat mode 16900**), rebuilt offline so it feeds straight into the hashcat " +
+		"tooling.\n\n" +
 		"**No confidently-wrong output**: the file is recognised only by its `$ANSIBLE_VAULT;` magic header; " +
-		"it reports the **envelope parameters only** — it does **not** crack, decrypt, or emit the " +
-		"`ansible2john` hash (that needs the hex-decoded salt / HMAC / ciphertext); and a non-vault input is " +
-		"rejected. The KDF is **PBKDF2-HMAC-SHA256 (10000 iterations)** — a slow per-guess target. No network, " +
+		"the `ansible2john` rebuild is structurally guarded (32-byte salt + 32-byte HMAC, valid-hex " +
+		"ciphertext) and emits **no** hash on any deviation rather than a wrong one; it does **not** crack or " +
+		"decrypt (the password is never recovered); and a non-vault input is rejected. The KDF is " +
+		"**PBKDF2-HMAC-SHA256 (10000 iterations)** — a slow per-guess target. No network, " +
 		"no device, transmits nothing — Low risk. Pairs with `hash_identify` and the hashcat tooling.\n\n" +
 		"Source: docs/catalog/gap-analysis.md (crack triage / infra forensics). Wrap-vs-native: native — a " +
-		"header parse over the documented format, no new go.mod dep; anchored to real ansible-vault output.",
+		"header parse + offline ansible2john rebuild over the documented format, no new go.mod dep; anchored " +
+		"to real ansible-vault output.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
