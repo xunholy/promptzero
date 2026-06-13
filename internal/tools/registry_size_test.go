@@ -2833,10 +2833,17 @@ func TestRegistrySize(t *testing.T) {
 	// v0.681.0 added ansible_vault_decode (Ansible Vault crack-triage → parses
 	// the $ANSIBLE_VAULT header into version (1.1/1.2) / cipher (AES256) /
 	// vault-id + envelope size + hashcat mode 16900; the DevOps/IaC crack-triage
-	// sibling of zip_crack_triage; magic-gated, params only, no
-	// crack/decrypt/ansible2john hash; anchored to real ansible-vault output).
-	// internal/ansiblevault.
-	const expected = 652
+	// sibling of zip_crack_triage; magic-gated, params only; anchored to real
+	// ansible-vault output). v0.682.0 extended it to rebuild the ansible2john
+	// hash ($ansible$0*0*…) offline (registry unchanged). internal/ansiblevault.
+	// v0.683.0 added rclone_config_decode (rclone-config credential extractor →
+	// parses rclone.conf and REVEALS its obscured passwords offline — rclone
+	// "obscures" with AES-256-CTR under a hardcoded key, not encryption, so they
+	// are reversible; plaintext secrets (S3 keys, OAuth tokens) surfaced verbatim;
+	// non-printable/undecodable values never claimed as passwords; key+algorithm
+	// from rclone fs/config/obscure, anchored to rclone's reveal vectors).
+	// internal/rcloneconfig.
+	const expected = 653
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
