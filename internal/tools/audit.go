@@ -8,11 +8,18 @@ import (
 	"github.com/xunholy/promptzero/internal/risk"
 )
 
-// audit.go registers the audit_query, audit_export, and audit_stats tools.
-// All three are AgentOnly:true — they read from the session audit log which
-// is only wired in agent mode (MCP mode's Deps.Audit is nil). Each handler
-// short-circuits with a friendly message when Audit is nil so tests and MCP
-// callers get a clean response rather than a nil-deref panic.
+// audit.go registers the audit_query, audit_export, audit_stats, and
+// explain_last_result tools.
+//
+// audit_query / audit_export / audit_stats are read-only views of the audit
+// log. Both surfaces wire that log — agent mode and MCP mode (the MCP server
+// calls SetAuditLog, so Deps.Audit is non-nil there too) — so these three are
+// NOT AgentOnly and are reachable from MCP clients as well. Each handler
+// short-circuits with a friendly message when Audit is nil, so a surface that
+// has not wired a log gets a clean response rather than a nil-deref panic.
+//
+// explain_last_result stays AgentOnly: it is a persona-narration helper for the
+// live agent loop, not a generic audit query, and has no meaning over MCP.
 
 //nolint:gochecknoinits
 func init() {
@@ -20,11 +27,10 @@ func init() {
 		Name: "audit_query",
 		Description: "Query the audit log. Shows recent tool executions with timestamps, inputs, outputs, " +
 			"risk levels, and success/failure status.",
-		Schema:    json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Number of entries to return (default 20)"}}}`),
-		Required:  nil,
-		Risk:      risk.Low,
-		Group:     GroupMetaAudit,
-		AgentOnly: true,
+		Schema:   json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Number of entries to return (default 20)"}}}`),
+		Required: nil,
+		Risk:     risk.Low,
+		Group:    GroupMetaAudit,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if d.Audit == nil {
 				return "Audit logging not enabled", nil
@@ -64,10 +70,9 @@ func init() {
 		Schema: json.RawMessage(`{"type":"object","properties":{
 			"format":{"type":"string","description":"Export format: 'json' (default) or 'csv'. CSV is RFC 4180 compliant, suitable for spreadsheet import or SIEM ingestion.","enum":["json","csv"]}
 		}}`),
-		Required:  nil,
-		Risk:      risk.Low,
-		Group:     GroupMetaAudit,
-		AgentOnly: true,
+		Required: nil,
+		Risk:     risk.Low,
+		Group:    GroupMetaAudit,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if d.Audit == nil {
 				return "Audit logging not enabled", nil
@@ -83,11 +88,10 @@ func init() {
 		Name: "audit_stats",
 		Description: "Show statistics for the current session: total actions, success rate, " +
 			"unique tools used.",
-		Schema:    json.RawMessage(`{"type":"object","properties":{}}`),
-		Required:  nil,
-		Risk:      risk.Low,
-		Group:     GroupMetaAudit,
-		AgentOnly: true,
+		Schema:   json.RawMessage(`{"type":"object","properties":{}}`),
+		Required: nil,
+		Risk:     risk.Low,
+		Group:    GroupMetaAudit,
 		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
 			if d.Audit == nil {
 				return "Audit logging not enabled", nil

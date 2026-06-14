@@ -442,8 +442,10 @@ func optsFromSchema(schema []byte, required []string) []mcp.ToolOption {
 	var opts []mcp.ToolOption
 	for name, propRaw := range s.Properties {
 		var prop struct {
-			Type        string `json:"type"`
-			Description string `json:"description"`
+			Type        string          `json:"type"`
+			Description string          `json:"description"`
+			Enum        json.RawMessage `json:"enum"`
+			Items       json.RawMessage `json:"items"`
 		}
 		if err := json.Unmarshal(propRaw, &prop); err != nil {
 			continue
@@ -453,6 +455,13 @@ func optsFromSchema(schema []byte, required []string) []mcp.ToolOption {
 		if reqSet[name] {
 			propOpts = append(propOpts, mcp.Required())
 		}
+		// Carry an enum constraint through to the MCP client so it offers the
+		// allowed values instead of a free-form field. Only string enums are
+		// forwarded; a non-string enum is skipped (not dropped — the property
+		// is still registered).
+		if vals := stringEnum(prop.Enum); len(vals) > 0 {
+			propOpts = append(propOpts, mcp.Enum(vals...))
+		}
 		switch prop.Type {
 		case "string":
 			opts = append(opts, mcp.WithString(name, propOpts...))
@@ -461,10 +470,45 @@ func optsFromSchema(schema []byte, required []string) []mcp.ToolOption {
 		case "boolean":
 			opts = append(opts, mcp.WithBoolean(name, propOpts...))
 		case "array":
+			// Forward the element type so an array isn't presented as an
+			// untyped list (e.g. array-of-strings vs array-of-objects).
+			if items := arrayItemSchema(prop.Items); items != nil {
+				propOpts = append(propOpts, mcp.Items(items))
+			}
 			opts = append(opts, mcp.WithArray(name, propOpts...))
 		case "object":
 			opts = append(opts, mcp.WithObject(name, propOpts...))
 		}
 	}
 	return opts
+}
+
+// stringEnum decodes a JSON Schema "enum" as a string slice, returning nil if it
+// is absent or holds non-string values (so an integer enum does not error the
+// whole property out).
+func stringEnum(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var vals []string
+	if err := json.Unmarshal(raw, &vals); err != nil {
+		return nil
+	}
+	return vals
+}
+
+// arrayItemSchema extracts a minimal element schema ({"type": ...}) from an
+// array property's "items", so MCP clients see the element type. Returns nil
+// when items is absent or is not a simple typed schema.
+func arrayItemSchema(raw json.RawMessage) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var it struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &it); err != nil || it.Type == "" {
+		return nil
+	}
+	return map[string]any{"type": it.Type}
 }
