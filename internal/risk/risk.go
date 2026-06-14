@@ -1390,6 +1390,12 @@ var toolLevels = func() map[string]Level {
 		// weak-digest flag. Offline structural decode; never verifies the
 		// signature, decrypts the content, or transmits anything, so Low.
 		"pkcs7_decode",
+		// v0.706 — Group Policy Preferences cpassword decryptor: AES-256-CBC with
+		// the Microsoft-published MS-GPPREF key (the whole vulnerability is that
+		// the key is public), zero IV, UTF-16LE; extracts cpassword(s) from a raw
+		// value or GPP XML. Offline decrypt of recovered SYSVOL loot with a public
+		// key; transmits nothing, no device, so Low.
+		"gpp_decrypt",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
