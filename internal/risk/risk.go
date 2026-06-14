@@ -1402,6 +1402,11 @@ var toolLevels = func() map[string]Level {
 		// hex blob; NEVER calls readObject (which would be the exploit), transmits
 		// nothing, no device, so Low.
 		"java_deserialize_scan",
+		// v0.708 — PHP serialize() Object-Injection triage: recursive-descent parse
+		// of the text grammar into a value tree (object class names, flagged phpggc
+		// gadget classes). Offline structural parse of a text blob; NEVER calls
+		// unserialize (which would be the exploit), transmits nothing, no device, so Low.
+		"php_unserialize_scan",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
