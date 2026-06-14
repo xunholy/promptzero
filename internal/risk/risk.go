@@ -1379,6 +1379,11 @@ var toolLevels = func() map[string]Level {
 		// flagged, section entropy; fat binaries per-arch). Offline parse of a
 		// base64 blob; transmits nothing, never executes the binary, so Low.
 		"macho_decode",
+		// v0.704 — Apache/nginx htpasswd classifier: per-line username:hash split
+		// + hash-scheme identification by prefix (bcrypt/apr1/crypt-family/ssha/
+		// des-crypt/plaintext) with hashcat -m mode + strength tier. Offline text
+		// classification; transmits nothing, never cracks the hash, so Low.
+		"htpasswd_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
