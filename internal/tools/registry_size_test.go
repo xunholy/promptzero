@@ -2957,7 +2957,13 @@ func TestRegistrySize(t *testing.T) {
 	// AnnotationInvocationHandler/C3P0/Groovy/…); never deserializes; depth-capped
 	// vs serialization bombs; graceful truncation; anchored to real
 	// javac/ObjectOutputStream streams). internal/javaser.
-	const expected = 672
+	// v0.708.0 added php_unserialize_scan (PHP serialize() Object-Injection triage
+	// → recursive-descent parse of the text grammar (N/b/i/d/s/a/O/C/E/r,R) into a
+	// JSON value tree; collects object class names, de-mangles private/protected
+	// property keys, flags phpggc gadget classes (Monolog/Guzzle/Laravel/Symfony/
+	// …); never unserializes; depth-capped vs nested-object bombs; graceful
+	// truncation; anchored to hand-built + phpggc-style vectors). internal/phpserialize.
+	const expected = 673
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
