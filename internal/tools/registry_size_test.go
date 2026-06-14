@@ -2936,7 +2936,14 @@ func TestRegistrySize(t *testing.T) {
 	// base64/ssha/des-crypt/plaintext, with hashcat -m mode + strength tier +
 	// plaintext flag; classifies only, never cracks; anchored to real
 	// openssl/bcrypt/hashcat vectors). internal/htpasswd.
-	const expected = 669
+	// v0.705.0 added pkcs7_decode (PKCS#7 / CMS structural decoder → stdlib
+	// encoding/asn1 + crypto/x509: content type (SignedData/EnvelopedData/…),
+	// digest algs, encap type + detached flag, embedded X.509 chain
+	// (subject/issuer/serial/validity/keyalg/CA/SKI), signers (issuer+serial or
+	// SKI, digest/sig alg, signed-attrs, signing time), enveloped recipient
+	// count + content-encryption alg; weak-digest flag; never verifies/decrypts;
+	// PEM or base64-DER input; anchored to real openssl CMS). internal/pkcs7.
+	const expected = 670
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
