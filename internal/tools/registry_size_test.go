@@ -2922,7 +2922,15 @@ func TestRegistrySize(t *testing.T) {
 	// resolution/exec/download/keylog/anti-debug/crypto/service/proc-enum),
 	// per-section Shannon entropy + W^X + known-packer section names; never
 	// executes; anchored to a real mingw-built PE). internal/petriage.
-	const expected = 667
+	// v0.701.0 added macho_decode (Mach-O macOS/iOS malware triage → stdlib
+	// debug/macho parse + analysis: bits/CPU arch (x86-64/arm64)/type
+	// (EXECUTE/DYLIB/BUNDLE), PIE + stack-exec header flags, code-signing +
+	// segment encryption, imported dylibs + LC_RPATH (dylib-hijack), imported
+	// symbols with abused macOS APIs flagged (injection/anti-debug/exec/keylog/
+	// keychain/crypto), per-section Shannon entropy; universal/fat binaries
+	// triaged per-arch; panic-guarded (2M-input audit); never executes; anchored
+	// to real clang/gcc-built Mach-O, thin + fat). internal/machotriage.
+	const expected = 668
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
