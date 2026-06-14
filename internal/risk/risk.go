@@ -1373,6 +1373,12 @@ var toolLevels = func() map[string]Level {
 		// W^X + packer names). Offline parse of a base64 blob; transmits nothing,
 		// never executes the binary, so Low.
 		"pe_decode",
+		// v0.701 — Mach-O macOS/iOS malware triage: stdlib debug/macho parse +
+		// analysis (bits/CPU arch/type, PIE + stack-exec flags, code-signing +
+		// encryption, imported dylibs + LC_RPATH, imports with abused macOS APIs
+		// flagged, section entropy; fat binaries per-arch). Offline parse of a
+		// base64 blob; transmits nothing, never executes the binary, so Low.
+		"macho_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
