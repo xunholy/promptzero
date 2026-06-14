@@ -402,3 +402,70 @@ func TestDecode_PrintableTextDespiteNestedShape(t *testing.T) {
 	}
 	_ = strings.HasPrefix
 }
+
+// TestDecodeBytes_NestedBombBounded builds a deeply-nested "protobuf bomb"
+// (each LEN field's body is itself a single LEN field) far past maxDepth and
+// asserts DecodeBytes returns without crashing. Before the maxDepth guard this
+// recursed one frame per level and hit a fatal, uncatchable stack overflow at
+// ~1M frames; the guard stops nesting at maxDepth and surfaces the remaining
+// body as bytes/string (graceful degradation). The test surviving IS the
+// assertion — a stack overflow would kill the process. A within-limit message
+// still decodes nested.
+func TestDecodeBytes_NestedBombBounded(t *testing.T) {
+	// Build a depth-D single-LEN-field nest in O(D): inner sizes bottom-up,
+	// headers (0x0a + varint(innerSize)) emitted outermost-first.
+	build := func(depth int) []byte {
+		sizes := make([]int, depth+1)
+		for k := 1; k <= depth; k++ {
+			inner := sizes[k-1]
+			sizes[k] = 1 + uvarintWidth(uint64(inner)) + inner
+		}
+		out := make([]byte, 0, sizes[depth])
+		for k := depth; k >= 1; k-- {
+			out = append(out, 0x0a)
+			out = appendUvarint(out, uint64(sizes[k-1]))
+		}
+		return out
+	}
+	if _, err := DecodeBytes(build(2_000_000)); err != nil {
+		t.Logf("bomb returned error (acceptable): %v", err)
+	}
+	// Within the limit, nesting is still reconstructed.
+	m, err := DecodeBytes(build(10))
+	if err != nil {
+		t.Fatalf("within-limit nest: %v", err)
+	}
+	depth := 0
+	for f := firstNested(m); f != nil; f = firstNested(f) {
+		depth++
+	}
+	if depth < 5 {
+		t.Errorf("within-limit nest not reconstructed: depth=%d", depth)
+	}
+}
+
+func firstNested(m *Message) *Message {
+	for _, f := range m.Fields {
+		if f.NestedMessage != nil {
+			return f.NestedMessage
+		}
+	}
+	return nil
+}
+
+func uvarintWidth(v uint64) int {
+	n := 1
+	for v >= 0x80 {
+		v >>= 7
+		n++
+	}
+	return n
+}
+
+func appendUvarint(b []byte, v uint64) []byte {
+	for v >= 0x80 {
+		b = append(b, byte(v)|0x80)
+		v >>= 7
+	}
+	return append(b, byte(v))
+}

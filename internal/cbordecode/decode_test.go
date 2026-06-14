@@ -439,3 +439,39 @@ func TestTagNameTable(t *testing.T) {
 		}
 	}
 }
+
+// TestDecodeBytes_NestedBombBounded feeds a deeply-nested "CBOR bomb" (0x81 =
+// array-of-one repeated) far past maxDepth and asserts DecodeBytes returns an
+// error instead of overflowing the goroutine stack. Before the maxDepth guard
+// this recursed one frame per level and hit a fatal, uncatchable stack overflow
+// at ~1M frames. A within-limit nesting still decodes.
+func TestDecodeBytes_NestedBombBounded(t *testing.T) {
+	bomb := make([]byte, 2_000_000)
+	for i := range bomb {
+		bomb[i] = 0x81 // array of 1 element
+	}
+	bomb[len(bomb)-1] = 0x00 // innermost: integer 0
+	if _, err := DecodeBytes(bomb); err == nil {
+		t.Errorf("expected depth-limit error on CBOR bomb")
+	} else if !strings.Contains(err.Error(), "max depth") {
+		t.Errorf("expected max-depth error, got: %v", err)
+	}
+	// Within the limit, nesting is still reconstructed.
+	small := make([]byte, 10)
+	for i := range small {
+		small[i] = 0x81
+	}
+	small[len(small)-1] = 0x00
+	v, err := DecodeBytes(small)
+	if err != nil {
+		t.Fatalf("within-limit nest: %v", err)
+	}
+	depth := 0
+	for v != nil && len(v.Array) == 1 {
+		depth++
+		v = v.Array[0]
+	}
+	if depth < 5 {
+		t.Errorf("within-limit nest not reconstructed: depth=%d", depth)
+	}
+}
