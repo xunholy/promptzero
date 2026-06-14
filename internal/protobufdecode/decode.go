@@ -118,9 +118,18 @@ func Decode(hexBlob string) (*Message, error) {
 	return DecodeBytes(b)
 }
 
+// maxDepth bounds nested-message recursion. The nested-message heuristic
+// recurses one frame per nesting level, so a crafted deeply-nested message
+// (each LEN field's body is itself a single LEN field — a "protobuf bomb")
+// would blow the goroutine stack (fatal error: stack overflow, uncatchable)
+// before any byte budget fires. Real protobufs nest only a handful of levels;
+// 100 is a wide margin. Past the limit a LEN body is surfaced as bytes/string
+// instead of recursing further — graceful degradation, never a crash.
+const maxDepth = 100
+
 // DecodeBytes parses raw Protobuf bytes.
 func DecodeBytes(b []byte) (*Message, error) {
-	m, used, err := decodeMessage(b, 0)
+	m, used, err := decodeMessage(b, 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +141,14 @@ func DecodeBytes(b []byte) (*Message, error) {
 
 // decodeMessage walks fields starting at off until limit.
 // Returns the message + bytes consumed + error.
-func decodeMessage(b []byte, off int) (*Message, int, error) {
+func decodeMessage(b []byte, off, depth int) (*Message, int, error) {
+	if depth > maxDepth {
+		return nil, 0, fmt.Errorf("protobufdecode: nesting exceeds max depth %d", maxDepth)
+	}
 	m := &Message{}
 	start := off
 	for off < len(b) {
-		f, used, err := decodeField(b, off)
+		f, used, err := decodeField(b, off, depth)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -147,7 +159,7 @@ func decodeMessage(b []byte, off int) (*Message, int, error) {
 }
 
 // decodeField parses one field starting at off.
-func decodeField(b []byte, off int) (*Field, int, error) {
+func decodeField(b []byte, off, depth int) (*Field, int, error) {
 	start := off
 	tag, used, err := readVarint(b, off)
 	if err != nil {
@@ -203,7 +215,7 @@ func decodeField(b []byte, off int) (*Field, int, error) {
 		}
 		body := b[off : off+int(length)]
 		// Heuristic: try nested message first.
-		if nested, ok := tryDecodeNested(body); ok {
+		if nested, ok := tryDecodeNested(body, depth); ok {
 			f.NestedMessage = nested
 		} else if isPrintableUTF8(body) {
 			f.String = string(body)
@@ -235,11 +247,11 @@ func decodeField(b []byte, off int) (*Field, int, error) {
 // protobuf message. Returns (nested, true) iff the parse
 // consumed exactly len(body) AND every field tag is valid.
 // Empty body succeeds (zero-field nested message).
-func tryDecodeNested(body []byte) (*Message, bool) {
+func tryDecodeNested(body []byte, depth int) (*Message, bool) {
 	if len(body) == 0 {
 		return &Message{}, true
 	}
-	m, used, err := decodeMessage(body, 0)
+	m, used, err := decodeMessage(body, 0, depth+1)
 	if err != nil || used != len(body) {
 		return nil, false
 	}

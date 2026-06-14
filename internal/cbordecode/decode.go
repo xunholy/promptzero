@@ -136,7 +136,7 @@ func Decode(hexBlob string) (*Value, error) {
 // DecodeBytes parses a raw CBOR byte buffer into a single
 // data item. Use DecodeStream if multiple items are expected.
 func DecodeBytes(b []byte) (*Value, error) {
-	v, used, err := decodeItem(b, 0)
+	v, used, err := decodeItem(b, 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -146,13 +146,24 @@ func DecodeBytes(b []byte) (*Value, error) {
 	return v, nil
 }
 
+// maxDepth bounds container recursion. CBOR arrays / maps / tags nest, and
+// decodeItem recurses one frame per level, so a crafted deeply-nested item
+// (e.g. 0x81 repeated — an array of one array of one array …, a "CBOR bomb")
+// would blow the goroutine stack (fatal error: stack overflow, uncatchable)
+// before any byte budget fires. Real CBOR nests only a handful of levels; 256
+// is a wide margin.
+const maxDepth = 256
+
 // breakValue is the singleton "break" code (0xFF) sentinel
 // for indefinite-length container termination.
 var breakValue = &Value{MajorType: 7, MajorName: "Float / Simple", Simple: u8ptr(31), SimpleName: "break"}
 
 // decodeItem parses one CBOR data item starting at offset
 // off and returns (parsed Value, bytes consumed, error).
-func decodeItem(b []byte, off int) (*Value, int, error) {
+func decodeItem(b []byte, off, depth int) (*Value, int, error) {
+	if depth > maxDepth {
+		return nil, 0, fmt.Errorf("cbordecode: nesting exceeds max depth %d", maxDepth)
+	}
 	if off >= len(b) {
 		return nil, 0, fmt.Errorf("CBOR ran off end at offset %d", off)
 	}
@@ -168,7 +179,7 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 		off++ // consume initial byte
 		switch major {
 		case 2:
-			text, n, err := readIndefiniteByteString(b, off)
+			text, n, err := readIndefiniteByteString(b, off, depth)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -176,7 +187,7 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 			v.Bytes = text
 			return v, (off - start) + n, nil
 		case 3:
-			s, n, err := readIndefiniteTextString(b, off)
+			s, n, err := readIndefiniteTextString(b, off, depth)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -184,7 +195,7 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 			v.Text = s
 			return v, (off - start) + n, nil
 		case 4:
-			arr, n, err := readIndefiniteArray(b, off)
+			arr, n, err := readIndefiniteArray(b, off, depth)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -192,7 +203,7 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 			v.Array = arr
 			return v, (off - start) + n, nil
 		case 5:
-			m, n, err := readIndefiniteMap(b, off)
+			m, n, err := readIndefiniteMap(b, off, depth)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -250,7 +261,7 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 		// decodeItem errors at EOF.
 		v.Array = make([]*Value, 0, prealloc(arg, len(b)-off))
 		for i := uint64(0); i < arg; i++ {
-			child, used, err := decodeItem(b, off)
+			child, used, err := decodeItem(b, off, depth+1)
 			if err != nil {
 				return nil, 0, fmt.Errorf("array element %d: %w", i, err)
 			}
@@ -260,12 +271,12 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 	case 5:
 		v.Map = make([]*MapEntry, 0, prealloc(arg, len(b)-off))
 		for i := uint64(0); i < arg; i++ {
-			key, used1, err := decodeItem(b, off)
+			key, used1, err := decodeItem(b, off, depth+1)
 			if err != nil {
 				return nil, 0, fmt.Errorf("map entry %d key: %w", i, err)
 			}
 			off += used1
-			val, used2, err := decodeItem(b, off)
+			val, used2, err := decodeItem(b, off, depth+1)
 			if err != nil {
 				return nil, 0, fmt.Errorf("map entry %d value: %w", i, err)
 			}
@@ -275,7 +286,7 @@ func decodeItem(b []byte, off int) (*Value, int, error) {
 	case 6:
 		v.Tag = u64ptr(arg)
 		v.TagName = tagName(arg)
-		inner, used, err := decodeItem(b, off)
+		inner, used, err := decodeItem(b, off, depth+1)
 		if err != nil {
 			return nil, 0, fmt.Errorf("tagged value contents: %w", err)
 		}
@@ -360,7 +371,7 @@ func readArgument(b []byte, ibIdx, additional int) (uint64, int, error) {
 
 // readIndefiniteByteString concatenates byte-string chunks
 // until a 0xFF break code.
-func readIndefiniteByteString(b []byte, off int) (string, int, error) {
+func readIndefiniteByteString(b []byte, off, depth int) (string, int, error) {
 	startOff := off
 	var out []byte
 	for {
@@ -375,7 +386,7 @@ func readIndefiniteByteString(b []byte, off int) (string, int, error) {
 		if b[off]>>5 != 2 {
 			return "", 0, fmt.Errorf("indefinite byte string chunk must be major 2; got major %d", b[off]>>5)
 		}
-		chunk, used, err := decodeItem(b, off)
+		chunk, used, err := decodeItem(b, off, depth+1)
 		if err != nil {
 			return "", 0, err
 		}
@@ -391,7 +402,7 @@ func readIndefiniteByteString(b []byte, off int) (string, int, error) {
 
 // readIndefiniteTextString concatenates text-string chunks
 // until 0xFF break.
-func readIndefiniteTextString(b []byte, off int) (string, int, error) {
+func readIndefiniteTextString(b []byte, off, depth int) (string, int, error) {
 	startOff := off
 	var sb strings.Builder
 	for {
@@ -405,7 +416,7 @@ func readIndefiniteTextString(b []byte, off int) (string, int, error) {
 		if b[off]>>5 != 3 {
 			return "", 0, fmt.Errorf("indefinite text string chunk must be major 3; got major %d", b[off]>>5)
 		}
-		chunk, used, err := decodeItem(b, off)
+		chunk, used, err := decodeItem(b, off, depth+1)
 		if err != nil {
 			return "", 0, err
 		}
@@ -416,7 +427,7 @@ func readIndefiniteTextString(b []byte, off int) (string, int, error) {
 }
 
 // readIndefiniteArray reads children until break.
-func readIndefiniteArray(b []byte, off int) ([]*Value, int, error) {
+func readIndefiniteArray(b []byte, off, depth int) ([]*Value, int, error) {
 	startOff := off
 	var out []*Value
 	for {
@@ -427,7 +438,7 @@ func readIndefiniteArray(b []byte, off int) ([]*Value, int, error) {
 			off++
 			break
 		}
-		child, used, err := decodeItem(b, off)
+		child, used, err := decodeItem(b, off, depth+1)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -438,7 +449,7 @@ func readIndefiniteArray(b []byte, off int) ([]*Value, int, error) {
 }
 
 // readIndefiniteMap reads key/value pairs until break.
-func readIndefiniteMap(b []byte, off int) ([]*MapEntry, int, error) {
+func readIndefiniteMap(b []byte, off, depth int) ([]*MapEntry, int, error) {
 	startOff := off
 	var out []*MapEntry
 	for {
@@ -449,7 +460,7 @@ func readIndefiniteMap(b []byte, off int) ([]*MapEntry, int, error) {
 			off++
 			break
 		}
-		key, used1, err := decodeItem(b, off)
+		key, used1, err := decodeItem(b, off, depth+1)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -457,7 +468,7 @@ func readIndefiniteMap(b []byte, off int) ([]*MapEntry, int, error) {
 		if off >= len(b) || b[off] == 0xFF {
 			return nil, 0, fmt.Errorf("indefinite map has key without value")
 		}
-		val, used2, err := decodeItem(b, off)
+		val, used2, err := decodeItem(b, off, depth+1)
 		if err != nil {
 			return nil, 0, err
 		}
