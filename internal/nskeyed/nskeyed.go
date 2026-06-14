@@ -33,6 +33,13 @@ import (
 
 const maxNodes = 1 << 20
 
+// maxDepth bounds the resolver recursion. The node budget alone does not: a deep
+// non-cyclic UID chain ($objects[i] → $objects[i+1] → …) recurses one frame per
+// node, so a ~1M-long chain blows the goroutine stack (fatal error: stack
+// overflow — which recover cannot catch) before the node budget fires. Real
+// NSKeyedArchiver graphs nest only a few dozen levels; 1024 is a wide margin.
+const maxDepth = 1024
+
 // Result is the resolved archive.
 type Result struct {
 	Format   string `json:"format"`
@@ -46,6 +53,7 @@ type resolver struct {
 	objects  []any
 	visiting map[int]bool
 	nodes    int
+	depth    int
 }
 
 // Decode resolves an NSKeyedArchiver binary plist.
@@ -105,6 +113,15 @@ func (r *resolver) resolve(v any) any {
 	if r.nodes++; r.nodes > maxNodes {
 		return "<budget exceeded>"
 	}
+	// Depth guard against a deep non-cyclic chain — see maxDepth. A stack
+	// overflow is fatal and uncatchable, so this must bound recursion *before*
+	// the call, not via recover.
+	if r.depth >= maxDepth {
+		return "<max depth exceeded>"
+	}
+	r.depth++
+	defer func() { r.depth-- }()
+
 	m, ok := v.(map[string]any)
 	if !ok {
 		return scalar(v)

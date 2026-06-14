@@ -85,6 +85,53 @@ func mustB64(t *testing.T, s string) []byte {
 	return b
 }
 
+// TestResolveDeepChain_Bounded builds a deep non-cyclic UID chain
+// ($objects[i] → $objects[i+1] → …) longer than the node budget and asserts the
+// resolver bounds the recursion with the depth marker instead of overflowing the
+// goroutine stack. Without the maxDepth guard this reproduces a fatal,
+// uncatchable "stack overflow" at ~1M frames (the node budget fires too late).
+func TestResolveDeepChain_Bounded(t *testing.T) {
+	const n = maxNodes + (maxNodes >> 1) // longer than the budget → ~1M deep
+	objs := make([]any, n+1)
+	objs[0] = "$null"
+	for i := 1; i <= n; i++ {
+		next := int64(i + 1)
+		if int(next) > n {
+			next = 0
+		}
+		objs[i] = map[string]any{"next": map[string]any{"$uid": next}}
+	}
+	r := &resolver{objects: objs, visiting: map[int]bool{}}
+	out := r.resolve(map[string]any{"$uid": int64(1)})
+	if !deepContains(out, "<max depth exceeded>") {
+		t.Fatalf("expected depth marker; recursion was not bounded (nodes=%d depth=%d)", r.nodes, r.depth)
+	}
+	if r.depth != 0 {
+		t.Errorf("depth not unwound: %d", r.depth)
+	}
+}
+
+// deepContains reports whether the resolved tree contains the string s.
+func deepContains(v any, s string) bool {
+	switch t := v.(type) {
+	case string:
+		return t == s
+	case map[string]any:
+		for _, x := range t {
+			if deepContains(x, s) {
+				return true
+			}
+		}
+	case []any:
+		for _, x := range t {
+			if deepContains(x, s) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func FuzzDecode(f *testing.F) {
 	for _, s := range []string{vDictArchive, vDateData} {
 		if b, err := base64.StdEncoding.DecodeString(s); err == nil {
