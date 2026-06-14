@@ -68,15 +68,24 @@ type Result struct {
 	Note              string   `json:"note"`
 }
 
-// Decode triages an ELF byte stream.
-func Decode(data []byte) (*Result, error) {
+// Decode triages an ELF byte stream. It never panics: the stdlib debug/elf
+// parser slice-panics on some malformed inputs (a crafted section/dynamic table
+// — and a hostile ELF is exactly this tool's input), so a recover converts any
+// such panic into a graceful error rather than crashing the host.
+func Decode(data []byte) (res *Result, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			res, err = nil, fmt.Errorf("elftriage: malformed ELF (recovered: %v)", r)
+		}
+	}()
+
 	f, err := elf.NewFile(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("elftriage: not an ELF: %w", err)
 	}
 	defer f.Close()
 
-	res := &Result{
+	res = &Result{
 		Format:     "elf",
 		Class:      f.Class.String(),
 		Endianness: endianName(f.Data),

@@ -3,6 +3,7 @@ package elftriage
 import (
 	"encoding/base64"
 	"math"
+	"math/rand"
 	"strings"
 	"testing"
 )
@@ -122,6 +123,52 @@ func mustB64(t *testing.T, s string) []byte {
 		t.Fatalf("base64: %v", err)
 	}
 	return b
+}
+
+// TestDecode_MalformedNoPanic mutates a real ELF and asserts Decode never
+// panics. The stdlib debug/elf parser slice-panics on crafted section/dynamic
+// tables; Decode must recover and return an error instead of crashing the host.
+// This test deliberately does NOT recover — if the guard regresses, a panic
+// propagates and fails the run. A one-off 1M-mutation audit found 23 such
+// panics in the unguarded parser (slice bounds out of range).
+func TestDecode_MalformedNoPanic(t *testing.T) {
+	seed := mustB64(t, systemELF)
+	rng := rand.New(rand.NewSource(7))
+	n := 60000
+	if testing.Short() {
+		n = 3000
+	}
+	for i := 0; i < n; i++ {
+		m := make([]byte, len(seed))
+		copy(m, seed)
+		for k := 0; k < 1+rng.Intn(8); k++ {
+			switch rng.Intn(5) {
+			case 0:
+				if len(m) > 0 {
+					m[rng.Intn(len(m))] = byte(rng.Intn(256))
+				}
+			case 1:
+				if len(m) >= 4 {
+					o := rng.Intn(len(m) - 3)
+					m[o], m[o+1], m[o+2], m[o+3] = byte(rng.Intn(256)), byte(rng.Intn(256)), byte(rng.Intn(256)), byte(rng.Intn(256))
+				}
+			case 2:
+				if len(m) > 64 {
+					o := rng.Intn(64)
+					for j := o; j < o+4 && j < len(m); j++ {
+						m[j] = 0xff
+					}
+				}
+			case 3:
+				m = append(m, make([]byte, rng.Intn(2048))...)
+			case 4:
+				if len(m) > 100 {
+					m = m[:rng.Intn(len(m))]
+				}
+			}
+		}
+		_, _ = Decode(m) // must not panic — guard recovers internally
+	}
 }
 
 func FuzzDecode(f *testing.F) {
