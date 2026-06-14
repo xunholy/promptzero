@@ -2930,7 +2930,13 @@ func TestRegistrySize(t *testing.T) {
 	// keychain/crypto), per-section Shannon entropy; universal/fat binaries
 	// triaged per-arch; panic-guarded (2M-input audit); never executes; anchored
 	// to real clang/gcc-built Mach-O, thin + fat). internal/machotriage.
-	const expected = 668
+	// v0.704.0 added htpasswd_decode (Apache/nginx htpasswd basic-auth file
+	// classifier → per-line username:hash split + hash-scheme identification by
+	// prefix: bcrypt/apr1/md5-crypt/sha256-crypt/sha512-crypt/yescrypt/sha1-
+	// base64/ssha/des-crypt/plaintext, with hashcat -m mode + strength tier +
+	// plaintext flag; classifies only, never cracks; anchored to real
+	// openssl/bcrypt/hashcat vectors). internal/htpasswd.
+	const expected = 669
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
