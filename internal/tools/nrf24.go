@@ -42,10 +42,12 @@ func init() {
 			"operator sees which targets are live.",
 		Schema: json.RawMessage(`{"type":"object","properties":{` +
 			`"path":{"type":"string","description":"SD path to the addresses file (default /ext/apps_data/nrfsniff/addresses.txt)"}}}`),
-		Required:  nil,
-		Risk:      risk.Low,
-		Group:     GroupMetaUtil,
-		AgentOnly: true,
+		Required: nil,
+		Risk:     risk.Low,
+		Group:    GroupMetaUtil,
+		// Read-only SD-card file parse (needs only Deps.Flipper, which MCP
+		// wires) — exposed over MCP. The active nrf24_* tools (sniff/mousejack)
+		// stay AgentOnly. This lets an MCP operator inspect captured targets.
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			path := str(p, "path")
 			if path == "" {

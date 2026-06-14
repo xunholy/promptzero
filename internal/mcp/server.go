@@ -61,6 +61,7 @@ import (
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/bruce"
 	"github.com/xunholy/promptzero/internal/buspirate"
+	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/marauder"
@@ -80,6 +81,7 @@ type Server struct {
 	faultier  *faultier.Client
 	busPirate *buspirate.Client
 	audit     *audit.Log
+	cfg       *config.Config
 	snapshot  *snapshot.Manager
 	// workflowConfirm is intentionally nil in MCP mode: sub-tool confirm
 	// gates auto-approve when no hook is installed (see gateSubtool).
@@ -119,6 +121,11 @@ func NewServer(f *flipper.Flipper, m *marauder.Marauder) *Server {
 // SetAuditLog wires an audit log so every MCP tool call (including
 // consent-denied ones) is recorded. Call before ServeStdio.
 func (s *Server) SetAuditLog(l *audit.Log) { s.audit = l }
+
+// SetConfig wires the resolved process configuration so config-backed tools
+// (e.g. list_devices, which reads the user's friendly device-name mappings)
+// work over MCP just as they do in the agent.
+func (s *Server) SetConfig(c *config.Config) { s.cfg = c }
 
 // SetBruce wires an optional Bruce devboard so bruce_* handlers do not
 // short-circuit with "not connected" in MCP mode.
@@ -417,6 +424,7 @@ func (s *Server) deps() *toolsreg.Deps {
 		Faultier:        s.faultier,
 		BusPirate:       s.busPirate,
 		Audit:           s.audit,
+		Config:          s.cfg,
 		Snapshot:        s.snapshot,
 		WorkflowConfirm: s.workflowConfirm,
 	}

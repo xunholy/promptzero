@@ -6,8 +6,20 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/xunholy/promptzero/internal/config"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
 )
+
+// TestSetConfig_FlowsToDeps guards that the MCP server's Config wiring reaches
+// the tool Deps, so config-backed tools (list_devices) work over MCP.
+func TestSetConfig_FlowsToDeps(t *testing.T) {
+	s := NewServer(nil, nil)
+	cfg := &config.Config{}
+	s.SetConfig(cfg)
+	if s.deps().Config != cfg {
+		t.Error("SetConfig did not flow to deps().Config — config-backed tools would be inert over MCP")
+	}
+}
 
 // agentOnlyAllowlist is the documented set of registry tools deliberately
 // hidden from the MCP surface, each with a reason. This is the parity contract:
@@ -21,8 +33,11 @@ import (
 //   - rag: needs Deps.RAG (retrieval), not wired in MCP.
 //   - vision: needs Deps.Vision, not wired in MCP.
 //   - agent-state: depends on live agent-session state (last result / target memory).
-//   - config: needs Deps.Config (user device-name mappings), not wired in MCP.
-//   - active-device: long-running / active hardware session (sniff / brute / sweep / on-device save).
+//   - active-device: active wireless attack / long-running hardware session
+//     (nrf24 sniff+mousejack, IR/Sub-GHz brute, interactive NFC read+save).
+//     The PASSIVE read-only siblings (nrf24_list_targets, the wifi_* scans/
+//     sniffs) are NOT AgentOnly and reach MCP; only the active-TX / injection
+//     tools are gated, consistent with the project's read/passive-only stance.
 var agentOnlyAllowlist = map[string]string{ //nolint:gochecknoglobals
 	"generate_badusb":            "llm-gen",
 	"generate_deploy_run":        "llm-gen",
@@ -36,6 +51,8 @@ var agentOnlyAllowlist = map[string]string{ //nolint:gochecknoglobals
 	"rfid_build":                 "llm-gen",
 	"subghz_build":               "llm-gen",
 	"subghz_bruteforce_generate": "llm-gen",
+	"subghz_freq_sweep":          "llm-gen",
+	"nrf24_payload_build":        "llm-gen",
 
 	"workflow_badusb_target_profile":  "workflow",
 	"workflow_mousejack":              "workflow",
@@ -53,15 +70,10 @@ var agentOnlyAllowlist = map[string]string{ //nolint:gochecknoglobals
 	"target_recall":       "agent-state",
 	"target_forget":       "agent-state",
 
-	"list_devices": "config",
-
 	"nrf24_sniff_start":     "active-device",
 	"nrf24_mousejack_start": "active-device",
-	"nrf24_list_targets":    "active-device",
-	"nrf24_payload_build":   "active-device",
 	"ir_bruteforce":         "active-device",
 	"subghz_bruteforce":     "active-device",
-	"subghz_freq_sweep":     "active-device",
 	"nfc_read_save":         "active-device",
 }
 

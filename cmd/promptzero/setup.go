@@ -524,6 +524,10 @@ func runMCPMode(ctx context.Context, cfg *config.Config, flip *flipper.Flipper, 
 func wireMCPSidecars(ctx context.Context, cfg *config.Config, srv *mcp.Server) func() {
 	var closes []func()
 
+	// Config: lets config-backed tools (e.g. list_devices, which reads the
+	// user's friendly device-name mappings) work over MCP, same as the agent.
+	srv.SetConfig(cfg)
+
 	// Audit log: same on-disk path the REPL uses, so /audit query
 	// from a parallel REPL session can see MCP-driven tool calls.
 	dataDir := filepath.Join(os.Getenv("HOME"), ".promptzero")
