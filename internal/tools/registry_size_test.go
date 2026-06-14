@@ -2950,7 +2950,14 @@ func TestRegistrySize(t *testing.T) {
 	// decrypts to cleartext; cleared field = "no password set"; corrupt = error;
 	// anchored to the public Local*P4ssword! vectors, openssl-cross-checked).
 	// internal/gpp.
-	const expected = 671
+	// v0.707.0 added java_deserialize_scan (Java serialized-object structural
+	// triage → recursive-descent parse of the Object Serialization Stream
+	// Protocol: version, top-level type, every class name, embedded strings, and
+	// flagged ysoserial gadget classes (CommonsCollections/TemplatesImpl/
+	// AnnotationInvocationHandler/C3P0/Groovy/…); never deserializes; depth-capped
+	// vs serialization bombs; graceful truncation; anchored to real
+	// javac/ObjectOutputStream streams). internal/javaser.
+	const expected = 672
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
