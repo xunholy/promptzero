@@ -394,7 +394,9 @@ type kv struct {
 func renderArray(entries []kv) any {
 	isList := true
 	for i, e := range entries {
-		if n, ok := e.key.(int64); !ok || int(n) != i {
+		// Compare in int64 (widening the small loop index) — never narrow the
+		// parsed int64 key to int, which would truncate on a 32-bit platform.
+		if n, ok := e.key.(int64); !ok || n != int64(i) {
 			isList = false
 			break
 		}
