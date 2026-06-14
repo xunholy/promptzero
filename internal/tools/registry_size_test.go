@@ -2943,7 +2943,14 @@ func TestRegistrySize(t *testing.T) {
 	// SKI, digest/sig alg, signed-attrs, signing time), enveloped recipient
 	// count + content-encryption alg; weak-digest flag; never verifies/decrypts;
 	// PEM or base64-DER input; anchored to real openssl CMS). internal/pkcs7.
-	const expected = 670
+	// v0.706.0 added gpp_decrypt (Group Policy Preferences cpassword decryptor →
+	// AES-256-CBC with the Microsoft-published MS-GPPREF key + zero IV + UTF-16LE;
+	// takes a raw cpassword or a GPP XML snippet, extracts every cpassword with
+	// the co-located account name (userName/accountName/runAs/newName) and
+	// decrypts to cleartext; cleared field = "no password set"; corrupt = error;
+	// anchored to the public Local*P4ssword! vectors, openssl-cross-checked).
+	// internal/gpp.
+	const expected = 671
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
