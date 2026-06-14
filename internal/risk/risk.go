@@ -1367,6 +1367,12 @@ var toolLevels = func() map[string]Level {
 		// entropy for packing, stripped/static). Offline parse of a base64 blob;
 		// transmits nothing, never executes the binary, so Low.
 		"elf_decode",
+		// v0.700 — Windows PE malware triage: stdlib debug/pe parse + analysis
+		// (bits/CPU arch/subsystem, COFF characteristics, present + absent exploit
+		// mitigations, imports with abused Win32 APIs flagged, section entropy +
+		// W^X + packer names). Offline parse of a base64 blob; transmits nothing,
+		// never executes the binary, so Low.
+		"pe_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc

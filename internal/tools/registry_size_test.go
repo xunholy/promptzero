@@ -2915,7 +2915,14 @@ func TestRegistrySize(t *testing.T) {
 	// entry, interp/static, stripped, NEEDED libs + RPATH, imported symbols with
 	// suspicious libc/syscall wrappers flagged, per-section Shannon entropy for
 	// packing; never executes; anchored to real gcc-built ELFs). internal/elftriage.
-	const expected = 666
+	// v0.700.0 added pe_decode (Windows PE malware triage → stdlib debug/pe parse
+	// + analysis: bits/CPU arch/subsystem/entry/image-base/timestamp, COFF
+	// characteristics, present + absent exploit mitigations (ASLR/DEP/CFG),
+	// imported DLLs + symbols with abused Win32 APIs flagged (injection/dynamic-
+	// resolution/exec/download/keylog/anti-debug/crypto/service/proc-enum),
+	// per-section Shannon entropy + W^X + known-packer section names; never
+	// executes; anchored to a real mingw-built PE). internal/petriage.
+	const expected = 667
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
