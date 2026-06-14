@@ -1396,6 +1396,12 @@ var toolLevels = func() map[string]Level {
 		// value or GPP XML. Offline decrypt of recovered SYSVOL loot with a public
 		// key; transmits nothing, no device, so Low.
 		"gpp_decrypt",
+		// v0.707 — Java serialized-object structural triage: recursive-descent
+		// parse of the Object Serialization Stream Protocol (class names, strings,
+		// flagged ysoserial gadget classes). Offline structural parse of a base64/
+		// hex blob; NEVER calls readObject (which would be the exploit), transmits
+		// nothing, no device, so Low.
+		"java_deserialize_scan",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
