@@ -102,16 +102,35 @@ func TestAuditQueryToolCapsLimit(t *testing.T) {
 	}
 }
 
-// TestAuditToolsAgentOnly ensures audit_* specs are marked AgentOnly so the
-// MCP adapter skips them.
-func TestAuditToolsAgentOnly(t *testing.T) {
+// TestAuditToolExposure pins the audit-tool surface contract: the read-only
+// views (audit_query / audit_export / audit_stats) are NOT AgentOnly, so MCP
+// clients reach them too (the MCP server wires an audit log via SetAuditLog);
+// explain_last_result stays AgentOnly (it is an agent-loop narration helper).
+// Each must still nil-guard so a surface without a wired log gets a clean
+// message rather than a panic.
+func TestAuditToolExposure(t *testing.T) {
 	for _, toolName := range []string{"audit_query", "audit_export", "audit_stats"} {
 		spec, ok := Get(toolName)
 		if !ok {
 			t.Fatalf("tool %q not registered", toolName)
 		}
-		if !spec.AgentOnly {
-			t.Errorf("%s.AgentOnly = false, want true", toolName)
+		if spec.AgentOnly {
+			t.Errorf("%s.AgentOnly = true, want false (must be reachable over MCP)", toolName)
 		}
+		// Must not panic with a nil Audit dep (the MCP/no-log path).
+		out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{})
+		if err != nil {
+			t.Errorf("%s with nil Audit returned error: %v", toolName, err)
+		}
+		if out == "" {
+			t.Errorf("%s with nil Audit returned empty output", toolName)
+		}
+	}
+	spec, ok := Get("explain_last_result")
+	if !ok {
+		t.Fatal("explain_last_result not registered")
+	}
+	if !spec.AgentOnly {
+		t.Error("explain_last_result.AgentOnly = false, want true (agent-loop narration helper)")
 	}
 }
