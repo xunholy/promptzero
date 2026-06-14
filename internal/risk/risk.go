@@ -1384,6 +1384,12 @@ var toolLevels = func() map[string]Level {
 		// des-crypt/plaintext) with hashcat -m mode + strength tier. Offline text
 		// classification; transmits nothing, never cracks the hash, so Low.
 		"htpasswd_decode",
+		// v0.705 — PKCS#7 / CMS structural decoder: stdlib encoding/asn1 +
+		// crypto/x509 walk of a SignedData/EnvelopedData (content type, embedded
+		// X.509 chain, signers, signing time, encryption metadata) with a
+		// weak-digest flag. Offline structural decode; never verifies the
+		// signature, decrypts the content, or transmits anything, so Low.
+		"pkcs7_decode",
 		// v0.252 (NATIVE-fit gap — gRPC / Google APIs / modern
 		// microservices): Protobuf wire-format dissector
 		// without needing the .proto schema (mirrors protoc
