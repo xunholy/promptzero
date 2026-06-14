@@ -163,16 +163,20 @@ func reqProp(name, typ, desc string) map[string]interface{} {
 	}
 }
 
-// ToolCatalogEntry pairs a registered tool's name with its description.
-// Used by /tools to render each entry with a short description alongside
-// the name.
+// ToolCatalogEntry pairs a registered tool's name with its description and
+// whether it is agent-only. Used by /tools (CLI) and /api/tools (Web) to render
+// each entry. AgentOnly tools are reachable from the CLI/Web agent but NOT from
+// MCP clients — surfacing the flag keeps the listing honest about which tools an
+// MCP integration can actually call (the listing surface ⊋ the MCP execution
+// surface).
 type ToolCatalogEntry struct {
 	Name        string
 	Description string
+	AgentOnly   bool
 }
 
-// ToolCatalog returns every registered tool's name + description, in the
-// same builder order as ToolNames.
+// ToolCatalog returns every registered tool's name + description + agent-only
+// flag, in the same builder order as ToolNames.
 func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
 	_ = hasMarauder // retained for API compatibility; all tools are now in the registry
 	tools := buildTools()
@@ -185,7 +189,20 @@ func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
 		if t.OfTool.Description.Valid() {
 			desc = t.OfTool.Description.Value
 		}
-		out = append(out, ToolCatalogEntry{Name: t.OfTool.Name, Description: desc})
+		out = append(out, ToolCatalogEntry{
+			Name:        t.OfTool.Name,
+			Description: desc,
+			AgentOnly:   agentOnly(t.OfTool.Name),
+		})
 	}
 	return out
+}
+
+// agentOnly reports whether the named tool (canonical or alias) is AgentOnly in
+// the registry.
+func agentOnly(name string) bool {
+	if spec, ok := toolsreg.Get(name); ok {
+		return spec.AgentOnly
+	}
+	return false
 }

@@ -683,6 +683,7 @@ func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{
 			"name":        e.Name,
 			"description": e.Description,
+			"agent_only":  e.AgentOnly,
 		})
 	}
 	respondJSON(w, http.StatusOK, map[string]any{
