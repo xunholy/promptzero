@@ -504,7 +504,7 @@ func runMCPMode(ctx context.Context, cfg *config.Config, flip *flipper.Flipper, 
 		}
 	}
 	srv := mcp.NewServer(flip, m)
-	cleanup := wireMCPSidecars(ctx, cfg, srv)
+	cleanup := wireMCPSidecars(ctx, cfg, flip, srv)
 	defer cleanup()
 
 	statusOK("MCP server running on stdio")
@@ -521,12 +521,49 @@ func runMCPMode(ctx context.Context, cfg *config.Config, flip *flipper.Flipper, 
 // transport. Every wiring step is best-effort — Connect failures
 // emit a warning and the corresponding tool group returns its normal
 // "not connected" error to the MCP client.
-func wireMCPSidecars(ctx context.Context, cfg *config.Config, srv *mcp.Server) func() {
+func wireMCPSidecars(ctx context.Context, cfg *config.Config, flip *flipper.Flipper, srv *mcp.Server) func() {
 	var closes []func()
 
 	// Config: lets config-backed tools (e.g. list_devices, which reads the
 	// user's friendly device-name mappings) work over MCP, same as the agent.
 	srv.SetConfig(cfg)
+
+	// Generator: wire the LLM payload generator when a generation key is
+	// available so the generate_* tools and the LLM-driven workflow function
+	// over MCP. Provider selection mirrors setupGenerator (OpenRouter env key,
+	// else Claude via ANTHROPIC_API_KEY which the SDK reads from env). Without
+	// a key it stays unwired and those tools return their clean
+	// "generator not configured" message — no behaviour change from before.
+	var genLLM provider.Provider
+	switch {
+	case os.Getenv("OPENROUTER_API_KEY") != "":
+		genLLM = provider.NewOpenRouter(os.Getenv("OPENROUTER_API_KEY"), "")
+	case os.Getenv("ANTHROPIC_API_KEY") != "":
+		client := anthropic.NewClient()
+		genLLM = provider.NewClaude(&client, cfg.Model)
+	}
+	if genLLM != nil {
+		srv.SetGenerator(generate.New(genLLM, flip), genLLM)
+		statusOK(fmt.Sprintf("MCP generation engine %s(%s)%s", dim, genLLM.Name(), reset))
+	} else {
+		statusInfo("MCP generation engine not wired (no ANTHROPIC_API_KEY / OPENROUTER_API_KEY) — generate_* tools report needs-an-LLM")
+	}
+
+	// Target memory: per-target facts persisted across sessions. No
+	// credentials — just an on-disk path — so it is wired whenever it opens,
+	// making target_remember/recall/forget functional over MCP. Open failure
+	// is a warning; those tools then return their clean nil-store message.
+	if tmPath, tmErr := targetmem.DefaultPath(); tmErr == nil {
+		if store, tmOpenErr := targetmem.Open(tmPath); tmOpenErr == nil {
+			srv.SetTargetMem(store)
+			closes = append(closes, func() { _ = store.Close() })
+			statusOK(fmt.Sprintf("MCP target memory %s(%s)%s", dim, tmPath, reset))
+		} else {
+			statusWarn(fmt.Sprintf("MCP target memory unavailable: %v", tmOpenErr))
+		}
+	} else {
+		statusWarn(fmt.Sprintf("MCP target memory path unresolved: %v", tmErr))
+	}
 
 	// Audit log: same on-disk path the REPL uses, so /audit query
 	// from a parallel REPL session can see MCP-driven tool calls.

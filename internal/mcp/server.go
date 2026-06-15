@@ -68,10 +68,13 @@ import (
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/faultier"
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/generate"
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/persona"
+	"github.com/xunholy/promptzero/internal/provider"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/snapshot"
+	"github.com/xunholy/promptzero/internal/targetmem"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
 	"github.com/xunholy/promptzero/internal/wordlists"
 )
@@ -87,6 +90,9 @@ type Server struct {
 	audit     *audit.Log
 	cfg       *config.Config
 	snapshot  *snapshot.Manager
+	gen       *generate.Generator
+	genLLM    provider.Provider
+	targetMem *targetmem.Store
 	// workflowConfirm is intentionally nil in MCP mode: sub-tool confirm
 	// gates auto-approve when no hook is installed (see gateSubtool).
 	workflowConfirm func(ctx context.Context, tool string, input any, riskLevel string) bool
@@ -130,6 +136,22 @@ func (s *Server) SetAuditLog(l *audit.Log) { s.audit = l }
 // (e.g. list_devices, which reads the user's friendly device-name mappings)
 // work over MCP just as they do in the agent.
 func (s *Server) SetConfig(c *config.Config) { s.cfg = c }
+
+// SetGenerator wires the LLM payload generator and its provider so the
+// generate_* tools and the LLM-driven workflow function over MCP instead of
+// degrading to "generator not configured". Wired only when the operator has a
+// generation provider/key available; otherwise it stays nil and those tools
+// return their clean needs-an-LLM message. Call before ServeStdio.
+func (s *Server) SetGenerator(g *generate.Generator, llm provider.Provider) {
+	s.gen = g
+	s.genLLM = llm
+}
+
+// SetTargetMem wires the persistent target-facts store so the target_* tools
+// (remember/recall/forget) function over MCP. The store needs no credentials —
+// just an on-disk path — so it is always wired when it opens. Call before
+// ServeStdio.
+func (s *Server) SetTargetMem(t *targetmem.Store) { s.targetMem = t }
 
 // SetBruce wires an optional Bruce devboard so bruce_* handlers do not
 // short-circuit with "not connected" in MCP mode.
@@ -418,12 +440,13 @@ func (s *Server) registerFromRegistry() {
 	}
 }
 
-// deps returns a Deps bag populated with the transports the MCP server
-// has access to. LLM/session-specific fields (Generator, Vision, TargetMem,
-// etc.) are nil in MCP mode. Every tool is now reachable through this path,
-// so every handler must degrade gracefully on nil fields — the formerly
-// AgentOnly handlers (generate_*, analyze_image, target_*, the LLM workflow)
-// already nil-guard and return a "needs X" message instead of dereferencing.
+// deps returns a Deps bag populated with the transports the MCP server has
+// access to. Generator/GenLLM and TargetMem are wired when available (see
+// SetGenerator / SetTargetMem) so the generate_* / target_* tools function over
+// MCP; the remaining LLM/session fields (Vision, Snapshot, SessionID,
+// WorkflowConfirm) stay nil. Every tool is reachable through this path, so every
+// handler must still degrade gracefully on the nil fields — a tool whose dep is
+// absent returns a "needs X" message rather than dereferencing.
 func (s *Server) deps() *toolsreg.Deps {
 	return &toolsreg.Deps{
 		Flipper:         s.flipper,
@@ -434,6 +457,9 @@ func (s *Server) deps() *toolsreg.Deps {
 		Audit:           s.audit,
 		Config:          s.cfg,
 		Snapshot:        s.snapshot,
+		Generator:       s.gen,
+		GenLLM:          s.genLLM,
+		TargetMem:       s.targetMem,
 		WorkflowConfirm: s.workflowConfirm,
 	}
 }

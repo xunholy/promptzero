@@ -7,6 +7,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/xunholy/promptzero/internal/config"
+	"github.com/xunholy/promptzero/internal/generate"
+	"github.com/xunholy/promptzero/internal/targetmem"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
 )
 
@@ -18,6 +20,25 @@ func TestSetConfig_FlowsToDeps(t *testing.T) {
 	s.SetConfig(cfg)
 	if s.deps().Config != cfg {
 		t.Error("SetConfig did not flow to deps().Config — config-backed tools would be inert over MCP")
+	}
+}
+
+// TestSetGeneratorAndTargetMem_FlowToDeps guards that the generator and
+// target-memory wiring reaches the tool Deps, so generate_* / target_* function
+// over MCP instead of degrading. A regression here would silently make those
+// tools inert (back to "needs an LLM" / nil-store) even when wired.
+func TestSetGeneratorAndTargetMem_FlowToDeps(t *testing.T) {
+	s := NewServer(nil, nil)
+	g := &generate.Generator{}
+	tm := &targetmem.Store{}
+	s.SetGenerator(g, nil)
+	s.SetTargetMem(tm)
+	d := s.deps()
+	if d.Generator != g {
+		t.Error("SetGenerator did not flow to deps().Generator — generate_* would stay inert over MCP")
+	}
+	if d.TargetMem != tm {
+		t.Error("SetTargetMem did not flow to deps().TargetMem — target_* would stay inert over MCP")
 	}
 }
 
