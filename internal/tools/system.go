@@ -97,7 +97,8 @@ func init() {
 		Required:    nil,
 		Risk:        risk.Low,
 		Group:       GroupMetaUtil,
-		AgentOnly:   true,
+		// Read-only config view; reachable over MCP too (the MCP server wires
+		// Deps.Config via SetConfig). Nil-guards when no config is present.
 		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
 			if d.Config == nil || len(d.Config.Devices) == 0 {
 				return "No devices configured. Add devices to config.yaml.", nil
