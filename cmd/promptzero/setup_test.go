@@ -197,10 +197,12 @@ func TestWireMCPSidecars_OpensAuditLog(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
 	srv := mcp.NewServer(nil, nil)
 	cfg := &config.Config{}
 
-	cleanup := wireMCPSidecars(context.Background(), cfg, srv)
+	cleanup := wireMCPSidecars(context.Background(), cfg, nil, srv)
 	t.Cleanup(cleanup)
 
 	dbPath := tmpHome + "/.promptzero/audit.db"
@@ -218,11 +220,13 @@ func TestWireMCPSidecars_NoSidecarsConfigured(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
 	srv := mcp.NewServer(nil, nil)
 	cfg := &config.Config{} // all sidecar ports empty
 
 	out := captureStderr(t, func() {
-		cleanup := wireMCPSidecars(context.Background(), cfg, srv)
+		cleanup := wireMCPSidecars(context.Background(), cfg, nil, srv)
 		cleanup()
 	})
 
