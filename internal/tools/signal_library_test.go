@@ -31,7 +31,7 @@ func TestSignalLibrarySearch_RegisteredAtInit(t *testing.T) {
 		t.Errorf("Group = %s, want %s", spec.Group, GroupMetaUtil)
 	}
 	if spec.AgentOnly {
-		t.Error("AgentOnly = true; this tool only walks the host filesystem and should be MCP-visible")
+		t.Error("AgentOnly = true; this tool only walks the host filesystem — it needs no LLM/session and should not carry the advisory flag")
 	}
 }
 

@@ -3,10 +3,14 @@
 // to be plugged into MCP clients like Claude Desktop or Claude Code as a
 // local tool server.
 //
-// Every registered tool carries risk metadata derived from
-// internal/risk.Classify, surfaced to the client as MCP annotations
-// (readOnlyHint, destructiveHint, openWorldHint). Operators can use those
-// hints to gate destructive calls in their MCP client.
+// Every registry tool is exposed over MCP — nothing is hidden. Discoverability
+// is universal across PromptZero's three surfaces (CLI, Web, MCP); risk is
+// handled by the consent gate below, not by concealment. Each tool carries risk
+// metadata derived from internal/risk.Classify, surfaced to the client as MCP
+// annotations (readOnlyHint, destructiveHint, openWorldHint) so the client can
+// prompt "accept the risk?" per call. Tools whose agent-mode deps (LLM
+// generator, vision, target-memory store) are not wired in MCP degrade to a
+// clear "needs X" message rather than failing opaquely.
 //
 // # Risk consent gate
 //
@@ -390,15 +394,17 @@ func (s *Server) registerWordlistResources() {
 
 // --- Registry adapter ---
 
-// registerFromRegistry wires every non-AgentOnly Spec from the central
-// tool registry into the MCP server. This is the sole registration path
-// after Wave 5 — all legacy s.add() calls were removed during the
-// migration waves.
+// registerFromRegistry wires EVERY Spec from the central tool registry into
+// the MCP server — nothing is hidden. Discoverability is universal across
+// CLI/Web/MCP; risk is handled by the consent gate in add() (risk≥High refused
+// unless the operator opts in), not by concealment. The Spec.AgentOnly flag is
+// advisory metadata only (the handler needs agent-mode deps to function fully)
+// and no longer affects exposure. Handlers must nil-guard their Deps fields so
+// a tool whose LLM/session dep is absent degrades to a clear message rather
+// than panicking. This is the sole registration path after Wave 5 — all legacy
+// s.add() calls were removed during the migration waves.
 func (s *Server) registerFromRegistry() {
 	for _, spec := range toolsreg.All() {
-		if spec.AgentOnly {
-			continue
-		}
 		opts := optsFromSchema(spec.Schema, spec.Required)
 		names := append([]string{spec.Name}, spec.Aliases...)
 		for _, name := range names {
@@ -413,9 +419,11 @@ func (s *Server) registerFromRegistry() {
 }
 
 // deps returns a Deps bag populated with the transports the MCP server
-// has access to. LLM-specific fields (Generator, Vision, RAG, etc.) are
-// nil — only non-AgentOnly handlers are called through this path, so
-// they must degrade gracefully on nil fields.
+// has access to. LLM/session-specific fields (Generator, Vision, TargetMem,
+// etc.) are nil in MCP mode. Every tool is now reachable through this path,
+// so every handler must degrade gracefully on nil fields — the formerly
+// AgentOnly handlers (generate_*, analyze_image, target_*, the LLM workflow)
+// already nil-guard and return a "needs X" message instead of dereferencing.
 func (s *Server) deps() *toolsreg.Deps {
 	return &toolsreg.Deps{
 		Flipper:         s.flipper,

@@ -1585,7 +1585,7 @@ func printTools(hasMarauder bool, filter string, page int) {
 	}
 
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintf(os.Stderr, "  %s[agent-only] = reachable here but NOT exposed to MCP clients%s\n", dim, reset)
+	fmt.Fprintf(os.Stderr, "  %severy tool is exposed on all surfaces (CLI/Web/MCP); [agent] = needs an LLM/API key or live session to function fully%s\n", dim, reset)
 	lastGroup := ""
 	for _, item := range flat[start:end] {
 		if item.group != lastGroup {
@@ -1594,7 +1594,7 @@ func printTools(hasMarauder bool, filter string, page int) {
 		}
 		marker := ""
 		if item.entry.AgentOnly {
-			marker = dim + " [agent-only]" + reset
+			marker = dim + " [agent]" + reset
 		}
 		fmt.Fprintf(os.Stderr, "    %s%s%s%s  %s%s%s\n", cyan, item.entry.Name, reset, marker, dim, toolDescSummary(item.entry.Description), reset)
 	}

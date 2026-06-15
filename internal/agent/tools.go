@@ -163,12 +163,14 @@ func reqProp(name, typ, desc string) map[string]interface{} {
 	}
 }
 
-// ToolCatalogEntry pairs a registered tool's name with its description and
-// whether it is agent-only. Used by /tools (CLI) and /api/tools (Web) to render
-// each entry. AgentOnly tools are reachable from the CLI/Web agent but NOT from
-// MCP clients — surfacing the flag keeps the listing honest about which tools an
-// MCP integration can actually call (the listing surface ⊋ the MCP execution
-// surface).
+// ToolCatalogEntry pairs a registered tool's name with its description and its
+// advisory agent-only flag. Used by /tools (CLI) and /api/tools (Web) to render
+// each entry. Every tool is exposed on every surface (CLI/Web/MCP) — the flag is
+// NOT an exposure gate. AgentOnly=true is advisory: the tool needs agent-mode
+// deps (an LLM generator / vision / target-memory store) to function fully, or
+// drives an interactive device session the agent normally orchestrates; absent
+// that dep it degrades to a clear "needs X" message. Surfacing the flag tells a
+// user which tools need extra setup (e.g. an API key) to do more than report.
 type ToolCatalogEntry struct {
 	Name        string
 	Description string
