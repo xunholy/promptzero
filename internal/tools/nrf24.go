@@ -45,9 +45,10 @@ func init() {
 		Required: nil,
 		Risk:     risk.Low,
 		Group:    GroupMetaUtil,
-		// Read-only SD-card file parse (needs only Deps.Flipper, which MCP
-		// wires) — exposed over MCP. The active nrf24_* tools (sniff/mousejack)
-		// stay AgentOnly. This lets an MCP operator inspect captured targets.
+		// Read-only SD-card file parse (needs only Deps.Flipper). Like every
+		// tool it is exposed on all surfaces; the active nrf24_* tools
+		// (sniff/mousejack) are exposed too but consent-gated by their risk
+		// level. This lets an operator inspect captured targets before acting.
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			path := str(p, "path")
 			if path == "" {

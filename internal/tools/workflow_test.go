@@ -32,22 +32,25 @@ func init() {
 	wfMousejackSpec, _ = Get("workflow_mousejack")
 }
 
-// TestWorkflowMCPAccessible verifies that the three workflows that were
-// previously in MCP's registerWorkflowTools() are now in the registry with
-// AgentOnly:false so registerFromRegistry picks them up.
+// TestWorkflowMCPAccessible verifies the three device-only workflows carry no
+// advisory flag (AgentOnly:false) — they need no LLM. Every workflow is exposed
+// over MCP regardless of the flag; this pins which ones are flagged as needing
+// agent-mode setup.
 func TestWorkflowMCPAccessible(t *testing.T) {
 	for _, spec := range []Spec{wfHWReconSpec, wfGarageSpec, wfBadgeWalkSpec} {
 		if spec.Name == "" {
 			t.Fatalf("workflow spec not captured at init time")
 		}
 		if spec.AgentOnly {
-			t.Errorf("%s.AgentOnly = true, want false (should be MCP-accessible)", spec.Name)
+			t.Errorf("%s.AgentOnly = true, want false (these workflows need no LLM, should not carry the advisory flag)", spec.Name)
 		}
 	}
 }
 
-// TestWorkflowAgentOnly verifies that the five agent-only workflows are
-// properly excluded from MCP via AgentOnly:true.
+// TestWorkflowAgentOnly verifies the five LLM/multi-step workflows carry the
+// advisory AgentOnly flag (they need agent-mode deps to function fully). The
+// flag no longer affects exposure — every workflow is reachable over MCP and
+// consent-gated by risk; it only marks which ones need extra setup.
 func TestWorkflowAgentOnly(t *testing.T) {
 	for _, spec := range []Spec{wfNFCBadgeSpec, wfWiFiHashSpec, wfRolljamSpec, wfBadUSBProfSpec, wfMousejackSpec} {
 		if spec.Name == "" {

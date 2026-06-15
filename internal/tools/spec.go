@@ -144,12 +144,18 @@ type Spec struct {
 	// narrowing logic.
 	Group Group
 
-	// AgentOnly excludes this tool from the MCP adapter. Reserved for
-	// LLM-composition tools that require facilities MCP does not have
-	// (generator LLM, vision analyzer, snapshot manager, workflow
-	// confirmation hook). An AgentOnly handler may safely dereference
-	// any field on Deps; a non-AgentOnly handler must degrade when
-	// those fields are nil.
+	// AgentOnly is advisory metadata, NOT an exposure gate. Every tool is
+	// exposed on all three surfaces (CLI, Web, MCP) — discoverability is
+	// universal and risk is handled by the consent gate, not concealment.
+	// AgentOnly=true flags a tool whose handler is agent-oriented: it needs
+	// agent-mode deps (the generator LLM, vision analyzer, target-memory
+	// store) to function fully, or it drives an interactive/long-running
+	// device session the agent normally orchestrates. Such a tool is still
+	// listed and callable everywhere; when its dep is absent (e.g. no LLM
+	// wired in MCP mode) it MUST degrade to a clear "needs X" message.
+	//
+	// EVERY handler must nil-guard the Deps fields it touches — there is no
+	// longer a class of handler permitted to assume a field is non-nil.
 	AgentOnly bool
 
 	// Handler is the dispatch body. Wave engineers paste the
@@ -201,10 +207,11 @@ type Spec struct {
 // "feature disabled" signal; handlers MUST tolerate nil for any
 // feature their mode does not wire up.
 //
-// MCP mode (internal/mcp) wires only the first four — Flipper, Marauder,
-// Audit, Config. The LLM-specific fields (Generator, GenLLM, Vision,
-// Snapshot, RAG, TargetMem, SessionID, WorkflowConfirm) stay nil, and
-// AgentOnly handlers are the only ones allowed to dereference them.
+// MCP mode (internal/mcp) wires the device transports plus Audit and Config.
+// The LLM/session fields (Generator, GenLLM, Vision, Snapshot, RAG, TargetMem,
+// SessionID, WorkflowConfirm) stay nil. Because every tool is now exposed over
+// MCP, EVERY handler must tolerate those nil fields and degrade to a clear
+// "needs X" message — no handler may assume them non-nil.
 //
 // Agent mode (internal/agent) wires every field from the running
 // *Agent instance.
