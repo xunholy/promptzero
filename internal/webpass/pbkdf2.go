@@ -136,10 +136,20 @@ func parse(stored string) (algo string, iter int, salt string, digest []byte, er
 	return algo, iter, salt, digest, nil
 }
 
+// maxPBKDF2Iterations caps the iteration count we will honour. Modern
+// Django/Werkzeug defaults are ~10^6; 2^24 (~16.7M) is far above any legitimate
+// config but rejects a hostile iter= in an untrusted hash (e.g.
+// "pbkdf2_sha256$999999999999$…") that would otherwise spin PBKDF2 effectively
+// forever on verify. Matches the cap used by internal/dcc2 and internal/phpass.
+const maxPBKDF2Iterations = 1 << 24
+
 func parseIter(s string) (int, error) {
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 1 {
 		return 0, fmt.Errorf("webpass: invalid iteration count %q", s)
+	}
+	if n > maxPBKDF2Iterations {
+		return 0, fmt.Errorf("webpass: iteration count %d exceeds the %d safety cap (rejecting to avoid an unbounded PBKDF2 hang)", n, maxPBKDF2Iterations)
 	}
 	return n, nil
 }
@@ -150,8 +160,8 @@ func Compute(scheme, algo string, iter int, salt, password string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	if iter < 1 {
-		return "", fmt.Errorf("webpass: iterations must be >= 1")
+	if iter < 1 || iter > maxPBKDF2Iterations {
+		return "", fmt.Errorf("webpass: iterations must be 1-%d (got %d)", maxPBKDF2Iterations, iter)
 	}
 	dk := wpa.PBKDF2([]byte(password), []byte(salt), iter, dklen, h)
 	switch scheme {

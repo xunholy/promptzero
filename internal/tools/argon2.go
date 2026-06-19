@@ -80,6 +80,13 @@ var argon2Spec = Spec{
 // that would otherwise OOM the host on compute or verify.
 const argon2MaxMemoryKiB = 2 * 1024 * 1024
 
+// argon2MaxTime caps the time cost (iteration count). Real Argon2 hashes use
+// t=1..~10 (RFC 9106 recommends 1 or 3); 1024 is hugely generous yet rejects a
+// hostile t= (e.g. t=4294967295) that would otherwise spin the host on ~4
+// billion passes — an unbounded CPU hang that, unlike m=, the memory cap does
+// not catch. Applied on both the parse/verify path and compute.
+const argon2MaxTime = 1024
+
 // argon2Params holds the fields parsed from an Argon2 PHC string.
 type argon2Params struct {
 	Variant     string // "argon2id" / "argon2i" / "argon2d"
@@ -134,6 +141,9 @@ func parseArgon2PHC(hash string) (*argon2Params, error) {
 	}
 	if p.Memory > argon2MaxMemoryKiB {
 		return nil, fmt.Errorf("Argon2 memory cost %d KiB exceeds the %d KiB safety cap (rejecting to avoid OOM)", p.Memory, argon2MaxMemoryKiB)
+	}
+	if p.Time > argon2MaxTime {
+		return nil, fmt.Errorf("Argon2 time cost %d exceeds the %d-pass safety cap (rejecting to avoid an unbounded CPU hang)", p.Time, argon2MaxTime)
 	}
 	var err error
 	if p.Salt, err = base64.RawStdEncoding.DecodeString(parts[4]); err != nil {
@@ -207,21 +217,26 @@ func argon2Handler(_ context.Context, _ *Deps, p map[string]any) (string, error)
 	if variant != "argon2id" && variant != "argon2i" {
 		return "", fmt.Errorf("argon2: variant %q must be \"argon2id\" or \"argon2i\"", variant)
 	}
-	memory := uint32(intOr(p, "memory", 65536))
-	timeCost := uint32(intOr(p, "time", 3))
+	// Validate as signed ints BEFORE the uint32 narrowing — otherwise a
+	// negative value (e.g. time=-1) wraps to a huge uint32 and slips past a
+	// lower-bound-only check, the same unbounded-work hazard as a hostile hash.
 	par := intOr(p, "parallelism", 1)
 	if par < 1 || par > 255 {
 		return "", fmt.Errorf("argon2: parallelism must be 1-255 (got %d)", par)
 	}
-	if timeCost < 1 {
-		return "", fmt.Errorf("argon2: time must be >= 1")
+	timeInt := intOr(p, "time", 3)
+	if timeInt < 1 || timeInt > argon2MaxTime {
+		return "", fmt.Errorf("argon2: time must be 1-%d (got %d)", argon2MaxTime, timeInt)
 	}
-	if memory < 8*uint32(par) {
-		return "", fmt.Errorf("argon2: memory (%d KiB) must be >= 8 * parallelism (%d)", memory, 8*par)
+	memInt := intOr(p, "memory", 65536)
+	if memInt < 8*par {
+		return "", fmt.Errorf("argon2: memory (%d KiB) must be >= 8 * parallelism (%d)", memInt, 8*par)
 	}
-	if memory > argon2MaxMemoryKiB {
-		return "", fmt.Errorf("argon2: memory %d KiB exceeds the %d KiB cap", memory, argon2MaxMemoryKiB)
+	if memInt > argon2MaxMemoryKiB {
+		return "", fmt.Errorf("argon2: memory %d KiB exceeds the %d KiB cap", memInt, argon2MaxMemoryKiB)
 	}
+	memory := uint32(memInt)
+	timeCost := uint32(timeInt)
 
 	var salt []byte
 	if s := str(p, "salt"); s != "" {

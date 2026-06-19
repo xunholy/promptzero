@@ -65,3 +65,29 @@ func TestVerify_Errors(t *testing.T) {
 		}
 	}
 }
+
+// TestPBKDF2_IterationCap verifies an untrusted hash (or compute call) with an
+// absurd iteration count is rejected BEFORE the (unbounded) PBKDF2 runs — so a
+// crafted "pbkdf2_sha256$999999999999$…" cannot hang the host on verify. The
+// guard must return promptly; a missing cap would instead spin ~10^12 HMACs.
+func TestPBKDF2_IterationCap(t *testing.T) {
+	hostile := []string{
+		"pbkdf2_sha256$999999999999$somesalt$c29tZWRpZ2VzdA==", // Django
+		"pbkdf2:sha256:999999999999$somesalt$abcdef",           // Werkzeug
+	}
+	for _, h := range hostile {
+		if _, err := Verify(h, "x"); err == nil {
+			t.Errorf("Verify(%q): expected rejection of absurd iteration count, got nil (would hang)", h)
+		}
+	}
+
+	// Compute with an over-cap iteration count is rejected.
+	if _, err := Compute("django", "sha256", 1<<30, "salt", "pw"); err == nil {
+		t.Error("Compute: expected rejection of iter=2^30, got nil")
+	}
+
+	// A legitimate iteration count still computes.
+	if _, err := Compute("django", "sha256", 1000, "salt", "pw"); err != nil {
+		t.Errorf("legitimate Compute rejected: %v", err)
+	}
+}
