@@ -64,17 +64,21 @@ var usbHIDClassifySpec = Spec{
 		"modifier + key combinations → DuckyScript modifier keywords (CTRL, " +
 		"SHIFT, ALT, GUI, CTRL-SHIFT, CTRL-ALT, ALT-SHIFT, GUI-SHIFT) followed " +
 		"by the bare key.\n\n" +
-		"Pure offline parser. Two input modes:\n" +
+		"Pure offline parser. Three input modes:\n" +
 		" - `usbmon`: paste a raw Linux usbmon text capture " +
 		"(`cat /sys/kernel/debug/usb/usbmon/<N>u`, or the usbmon lines " +
 		"Wireshark shows) and the framing is stripped for you — every 8-byte " +
 		"Interrupt-IN keyboard callback is extracted in order and decoded.\n" +
+		" - `usbpcap`: a Windows USBPcap binary capture (a classic `.pcap` " +
+		"with link type DLT_USBPCAP/249, from USBPcapCMD or the Wireshark " +
+		"USBPcap extcap), base64-encoded — the per-URB framing is stripped " +
+		"for you, same heuristic as the usbmon path. Classic pcap only " +
+		"(re-export pcapng as pcap).\n" +
 		" - `hex`: paste the already-extracted concatenated 8-byte HID " +
 		"Keyboard Boot Protocol reports directly.\n" +
-		"Either way you get back the per-report decode, key-down event " +
-		"sequence, reconstructed text, and DuckyScript-style transcript.\n\n" +
-		"Out of scope (deferred): USBPcap (Windows) framing (use the Linux " +
-		"usbmon text mode, or pre-extract to `hex`); USB enumeration descriptors " +
+		"Whichever mode you use, you get back the per-report decode, key-down " +
+		"event sequence, reconstructed text, and DuckyScript-style transcript.\n\n" +
+		"Out of scope (deferred): USB enumeration descriptors " +
 		"(Device / Configuration / Interface / HID Report descriptors that " +
 		"*declare* the report layout — vendor ID, product ID, report-ID field, " +
 		"non-Boot-Protocol report shapes — are out of scope); composite HID " +
