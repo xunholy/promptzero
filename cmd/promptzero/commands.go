@@ -28,6 +28,7 @@ import (
 	"github.com/xunholy/promptzero/internal/report"
 	"github.com/xunholy/promptzero/internal/rules"
 	"github.com/xunholy/promptzero/internal/snapshot"
+	"github.com/xunholy/promptzero/internal/toolsearch"
 	"github.com/xunholy/promptzero/internal/trainset"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
@@ -337,7 +338,7 @@ func printHelp() {
 	fmt.Fprintf(os.Stderr, "    %s/forget <id>%s           Delete a saved session and purge its snapshots\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "\n  %s%sInfo%s\n", bold, white, reset)
 	fmt.Fprintf(os.Stderr, "    %s/status%s                Connection, capabilities, Flipper telemetry\n", cyan, reset)
-	fmt.Fprintf(os.Stderr, "    %s/tools [filter]%s        Enumerate registered tools (grouped)\n", cyan, reset)
+	fmt.Fprintf(os.Stderr, "    %s/tools [query]%s         Find tools by task (ranked) or browse grouped\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/history [N]%s           Show last N audit rows (default 20)\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit stats%s           Session audit summary\n", cyan, reset)
 	fmt.Fprintf(os.Stderr, "    %s/audit query [N]%s       Recent N entries (default 20)\n", cyan, reset)
@@ -1529,22 +1530,19 @@ const toolsMaxRows = 40
 
 func printTools(hasMarauder bool, filter string, page int) {
 	catalog := agent.ToolCatalog(hasMarauder)
-	filtered := catalog
-	lowerFilter := strings.ToLower(filter)
-	if lowerFilter != "" {
-		filtered = filtered[:0:0]
-		for _, e := range catalog {
-			if strings.Contains(strings.ToLower(e.Name), lowerFilter) {
-				filtered = append(filtered, e)
-			}
-		}
+
+	// A non-empty query arg switches /tools to ranked task search (relevance-
+	// ordered, the same ranker as the tool_search tool and /api/tools?q=), so
+	// "garage door" / "wifi password" surface the right tools instead of a
+	// name-substring match. No arg keeps the grouped browse below.
+	if strings.TrimSpace(filter) != "" {
+		printToolSearch(catalog, filter, page)
+		return
 	}
+
+	filtered := catalog
 	if len(filtered) == 0 {
-		if filter != "" {
-			fmt.Fprintf(os.Stderr, "  %sno tools match %q%s\n", dim, filter, reset)
-		} else {
-			fmt.Fprintf(os.Stderr, "  %sno tools registered%s\n", dim, reset)
-		}
+		fmt.Fprintf(os.Stderr, "  %sno tools registered%s\n", dim, reset)
 		return
 	}
 
@@ -1599,11 +1597,71 @@ func printTools(hasMarauder bool, filter string, page int) {
 		fmt.Fprintf(os.Stderr, "    %s%s%s%s  %s%s%s\n", cyan, item.entry.Name, reset, marker, dim, toolDescSummary(item.entry.Description), reset)
 	}
 	if end < len(flat) {
-		hint := fmt.Sprintf("/tools page %d", page+1)
-		if filter != "" {
-			hint = "use a narrower filter"
+		fmt.Fprintf(os.Stderr, "  %s… and %d more, try /tools page %d%s\n", dim, len(flat)-end, page+1, reset)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+// rankCatalog ranks the tool catalogue against a free-text query using the
+// shared toolsearch ranker — the same scoring the tool_search tool and the
+// web /api/tools?q= endpoint use, so /tools ranks consistently with them.
+func rankCatalog(catalog []agent.ToolCatalogEntry, query string, limit int) []toolsearch.Result {
+	docs := make([]toolsearch.Doc, 0, len(catalog))
+	for _, e := range catalog {
+		docs = append(docs, toolsearch.Doc{
+			Name:        e.Name,
+			Aliases:     e.Aliases,
+			Group:       e.Group,
+			Description: e.Description,
+		})
+	}
+	return toolsearch.Search(docs, query, limit)
+}
+
+// printToolSearch renders the ranked task-search view of /tools <query>:
+// a flat, relevance-ordered list (paginated), each row showing the tool's
+// group + agent marker + one-line summary.
+func printToolSearch(catalog []agent.ToolCatalogEntry, query string, page int) {
+	byName := make(map[string]agent.ToolCatalogEntry, len(catalog))
+	for _, e := range catalog {
+		byName[e.Name] = e
+	}
+	hits := rankCatalog(catalog, query, 0) // all matches, ranked
+	if len(hits) == 0 {
+		fmt.Fprintf(os.Stderr, "  %sno tools match %q — try broader keywords (a protocol or action word)%s\n", dim, query, reset)
+		return
+	}
+
+	if page < 1 {
+		page = 1
+	}
+	start := (page - 1) * toolsMaxRows
+	if start >= len(hits) {
+		totalPages := (len(hits) + toolsMaxRows - 1) / toolsMaxRows
+		fmt.Fprintf(os.Stderr, "  %spage %d out of range — total pages: %d%s\n", dim, page, totalPages, reset)
+		return
+	}
+	end := start + toolsMaxRows
+	if end > len(hits) {
+		end = len(hits)
+	}
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "  %ssearch %q — %d match(es), most relevant first%s\n", dim, query, len(hits), reset)
+	for _, h := range hits[start:end] {
+		e := byName[h.Name]
+		marker := ""
+		if e.AgentOnly {
+			marker = dim + " [agent]" + reset
 		}
-		fmt.Fprintf(os.Stderr, "  %s… and %d more, try %s%s\n", dim, len(flat)-end, hint, reset)
+		grp := ""
+		if e.Group != "" {
+			grp = fmt.Sprintf(" %s(%s)%s", dim, e.Group, reset)
+		}
+		fmt.Fprintf(os.Stderr, "    %s%s%s%s%s  %s%s%s\n", cyan, h.Name, reset, marker, grp, dim, toolDescSummary(e.Description), reset)
+	}
+	if end < len(hits) {
+		fmt.Fprintf(os.Stderr, "  %s… and %d more, try /tools %s page %d%s\n", dim, len(hits)-end, query, page+1, reset)
 	}
 	fmt.Fprintln(os.Stderr)
 }
