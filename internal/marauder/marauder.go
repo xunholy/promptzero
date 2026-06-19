@@ -41,6 +41,11 @@ type portIface = Port
 type Marauder struct {
 	port portIface
 	mu   sync.Mutex
+	// streamBackpressure bounds how long Stream waits to deliver a line
+	// before giving up on a stalled consumer. Zero means the 2s default;
+	// tests set it small. On expiry Stream stops the device scan (stopscan)
+	// just like an explicit done, so the marauder is never left scanning.
+	streamBackpressure time.Duration
 }
 
 // NewWithPort wires a Marauder around a caller-supplied Port. Production
@@ -220,6 +225,11 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 	lines := make(chan string, 128)
 	done := make(chan struct{})
 
+	backpressure := m.streamBackpressure
+	if backpressure <= 0 {
+		backpressure = 2 * time.Second
+	}
+
 	obs.SafeGo("marauder.stream", func() {
 		defer m.mu.Unlock()
 		defer close(lines)
@@ -285,8 +295,13 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 					case <-done:
 						_, _ = m.port.Write([]byte("stopscan\n"))
 						return
-					case <-time.After(2 * time.Second):
+					case <-time.After(backpressure):
+						// Consumer stalled: give up — but stop the device scan
+						// first, exactly like the done path. Without this the
+						// marauder keeps scanning into a buffer nobody reads,
+						// corrupting the next command's response.
 						obs.Default().Warn("marauder_stream_backpressure", "cmd", command)
+						_, _ = m.port.Write([]byte("stopscan\n"))
 						return
 					}
 				}

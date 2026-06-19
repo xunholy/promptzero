@@ -595,3 +595,44 @@ func TestStreamLines_CtxCancelStopsCapture(t *testing.T) {
 		t.Errorf("StreamLines did not honour ctx cancel promptly: took %s", elapsed)
 	}
 }
+
+// TestStreamBackpressureSendsStopscan guards that when the consumer stalls and
+// the backpressure timeout fires, Stream stops the device scan (stopscan) just
+// like the done path — so the marauder is never left scanning into a buffer
+// nobody reads, which would corrupt the next command's response.
+func TestStreamBackpressureSendsStopscan(t *testing.T) {
+	fp := newFakePort()
+	fp.suppressPrompt("floodlines")
+	// More than the 128-line channel buffer, so the reader blocks on a send
+	// with no consumer and trips the backpressure timeout.
+	var body strings.Builder
+	for i := 0; i < 200; i++ {
+		body.WriteString("AP: deadbeef\r\n")
+	}
+	fp.respond("floodlines", body.String())
+
+	m := newMarauderWithPort(fp)
+	m.streamBackpressure = 150 * time.Millisecond
+	t.Cleanup(func() { _ = m.Close() })
+
+	// Start streaming but never read from lines → the buffer fills, the send
+	// blocks, and backpressure fires.
+	_, done, err := m.Stream("floodlines")
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	defer close(done)
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		for _, s := range fp.linesSeen() {
+			if s == "stopscan" {
+				return // success — device scan was stopped on backpressure
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("stopscan not sent after backpressure timeout; commands seen: %v", fp.linesSeen())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
