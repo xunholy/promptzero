@@ -68,11 +68,13 @@ func AuthEncrypt(key uint64, uid uint32, cap AuthCapture) (nrEnc, arEnc uint32) 
 // If keyspace is nil, all 2^48 keys are searched — clearly document
 // expected runtime in the caller.
 //
-// TODO(v0.6): implement the O(2^24) partial-state enumeration described
-// in Garcia et al. ESORICS 2008 §4 ("filter-selectivity" technique).
-// That approach enumerates 2^24 odd-bit candidates of the mid-auth LFSR
-// state and uses the filter structure to derive remaining bits, reducing
-// the search to a feasible runtime for arbitrary 48-bit keys.
+// A Garcia §4 filter-selectivity fast path exists in recover_fast.go
+// (RecoverFast / RecoverFastTimeoutRange), but its phase-1 oddState filter is
+// probabilistic — it fires for only a small fraction of keys and otherwise
+// defers to this exhaustive search. A full *deterministic* lfsr_recovery32
+// (Crapto1) that recovers any 48-bit key in feasible time remains future work;
+// until then, supply a key-range bound (the mfkey32_recover tool's range_bits)
+// for arbitrary keys rather than relying on a full 2^48 sweep.
 func Recover(uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32) (uint64, error) {
 	return RecoverWithRange(context.Background(), uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
 }

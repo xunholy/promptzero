@@ -452,12 +452,14 @@ func mfkey32RecoverHandler(ctx context.Context, _ *Deps, args map[string]any) (s
 		var key uint64
 		var err error
 		if rangeBits >= 32 {
-			// For large key spaces (≥ 32-bit), use the Garcia §4
-			// filter-selectivity optimisation (RecoverFast) which runs a
-			// probabilistic fast path (O(2^32)) in parallel with the
-			// exhaustive RecoverWithRange fallback. The first path to
-			// find the key wins.
-			key, err = crypto1.RecoverFastTimeout(runCtx, uid, nt0, nr0, ar0, nt1, nr1, ar1)
+			// For large key spaces (≥ 32-bit), run the Garcia §4
+			// filter-selectivity fast path in parallel with the guaranteed
+			// exhaustive fallback — whichever finds the key first wins. The
+			// fast path is probabilistic (it fires for only a small fraction of
+			// keys); the bound (0..hiCap) is applied to the exhaustive fallback
+			// so range_bits actually limits the work and a key outside the
+			// range exhausts cleanly instead of grinding the full 2^48.
+			key, err = crypto1.RecoverFastTimeoutRange(runCtx, uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, hiCap)
 		} else {
 			// runCtx is forwarded so the inner search loop is cancelled when
 			// the deadline fires, preventing a goroutine leak.

@@ -438,3 +438,56 @@ func BenchmarkRecoverFastVsRecover_16bit(b *testing.B) {
 		}
 	})
 }
+
+// TestRecoverFastTimeoutRange_FindsInRange confirms the range-bounded fast
+// entry still recovers a key that lies within the bound (here a 16-bit key,
+// hi32=0, so hiHi=1 covers it).
+func TestRecoverFastTimeoutRange_FindsInRange(t *testing.T) {
+	const key = uint64(0x0000_0000_ABCD) // 16-bit key (hi32 = 0)
+	const uid = uint32(0xcafebabe)
+	cap0 := AuthCapture{NT: 0x01020304, NR: 0xdeadbeef}
+	cap1 := AuthCapture{NT: 0xe93e12e4, NR: 0x11223344}
+	_, ar0 := AuthEncrypt(key, uid, cap0)
+	_, ar1 := AuthEncrypt(key, uid, cap1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	got, err := RecoverFastTimeoutRange(ctx, uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1)
+	if err != nil {
+		t.Fatalf("in-range recover failed: %v", err)
+	}
+	if got != key {
+		t.Errorf("got 0x%012X; want 0x%012X", got, key)
+	}
+}
+
+// TestRecoverFastTimeoutRange_RespectsBound is the regression guard for the
+// hardcoded-full-range bug: the exhaustive fallback was searching the full
+// 2^48 regardless of the requested bound, so range_bits >= 32 was silently
+// ignored. With a key whose hi32 != 0 and a 16-bit bound (hiHi=1), the bounded
+// fallback must exhaust ~2^16 candidates and return promptly — NOT grind the
+// full keyspace until the context deadline. Before the fix this hit the
+// deadline; after it, it returns in well under a second.
+func TestRecoverFastTimeoutRange_RespectsBound(t *testing.T) {
+	const key = uint64(0x1234_5678_9ABC) // hi32 = 0x12345678 — far outside a 16-bit bound
+	const uid = uint32(0xcafebabe)
+	cap0 := AuthCapture{NT: 0x01020304, NR: 0xdeadbeef}
+	cap1 := AuthCapture{NT: 0xe93e12e4, NR: 0x11223344}
+	_, ar0 := AuthEncrypt(key, uid, cap0)
+	_, ar1 := AuthEncrypt(key, uid, cap1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	start := time.Now()
+	_, err := RecoverFastTimeoutRange(ctx, uid, cap0.NT, cap0.NR, ar0, cap1.NT, cap1.NR, ar1, 0, 1)
+	elapsed := time.Since(start)
+
+	// The bound is honoured iff we returned without burning the whole deadline.
+	if errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+		t.Fatalf("bounded 16-bit search hit the context deadline after %s — the range bound was ignored "+
+			"(fallback still searched the full 2^48)", elapsed)
+	}
+	if elapsed > 10*time.Second {
+		t.Errorf("bounded 16-bit search took %s — too slow, range bound likely not honoured", elapsed)
+	}
+}
