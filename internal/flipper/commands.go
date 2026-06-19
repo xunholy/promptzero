@@ -1617,7 +1617,16 @@ func (f *Flipper) StorageRemove(path string) (string, error) {
 		"storage_remove",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("storage remove %s", sanitizeArg(path)))
+			out, err := f.Exec(fmt.Sprintf("storage remove %s", sanitizeArg(path)))
+			if err != nil {
+				return out, err
+			}
+			// `storage remove` is silent on success, so a "Storage error"
+			// banner is a failure the CLI returns with no error code. Surface
+			// it so the USB path matches the RPC path (storageRemoveViaRPC
+			// already errors rather than silently treat a missing file as
+			// removed). Safe: success echoes nothing to false-positive on.
+			return out, detectFileLoadError(out)
 		},
 		func() (string, error) { return f.storageRemoveViaRPC(context.Background(), path) },
 	)
@@ -1647,7 +1656,14 @@ func (f *Flipper) StorageMkdir(path string) (string, error) {
 		"storage_mkdir",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("storage mkdir %s", sanitizeArg(path)))
+			out, err := f.Exec(fmt.Sprintf("storage mkdir %s", sanitizeArg(path)))
+			if err != nil {
+				return out, err
+			}
+			// Silent on success; a "Storage error" banner (e.g. "already
+			// exist") is a failure with no CLI error code — surface it so the
+			// USB path matches the RPC path. Safe: success echoes nothing.
+			return out, detectFileLoadError(out)
 		},
 		func() (string, error) { return f.storageMkdirViaRPC(context.Background(), path) },
 	)
@@ -2528,7 +2544,16 @@ func (f *Flipper) StorageMD5(path string) (string, error) {
 		"storage_md5",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("storage md5 %s", sanitizeArg(path)))
+			out, err := f.Exec(fmt.Sprintf("storage md5 %s", sanitizeArg(path)))
+			if err != nil {
+				return out, err
+			}
+			// Success is a 32-char hex digest, so a "Storage error" banner
+			// (e.g. file not found) is an unambiguous failure the CLI returns
+			// with no error code — surface it instead of handing back the
+			// banner as if it were a hash. Safe: a hex digest cannot contain
+			// the marker.
+			return out, detectFileLoadError(out)
 		},
 		func() (string, error) { return f.storageMD5ViaRPC(context.Background(), path) },
 	)
