@@ -235,6 +235,33 @@ func detectFileLoadError(out string) error {
 	return nil
 }
 
+// detectStorageErrorLeading surfaces the firmware's "Storage error: <reason>"
+// banner for the storage commands whose SUCCESSFUL output echoes file content
+// or a listing — storage read / list / tree — where detectFileLoadError's
+// substring match would false-positive on content that merely contains the
+// marker (and on `storage tree`, which intentionally embeds a per-subdirectory
+// "Storage error" banner mid-walk for unreadable dirs while still succeeding
+// overall).
+//
+// It anchors on the LEADING text: the firmware prints the banner as the entire
+// response when the operation fails at the top level — a successful read leads
+// with "Size:", a listing with "[D]"/"[F]", an empty dir with nothing — so a
+// trimmed output that BEGINS with "Storage error" is an unambiguous top-level
+// failure, while a banner buried later (file content, a partial tree) is left
+// untouched. Anchoring biases to a false negative, never a confidently-wrong
+// false positive.
+func detectStorageErrorLeading(out string) error {
+	trimmed := strings.TrimSpace(out)
+	if !strings.HasPrefix(trimmed, "Storage error") {
+		return nil
+	}
+	line := trimmed
+	if nl := strings.IndexByte(line, '\n'); nl >= 0 {
+		line = line[:nl]
+	}
+	return fmt.Errorf("firmware storage error: %s", strings.TrimSpace(line))
+}
+
 // SubGHzRx receives Sub-GHz signals on the given frequency (Hz). Xtreme
 // firmware's `subghz rx` requires a trailing <device> arg (0=internal CC1101,
 // 1=external); we append "0" when capabilities report that quirk.
@@ -1506,7 +1533,14 @@ func (f *Flipper) StorageList(path string) (string, error) {
 		"storage_list",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("storage list %s", sanitizeArg(path)))
+			out, err := f.Exec(fmt.Sprintf("storage list %s", sanitizeArg(path)))
+			if err != nil {
+				return out, err
+			}
+			// Success is a "[D]/[F]" block or empty; a leading "Storage error:"
+			// banner is a top-level failure with no CLI error code — surface it
+			// so a failed list does not read as an empty directory.
+			return out, detectStorageErrorLeading(out)
 		},
 		func() (string, error) { return f.storageListViaRPC(context.Background(), path) },
 	)
@@ -1556,7 +1590,16 @@ func (f *Flipper) StorageRead(path string) (string, error) {
 		"storage_read",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("storage read %s", sanitizeArg(path)))
+			out, err := f.Exec(fmt.Sprintf("storage read %s", sanitizeArg(path)))
+			if err != nil {
+				return out, err
+			}
+			// A successful read leads with "Size:"; a top-level failure is the
+			// whole "Storage error:" banner. Surface it so the USB path matches
+			// the RPC path (which errors), instead of handing the banner to
+			// callers as if it were file content. Leading-anchored, so file
+			// bytes that merely contain the marker do not false-positive.
+			return out, detectStorageErrorLeading(out)
 		},
 		func() (string, error) { return f.storageReadViaRPC(context.Background(), path) },
 	)
@@ -2585,7 +2628,16 @@ func (f *Flipper) StorageTree(path string) (string, error) {
 		"storage_tree",
 		CommandSupport{HasRPCVerb: true, HasCLI: true},
 		func() (string, error) {
-			return f.Exec(fmt.Sprintf("storage tree %s", sanitizeArg(path)))
+			out, err := f.Exec(fmt.Sprintf("storage tree %s", sanitizeArg(path)))
+			if err != nil {
+				return out, err
+			}
+			// `storage tree` embeds a per-subdirectory "Storage error" banner
+			// mid-walk for unreadable dirs while still succeeding overall, so
+			// detection MUST be leading-anchored: only a whole-output banner
+			// (the root path itself failed) is a top-level error; a buried one
+			// is a partial tree and is left intact.
+			return out, detectStorageErrorLeading(out)
 		},
 		func() (string, error) { return f.storageTreeViaRPC(context.Background(), path) },
 	)
