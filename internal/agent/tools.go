@@ -175,10 +175,15 @@ type ToolCatalogEntry struct {
 	Name        string
 	Description string
 	AgentOnly   bool
+	// Group and Aliases mirror the registry Spec so callers can rank/filter
+	// the catalog (e.g. the web /api/tools?q= search) over the same fields the
+	// tool_search tool uses, instead of only name + description.
+	Group   string
+	Aliases []string
 }
 
 // ToolCatalog returns every registered tool's name + description + agent-only
-// flag, in the same builder order as ToolNames.
+// flag + group + aliases, in the same builder order as ToolNames.
 func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
 	_ = hasMarauder // retained for API compatibility; all tools are now in the registry
 	tools := buildTools()
@@ -191,20 +196,13 @@ func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
 		if t.OfTool.Description.Valid() {
 			desc = t.OfTool.Description.Value
 		}
-		out = append(out, ToolCatalogEntry{
-			Name:        t.OfTool.Name,
-			Description: desc,
-			AgentOnly:   agentOnly(t.OfTool.Name),
-		})
+		entry := ToolCatalogEntry{Name: t.OfTool.Name, Description: desc}
+		if spec, ok := toolsreg.Get(t.OfTool.Name); ok {
+			entry.AgentOnly = spec.AgentOnly
+			entry.Group = string(spec.Group)
+			entry.Aliases = spec.Aliases
+		}
+		out = append(out, entry)
 	}
 	return out
-}
-
-// agentOnly reports whether the named tool (canonical or alias) is AgentOnly in
-// the registry.
-func agentOnly(name string) bool {
-	if spec, ok := toolsreg.Get(name); ok {
-		return spec.AgentOnly
-	}
-	return false
 }
