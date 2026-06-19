@@ -180,6 +180,10 @@ type ToolCatalogEntry struct {
 	// tool_search tool uses, instead of only name + description.
 	Group   string
 	Aliases []string
+	// Risk is the tool's risk classification (low/medium/high/critical) so a
+	// catalog view can warn the operator before they invoke a destructive tool
+	// — the same signal the tool_search tool already surfaces.
+	Risk string
 }
 
 // ToolCatalog returns every registered tool's name + description + agent-only
@@ -201,6 +205,7 @@ func ToolCatalog(hasMarauder bool) []ToolCatalogEntry {
 			entry.AgentOnly = spec.AgentOnly
 			entry.Group = string(spec.Group)
 			entry.Aliases = spec.Aliases
+			entry.Risk = spec.Risk.String()
 		}
 		out = append(out, entry)
 	}

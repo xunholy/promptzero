@@ -695,6 +695,7 @@ func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
 				"description": e.Description,
 				"agent_only":  e.AgentOnly,
 				"group":       e.Group,
+				"risk":        e.Risk,
 				"score":       h.Score,
 				"matched":     h.Matched,
 			})
@@ -719,6 +720,8 @@ func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
 			"name":        e.Name,
 			"description": e.Description,
 			"agent_only":  e.AgentOnly,
+			"group":       e.Group,
+			"risk":        e.Risk,
 		})
 	}
 	respondJSON(w, http.StatusOK, map[string]any{

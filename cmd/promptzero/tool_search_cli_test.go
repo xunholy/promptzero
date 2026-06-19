@@ -46,3 +46,23 @@ func TestRankCatalog(t *testing.T) {
 		t.Errorf("no-match query: got %d results, want 0", len(got))
 	}
 }
+
+// TestRiskMarker pins that only the dangerous tiers get an inline warning tag
+// (low/medium are unmarked to avoid noise; critical and high are distinct).
+func TestRiskMarker(t *testing.T) {
+	if riskMarker("critical") == "" {
+		t.Error("critical should be marked")
+	}
+	if riskMarker("high") == "" {
+		t.Error("high should be marked")
+	}
+	if riskMarker("low") != "" {
+		t.Errorf("low should not be marked, got %q", riskMarker("low"))
+	}
+	if riskMarker("medium") != "" {
+		t.Errorf("medium should not be marked, got %q", riskMarker("medium"))
+	}
+	if riskMarker("critical") == riskMarker("high") {
+		t.Error("critical and high should render distinctly")
+	}
+}

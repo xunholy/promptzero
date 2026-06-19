@@ -772,10 +772,23 @@ func TestToolsList_ReturnsCatalog(t *testing.T) {
 	if len(tools) == 0 {
 		t.Fatalf("tools array empty")
 	}
-	// Spot-check: every entry has name + description fields.
+	// Spot-check: every entry carries name + description + the catalog
+	// enrichment (group + risk) so a catalog view can warn before invoking.
 	first, _ := tools[0].(map[string]any)
 	if _, ok := first["name"].(string); !ok {
 		t.Errorf("first entry missing name: %v", first)
+	}
+	if _, ok := first["group"].(string); !ok {
+		t.Errorf("first entry missing group: %v", first)
+	}
+	risk, ok := first["risk"].(string)
+	if !ok || risk == "" {
+		t.Errorf("first entry missing risk: %v", first)
+	}
+	switch risk {
+	case "low", "medium", "high", "critical":
+	default:
+		t.Errorf("unexpected risk value %q", risk)
 	}
 }
 
@@ -1560,6 +1573,9 @@ func TestToolsList_RankedSearch(t *testing.T) {
 	tools, _ := body["tools"].([]any)
 	if len(tools) == 0 {
 		t.Fatal("ranked search returned no tools for 'garage door'")
+	}
+	if r0, _ := tools[0].(map[string]any); r0["risk"] == nil || r0["risk"] == "" {
+		t.Errorf("ranked entry missing risk: %v", r0)
 	}
 
 	// Results carry score + group, are descending by score, and the set

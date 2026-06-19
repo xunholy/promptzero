@@ -1594,12 +1594,25 @@ func printTools(hasMarauder bool, filter string, page int) {
 		if item.entry.AgentOnly {
 			marker = dim + " [agent]" + reset
 		}
-		fmt.Fprintf(os.Stderr, "    %s%s%s%s  %s%s%s\n", cyan, item.entry.Name, reset, marker, dim, toolDescSummary(item.entry.Description), reset)
+		fmt.Fprintf(os.Stderr, "    %s%s%s%s%s  %s%s%s\n", cyan, item.entry.Name, reset, marker, riskMarker(item.entry.Risk), dim, toolDescSummary(item.entry.Description), reset)
 	}
 	if end < len(flat) {
 		fmt.Fprintf(os.Stderr, "  %s… and %d more, try /tools page %d%s\n", dim, len(flat)-end, page+1, reset)
 	}
 	fmt.Fprintln(os.Stderr)
+}
+
+// riskMarker returns a coloured inline warning for a tool's risk level, but
+// only for the dangerous tiers — most tools are low-risk, so tagging every row
+// would be noise; the point is to flag the ones an operator should pause on.
+func riskMarker(risk string) string {
+	switch risk {
+	case "critical":
+		return " " + red + "[critical]" + reset
+	case "high":
+		return " " + yellow + "[high]" + reset
+	}
+	return ""
 }
 
 // rankCatalog ranks the tool catalogue against a free-text query using the
@@ -1658,7 +1671,7 @@ func printToolSearch(catalog []agent.ToolCatalogEntry, query string, page int) {
 		if e.Group != "" {
 			grp = fmt.Sprintf(" %s(%s)%s", dim, e.Group, reset)
 		}
-		fmt.Fprintf(os.Stderr, "    %s%s%s%s%s  %s%s%s\n", cyan, h.Name, reset, marker, grp, dim, toolDescSummary(e.Description), reset)
+		fmt.Fprintf(os.Stderr, "    %s%s%s%s%s%s  %s%s%s\n", cyan, h.Name, reset, marker, riskMarker(e.Risk), grp, dim, toolDescSummary(e.Description), reset)
 	}
 	if end < len(hits) {
 		fmt.Fprintf(os.Stderr, "  %s… and %d more, try /tools %s page %d%s\n", dim, len(hits)-end, query, page+1, reset)
