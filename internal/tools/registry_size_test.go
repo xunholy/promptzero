@@ -2963,7 +2963,13 @@ func TestRegistrySize(t *testing.T) {
 	// property keys, flags phpggc gadget classes (Monolog/Guzzle/Laravel/Symfony/
 	// …); never unserializes; depth-capped vs nested-object bombs; graceful
 	// truncation; anchored to hand-built + phpggc-style vectors). internal/phpserialize.
-	const expected = 673
+	// v0.712.0 added tool_search (+ aliases find_tool, search_tools = 3 names):
+	// the task-oriented discovery layer over the registry — a deterministic,
+	// offline weighted token-overlap ranker (internal/toolsearch) + a domain
+	// synonym map, so an operator finds a tool by task ("garage door", "wifi
+	// password") instead of guessing its exact name. Available on every surface
+	// that reaches the registry (CLI/Web/MCP). Read-only (risk.Low).
+	const expected = 676
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
