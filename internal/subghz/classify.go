@@ -118,8 +118,18 @@ func (c *Classifier) Classify(pulses []int, n int) []Match {
 		matches = append(matches, Match{Result: res})
 	}
 
+	// Order by descending confidence, with a deterministic tiebreak on
+	// protocol name. sort.Slice is NOT stable, so equal-confidence matches
+	// previously surfaced in arbitrary order — a real frame that legitimately
+	// ties (e.g. a 40-bit PWM code accepted by both a gated protocol and a
+	// gate-less reader at full confidence) produced a non-deterministic top
+	// match, flaking CI run-to-run. The name tiebreak makes Classify a total,
+	// reproducible order; see TestClassifyDeterministicOrder.
 	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].Confidence > matches[j].Confidence
+		if matches[i].Confidence != matches[j].Confidence {
+			return matches[i].Confidence > matches[j].Confidence
+		}
+		return matches[i].Protocol < matches[j].Protocol
 	})
 
 	if n > 0 && len(matches) > n {

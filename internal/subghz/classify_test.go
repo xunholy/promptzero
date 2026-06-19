@@ -263,20 +263,26 @@ func TestClassifyFromSubFile(t *testing.T) {
 	}
 
 	c := NewClassifier()
-	matches := c.Classify(sf.Pulses, 3)
+	// Request ALL matches: this generic 16-bit PWM frame is accepted at full
+	// confidence by several gate-less protocols (BFT Mitto, Holtek HT12E, Nice
+	// FLO, Phoenix V2, Princeton PT2262 all tie at 1.0), so Princeton sits in a
+	// multi-way tie. Asserting it is within an arbitrary top-N slice of that tie
+	// is ill-posed under any deterministic ordering; assert instead that
+	// Princeton is present among the top-confidence matches.
+	matches := c.Classify(sf.Pulses, 0)
 	if len(matches) == 0 {
 		t.Fatal("expected at least one match from sub file")
 	}
-	// Princeton PT2262 or Princeton-Holtek should appear in top-3
+	top := matches[0].Confidence
 	found := false
 	for _, m := range matches {
-		if strings.Contains(m.Protocol, "Princeton") {
+		if m.Confidence == top && strings.Contains(m.Protocol, "Princeton") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected Princeton in top-3, got: %v", matchNames(matches))
+		t.Errorf("expected Princeton among the top-confidence (%.3f) matches, got: %v", top, matchNames(matches))
 	}
 }
 
@@ -286,4 +292,57 @@ func matchNames(matches []Match) []string {
 		names[i] = m.Protocol
 	}
 	return names
+}
+
+// TestClassifyDeterministicOrder is the regression guard for the
+// non-deterministic-tie bug: sort.Slice is not stable, so equal-confidence
+// matches used to surface in arbitrary order, flaking any "top match" test
+// (and giving users a different ranking run-to-run). The Dooya frame is the
+// canonical tie (a 40-bit PWM code both the gated Dooya decoder and the
+// gate-less Security+ v1 reader accept at full confidence). This asserts (a)
+// the result obeys the total order (desc confidence, then asc protocol name)
+// and (b) repeated classification of the same frame yields an identical
+// protocol sequence.
+func TestClassifyDeterministicOrder(t *testing.T) {
+	const teShort, teLong = 366, 733
+	const code = 0xE1DC030533
+	pulses := []int{13 * teShort, -(2 * teLong)}
+	for k := 39; k >= 0; k-- {
+		if (code>>uint(k))&1 == 1 {
+			pulses = append(pulses, teLong, -teShort)
+		} else {
+			pulses = append(pulses, teShort, -teLong)
+		}
+	}
+	pulses = append(pulses, 13*teShort)
+
+	first := matchNames(NewClassifier().Classify(pulses, 0))
+	if len(first) < 2 {
+		t.Fatalf("expected a multi-protocol (tying) result for the Dooya frame, got %v", first)
+	}
+
+	// (a) Total-order invariant: desc confidence, then asc name on ties.
+	got := NewClassifier().Classify(pulses, 0)
+	for i := 0; i+1 < len(got); i++ {
+		a, b := got[i], got[i+1]
+		if a.Confidence < b.Confidence {
+			t.Fatalf("not sorted by descending confidence at %d: %.3f < %.3f", i, a.Confidence, b.Confidence)
+		}
+		if a.Confidence == b.Confidence && a.Protocol > b.Protocol {
+			t.Errorf("tie not broken by ascending name at %d: %q before %q", i, a.Protocol, b.Protocol)
+		}
+	}
+
+	// (b) Reproducible across many runs.
+	for i := 0; i < 200; i++ {
+		seq := matchNames(NewClassifier().Classify(pulses, 0))
+		if len(seq) != len(first) {
+			t.Fatalf("run %d length %d != %d", i, len(seq), len(first))
+		}
+		for j := range seq {
+			if seq[j] != first[j] {
+				t.Fatalf("run %d order diverged at %d: %v vs %v", i, j, seq, first)
+			}
+		}
+	}
 }
