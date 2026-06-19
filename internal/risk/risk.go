@@ -39,6 +39,8 @@ var toolLevels = func() map[string]Level {
 
 	// Read-only / informational
 	register(Low,
+		// Read-only registry discovery — ranks tools by a free-text query.
+		"tool_search", "find_tool", "search_tools",
 		"power_info", "device_info", "list_devices",
 		"storage_list", "storage_read", "storage_info",
 		"gpio_read", "led_set", "vibro",
