@@ -34,6 +34,7 @@ import (
 	"github.com/xunholy/promptzero/internal/mode"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/report"
+	"github.com/xunholy/promptzero/internal/toolsearch"
 	"github.com/xunholy/promptzero/internal/validator"
 	"github.com/xunholy/promptzero/internal/version"
 )
@@ -665,15 +666,49 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// handleToolsList returns every registered tool with name +
-// description. Optional ?filter=<substring> narrows by name (case-
-// insensitive), matching CLI `/tools [filter]`. Always returns the
-// full set in one response (no pagination); the cockpit can do
-// client-side narrowing or this endpoint can add pagination later
-// if the catalogue grows past ~300 entries.
+// handleToolsList returns every registered tool with name + description.
+//
+//   - ?q=<query>      ranked task search — the same deterministic ranker as the
+//     tool_search tool (token overlap over name/aliases/group/description + a
+//     domain synonym map), so "garage door" / "wifi password" surface the right
+//     tools by task. Results carry score + matched terms, highest first.
+//   - ?filter=<sub>   legacy case-insensitive name-substring narrowing.
+//
+// Always returns the full set in one response (no pagination); the cockpit can
+// do client-side narrowing or this endpoint can add pagination later.
 func (s *Server) handleToolsList(w http.ResponseWriter, r *http.Request) {
 	hasMarauder := s.marauderOn.Load()
 	cat := agent.ToolCatalog(hasMarauder)
+
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		docs := make([]toolsearch.Doc, 0, len(cat))
+		byName := make(map[string]agent.ToolCatalogEntry, len(cat))
+		for _, e := range cat {
+			docs = append(docs, toolsearch.Doc{Name: e.Name, Aliases: e.Aliases, Group: e.Group, Description: e.Description})
+			byName[e.Name] = e
+		}
+		ranked := make([]map[string]any, 0, 50)
+		for _, h := range toolsearch.Search(docs, q, 50) {
+			e := byName[h.Name]
+			ranked = append(ranked, map[string]any{
+				"name":        e.Name,
+				"description": e.Description,
+				"agent_only":  e.AgentOnly,
+				"group":       e.Group,
+				"score":       h.Score,
+				"matched":     h.Matched,
+			})
+		}
+		respondJSON(w, http.StatusOK, map[string]any{
+			"query":        q,
+			"count":        len(ranked),
+			"total":        len(cat),
+			"has_marauder": hasMarauder,
+			"tools":        ranked,
+		})
+		return
+	}
+
 	filter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("filter")))
 	out := make([]map[string]any, 0, len(cat))
 	for _, e := range cat {

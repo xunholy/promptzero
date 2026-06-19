@@ -1542,3 +1542,57 @@ func TestDebugSnapshotShape(t *testing.T) {
 		t.Errorf("goroutines = %v, want > 0", rt["goroutines"])
 	}
 }
+
+// TestToolsList_RankedSearch pins the GET /api/tools?q=<query> ranked search:
+// the same task-oriented ranker as the tool_search tool, surfaced on the web
+// API. A task query reaches the right tools via the synonym map, results are
+// score-ordered, and an exact tool name ranks first.
+func TestToolsList_RankedSearch(t *testing.T) {
+	_, ts := apiServer(t, &fakeAgent{})
+
+	code, body := getJSON(t, ts, "/api/tools?q=garage+door")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d", code)
+	}
+	if q, _ := body["query"].(string); q != "garage door" {
+		t.Errorf("query echo = %q, want 'garage door'", q)
+	}
+	tools, _ := body["tools"].([]any)
+	if len(tools) == 0 {
+		t.Fatal("ranked search returned no tools for 'garage door'")
+	}
+
+	// Results carry score + group, are descending by score, and the set
+	// reaches a Sub-GHz tool via the 'garage' synonym.
+	prev := 1e18
+	foundSubghz := false
+	for _, ti := range tools {
+		m, _ := ti.(map[string]any)
+		sc, ok := m["score"].(float64)
+		if !ok {
+			t.Fatalf("ranked entry missing score: %v", m)
+		}
+		if sc > prev {
+			t.Errorf("scores not descending: %v after %v", sc, prev)
+		}
+		prev = sc
+		name, _ := m["name"].(string)
+		group, _ := m["group"].(string)
+		if strings.Contains(name, "subghz") || strings.Contains(group, "subghz") {
+			foundSubghz = true
+		}
+	}
+	if !foundSubghz {
+		t.Error("garage door ranked search surfaced no subghz tool")
+	}
+
+	// Exact tool name ranks that tool first.
+	_, body2 := getJSON(t, ts, "/api/tools?q=device_info")
+	t2, _ := body2["tools"].([]any)
+	if len(t2) == 0 {
+		t.Fatal("exact-name query returned nothing")
+	}
+	if f2, _ := t2[0].(map[string]any); f2["name"] != "device_info" {
+		t.Errorf("exact-name query: first = %v, want device_info", f2["name"])
+	}
+}
