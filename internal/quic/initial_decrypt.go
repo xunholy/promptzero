@@ -82,6 +82,7 @@ package quic
 //     decryptable case).
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
@@ -374,18 +375,56 @@ func parseFrames(p []byte, d *DecryptedInitial) {
 	if len(crypto) == 0 {
 		return
 	}
-	// Reassemble the CRYPTO stream by offset.
-	sort.Slice(crypto, func(a, b int) bool { return crypto[a].offset < crypto[b].offset })
+	// Reassemble the CRYPTO stream by offset. The sort needs a TOTAL order:
+	// without a tiebreak, two fragments at the same offset (a duplicate,
+	// retransmit, or an attacker's overlapping-CRYPTO evasion) sorted
+	// non-deterministically, so the reassembled ClientHello — and thus the
+	// extracted SNI / JA3-JA4 fingerprint — could flip run-to-run. Order by
+	// offset, then longest-first, then by content so the result is fully
+	// reproducible.
+	sort.Slice(crypto, func(a, b int) bool {
+		if crypto[a].offset != crypto[b].offset {
+			return crypto[a].offset < crypto[b].offset
+		}
+		if len(crypto[a].data) != len(crypto[b].data) {
+			return len(crypto[a].data) > len(crypto[b].data)
+		}
+		return bytes.Compare(crypto[a].data, crypto[b].data) < 0
+	})
 	var stream []byte
 	var next uint64
 	contiguous := true
+	inconsistentNoted := false
+	noteInconsistent := func() {
+		if !inconsistentNoted {
+			d.Notes = append(d.Notes,
+				"overlapping CRYPTO fragments carry inconsistent data; keeping the first")
+			inconsistentNoted = true
+		}
+	}
 	for _, f := range crypto {
-		if f.offset != next {
-			contiguous = false
+		end := f.offset + uint64(len(f.data))
+		if end <= next {
+			// Fully covered by already-reassembled data: a duplicate /
+			// retransmit. Skip it, but flag if it disagrees with what we have.
+			if !bytes.Equal(f.data, stream[f.offset:end]) {
+				noteInconsistent()
+			}
+			continue
+		}
+		if f.offset > next {
+			contiguous = false // genuine gap — stop with a partial stream.
 			break
 		}
-		stream = append(stream, f.data...)
-		next += uint64(len(f.data))
+		// f.offset <= next < end: the fragment overlaps the current tail then
+		// extends it. Verify the overlapping prefix matches, then append only
+		// the new bytes — so duplicates/overlaps reassemble correctly instead
+		// of aborting (the old code stopped on any offset != next).
+		if f.offset < next && !bytes.Equal(f.data[:next-f.offset], stream[f.offset:next]) {
+			noteInconsistent()
+		}
+		stream = append(stream, f.data[next-f.offset:]...)
+		next = end
 	}
 	if !contiguous {
 		d.Notes = append(d.Notes,
