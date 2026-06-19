@@ -3909,7 +3909,7 @@ var toolLevels = func() map[string]Level {
 	// Captures, scans, file writes
 	register(Medium,
 		"subghz_receive", "subghz_decode",
-		"ir_receive", "ir_transmit_raw",
+		"ir_receive",
 		"rfid_read",
 		"ibutton_read",
 		"wifi_scan_ap", "wifi_scan_all",
@@ -4003,6 +4003,10 @@ var toolLevels = func() map[string]Level {
 	register(High,
 		"subghz_transmit",
 		"ir_transmit",
+		// Raw IR TX (arbitrary frequency/duty/timings) — strictly more
+		// capable than ir_transmit, so it belongs at High too, not in the
+		// Medium captures bucket where it sat next to the passive ir_receive.
+		"ir_transmit_raw",
 		"nfc_emulate",
 		"rfid_emulate", "rfid_write",
 		"ibutton_emulate", "ibutton_write",

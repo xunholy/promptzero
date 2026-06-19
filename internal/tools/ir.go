@@ -30,9 +30,11 @@ func init() {
 		Description: "Send a raw infrared signal with explicit frequency, duty cycle, and timing data.",
 		Schema:      json.RawMessage(`{"type":"object","properties":{"frequency":{"type":"integer","description":"Carrier frequency in Hz (default 38000)"},"duty_cycle":{"type":"number","description":"Duty cycle 0.0-1.0 (default 0.33)"},"data":{"type":"string","description":"Space-separated timing values in microseconds"}}}`),
 		Required:    []string{"data"},
-		Risk:        risk.Medium,
-		Group:       GroupFlipperIR,
-		AgentOnly:   false,
+		// High like ir_transmit: this actively transmits arbitrary raw IR, so
+		// it must clear the MCP consent gate (risk>=High), not run ungated.
+		Risk:      risk.High,
+		Group:     GroupFlipperIR,
+		AgentOnly: false,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.IRTxRaw(
 				safeUint32(intOr(p, "frequency", 38000)),
