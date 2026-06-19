@@ -107,10 +107,12 @@
 //
 // What this package does NOT cover (deliberately out of scope)
 //
-//   - **usbmon framing** — operators must extract the 8-byte
-//     HID reports from a usbmon pcap (Linux) or USBPcap (Windows)
-//     by stripping the per-URB headers; this decoder takes the
-//     concatenated report stream as hex input.
+//   - **Capture framing** — this Decode entry point takes the
+//     concatenated 8-byte report stream as hex. Stripping the
+//     per-URB framing is handled by the sibling extractors:
+//     ExtractUsbmonReports (Linux usbmon text) and
+//     ExtractUSBPcapReports (Windows USBPcap binary pcap,
+//     DLT_USBPCAP/249).
 //   - **USB enumeration descriptors** — Device / Configuration /
 //     Interface / HID Report descriptors that *declare* the
 //     report layout (vendor ID, product ID, report-ID field,

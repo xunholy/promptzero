@@ -5,6 +5,7 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -63,17 +64,21 @@ var usbHIDClassifySpec = Spec{
 		"modifier + key combinations → DuckyScript modifier keywords (CTRL, " +
 		"SHIFT, ALT, GUI, CTRL-SHIFT, CTRL-ALT, ALT-SHIFT, GUI-SHIFT) followed " +
 		"by the bare key.\n\n" +
-		"Pure offline parser. Two input modes:\n" +
+		"Pure offline parser. Three input modes:\n" +
 		" - `usbmon`: paste a raw Linux usbmon text capture " +
 		"(`cat /sys/kernel/debug/usb/usbmon/<N>u`, or the usbmon lines " +
 		"Wireshark shows) and the framing is stripped for you — every 8-byte " +
 		"Interrupt-IN keyboard callback is extracted in order and decoded.\n" +
+		" - `usbpcap`: a Windows USBPcap binary capture (a classic `.pcap` " +
+		"with link type DLT_USBPCAP/249, from USBPcapCMD or the Wireshark " +
+		"USBPcap extcap), base64-encoded — the per-URB framing is stripped " +
+		"for you, same heuristic as the usbmon path. Classic pcap only " +
+		"(re-export pcapng as pcap).\n" +
 		" - `hex`: paste the already-extracted concatenated 8-byte HID " +
 		"Keyboard Boot Protocol reports directly.\n" +
-		"Either way you get back the per-report decode, key-down event " +
-		"sequence, reconstructed text, and DuckyScript-style transcript.\n\n" +
-		"Out of scope (deferred): USBPcap (Windows) framing (use the Linux " +
-		"usbmon text mode, or pre-extract to `hex`); USB enumeration descriptors " +
+		"Whichever mode you use, you get back the per-report decode, key-down " +
+		"event sequence, reconstructed text, and DuckyScript-style transcript.\n\n" +
+		"Out of scope (deferred): USB enumeration descriptors " +
 		"(Device / Configuration / Interface / HID Report descriptors that " +
 		"*declare* the report layout — vendor ID, product ID, report-ID field, " +
 		"non-Boot-Protocol report shapes — are out of scope); composite HID " +
@@ -101,10 +106,11 @@ var usbHIDClassifySpec = Spec{
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"hex":{"type":"string","description":"Concatenated 8-byte USB HID Keyboard Boot Protocol reports (already extracted from the capture). Must be a multiple of 8 bytes. Separators (':' '-' '_' whitespace) tolerated. '0x' prefix tolerated. Mutually exclusive with 'usbmon'."},
-			"usbmon":{"type":"string","description":"A raw Linux usbmon text capture (cat /sys/kernel/debug/usb/usbmon/<N>u). The 8-byte Interrupt-IN keyboard reports are extracted from the callback lines automatically. Mutually exclusive with 'hex'."}
+			"hex":{"type":"string","description":"Concatenated 8-byte USB HID Keyboard Boot Protocol reports (already extracted from the capture). Must be a multiple of 8 bytes. Separators (':' '-' '_' whitespace) tolerated. '0x' prefix tolerated. Provide exactly one of hex/usbmon/usbpcap."},
+			"usbmon":{"type":"string","description":"A raw Linux usbmon text capture (cat /sys/kernel/debug/usb/usbmon/<N>u). The 8-byte Interrupt-IN keyboard reports are extracted from the callback lines automatically. Provide exactly one of hex/usbmon/usbpcap."},
+			"usbpcap":{"type":"string","description":"A Windows USBPcap binary capture (.pcap with link type DLT_USBPCAP/249, from USBPcapCMD or the Wireshark USBPcap extcap), base64-encoded. The 8-byte Interrupt-IN keyboard reports are extracted automatically. Classic pcap only (re-export pcapng as pcap). Provide exactly one of hex/usbmon/usbpcap."}
 		},
-		"oneOf":[{"required":["hex"]},{"required":["usbmon"]}]
+		"oneOf":[{"required":["hex"]},{"required":["usbmon"]},{"required":["usbpcap"]}]
 	}`),
 	Risk:      risk.Low,
 	Group:     GroupHostTools,
@@ -115,21 +121,40 @@ var usbHIDClassifySpec = Spec{
 func usbHIDClassifyHandler(_ context.Context, _ *Deps, p map[string]any) (string, error) {
 	hexRaw := strings.TrimSpace(str(p, "hex"))
 	usbmonRaw := strings.TrimSpace(str(p, "usbmon"))
-	if hexRaw == "" && usbmonRaw == "" {
-		return "", fmt.Errorf("usb_badusb_classify: one of 'hex' or 'usbmon' is required")
+	usbpcapRaw := strings.TrimSpace(str(p, "usbpcap"))
+
+	provided := 0
+	for _, in := range []string{hexRaw, usbmonRaw, usbpcapRaw} {
+		if in != "" {
+			provided++
+		}
 	}
-	if hexRaw != "" && usbmonRaw != "" {
-		return "", fmt.Errorf("usb_badusb_classify: provide 'hex' OR 'usbmon', not both")
+	if provided == 0 {
+		return "", fmt.Errorf("usb_badusb_classify: one of 'hex', 'usbmon', or 'usbpcap' is required")
+	}
+	if provided > 1 {
+		return "", fmt.Errorf("usb_badusb_classify: provide exactly one of 'hex', 'usbmon', or 'usbpcap'")
 	}
 
 	reportHex := hexRaw
 	extracted := 0
-	if usbmonRaw != "" {
+	source := ""
+	switch {
+	case usbmonRaw != "":
 		var err error
-		reportHex, extracted, err = usbhid.ExtractUsbmonReports(usbmonRaw)
-		if err != nil {
+		if reportHex, extracted, err = usbhid.ExtractUsbmonReports(usbmonRaw); err != nil {
 			return "", fmt.Errorf("usb_badusb_classify: %w", err)
 		}
+		source = "usbmon capture"
+	case usbpcapRaw != "":
+		raw, err := decodeBase64Loose(usbpcapRaw)
+		if err != nil {
+			return "", fmt.Errorf("usb_badusb_classify: usbpcap is not valid base64: %w", err)
+		}
+		if reportHex, extracted, err = usbhid.ExtractUSBPcapReports(raw); err != nil {
+			return "", fmt.Errorf("usb_badusb_classify: %w", err)
+		}
+		source = "USBPcap capture"
 	}
 
 	res, err := usbhid.Decode(reportHex)
@@ -138,7 +163,25 @@ func usbHIDClassifyHandler(_ context.Context, _ *Deps, p map[string]any) (string
 	}
 	out, _ := json.MarshalIndent(res, "", "  ")
 	if extracted > 0 {
-		return fmt.Sprintf("// extracted %d HID keyboard report(s) from usbmon capture\n%s", extracted, string(out)), nil
+		return fmt.Sprintf("// extracted %d HID keyboard report(s) from %s\n%s", extracted, source, string(out)), nil
 	}
 	return string(out), nil
+}
+
+// decodeBase64Loose decodes base64 tolerating whitespace/newlines (pasted
+// captures wrap) and both standard and URL alphabets, with or without
+// padding — so an operator can paste base64 from any tool.
+func decodeBase64Loose(s string) ([]byte, error) {
+	clean := strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r == '\t' || r == ' ' {
+			return -1
+		}
+		return r
+	}, s)
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		if b, err := enc.DecodeString(clean); err == nil {
+			return b, nil
+		}
+	}
+	return nil, fmt.Errorf("could not decode as base64 (std/url, padded or raw)")
 }
