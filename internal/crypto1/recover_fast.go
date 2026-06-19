@@ -267,13 +267,28 @@ func RecoverFast(uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32) (uint64, error) {
 	return RecoverFastTimeout(context.Background(), uid, nt0, nr0, ar0, nt1, nr1, ar1)
 }
 
-// RecoverFastTimeout is RecoverFast with a context deadline. The context
-// is checked approximately every 64K iterations to bound cancellation
-// latency to a few milliseconds.
-//
-// Returns context.Canceled or context.DeadlineExceeded (wrapped) if the
-// context is done before a key is found.
+// RecoverFastTimeout is RecoverFast with a context deadline, searching the
+// full 2^48 keyspace in the guaranteed fallback. The context is checked
+// approximately every 64K iterations to bound cancellation latency to a few
+// milliseconds. Returns context.Canceled / context.DeadlineExceeded (wrapped)
+// if the context is done before a key is found.
 func RecoverFastTimeout(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32) (uint64, error) {
+	return RecoverFastTimeoutRange(ctx, uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
+}
+
+// RecoverFastTimeoutRange is RecoverFastTimeout with an explicit bound on the
+// high-32-bit search range of the GUARANTEED exhaustive fallback (loHi..hiHi,
+// the same hi32 range as RecoverWithRange). This is the bug-free entry point
+// for a caller that constrains the keyspace (e.g. mfkey32_recover's range_bits):
+// a bounded fallback terminates with a clean "no key in range" instead of
+// grinding the full 2^48, so range_bits actually limits the work.
+//
+// The probabilistic Garcia §4 fast path is NOT range-limited — it always
+// enumerates its full 2^24 oddState space and, on the rare occasions it fires
+// (~2^-15 of keys), recovers the key regardless of the range bound. So the
+// range only bounds the deterministic fallback, never hides a key the fast
+// path can reach. With loHi=0, hiHi=1<<32 this is the full-keyspace form.
+func RecoverFastTimeoutRange(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 uint32, loHi, hiHi uint64) (uint64, error) {
 	// Derive the known keystreams from both captures.
 	// ks2 = {aR} XOR prng(nT, 64)  —  the plain aR = prng(nT, 64).
 	ks2_0 := ar0 ^ Prng(nt0, 64)
@@ -350,10 +365,12 @@ func RecoverFastTimeout(ctx context.Context, uid, nt0, nr0, ar0, nt1, nr1, ar1 u
 		}
 	})
 
-	// Start guaranteed fallback in background.  Pass ctx so the fallback's
+	// Start guaranteed fallback in background, bounded to the caller's hi32
+	// range so range_bits is honoured (was hardcoded 0..1<<32, which silently
+	// ignored any bound and ground the full 2^48). Pass ctx so the fallback's
 	// inner hi32 loop also terminates promptly on cancellation.
 	obs.SafeGo("crypto1.mfkey32_fast.fallback", func() {
-		k, err := RecoverWithRange(ctx, uid, nt0, nr0, ar0, nt1, nr1, ar1, 0, 1<<32)
+		k, err := RecoverWithRange(ctx, uid, nt0, nr0, ar0, nt1, nr1, ar1, loHi, hiHi)
 		ch <- result{k, err}
 	})
 
