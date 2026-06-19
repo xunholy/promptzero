@@ -160,7 +160,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | Primitive | Anchor source | Native | Container | Federation | Gap |
 |---|---|:---:|:---:|:---:|:---:|
 | BadUSB run / validate / DuckyScript corpus | baseline | ✅ `badusb_*`, `bruce_badusb_run` | — | — | — |
-| BadUSB **forensic classifier** (DuckyScript reconstruct from usbmon pcap) | attacks #11 | ✅ `usb_badusb_classify` | — | — | shipped — HID Boot-Protocol report decode → DuckyScript; v0.366 added raw Linux usbmon-capture ingestion (auto-strips per-URB framing). USBPcap (Windows) framing still deferred. |
+| BadUSB **forensic classifier** (DuckyScript reconstruct from usbmon pcap) | attacks #11 | ✅ `usb_badusb_classify` | — | — | shipped — HID Boot-Protocol report decode → DuckyScript; v0.366 added raw Linux usbmon-capture ingestion (auto-strips per-URB framing); **USBPcap (Windows) binary-pcap ingestion shipped (`usbpcap` input — DLT_USBPCAP/249 reader, base64, fuzz-clean)**, closing the cross-platform capture gap. |
 | USB Rubber Ducky compile-and-drop | hardware §8 + audit §2c #5 | ❌ | — | — | **§2c #5** |
 | O.MG Cable / Plug push | hardware §8 | ❌ | — | — | New gap (low priority) |
 | Mass storage / MTP / MIDI emulate | apps BadUSB | ❌ | — | — | Niche; low priority |
@@ -289,7 +289,7 @@ Items already in the audit (§2 above) are excluded — this list is the
 | 7 | `wifi_pmkid_capture` (native `.hc22000` writer + hashcat federate) | attacks #7 (hcxdumptool / hashcat 22000) | Closes the loop on Marauder PMKID capture; pure Go, no new HW. | M | `marauder`, future `pineapple` |
 | 8 | `ble_continuity_classify` (Apple Continuity dissector) | attacks #8 (furiousMAC) + AppleJuice | ✅ shipped v0.260 — full Continuity TLV dissector (Handoff / AirDrop / NearbyInfo / Proximity Pairing / Hey Siri / AirPlay / Nearby Action / iBeacon); pairs with `defense_classify_advertisement`. | M | `internal/applecontinuity` |
 | 9 | `iclass_dummy_mac_emulate` (legacy iClass, no MAC keys) | attacks #9 (bettse/Flipper picopass app) | Small change in existing emulation path; opens lab/red-team flows currently PM3-only. | S | `internal/iclass/` |
-| 10 | `usb_badusb_classify` (DuckyScript reconstruct from usbmon pcap) | attacks #11 (agentzex Wireshark dissector) | ✅ **shipped** — HID Boot-Protocol report → DuckyScript decode (`internal/usbhid`); v0.366 added raw Linux usbmon-capture ingestion. USBPcap (Windows) framing deferred. | M | `internal/usbhid` |
+| 10 | `usb_badusb_classify` (DuckyScript reconstruct from usbmon pcap) | attacks #11 (agentzex Wireshark dissector) | ✅ **shipped** — HID Boot-Protocol report → DuckyScript decode (`internal/usbhid`); v0.366 added raw Linux usbmon-capture ingestion; **USBPcap (Windows) binary-pcap ingestion shipped** (DLT_USBPCAP/249 reader). | M | `internal/usbhid` |
 | 11 | `swd_dump` + `avr_isp_read` (chip-dump Specs) | apps top-20 #16 | **Blocks audit §2d `workflow_glitch_chip_dump`** — without these the workflow has no data path. | M | new `internal/swd/` or extend `buspirate` |
 | 12 | `gpio_logic_capture` (8-channel logic analyzer / oscilloscope) | apps top-20 #17 | Pairs with hw_recon workflows; only device-internal scope primitive. | M | extend `buspirate` GPIO sample loop |
 | 13 | `nfc_apdu_script_run` (sequence-file APDU runner) | apps top-20 #14 | Audit named `nfc_apdu_run` (single-frame); script-file variant is a separate Spec. | S | extend `nfc.go` |
