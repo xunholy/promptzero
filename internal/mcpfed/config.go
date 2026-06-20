@@ -58,6 +58,15 @@ type ClientConfig struct {
 	// startup. Zero defaults to 30s.
 	InitTimeout time.Duration `yaml:"init_timeout,omitempty"`
 
+	// CallTimeout caps a single federated tool call (including its one
+	// transport-closed retry). Zero defaults to 5m. A remote server that
+	// initialized fine but then stalls on a specific tool call would
+	// otherwise block the agent turn for as long as the caller's context
+	// allows — potentially indefinitely. The default is deliberately generous
+	// so a slow-but-finite remote tool (e.g. a long scan) is not cut off;
+	// raise it for servers with genuinely long operations.
+	CallTimeout time.Duration `yaml:"call_timeout,omitempty"`
+
 	// HealthInterval sets the Ping cadence. Zero defaults to 30s.
 	// Negative disables health checks entirely (rely on call-path
 	// failure detection only).
@@ -183,6 +192,15 @@ func (c ClientConfig) initTimeout() time.Duration {
 		return 30 * time.Second
 	}
 	return c.InitTimeout
+}
+
+// callTimeout returns the effective per-call timeout, applying the 5m default
+// when the field is unset.
+func (c ClientConfig) callTimeout() time.Duration {
+	if c.CallTimeout <= 0 {
+		return 5 * time.Minute
+	}
+	return c.CallTimeout
 }
 
 // healthInterval returns (cadence, enabled). A zero field defaults to 30s;

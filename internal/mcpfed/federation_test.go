@@ -396,3 +396,47 @@ func names(ss []tools.Spec) []string {
 	}
 	return out
 }
+
+// hangingTool blocks until its call context is cancelled — a stand-in for a
+// remote server that initialised fine but stalls on a specific tool call.
+func hangingTool() server.ServerTool {
+	tool := mcp.Tool{
+		Name:        "hang",
+		Description: "Blocks until the call context is cancelled",
+		InputSchema: mcp.ToolInputSchema{Type: "object"},
+	}
+	return server.ServerTool{
+		Tool: tool,
+		Handler: func(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+}
+
+// TestManagedClient_CallTimeout pins the per-call timeout: a federated tool
+// call to a stalled remote must return an error promptly (bounded by
+// CallTimeout) instead of hanging the agent turn for as long as the caller's
+// context allows.
+func TestManagedClient_CallTimeout(t *testing.T) {
+	builder, cleanup := startMCPServer(t, hangingTool())
+	defer cleanup()
+
+	m := newManaged(ClientConfig{Prefix: "t", CallTimeout: 100 * time.Millisecond})
+	m.builder = builder
+	if err := m.dial(context.Background()); err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = m.close() }()
+
+	start := time.Now()
+	_, err := m.callTool(context.Background(), "hang", map[string]any{})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("callTool to a stalled remote returned nil — expected a timeout error")
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("callTool took %s — the 100ms CallTimeout was not enforced (it hung)", elapsed)
+	}
+}
