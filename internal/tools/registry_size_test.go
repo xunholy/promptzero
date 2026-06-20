@@ -2975,7 +2975,13 @@ func TestRegistrySize(t *testing.T) {
 	// authentication, terminal risk management; byte-1 bits per EMV Book 3
 	// Annex C1, byte 2 surfaced raw as RFU/kernel-specific). Extends the
 	// nfc_emv_* decode family alongside cvm/dol/afl/track2. internal/emv.
-	const expected = 677
+	// v0.718.0 added nfc_emv_tvr_decode (EMV Terminal Verification Results,
+	// tag 95 → the terminal's per-check verdict on a transaction: offline-auth
+	// (SDA/DDA/CDA failed), application-usage, cardholder-verification (CVM/PIN),
+	// terminal-risk-management (floor/offline limits), issuer-script failures;
+	// 5 bytes / 40 bits per EMV Book 3 Annex C5, grouped by functional byte, RFU
+	// bits surfaced raw). internal/emv.
+	const expected = 678
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
