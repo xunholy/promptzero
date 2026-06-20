@@ -114,6 +114,13 @@ func (m *managedClient) dialLocked(ctx context.Context) error {
 // transport failure (subprocess died, HTTP closed, etc.). The retry pays
 // the dial cost only on actual loss — happy-path latency is unchanged.
 func (m *managedClient) callTool(ctx context.Context, name string, args map[string]any) (*mcp.CallToolResult, error) {
+	// Bound the whole call (both the first attempt and the one retry) so a
+	// remote server that stalls mid-call cannot block the agent turn beyond
+	// the per-call budget. context.WithTimeout honours an earlier caller
+	// deadline, so this only ever lowers the ceiling, never raises it.
+	ctx, cancel := context.WithTimeout(ctx, m.cfg.callTimeout())
+	defer cancel()
+
 	res, err := m.callOnce(ctx, name, args)
 	if err == nil {
 		return res, nil
