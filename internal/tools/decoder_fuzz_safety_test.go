@@ -197,6 +197,122 @@ func TestTextDecoders_MalformedInputNeverPanics(t *testing.T) {
 	t.Logf("panic-safety swept %d text decoders", tested)
 }
 
+// isMultiParamHostDecoder reports whether a Spec is a pure offline host
+// tool with two or more required params — the family the single-param hex
+// and text guards above deliberately skip (each requires exactly one
+// param, so the multi-param encoders, KDFs and hashcat-line formatters
+// fall through both). Encoders (rfid_pacs_encode, ioprox_encode,
+// dcf77_synth), KDFs (wpa_pmk_derive, hmac_compute, postgres_password)
+// and the wifi_*_hc22000 formatters all live here: each parses structured
+// hex / string / integer fields an operator may paste truncated or
+// malformed, and none may panic. GroupHostTools + risk.Low keeps the
+// sweep to host-only tools that ignore Deps, so a nil Deps is safe (the
+// same exclusion the single-param guards rely on).
+func isMultiParamHostDecoder(s Spec) bool {
+	return s.Handler != nil &&
+		s.Group == GroupHostTools &&
+		s.Risk == risk.Low &&
+		len(s.Required) >= 2
+}
+
+// malformedByType returns degenerate values appropriate to a required
+// param's JSON-schema type. Numeric params get boundary and overflow
+// values (a count field trusted before allocation/slicing); everything
+// else is treated as a string and fed the truncated-hex / empty /
+// stray-separator battery that has historically tripped length-field
+// parsers.
+func malformedByType(jsonType string) []any {
+	switch jsonType {
+	case "integer", "number":
+		return []any{0, 1, -1, -2147483648, 2147483647, 4294967296, 9999999999, 64, 256}
+	default:
+		return []any{"", " ", "0", "zz", "::::", "ffffffffffffffff", "\x00\xff", "...", "-1",
+			strings.Repeat("f", 9000)}
+	}
+}
+
+// TestMultiParamDecoders_MalformedInputNeverPanics extends the panic-safety
+// net to every pure offline host tool with two or more required params —
+// the gap the single-param hex/text guards leave open. For each such tool
+// it sweeps one param at a time across its type's degenerate battery while
+// the remaining required params hold a fixed degenerate anchor, plus an
+// all-params-degenerate pass. A new multi-field encoder/decoder added
+// without bounds-checking a short hex field or an out-of-range count would
+// pass its own happy-path tests but trip here.
+//
+// Errors are expected and fine — the contract is "return an error or a
+// benign Result, never panic".
+func TestMultiParamDecoders_MalformedInputNeverPanics(t *testing.T) {
+	tested := 0
+	for _, s := range All() {
+		if !isMultiParamHostDecoder(s) {
+			continue
+		}
+		var parsed struct {
+			Properties map[string]struct {
+				Type string `json:"type"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(s.Schema, &parsed); err != nil {
+			continue
+		}
+		tested++
+
+		// A fixed type-appropriate anchor for the params we are not
+		// currently varying, so the handler clears each param's early
+		// validation and reaches the deeper field-parsing code with a
+		// single hostile value at a time.
+		anchor := func(p string) any {
+			if parsed.Properties[p].Type == "integer" || parsed.Properties[p].Type == "number" {
+				return 1
+			}
+			return "ffffffffffffffff"
+		}
+
+		call := func(args map[string]any) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("%s panicked on args=%v: %v", s.Name, args, r)
+				}
+			}()
+			_, _ = s.Handler(context.Background(), nil, args)
+		}
+
+		// Sweep each required param across its battery, anchoring the rest.
+		for _, target := range s.Required {
+			for _, bad := range malformedByType(parsed.Properties[target].Type) {
+				args := map[string]any{}
+				for _, p := range s.Required {
+					args[p] = anchor(p)
+				}
+				args[target] = bad
+				call(args)
+			}
+		}
+
+		// All params degenerate at once: empty strings / zero ints, then
+		// max-ish ints / long hex.
+		for _, mode := range []int{0, 1} {
+			args := map[string]any{}
+			for _, p := range s.Required {
+				b := malformedByType(parsed.Properties[p].Type)
+				if mode == 0 {
+					args[p] = b[0] // "" or 0
+				} else {
+					args[p] = b[len(b)-1] // long-hex or 9999999999
+				}
+			}
+			call(args)
+		}
+	}
+	// Sanity floor: the multi-param host family is ~15 tools today. If
+	// this collapses the filter regressed and the guard is inert.
+	if tested < 10 {
+		t.Errorf("only %d multi-param host decoders exercised; expected 10+ — filter may have regressed", tested)
+	}
+	t.Logf("panic-safety swept %d multi-param host decoders", tested)
+}
+
 // hexDecoderHandlers caches the pure hex-decoder handlers once so the
 // fuzz body doesn't re-scan the registry on every input.
 func hexDecoderHandlers() []Spec {
