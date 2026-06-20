@@ -2969,7 +2969,13 @@ func TestRegistrySize(t *testing.T) {
 	// synonym map, so an operator finds a tool by task ("garage door", "wifi
 	// password") instead of guessing its exact name. Available on every surface
 	// that reaches the registry (CLI/Web/MCP). Read-only (risk.Low).
-	const expected = 676
+	// v0.717.0 added nfc_emv_aip_decode (EMV Application Interchange Profile,
+	// tag 82 → the card's advertised authentication capabilities: SDA/DDA/CDA
+	// offline data authentication, cardholder verification, issuer
+	// authentication, terminal risk management; byte-1 bits per EMV Book 3
+	// Annex C1, byte 2 surfaced raw as RFU/kernel-specific). Extends the
+	// nfc_emv_* decode family alongside cvm/dol/afl/track2. internal/emv.
+	const expected = 677
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
