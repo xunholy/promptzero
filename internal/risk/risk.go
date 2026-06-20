@@ -130,6 +130,11 @@ var toolLevels = func() map[string]Level {
 		"nfc_emv_track2_decode",
 		"nfc_emv_dol_decode",
 		"nfc_emv_afl_decode",
+		// AIP (tag 82) bitfield decode: the card's advertised
+		// authentication capabilities (SDA/DDA/CDA, cardholder/issuer
+		// auth). Offline read of operator-supplied bytes; transmits
+		// nothing, so it is Low like the rest of the EMV decode family.
+		"nfc_emv_aip_decode",
 		// ISO 15693 vicinity-card UID/AFI decode (the second major HF
 		// NFC standard). Offline deterministic read of an
 		// operator-supplied UID; transmits nothing, so it is Low.
