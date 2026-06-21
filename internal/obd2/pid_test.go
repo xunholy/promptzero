@@ -45,6 +45,46 @@ func TestDecodeResponse_HandVectors(t *testing.T) {
 	}
 }
 
+// TestDecodeResponse_ExtendedPIDs checks the added J1979 PIDs (catalyst temps,
+// MIL/clear run times, evap vapor pressure incl. the signed-negative case,
+// ethanol %, fuel-rail pressure, accelerator/battery %, fuel-injection timing)
+// against hand-computed values.
+func TestDecodeResponse_ExtendedPIDs(t *testing.T) {
+	cases := []struct {
+		name string
+		hex  string
+		val  float64
+		unit string
+	}{
+		{"catalyst temp B1S1", "413C0FA0", 360, "°C"},         // 4000/10-40
+		{"catalyst temp B2S2", "413F0FA0", 360, "°C"},         // same formula
+		{"time MIL on", "414D003C", 60, "min"},                // 0x3C
+		{"time since cleared", "414E0100", 256, "min"},        // 0x100
+		{"evap vapor pressure +", "41320100", 64, "Pa"},       // 256/4
+		{"evap vapor pressure -", "4132FF9C", -25, "Pa"},      // signed(0xFF9C=-100)/4
+		{"ethanol", "4152FF", 100, "%"},                       // 255*100/255
+		{"fuel rail abs pressure", "4159000A", 100, "kPa"},    // 10*10
+		{"rel accel pedal", "415A80", 128.0 * 100 / 255, "%"}, // ~50.196
+		{"hybrid battery life", "415BFF", 100, "%"},           // 255*100/255
+		{"fuel injection timing", "415D6A80", 3, "°"},         // 27264/128-210
+	}
+	for _, c := range cases {
+		r, err := DecodeResponse(c.hex)
+		if err != nil {
+			t.Fatalf("%s: DecodeResponse: %v", c.name, err)
+		}
+		if r.Value == nil {
+			t.Fatalf("%s: nil value (PID not in table?)", c.name)
+		}
+		if !approx(*r.Value, c.val) {
+			t.Errorf("%s: value = %v, want %v", c.name, *r.Value, c.val)
+		}
+		if r.Unit != c.unit {
+			t.Errorf("%s: unit = %q, want %q", c.name, r.Unit, c.unit)
+		}
+	}
+}
+
 func TestDecodeResponse_NamesPID(t *testing.T) {
 	r, err := DecodeResponse("41 0C 1A F8")
 	if err != nil {
