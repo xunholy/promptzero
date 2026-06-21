@@ -45,3 +45,32 @@ func TestToolSearchHandler(t *testing.T) {
 		t.Errorf("no-match query should report count 0:\n%s", out)
 	}
 }
+
+// TestToolSearch_AutomotiveDiscoverability guards that the OBD-II / UDS / CAN
+// diagnostic tool family is reachable by natural automotive queries — a gap
+// before the synonym map gained the engine/vehicle/diagnostic/obd/ecu/dtc
+// entries and obd2_pid_decode's description listed its full (post-v0.726) PID
+// coverage. Each query must surface its intended tool somewhere in the ranked
+// results.
+func TestToolSearch_AutomotiveDiscoverability(t *testing.T) {
+	cases := []struct {
+		query string
+		want  string
+	}{
+		{"catalyst temperature", "obd2_pid_decode"}, // a v0.726 PID, now in the description
+		{"engine sensor value", "obd2_pid_decode"},  // engine -> obd2/pid
+		{"car diagnostic trouble code", "obd2_dtc_decode"},
+		{"diagnostic trouble code status", "uds_dtc_status_decode"},
+		{"ecu calibration flash", "xcp_decode"}, // ecu -> xcp/ccp
+		{"vehicle identification number", "vin_decode"},
+	}
+	for _, c := range cases {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": c.query, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", c.query, err)
+		}
+		if !strings.Contains(out, `"name": "`+c.want+`"`) {
+			t.Errorf("query %q did not surface %s in the top results:\n%s", c.query, c.want, out)
+		}
+	}
+}

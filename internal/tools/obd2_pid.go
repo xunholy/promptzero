@@ -25,9 +25,11 @@ func init() { //nolint:gochecknoinits
 var obd2PIDDecodeSpec = Spec{
 	Name: "obd2_pid_decode",
 	Description: "Decode an OBD-II / SAE J1979 Mode-01 (\"show current data\") response into its " +
-		"engineering value — RPM, vehicle speed, coolant / intake / oil temperature, MAF air-flow, " +
-		"throttle position, fuel trim, control-module voltage, and the rest of the standard live-data " +
-		"PIDs — via the public per-PID formulas. The j1850 / canbus decoders name the PID and surface " +
+		"engineering value — RPM, vehicle speed, coolant / intake / oil / catalyst temperature, MAF " +
+		"air-flow, throttle position, fuel trim, control-module voltage, evaporative-system and " +
+		"fuel-rail pressure, ethanol fuel percentage, fuel-injection timing, the time the engine has " +
+		"run with the MIL (check-engine lamp) on or since the codes were cleared, and the rest of the " +
+		"standard live-data PIDs — via the public per-PID formulas. The j1850 / canbus decoders name the PID and surface " +
 		"the raw measurement bytes; this computes the value those bytes encode, and works for any " +
 		"transport (CAN / ISO 15765, J1850 VPW/PWM, ISO 9141) since you supply the already-extracted " +
 		"Mode-01 payload.\n\n" +
