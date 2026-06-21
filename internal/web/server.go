@@ -690,8 +690,17 @@ func (s *Server) Start(ctx context.Context) error {
 		// streams.
 	}
 
+	// Derive a cancellable context so the shutdown goroutine is guaranteed to
+	// exit when Start returns — including the early-return path where
+	// ListenAndServe fails to bind (port in use) and the caller's ctx is never
+	// cancelled. Without this, that goroutine blocks on <-ctx.Done() forever,
+	// leaking on every failed bind. On the normal path the deferred cancel is a
+	// no-op (the caller already cancelled ctx to trigger shutdown).
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+
 	go func() {
-		<-ctx.Done()
+		<-runCtx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
