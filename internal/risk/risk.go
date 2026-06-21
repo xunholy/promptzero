@@ -140,6 +140,11 @@ var toolLevels = func() map[string]Level {
 		// failures). Offline read of operator-supplied bytes; transmits
 		// nothing, so it is Low like the rest of the EMV decode family.
 		"nfc_emv_tvr_decode",
+		// TSI (tag 9B) bitfield decode: which functions the terminal
+		// actually performed (offline-auth / CVM / risk-mgmt / issuer-auth
+		// / script). Completes the AIP/TVR/TSI trio. Offline read of
+		// operator-supplied bytes; transmits nothing, so it is Low.
+		"nfc_emv_tsi_decode",
 		// ISO 15693 vicinity-card UID/AFI decode (the second major HF
 		// NFC standard). Offline deterministic read of an
 		// operator-supplied UID; transmits nothing, so it is Low.

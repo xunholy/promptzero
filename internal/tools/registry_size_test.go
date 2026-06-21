@@ -2987,7 +2987,12 @@ func TestRegistrySize(t *testing.T) {
 	// the beacon ESSID, and builds the WPA*02 hashcat mode-22000 line; the
 	// client-handshake counterpart of wifi_pmkid_pcap, removing the hcxpcapngtool
 	// shell-out for the M1+M2 case; M2+M3/M1+M4/M3+M4 deferred). internal/eapolcap.
-	const expected = 679
+	// v0.720.0 added nfc_emv_tsi_decode (EMV Transaction Status Information, tag
+	// 9B → which functions the terminal actually performed: offline data auth,
+	// cardholder verification, card/terminal risk management, issuer auth, script
+	// processing; 6 bits per EMV Book 3 Annex C6, RFU surfaced raw). Completes the
+	// EMV transaction-outcome trio with aip (tag 82) + tvr (tag 95). internal/emv.
+	const expected = 680
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
