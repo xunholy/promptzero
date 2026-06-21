@@ -99,7 +99,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 | Wiegand D0/D1 capture + replay | apps top-20 #6 + attacks #6 | ❌ | — | — | **§2b** ⟶ `gpio_wiegand_capture/replay` |
 | HID Prox / EM4xxx PACS decode | apps top-20 #15 | ✅ `rfid_pacs_decode` (+ inverse `rfid_pacs_encode`: H10301/H10306/H10304/H10302-37bit, round-trip-verified) | — | ✅ pm3 | shipped — Wiegand PACS field decode (see §3 #19) |
 | LF EM4100 / T5577 read+write | baseline | ✅ `rfid_*`, `loader_t5577_multiwriter`; offline `em4100_decode` (ID forms) + `em4100_encode` (64-bit frame) + `em4100_frame_decode` v0.417 (parity-validating frame→ID inverse) | — | — | — |
-| FDX-B / DCF77 / niche LF synth | apps NFC | ⚠️ `rfid_build` covers EM4100 only; **FDX-B offline *decode* shipped v0.464.0 (`fdxb_decode`)**, DCF77 telegram-synth v0.375 | — | — | Low-priority gaps (LF *synth*/build side remains EM4100-only) |
+| FDX-B / DCF77 / niche LF synth | apps NFC | ⚠️ `rfid_build` covers EM4100 only; **FDX-B offline *decode* shipped v0.464.0 (`fdxb_decode`) + *encode* v0.723.0 (`fdxb_encode`, the inverse generator: national+country+flags+CRC-16, round-trip-verified)**, DCF77 telegram-synth v0.375 | — | — | FDX-B decode+encode shipped; remaining LF *synth* gaps (Oregon/niche) low-priority |
 | UHF EPC Gen2 (M6E-Nano) | apps `uhf_rfid` | ⚠️ | — | — | Adjacent-HW gap for *reading*; **offline EPC *decode* shipped v0.468.0 (`epc_decode`, SGTIN-96)** |
 | Mag-stripe wireless emulation (MagSpoof) | apps top-20 #9 | ⚠️ partial | — | — | offline half ✅ `magstripe_decode` (v0.453 — ISO 7813 Track 1/2 ASCII swipe parser); the wireless-coil TX emulation remains a hardware loader step |
 
