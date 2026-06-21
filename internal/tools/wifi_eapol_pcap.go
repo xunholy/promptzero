@@ -42,15 +42,19 @@ var wifiEAPOLPcapSpec = Spec{
 		"dissector, and the mode-22000 line builder (anchored on hashcat's published example). Both " +
 		"**classic libpcap** and **pcapng** (the format Marauder / hcxdumptool write) are accepted. **No " +
 		"confidently-wrong output**: only 802.11 / radiotap link types are decoded (105 / 127); a handshake " +
-		"is emitted only when a real M1 is paired with a real M2 on a matching replay counter; the MIC field " +
-		"is zeroed in the emitted EAPOL frame (as hashcat requires); an incomplete M2's all-zero MIC is " +
-		"dropped; and the crackable line is built only once the ESSID has been seen (a handshake with no " +
-		"ESSID is reported, with a note, but no line is fabricated).\n\n" +
-		"Provide the capture **base64-encoded** (it is binary). Only the **M1+M2** message pair (hashcat " +
-		"message_pair 0x00) is extracted; the M2+M3, M1+M4 and M3+M4 pairings are deferred. No network, no " +
-		"device, transmits nothing — Low risk. Source: docs/catalog/gap-analysis.md (WiFi PMKID -> hashcat " +
-		"22000 pipeline, the type-02 4-way row). Wrap-vs-native: native — orchestration over in-tree " +
-		"decoders, no new go.mod dep; anchored to round-trip captures built from the same decoders.",
+		"is emitted only when an ANonce-bearing message is paired with a real M2 on the matching replay " +
+		"counter; the MIC field is zeroed in the emitted EAPOL frame (as hashcat requires); an incomplete " +
+		"M2's all-zero MIC is dropped; and the crackable line is built only once the ESSID has been seen (a " +
+		"handshake with no ESSID is reported, with a note, but no line is fabricated).\n\n" +
+		"Provide the capture **base64-encoded** (it is binary). Two message pairs are extracted: **M1+M2** " +
+		"(ANonce from M1, hashcat message_pair 0x00) and — when M1 was missed — **M2+M3** (ANonce from the " +
+		"M3 whose replay counter is the M2's + 1, message_pair 0x02; the M2 still supplies the MIC and the " +
+		"MIC-bearing frame). The 0x02 index is anchored on hashcat's own published mode-22000 example, " +
+		"itself an M2+M3 case. M1+M2 is preferred when the full handshake is present. The M1+M4 / M3+M4 " +
+		"pairings and nonce-error-correction flags remain deferred. No network, no device, transmits " +
+		"nothing — Low risk. Source: docs/catalog/gap-analysis.md (WiFi PMKID -> hashcat 22000 pipeline, " +
+		"the type-02 4-way row). Wrap-vs-native: native — orchestration over in-tree decoders, no new " +
+		"go.mod dep; anchored to round-trip captures built from the same decoders.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{

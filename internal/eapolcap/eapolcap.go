@@ -27,11 +27,17 @@
 // probe-response / association-request (a handshake with no ESSID is reported,
 // with a note, but no line is fabricated).
 //
+// Two message pairs are extracted: M1+M2 (ANonce from M1, hashcat message_pair
+// 0x00) and — when M1 was missed — M2+M3 (ANonce from the M3 whose replay
+// counter is the M2's + 1, message_pair 0x02; the M2 still supplies the MIC and
+// the MIC-bearing frame). The 0x02 index is anchored on hashcat's own published
+// mode-22000 example, which is itself an M2+M3 case. Clean-capture lines carry
+// no nonce-correction flags (0x10/0x20/0x80); the M1+M4 and M3+M4 pairings and
+// nonce-error-correction heuristics remain deferred.
+//
 // Wrap-vs-native: native — orchestration over in-tree decoders plus a fixed
 // LLC/SNAP + EtherType check and the documented EAPOL-Key frame layout; stdlib
-// only, no new go.mod dependency. Only the M1+M2 message pair (hashcat
-// message_pair 0x00) is extracted; the M2+M3, M1+M4 and M3+M4 pairings are
-// deferred (they need additional nonce-source and replay-counter rules).
+// only, no new go.mod dependency.
 package eapolcap
 
 import (
@@ -111,12 +117,13 @@ type m2 struct {
 	eapolZero string // the EAPOL frame, hex, with the MIC field zeroed
 }
 
-// scanner accumulates the SSID-per-BSSID map and the pending M1/M2 frames across
-// a capture, regardless of the on-disk container format.
+// scanner accumulates the SSID-per-BSSID map and the pending M1/M2/M3 frames
+// across a capture, regardless of the on-disk container format.
 type scanner struct {
 	res         *Result
 	ssidByBSSID map[string]string
-	m1s         map[string]m1 // key: bssid|sta|rc
+	m1s         map[string]m1     // key: bssid|sta|rc
+	m3s         map[string]string // key: bssid|sta|rc -> ANonce (M3 carries it)
 	m2s         []m2
 	seen        map[string]bool // dedup key: bssid|sta|rc|mic
 }
@@ -126,12 +133,28 @@ func newScanner(format string) *scanner {
 		res:         &Result{Format: format},
 		ssidByBSSID: map[string]string{},
 		m1s:         map[string]m1{},
+		m3s:         map[string]string{},
 		seen:        map[string]bool{},
 	}
 }
 
 func hsKey(bssid, sta, rc string) string {
 	return strings.ToLower(bssid + "|" + sta + "|" + rc)
+}
+
+// rcPlusOne returns the 8-byte big-endian replay counter incremented by one, as
+// a 16-char hex string — the relationship between an M2's replay counter and
+// the M3 of the same handshake (the AP increments it by one between the two
+// message pairs). Returns "" for an unparseable counter, which then matches no
+// stored M3 (so a malformed counter never produces a false pairing).
+func rcPlusOne(rcHex string) string {
+	b, err := hex.DecodeString(rcHex)
+	if err != nil || len(b) != 8 {
+		return ""
+	}
+	out := make([]byte, 8)
+	binary.BigEndian.PutUint64(out, binary.BigEndian.Uint64(b)+1)
+	return hex.EncodeToString(out)
 }
 
 // norm lower-cases a hex value and strips the ':' / '-' separators the 802.11
@@ -210,30 +233,49 @@ func (s *scanner) dataFrame(f *ieee80211.Frame) {
 			bssid: bssid, sta: sta, rc: rc,
 			mic: mic, eapolZero: hex.EncodeToString(zeroed),
 		})
+	case "M3":
+		// M3 (AP -> STA) carries the same ANonce the AP put in M1, so it lets
+		// an M2 be paired even when M1 was missed (capture started mid-
+		// handshake). Its replay counter is the M2's + 1.
+		s.m3s[hsKey(bssid, sta, rc)] = norm(key.KeyNonce)
 	}
 }
 
-// finish joins each M2 to its M1 (same BSSID / station / replay counter),
-// resolves the ESSID, builds the crackable lines, and fills the summary fields.
+// addHandshake records one recovered handshake, deduped by BSSID / station /
+// replay counter / MIC so the same M2 is never emitted twice (e.g. once via M1
+// and once via M3). ANonce + message_pair vary by which message supplied them.
+func (s *scanner) addHandshake(two m2, anonce, messagePair string) {
+	dkey := hsKey(two.bssid, two.sta, two.rc) + "|" + two.mic
+	if s.seen[dkey] {
+		return
+	}
+	s.seen[dkey] = true
+	s.res.Handshakes = append(s.res.Handshakes, Handshake{
+		BSSID: two.bssid, StationMAC: two.sta,
+		ANonce: anonce, MIC: two.mic,
+		ReplayCounter: two.rc, MessagePair: messagePair,
+		eapolZero: two.eapolZero,
+	})
+}
+
+// finish pairs each M2 with the message that supplies the ANonce — its M1
+// (same replay counter, hashcat message_pair 00, preferred) or, when M1 was
+// missed, its M3 (replay counter + 1, message_pair 02) — then resolves the
+// ESSID, builds the crackable lines, and fills the summary fields.
 func (s *scanner) finish() *Result {
+	// Pass 1: M1+M2 — ANonce from M1, same replay counter.
 	for _, two := range s.m2s {
-		one, ok := s.m1s[hsKey(two.bssid, two.sta, two.rc)]
-		if !ok {
-			continue // an M2 with no matching M1 in this capture — not crackable
+		if one, ok := s.m1s[hsKey(two.bssid, two.sta, two.rc)]; ok {
+			s.addHandshake(two, one.anonce, "00")
 		}
-		dkey := hsKey(two.bssid, two.sta, two.rc) + "|" + two.mic
-		if s.seen[dkey] {
-			continue
+	}
+	// Pass 2: M2+M3 — ANonce from the M3 whose replay counter is the M2's + 1.
+	// An M2 already paired with an M1 above is skipped by addHandshake's dedup
+	// (same MIC), so M1+M2 wins when both are present.
+	for _, two := range s.m2s {
+		if anonce, ok := s.m3s[hsKey(two.bssid, two.sta, rcPlusOne(two.rc))]; ok {
+			s.addHandshake(two, anonce, "02")
 		}
-		s.seen[dkey] = true
-		s.res.Handshakes = append(s.res.Handshakes, Handshake{
-			BSSID: two.bssid, StationMAC: two.sta,
-			ANonce: one.anonce, MIC: two.mic,
-			ReplayCounter: two.rc, MessagePair: "00",
-			ESSID:       "", // resolved below
-			HC22000Line: "", // built below
-			Note:        "", eapolZero: two.eapolZero,
-		})
 	}
 
 	for i := range s.res.Handshakes {
@@ -377,11 +419,11 @@ func noteFor(res *Result) string {
 		}
 	}
 	if len(res.Handshakes) == 0 {
-		return fmt.Sprintf("Scanned %d packets across %d network(s); no crackable M1+M2 handshake found. "+
-			"Absence is not proof none exists — only the M1+M2 message pair is extracted. Offline; no network, no device.",
+		return fmt.Sprintf("Scanned %d packets across %d network(s); no crackable handshake found. "+
+			"Absence is not proof none exists — only the M1+M2 and M2+M3 message pairs are extracted. Offline; no network, no device.",
 			res.Packets, res.NetworksSeen)
 	}
 	return fmt.Sprintf("Found %d handshake(s) (%d ready-to-crack with ESSID) across %d packets / %d network(s). "+
-		"Native M1+M2 path — no hcxpcapngtool. Offline; no network, no device.",
+		"Native M1+M2 / M2+M3 path — no hcxpcapngtool. Offline; no network, no device.",
 		len(res.Handshakes), withLine, res.Packets, res.NetworksSeen)
 }
