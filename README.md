@@ -197,7 +197,7 @@ For BLE wireless (no cable, all tools work, ~10× slower than USB) and per-platf
 ## Documentation
 
 - [`docs/`](docs/) — handbook with task-oriented scenarios, prompt patterns, and reproducible transcripts.
-- [`docs/reference/tools.md`](docs/reference/tools.md) — every tool's schema, risk level, and the prompts that fire it reliably.
+- [`docs/reference/tools.md`](docs/reference/tools.md) — a curated reference of the **core** tools' schemas, risk levels, and the prompts that fire them reliably. Run `/tools` (or `tool_search`) for the complete live registry.
 - [`docs/reference/transports.md`](docs/reference/transports.md) — serial, BLE, WSL2 setup.
 - [`docs/reference/configuration.md`](docs/reference/configuration.md) — config file, env vars, personas, rules, self-upgrade.
 - [`SECURITY.md`](SECURITY.md) — threat model and disclosure policy.

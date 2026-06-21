@@ -1,6 +1,10 @@
 # Tool reference
 
-Every tool the agent can call, grouped by subsystem. Each entry shows:
+A curated reference of the **core** device, RF, NFC/RFID, and credential tools,
+grouped by subsystem — the most-used primitives, not the whole registry. The
+full set is much larger (600+ tools and growing); run `/tools` (or
+`tool_search <query>`) in the REPL for the complete live list with schemas and
+risk levels. Each entry below shows:
 
 - **Schema** — required/optional parameters and their types.
 - **Risk** — the code's classification (`risk.Classify`).
@@ -9,8 +13,9 @@ Every tool the agent can call, grouped by subsystem. Each entry shows:
   live Flipper; links to the transcript.
 - **Notes** — gotchas, firmware gating, or side effects worth knowing.
 
-Canonical definitions: `internal/agent/tools.go`,
-`internal/agent/gen_tools.go`, `internal/agent/marauder_tools.go`.
+Canonical definitions: the tool registry lives in `internal/tools/` — each
+`Spec` is registered via `Register`, and `internal/tools/spec.go` exposes the
+`All()` / `Get()` accessors the CLI, web, and MCP surfaces share.
 
 ---
 
