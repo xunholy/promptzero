@@ -39,6 +39,9 @@ func eapolM2(rc, snonce, mic []byte) []byte {
 	return eapolKey(0x010A, rc, snonce, mic)
 }
 
+// eapolM3 carries the AP's ANonce again (key info: Ack + MIC + Install).
+func eapolM3(rc, anonce, mic []byte) []byte { return eapolKey(0x01CA, rc, anonce, mic) }
+
 func beaconFrame(bssid []byte, ssid string) []byte {
 	b := []byte{0x80, 0x00, 0x00, 0x00}
 	b = append(b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)
@@ -76,6 +79,18 @@ func m2Frame(bssid, sta, rc, snonce, mic []byte) []byte {
 	return append(b, eapolM2(rc, snonce, mic)...)
 }
 
+// m3Frame builds a QoS data frame FromDS (AP -> STA) carrying LLC/SNAP + the M3.
+func m3Frame(bssid, sta, rc, anonce, mic []byte) []byte {
+	b := []byte{0x88, 0x02, 0x00, 0x00} // QoS data, FromDS
+	b = append(b, sta...)               // Addr1 = DA (STA)
+	b = append(b, bssid...)             // Addr2 = BSSID (AP)
+	b = append(b, bssid...)             // Addr3 = SA (AP)
+	b = append(b, 0x00, 0x30)           // Sequence Control
+	b = append(b, 0x00, 0x00)           // QoS Control
+	b = append(b, llcSnapEAPOL...)
+	return append(b, eapolM3(rc, anonce, mic)...)
+}
+
 func buildPcap(t testing.TB, lt pcap.LinkType, frames ...[]byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -98,7 +113,8 @@ func buildPcap(t testing.TB, lt pcap.LinkType, frames ...[]byte) []byte {
 var (
 	testBSSID = []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF}
 	testSTA   = []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
-	testRC    = []byte{0, 0, 0, 0, 0, 0, 0, 1}
+	testRC    = []byte{0, 0, 0, 0, 0, 0, 0, 1} // M1/M2 replay counter
+	testRC3   = []byte{0, 0, 0, 0, 0, 0, 0, 2} // M3/M4 replay counter (M2's + 1)
 )
 
 func anonce() []byte {
@@ -126,10 +142,11 @@ func micBytes() []byte {
 }
 
 // expectedLine builds the oracle line via the shipped, hashcat-anchored builder
-// from the same fields the extractor should recover.
-func expectedLine(t testing.TB, essid string) string {
+// from the same fields the extractor should recover, for the given message_pair.
+// The emitted EAPOL frame is always the M2 frame with the MIC field zeroed; the
+// ANonce is the AP nonce (carried by M1 and, identically, by M3).
+func expectedLine(t testing.TB, essid, messagePair string) string {
 	t.Helper()
-	// The emitted EAPOL frame is the M2 frame with the MIC field zeroed.
 	frame := eapolM2(testRC, snonce(), micBytes())
 	zeroed := make([]byte, len(frame))
 	copy(zeroed, frame)
@@ -143,7 +160,7 @@ func expectedLine(t testing.TB, essid string) string {
 		[]byte(essid),
 		hex.EncodeToString(anonce()),
 		hex.EncodeToString(zeroed),
-		"00",
+		messagePair,
 	)
 	if err != nil {
 		t.Fatalf("oracle hashcat.EAPOL: %v", err)
@@ -180,8 +197,78 @@ func TestExtract_BeaconPlusHandshake(t *testing.T) {
 	if h.MessagePair != "00" {
 		t.Errorf("message_pair = %s, want 00", h.MessagePair)
 	}
-	if got, want := h.HC22000Line, expectedLine(t, "testnet"); got != want {
+	if got, want := h.HC22000Line, expectedLine(t, "testnet", "00"); got != want {
 		t.Errorf("line =\n %s\nwant\n %s", got, want)
+	}
+}
+
+// M2+M3: when M1 is missed, the M3 (replay counter = M2's + 1) supplies the
+// ANonce. hashcat message_pair 02, anchored on hashcat's own published example
+// (itself an M2+M3 case). The M3 carries the same ANonce the AP put in M1.
+func TestExtract_M2M3Handshake(t *testing.T) {
+	cap := buildPcap(t, pcap.LinkTypeIEEE802_11,
+		beaconFrame(testBSSID, "testnet"),
+		m2Frame(testBSSID, testSTA, testRC, snonce(), micBytes()),
+		m3Frame(testBSSID, testSTA, testRC3, anonce(), make([]byte, 16)),
+	)
+	r, err := Extract(cap)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if len(r.Handshakes) != 1 {
+		t.Fatalf("handshakes = %d, want 1: %+v", len(r.Handshakes), r.Handshakes)
+	}
+	h := r.Handshakes[0]
+	if h.MessagePair != "02" {
+		t.Errorf("message_pair = %s, want 02", h.MessagePair)
+	}
+	if h.ANonce != hex.EncodeToString(anonce()) {
+		t.Errorf("anonce = %s, want the M3 ANonce", h.ANonce)
+	}
+	if h.MIC != hex.EncodeToString(micBytes()) {
+		t.Errorf("mic = %s, want the M2 MIC", h.MIC)
+	}
+	if got, want := h.HC22000Line, expectedLine(t, "testnet", "02"); got != want {
+		t.Errorf("line =\n %s\nwant\n %s", got, want)
+	}
+}
+
+// When the full handshake is present, M1+M2 (message_pair 00) is preferred over
+// M2+M3 and the M2 is not emitted twice.
+func TestExtract_M1M2PreferredOverM2M3(t *testing.T) {
+	cap := buildPcap(t, pcap.LinkTypeIEEE802_11,
+		beaconFrame(testBSSID, "testnet"),
+		m1Frame(testBSSID, testSTA, testRC, anonce()),
+		m2Frame(testBSSID, testSTA, testRC, snonce(), micBytes()),
+		m3Frame(testBSSID, testSTA, testRC3, anonce(), make([]byte, 16)),
+	)
+	r, err := Extract(cap)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if len(r.Handshakes) != 1 {
+		t.Fatalf("handshakes = %d, want exactly 1 (no double-emit): %+v", len(r.Handshakes), r.Handshakes)
+	}
+	if r.Handshakes[0].MessagePair != "00" {
+		t.Errorf("message_pair = %s, want 00 (M1+M2 preferred)", r.Handshakes[0].MessagePair)
+	}
+}
+
+// An M3 whose replay counter is NOT the M2's + 1 does not pair (different
+// handshake / malformed) — no confidently-wrong output.
+func TestExtract_M2M3WrongReplayCounter(t *testing.T) {
+	otherRC := []byte{0, 0, 0, 0, 0, 0, 0, 9} // not testRC+1
+	cap := buildPcap(t, pcap.LinkTypeIEEE802_11,
+		beaconFrame(testBSSID, "testnet"),
+		m2Frame(testBSSID, testSTA, testRC, snonce(), micBytes()),
+		m3Frame(testBSSID, testSTA, otherRC, anonce(), make([]byte, 16)),
+	)
+	r, err := Extract(cap)
+	if err != nil {
+		t.Fatalf("Extract: %v", err)
+	}
+	if len(r.Handshakes) != 0 {
+		t.Errorf("M2/M3 with a non-consecutive replay counter must not pair, got %+v", r.Handshakes)
 	}
 }
 
@@ -269,6 +356,10 @@ func FuzzExtract(f *testing.F) {
 		beaconFrame(testBSSID, "n"),
 		m1Frame(testBSSID, testSTA, testRC, anonce()),
 		m2Frame(testBSSID, testSTA, testRC, snonce(), micBytes())))
+	f.Add(buildPcap(f, pcap.LinkTypeIEEE802_11,
+		beaconFrame(testBSSID, "n"),
+		m2Frame(testBSSID, testSTA, testRC, snonce(), micBytes()),
+		m3Frame(testBSSID, testSTA, testRC3, anonce(), make([]byte, 16))))
 	f.Add([]byte{})
 	f.Fuzz(func(_ *testing.T, in []byte) {
 		_, _ = Extract(in)
