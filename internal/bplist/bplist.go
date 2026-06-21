@@ -228,6 +228,16 @@ func (d *decoder) sizedCount(off uint64, lo byte) (uint64, uint64, error) {
 	if !ok || cnt < 0 {
 		return 0, 0, fmt.Errorf("bplist: bad extended count")
 	}
+	// No object can hold more elements/bytes than the whole file contains (a
+	// data byte costs 1 byte on disk, a UTF-16 char 2, an object ref
+	// objectRefSize>=1). Bounding the count here keeps the n*2 / n*objectRefSize
+	// span computations in object() / refs() from overflowing uint64 and
+	// wrapping their range checks small — the path that otherwise reaches
+	// make([]T, hugeN) and panics (makeslice) / OOMs on a crafted plist, since
+	// Decode has no recover.
+	if uint64(cnt) > uint64(len(d.b)) {
+		return 0, 0, fmt.Errorf("bplist: implausible element count %d (exceeds the %d-byte file)", cnt, len(d.b))
+	}
 	return uint64(cnt), p + 1 + uint64(n), nil
 }
 
