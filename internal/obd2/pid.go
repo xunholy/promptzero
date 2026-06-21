@@ -61,6 +61,10 @@ type pidInfo struct {
 func a(d []byte) float64 { return float64(d[0]) }
 func b(d []byte) float64 { return float64(d[1]) }
 
+// s16 reads the first two data bytes as a signed two's-complement 16-bit value,
+// for the PIDs whose J1979 range is signed (e.g. evap-system vapor pressure).
+func s16(d []byte) float64 { return float64(int16(uint16(d[0])<<8 | uint16(d[1]))) }
+
 var pidTable = map[int]pidInfo{
 	0x04: {"Calculated engine load", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
 	0x05: {"Engine coolant temperature", "°C", 1, "A-40", func(d []byte) float64 { return a(d) - 40 }},
@@ -83,7 +87,12 @@ var pidTable = map[int]pidInfo{
 	0x2C: {"Commanded EGR", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
 	0x2F: {"Fuel tank level input", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
 	0x31: {"Distance since codes cleared", "km", 2, "(A*256)+B", func(d []byte) float64 { return a(d)*256 + b(d) }},
+	0x32: {"Evap system vapor pressure", "Pa", 2, "signed(A*256+B)/4", func(d []byte) float64 { return s16(d) / 4 }},
 	0x33: {"Absolute barometric pressure", "kPa", 1, "A", func(d []byte) float64 { return a(d) }},
+	0x3C: {"Catalyst temperature (bank 1, sensor 1)", "°C", 2, "((A*256)+B)/10-40", func(d []byte) float64 { return (a(d)*256+b(d))/10 - 40 }},
+	0x3D: {"Catalyst temperature (bank 2, sensor 1)", "°C", 2, "((A*256)+B)/10-40", func(d []byte) float64 { return (a(d)*256+b(d))/10 - 40 }},
+	0x3E: {"Catalyst temperature (bank 1, sensor 2)", "°C", 2, "((A*256)+B)/10-40", func(d []byte) float64 { return (a(d)*256+b(d))/10 - 40 }},
+	0x3F: {"Catalyst temperature (bank 2, sensor 2)", "°C", 2, "((A*256)+B)/10-40", func(d []byte) float64 { return (a(d)*256+b(d))/10 - 40 }},
 	0x42: {"Control module voltage", "V", 2, "((A*256)+B)/1000", func(d []byte) float64 { return (a(d)*256 + b(d)) / 1000 }},
 	0x43: {"Absolute load value", "%", 2, "((A*256)+B)*100/255", func(d []byte) float64 { return (a(d)*256 + b(d)) * 100 / 255 }},
 	0x44: {"Commanded equivalence ratio (lambda)", "", 2, "((A*256)+B)/32768", func(d []byte) float64 { return (a(d)*256 + b(d)) / 32768 }},
@@ -93,7 +102,14 @@ var pidTable = map[int]pidInfo{
 	0x49: {"Accelerator pedal position D", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
 	0x4A: {"Accelerator pedal position E", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
 	0x4C: {"Commanded throttle actuator", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
+	0x4D: {"Time run with MIL on", "min", 2, "(A*256)+B", func(d []byte) float64 { return a(d)*256 + b(d) }},
+	0x4E: {"Time since trouble codes cleared", "min", 2, "(A*256)+B", func(d []byte) float64 { return a(d)*256 + b(d) }},
+	0x52: {"Ethanol fuel", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
+	0x59: {"Fuel rail absolute pressure", "kPa", 2, "((A*256)+B)*10", func(d []byte) float64 { return (a(d)*256 + b(d)) * 10 }},
+	0x5A: {"Relative accelerator pedal position", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
+	0x5B: {"Hybrid/EV battery pack remaining life", "%", 1, "A*100/255", func(d []byte) float64 { return a(d) * 100 / 255 }},
 	0x5C: {"Engine oil temperature", "°C", 1, "A-40", func(d []byte) float64 { return a(d) - 40 }},
+	0x5D: {"Fuel injection timing", "°", 2, "((A*256)+B)/128-210", func(d []byte) float64 { return (a(d)*256+b(d))/128 - 210 }},
 	0x5E: {"Engine fuel rate", "L/h", 2, "((A*256)+B)/20", func(d []byte) float64 { return (a(d)*256 + b(d)) / 20 }},
 }
 
