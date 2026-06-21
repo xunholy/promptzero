@@ -2992,7 +2992,12 @@ func TestRegistrySize(t *testing.T) {
 	// cardholder verification, card/terminal risk management, issuer auth, script
 	// processing; 6 bits per EMV Book 3 Annex C6, RFU surfaced raw). Completes the
 	// EMV transaction-outcome trio with aip (tag 82) + tvr (tag 95). internal/emv.
-	const expected = 680
+	// v0.723.0 added fdxb_encode (FDX-B ISO 11784/11785 animal-microchip LF data
+	// block generator → inverse of fdxb_decode: national + country code + flags
+	// packed LSB-first with the Proxmark3 CRC-16, round-trip-verified; extends the
+	// LF clone-generation set em4100/ioprox/noralsy/viking/jablotron/presco_encode).
+	// internal/fdxb.
+	const expected = 681
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

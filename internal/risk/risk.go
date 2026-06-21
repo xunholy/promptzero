@@ -168,6 +168,11 @@ var toolLevels = func() map[string]Level {
 		// Offline deterministic parse of an operator-supplied block;
 		// transmits nothing, so it is Low.
 		"fdxb_decode",
+		// fdxb_encode builds the 10-byte FDX-B ID+CRC block (the inverse
+		// of fdxb_decode) from a national + country code, round-trip-
+		// verified. Generation only — produces a block, transmits nothing
+		// and writes to no device, so it is Low like the decoder.
+		"fdxb_encode",
 		// IO Prox (Kantech XSF) 125 kHz LF access-control credential
 		// decode from its 64-bit block (facility code + version + 16-bit
 		// card number + 8-bit checksum, with a structural marker/separator
