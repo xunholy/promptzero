@@ -820,6 +820,11 @@ var toolLevels = func() map[string]Level {
 		// protocol behind modern ECU attacks; pure offline parser,
 		// unknown values surfaced raw.
 		"uds_decode",
+		// uds_dtc_status_decode cracks the 8-bit DTC status byte (ISO
+		// 14229-1 Annex D.2) that service 0x19 returns with every DTC —
+		// testFailed / pendingDTC / confirmedDTC / warningIndicatorRequested.
+		// Pure offline bit decode of one operator-supplied byte; Low.
+		"uds_dtc_status_decode",
 		"vin_decode",
 		// v0.411 (application-layer inverse of uds_decode): uds_encode
 		// builds a UDS request/response PDU (SID + sub-function +

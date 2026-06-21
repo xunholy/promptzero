@@ -194,7 +194,7 @@ audit (`docs/refactor/v0.8-team-audit.md`).
 |---|---|:---:|:---:|:---:|:---:|
 | CAN init/sniff/inject/replay/info | baseline | ✅ `canbus_*` family | — | — | Phase 0 hotfix #3 (input validation) |
 | CAN-FD sniff | apps top-20 #18 | ❌ | — | — | **NEW** ⟶ `canbus_fd_sniff` |
-| UDS-on-DoIP attacks | attacks Auto | ⚠️ via `canbus_replay`; native `uds_decode` (v0.397 — ISO 14229 service / NRC / sub-function / DID decode, offline) | ✅ python-uds | — | Workflow extension (transport/ISO-TP still external) |
+| UDS-on-DoIP attacks | attacks Auto | ⚠️ via `canbus_replay`; native `uds_decode` (v0.397 — ISO 14229 service / NRC / sub-function / DID decode, offline) + `uds_dtc_status_decode` (v0.727 — the 8-bit ISO 14229-1 Annex D.2 DTCStatusMask service 0x19 returns with every DTC: testFailed / pendingDTC / confirmedDTC / warningIndicatorRequested) | ✅ python-uds | — | Workflow extension (transport/ISO-TP still external) |
 | ISO 15118 EVCC / PLC | attacks Auto | ❌ | — | — | Out of scope (PLC HW) |
 | VIN decode/validate (ISO 3779) | UDS DID F190 / OBD-II Mode 09 | ✅ `vin_decode` v0.421 — check-digit validation (the anchor) + region + model-year candidates + WMI/VDS/VIS split; offline complement to the UDS/OBD VIN read. Manufacturer-from-WMI lookup deferred (proprietary). | — | — | shipped |
 | DroneID receive | attacks #12 + audit §2a #5 | ❌ | — | — | **§2a + §2c** (blocked on HackRF) |
