@@ -3001,7 +3001,12 @@ func TestRegistrySize(t *testing.T) {
 	// inverse of cyfral_decode: 16-bit key → 40-bit frame (start/stop 0b0001 + 8
 	// 2-bit data nibbles), round-trip-verified exhaustively over all 65536 keys;
 	// the non-Dallas iButton clone-prep companion to ibutton_encode). internal/cyfral.
-	const expected = 682
+	// v0.727.0 added uds_dtc_status_decode (UDS DTC status byte → the 8-bit ISO
+	// 14229-1 Annex D.2 DTCStatusMask service 0x19 returns with every DTC:
+	// testFailed / pendingDTC / confirmedDTC / warningIndicatorRequested + a
+	// severity summary; structural bitfield, companion to uds_decode and
+	// obd2_dtc_decode). internal/uds.
+	const expected = 683
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
