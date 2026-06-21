@@ -2997,7 +2997,11 @@ func TestRegistrySize(t *testing.T) {
 	// packed LSB-first with the Proxmark3 CRC-16, round-trip-verified; extends the
 	// LF clone-generation set em4100/ioprox/noralsy/viking/jablotron/presco_encode).
 	// internal/fdxb.
-	const expected = 681
+	// v0.724.0 added cyfral_encode (Cyfral iButton on-wire frame generator →
+	// inverse of cyfral_decode: 16-bit key → 40-bit frame (start/stop 0b0001 + 8
+	// 2-bit data nibbles), round-trip-verified exhaustively over all 65536 keys;
+	// the non-Dallas iButton clone-prep companion to ibutton_encode). internal/cyfral.
+	const expected = 682
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
