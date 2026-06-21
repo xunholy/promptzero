@@ -145,6 +145,11 @@ var toolLevels = func() map[string]Level {
 		// / script). Completes the AIP/TVR/TSI trio. Offline read of
 		// operator-supplied bytes; transmits nothing, so it is Low.
 		"nfc_emv_tsi_decode",
+		// CVM Results (tag 9F34): the CVM the terminal actually performed
+		// + its outcome (the "what happened" companion to the tag-8E CVM
+		// List's "what the card wants"). Offline read of operator-supplied
+		// bytes; transmits nothing, so it is Low.
+		"nfc_emv_cvm_results_decode",
 		// ISO 15693 vicinity-card UID/AFI decode (the second major HF
 		// NFC standard). Offline deterministic read of an
 		// operator-supplied UID; transmits nothing, so it is Low.

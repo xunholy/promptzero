@@ -3006,7 +3006,11 @@ func TestRegistrySize(t *testing.T) {
 	// testFailed / pendingDTC / confirmedDTC / warningIndicatorRequested + a
 	// severity summary; structural bitfield, companion to uds_decode and
 	// obd2_dtc_decode). internal/uds.
-	const expected = 683
+	// v0.728.0 added nfc_emv_cvm_results_decode (EMV CVM Results, tag 9F34 → the
+	// CVM the terminal actually performed + its outcome: the "what happened"
+	// companion to the tag-8E CVM List's "what the card wants"; reuses the
+	// CVM-List method/condition tables + a 1-byte EMV Book 4 result). internal/emv.
+	const expected = 684
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
