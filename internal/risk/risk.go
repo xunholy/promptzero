@@ -311,6 +311,13 @@ var toolLevels = func() map[string]Level {
 		// message-1, pairs it with the beacon ESSID, and builds the WPA*01
 		// hashcat-22000 line. Reads a capture, transmits nothing, no device — Low.
 		"wifi_pmkid_pcap",
+		// v0.719 (native type-02 4-way-handshake-from-pcap extractor): walks a
+		// libpcap or pcapng 802.11 capture, pairs each EAPOL M1 (ANonce) with its
+		// M2 (MIC) on a matching BSSID/STA/replay-counter, resolves the beacon
+		// ESSID, and builds the WPA*02 hashcat-22000 line. The client-handshake
+		// counterpart of wifi_pmkid_pcap. Reads a capture, transmits nothing, no
+		// device — Low.
+		"wifi_eapol_pcap",
 		// v0.391 (NATIVE-fit WiFi recon gap): WPS / Wi-Fi Simple Config
 		// data-element dissector — walks the WSC attribute TLVs in a WPS
 		// IE (version, setup state, AP-setup-locked, device password ID,

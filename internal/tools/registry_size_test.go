@@ -2981,7 +2981,13 @@ func TestRegistrySize(t *testing.T) {
 	// terminal-risk-management (floor/offline limits), issuer-script failures;
 	// 5 bytes / 40 bits per EMV Book 3 Annex C5, grouped by functional byte, RFU
 	// bits surfaced raw). internal/emv.
-	const expected = 678
+	// v0.719.0 added wifi_eapol_pcap (native WPA/WPA2 4-way-handshake-from-pcap
+	// extractor → walks a libpcap/pcapng 802.11 capture, pairs each EAPOL M1
+	// (ANonce) with its M2 (MIC) on a matching BSSID/STA/replay-counter, resolves
+	// the beacon ESSID, and builds the WPA*02 hashcat mode-22000 line; the
+	// client-handshake counterpart of wifi_pmkid_pcap, removing the hcxpcapngtool
+	// shell-out for the M1+M2 case; M2+M3/M1+M4/M3+M4 deferred). internal/eapolcap.
+	const expected = 679
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
