@@ -555,6 +555,11 @@ var toolLevels = func() map[string]Level {
 		// {1110,1101,1011,0111}) per the Flipper firmware. Pure offline parse
 		// of an operator-supplied frame; transmits nothing, so it is Low.
 		"cyfral_decode",
+		// cyfral_encode — the inverse of cyfral_decode: builds the 40-bit
+		// on-wire Cyfral frame from a 16-bit key, round-trip-verified over
+		// all 65536 keys. Generation only — produces a frame, transmits
+		// nothing and writes to no device, so it is Low like the decoder.
+		"cyfral_encode",
 		// v0.385 (offline inverse of ibutton_decode): builds a
 		// well-formed 8-byte Dallas ROM ID from family + 48-bit
 		// serial, computing the Maxim CRC-8 (shared with the
