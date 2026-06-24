@@ -97,6 +97,20 @@ tasks:
     cmds:
       - go test -race -count=1 ./...
 
+  ci:
+    # The locally-reproducible subset of what CI gates on, in one command,
+    # so a contributor can validate before pushing. The cross-compile
+    # matrix and CodeQL are CI-only (they need the platform matrix / GHAS)
+    # and are intentionally not duplicated here. Runs sequentially and
+    # stops at the first failure.
+    desc: Run the CI gate checks locally (lint + vet + build + test:full + vuln).
+    cmds:
+      - task: lint
+      - task: vet
+      - task: build
+      - task: test:full
+      - task: vuln
+
   eval:
     desc: Golden evaluation harness (roadmap P2-25). Runs integration
       scenarios against mock transports and reports pass/fail + timing
