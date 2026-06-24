@@ -20,7 +20,10 @@ func TestAgentStatus_ReportsLivePosture(t *testing.T) {
 		Audit:  &audit.Log{}, // non-nil → audit_enabled true (handler only checks != nil)
 		Config: &config.Config{Model: "claude-opus-4-8"},
 		Posture: func() AgentPosture {
-			return AgentPosture{ReadOnly: true, Mode: "recon", Persona: "blue-team-audit"}
+			return AgentPosture{
+				ReadOnly: true, Mode: "recon", Persona: "blue-team-audit",
+				ConfirmRisk: "high", ConfirmEnabled: true,
+			}
 		},
 	}
 	out, err := agentStatusHandler(context.Background(), d, nil)
@@ -39,6 +42,12 @@ func TestAgentStatus_ReportsLivePosture(t *testing.T) {
 	}
 	if r.Model != "claude-opus-4-8" {
 		t.Errorf("model = %q", r.Model)
+	}
+	if r.ConfirmRisk != "high" {
+		t.Errorf("confirm_risk = %q, want high", r.ConfirmRisk)
+	}
+	if r.ConfirmEnabled == nil || !*r.ConfirmEnabled {
+		t.Errorf("confirm_enabled = %v, want true", r.ConfirmEnabled)
 	}
 	if !r.AuditEnabled {
 		t.Error("audit_enabled = false, want true")

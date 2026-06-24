@@ -1414,9 +1414,11 @@ func (a *Agent) deps() *toolsreg.Deps {
 				p = pa.Name
 			}
 			return toolsreg.AgentPosture{
-				ReadOnly: a.readOnly.Load(),
-				Mode:     string(a.Mode()),
-				Persona:  p,
+				ReadOnly:       a.readOnly.Load(),
+				Mode:           string(a.Mode()),
+				Persona:        p,
+				ConfirmRisk:    a.confirmThreshold.String(),
+				ConfirmEnabled: a.confirmCb != nil,
 			}
 		},
 	}
