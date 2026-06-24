@@ -492,6 +492,17 @@ func (a *Agent) SetTextDeltaCallback(f func(TextDelta))  { a.textDeltaCb = f }
 // producers wrap up and return a partial result via the normal
 // final-string path. Producers that ignore both signals will run
 // to completion (no forced kill) — abort-early is cooperative.
+//
+// SECURITY CONTRACT: frame.Bytes is RAW tool output — firmware log
+// lines, RF scan rows, device names — i.e. attacker-controllable bytes
+// that may contain ANSI/control sequences. Unlike the final return
+// string (which dispatch runs through quarantineOutput's
+// sanitizeControlChars + injection wrapping), per-frame data is NOT
+// sanitised at the dispatch boundary. A consumer MUST neutralise control
+// characters before rendering a frame to a terminal or UI, or a hostile
+// capture can hijack the operator's display. The REPL does this in
+// cmd/promptzero/repl.go renderStreamFrame (quote-on-control); any new
+// consumer (a web cockpit stream, a fresh UI) must do the same.
 func (a *Agent) SetToolStreamCallback(f func(streaming.Frame) bool) { a.toolStreamCb = f }
 
 // Usage reports token consumption for one successful streamOnce call.
