@@ -121,6 +121,15 @@ var synonyms = map[string][]string{ //nolint:gochecknoglobals
 	"imsi":      {"imsi", "iccid"},
 	"bluetooth": {"ble", "bluetooth", "bt", "gatt"},
 	"ble":       {"ble", "bluetooth", "gatt"},
+	// Apple Continuity / AirTag / BLE-tracker sweep: ble_continuity_decode and
+	// ble_continuity_classify dissect the Apple Continuity BLE advertisements
+	// (Find My / AirTag, AirDrop, Handoff, Nearby Action) behind the popular
+	// "is an AirTag tracking me?" stalker-device sweep. The consumer terms
+	// "airtag", "tracker", and "beacon" didn't reach them. BLE-specific (low
+	// collision).
+	"airtag":    {"continuity", "ble", "bleadv"},
+	"tracker":   {"continuity", "ble", "bleadv"},
+	"beacon":    {"continuity", "altbeacon", "bleadv", "ble"},
 	"ir":        {"ir", "infrared", "pronto"},
 	"infrared":  {"ir", "infrared", "pronto"},
 	"jam":       {"jammer", "jam"},
