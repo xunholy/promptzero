@@ -3026,7 +3026,11 @@ func TestRegistrySize(t *testing.T) {
 	// 6166 → the 2-letter prefix + 9-char NSIN + 1 Luhn check digit; the securities
 	// leg of the financial-data family with iban/lei, Luhn algorithm verified against
 	// five well-known real ISINs). internal/isin.
-	const expected = 688
+	// v0.737.0 added aba_routing_decode (ABA routing transit number → 4-digit Federal
+	// Reserve routing symbol + 4-digit institution id + 1 check digit, ABA weighted
+	// modulus-10 checksum + FRB district/type from the leading two digits; the US-
+	// domestic bank counterpart to iban_decode, verified against real RTNs). internal/aba.
+	const expected = 689
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
