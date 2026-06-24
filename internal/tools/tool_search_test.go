@@ -124,3 +124,21 @@ func TestToolSearch_LEIDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_ISINDiscoverability locks in that isin_decode is reachable
+// by the natural ways an operator would ask for it.
+func TestToolSearch_ISINDiscoverability(t *testing.T) {
+	for _, q := range []string{
+		"ISIN",
+		"securities identification number",
+		"validate stock identifier",
+	} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "isin_decode"`) {
+			t.Errorf("query %q did not surface isin_decode in the top results:\n%s", q, out)
+		}
+	}
+}
