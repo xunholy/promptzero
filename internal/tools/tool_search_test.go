@@ -74,3 +74,22 @@ func TestToolSearch_AutomotiveDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_IBANDiscoverability locks in that iban_decode is reachable by
+// the natural ways an operator would ask for it (the discoverability concern
+// codified in v0.729's automotive fix).
+func TestToolSearch_IBANDiscoverability(t *testing.T) {
+	for _, q := range []string{
+		"IBAN",
+		"international bank account number",
+		"validate bank account number",
+	} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "iban_decode"`) {
+			t.Errorf("query %q did not surface iban_decode in the top results:\n%s", q, out)
+		}
+	}
+}

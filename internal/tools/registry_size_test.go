@@ -3010,7 +3010,11 @@ func TestRegistrySize(t *testing.T) {
 	// CVM the terminal actually performed + its outcome: the "what happened"
 	// companion to the tag-8E CVM List's "what the card wants"; reuses the
 	// CVM-List method/condition tables + a 1-byte EMV Book 4 result). internal/emv.
-	const expected = 684
+	// v0.730.0 added iban_decode (International Bank Account Number, ISO 13616 → the
+	// 2-letter country code + 2 check digits + country-specific BBAN, validated by
+	// the ISO 7064 MOD-97-10 checksum as the verification anchor; the financial-
+	// account leg of the data-decoder family with track2/iccid/imei). internal/iban.
+	const expected = 685
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
