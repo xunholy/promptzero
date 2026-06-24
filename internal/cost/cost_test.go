@@ -9,9 +9,10 @@ import (
 func TestPricer_DefaultsKnownModels(t *testing.T) {
 	p := NewPricer(nil)
 	cases := map[string]Rate{
-		"claude-opus-4-7":   {InputPerMTok: 15, OutputPerMTok: 75},
+		"claude-opus-4-8":   {InputPerMTok: 5, OutputPerMTok: 25},
+		"claude-opus-4-7":   {InputPerMTok: 5, OutputPerMTok: 25},
 		"claude-sonnet-4-6": {InputPerMTok: 3, OutputPerMTok: 15},
-		"claude-haiku-4-5":  {InputPerMTok: 0.8, OutputPerMTok: 4},
+		"claude-haiku-4-5":  {InputPerMTok: 1, OutputPerMTok: 5},
 	}
 	for model, want := range cases {
 		got, ok := p.Rate(model)
@@ -69,17 +70,17 @@ func TestSetModel_UpdatesSnapshotAndPricingPath(t *testing.T) {
 		t.Fatalf("pre-switch TotalUSD = %f; want ~$3 (1M @ $3/MTok)", snapBefore.TotalUSD)
 	}
 
-	// Switch model — future usage billed at Opus rate ($15/MTok input).
+	// Switch model — future usage billed at Opus rate ($5/MTok input).
 	tr.SetModel("claude-opus-4-7")
-	tr.AddUsage(1_000_000, 0) // 1M input @ $15/MTok = $15.00 more
+	tr.AddUsage(1_000_000, 0) // 1M input @ $5/MTok = $5.00 more
 
 	snapAfter := tr.Snapshot()
 	if snapAfter.Model != "claude-opus-4-7" {
 		t.Errorf("post-switch Model = %q; want opus", snapAfter.Model)
 	}
-	wantTotal := 3.0 + 15.0
+	wantTotal := 3.0 + 5.0
 	if diff := snapAfter.TotalUSD - wantTotal; diff < -0.01 || diff > 0.01 {
-		t.Errorf("post-switch TotalUSD = %f; want %f ($3 sonnet + $15 opus)", snapAfter.TotalUSD, wantTotal)
+		t.Errorf("post-switch TotalUSD = %f; want %f ($3 sonnet + $5 opus)", snapAfter.TotalUSD, wantTotal)
 	}
 	// Token counters keep accumulating regardless of model.
 	if snapAfter.InputTokens != 2_000_000 {
@@ -95,28 +96,28 @@ func TestSetModel_UpdatesSnapshotAndPricingPath(t *testing.T) {
 // per-token basis, larger gap on cache-heavy turns).
 func TestAddUsageFullForModel_PerCallModelOverridesTrackerModel(t *testing.T) {
 	p := NewPricer(nil)
-	// Tracker primary model: Opus ($15/MTok input). Cost dashboard
+	// Tracker primary model: Opus ($5/MTok input). Cost dashboard
 	// shows this in Snapshot.Model — operator's configured baseline.
 	tr := NewTracker(p, "claude-opus-4-7", nil)
 
 	// Haiku-tier classify call: 1M input tokens.
-	// Haiku rate is $0.80/MTok → expected ~$0.80, NOT $15 (Opus).
+	// Haiku rate is $1/MTok → expected ~$1, NOT $5 (Opus).
 	tr.AddUsageFullForModel("claude-haiku-4-5", 1_000_000, 0, 0, 0)
 
 	snap := tr.Snapshot()
 	if snap.Model != "claude-opus-4-7" {
 		t.Errorf("Snapshot.Model = %q; want primary opus (per-call model must NOT overwrite the displayed primary)", snap.Model)
 	}
-	if snap.TotalUSD < 0.79 || snap.TotalUSD > 0.81 {
-		t.Errorf("TotalUSD = %f; want ~$0.80 (Haiku $0.80/MTok), not Opus $15/MTok", snap.TotalUSD)
+	if snap.TotalUSD < 0.99 || snap.TotalUSD > 1.01 {
+		t.Errorf("TotalUSD = %f; want ~$1 (Haiku $1/MTok), not Opus $5/MTok", snap.TotalUSD)
 	}
 
-	// Now an exploit-tier Opus call: 1M input → +$15.
+	// Now an exploit-tier Opus call: 1M input → +$5.
 	tr.AddUsageFullForModel("claude-opus-4-7", 1_000_000, 0, 0, 0)
 	snap = tr.Snapshot()
-	wantTotal := 0.80 + 15.0
+	wantTotal := 1.0 + 5.0
 	if diff := snap.TotalUSD - wantTotal; diff < -0.01 || diff > 0.01 {
-		t.Errorf("TotalUSD after mixed tiers = %f; want %f ($0.80 haiku + $15 opus)", snap.TotalUSD, wantTotal)
+		t.Errorf("TotalUSD after mixed tiers = %f; want %f ($1 haiku + $5 opus)", snap.TotalUSD, wantTotal)
 	}
 }
 
@@ -139,10 +140,10 @@ func TestAddUsageFullForModel_EmptyModelFallsBackToTrackerModel(t *testing.T) {
 func TestAddUsageFull_StillUsesTrackerModel(t *testing.T) {
 	tr := NewTracker(NewPricer(nil), "claude-haiku-4-5", nil)
 	tr.AddUsageFull(1_000_000, 0, 0, 0)
-	// Haiku rate: $0.80/MTok.
+	// Haiku rate: $1/MTok.
 	snap := tr.Snapshot()
-	if snap.TotalUSD < 0.79 || snap.TotalUSD > 0.81 {
-		t.Errorf("AddUsageFull: TotalUSD = %f; want ~$0.80 (Haiku tracker model)", snap.TotalUSD)
+	if snap.TotalUSD < 0.99 || snap.TotalUSD > 1.01 {
+		t.Errorf("AddUsageFull: TotalUSD = %f; want ~$1 (Haiku tracker model)", snap.TotalUSD)
 	}
 }
 
@@ -259,10 +260,10 @@ func TestPricer_CostArithmetic(t *testing.T) {
 	if got != 18.0 {
 		t.Errorf("cost=%f want 18.0", got)
 	}
-	// 10k input on haiku-4-5 = 10000/1M * 0.80 = $0.008
+	// 10k input on haiku-4-5 = 10000/1M * 1.0 = $0.01
 	got = p.Cost("claude-haiku-4-5", 10_000, 0)
-	if got < 0.0079 || got > 0.0081 {
-		t.Errorf("cost=%f want ~0.008", got)
+	if got < 0.0099 || got > 0.0101 {
+		t.Errorf("cost=%f want ~0.01", got)
 	}
 }
 

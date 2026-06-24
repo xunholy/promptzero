@@ -32,7 +32,7 @@ func TestModelFor_NoPersona_UsesTierDefaults(t *testing.T) {
 		TierClassify:   "claude-haiku-4-5",
 		TierGenerate:   "claude-sonnet-4-6",
 		TierPlan:       "claude-sonnet-4-6",
-		TierExploit:    "claude-opus-4-7",
+		TierExploit:    "claude-opus-4-8",
 		"unknown-tier": "claude-sonnet-4-6", // base model fallback
 	}
 	for tier, want := range cases {

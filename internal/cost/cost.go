@@ -34,15 +34,18 @@ type Pricer struct {
 	rates map[string]Rate
 }
 
-// DefaultRates returns a copy of the built-in rate table. Current Claude
-// lineup as of late-2025: Opus 4.7 $15/$75, Sonnet 4.6 $3/$15,
-// Haiku 4.5 $0.80/$4. Values should track Anthropic's public pricing
-// page; adjust via config override when it drifts.
+// DefaultRates returns a copy of the built-in rate table. Base
+// input/output USD per million tokens, verified against Anthropic's
+// public pricing page (platform.claude.com/docs/en/about-claude/pricing):
+// Opus 4.x (4.6/4.7/4.8) $5/$25, Sonnet 4.6 $3/$15, Haiku 4.5 $1/$5.
+// Values should track that page; adjust via config override when it
+// drifts.
 func DefaultRates() map[string]Rate {
 	return map[string]Rate{
-		"claude-opus-4-7":   {InputPerMTok: 15.0, OutputPerMTok: 75.0},
+		"claude-opus-4-8":   {InputPerMTok: 5.0, OutputPerMTok: 25.0},
+		"claude-opus-4-7":   {InputPerMTok: 5.0, OutputPerMTok: 25.0},
 		"claude-sonnet-4-6": {InputPerMTok: 3.0, OutputPerMTok: 15.0},
-		"claude-haiku-4-5":  {InputPerMTok: 0.80, OutputPerMTok: 4.0},
+		"claude-haiku-4-5":  {InputPerMTok: 1.0, OutputPerMTok: 5.0},
 	}
 }
 
