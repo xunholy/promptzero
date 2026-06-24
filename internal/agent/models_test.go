@@ -3,8 +3,30 @@ package agent
 import (
 	"testing"
 
+	"github.com/xunholy/promptzero/internal/cost"
 	"github.com/xunholy/promptzero/internal/persona"
 )
+
+// TestDefaultModelsByTier_HaveCostRates guards the agent↔cost invariant:
+// every model the agent routes to by default must have a pricing row in
+// cost.DefaultRates. An unknown model resolves to a zero rate, so the
+// cost tracker would silently report $0 for that tier (and budget
+// warn/hit thresholds would never fire on it). This catches the easy
+// mistake of bumping a model generation in defaultModelsByTier while
+// forgetting to add its rate to internal/cost — exactly the pairing the
+// v0.736.0 Opus 4.8 bump had to keep in sync by hand.
+func TestDefaultModelsByTier_HaveCostRates(t *testing.T) {
+	p := cost.NewPricer(nil)
+	for tier, model := range defaultModelsByTier {
+		if model == "" {
+			continue
+		}
+		if _, ok := p.Rate(model); !ok {
+			t.Errorf("tier %q routes to %q, which has no cost.DefaultRates row "+
+				"(would track as $0); add it to internal/cost", tier, model)
+		}
+	}
+}
 
 // agentForModelTest builds a minimal agent without any SDK / hardware
 // dependencies. ModelFor only reads a.mu-protected fields.

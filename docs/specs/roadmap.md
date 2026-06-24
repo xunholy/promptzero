@@ -77,7 +77,7 @@ These are high leverage, low effort, and several later items depend on them.
       classify: claude-haiku-4-5     # intent routing, dynamic tool narrowing
       generate: claude-sonnet-4-6    # payload generation
       plan:     claude-sonnet-4-6    # workflow planner
-      exploit:  claude-opus-4-7      # high-risk decision points
+      exploit:  claude-opus-4-8      # high-risk decision points
     ```
   - Tool metadata in `catalog.go` gains a `tier` field (`classify|generate|plan|exploit`).
     Agent routes per-tool based on that.
