@@ -332,6 +332,13 @@ type AgentPosture struct {
 	ReadOnly bool   `json:"read_only"`
 	Mode     string `json:"mode"`
 	Persona  string `json:"persona"`
+	// ConfirmRisk is the risk tier at or above which a tool dispatch
+	// triggers the interactive confirmation gate (low / medium / high /
+	// critical). ConfirmEnabled reports whether an interactive gate is
+	// actually wired — false on non-interactive surfaces (MCP, web),
+	// where the threshold is moot because nothing prompts.
+	ConfirmRisk    string `json:"confirm_risk"`
+	ConfirmEnabled bool   `json:"confirm_enabled"`
 }
 
 // SnapshotBeforeWrite captures a pre-write copy of path's existing
