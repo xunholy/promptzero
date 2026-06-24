@@ -64,7 +64,8 @@ mitigation) within 14 days for critical issues, 30 days for others.
 
 ## Defensive postures (operator-facing safety rails)
 
-PromptZero ships two operator-facing safety mechanisms that compose:
+PromptZero ships two operator-facing toggles plus an always-on
+prompt-injection quarantine; they compose:
 
 - **`--read-only` (or `read_only: true`)** — refuses any tool whose
   `Spec.Risk` is above `risk.Low` at dispatch. No writes, no
@@ -78,6 +79,17 @@ PromptZero ships two operator-facing safety mechanisms that compose:
   before any tool at or above the given risk tier dispatches. Default
   is `high`; pair with `--read-only` for belt-and-suspenders if you
   also want confirms on Low-risk reads in sensitive sessions.
+- **Prompt-injection quarantine** (always on, no flag) — tool output
+  that originates from hardware or other untrusted sources (scanned
+  WiFi SSIDs, NFC/NDEF records, BLE device names, SD-card file
+  contents, and the results of composite workflows that read them) is
+  control-character sanitised and wrapped in `<untrusted-hardware-output>`
+  tags before it reaches the model, with a paired system-prompt clause
+  instructing the model to treat tagged content as data, not
+  instructions. This blunts prompt-injection carried in
+  attacker-controllable RF/NFC/file content an operator encounters
+  during a scan. It is an allow-list (default-wrap / fail-closed): a
+  new tool is quarantined unless explicitly marked structured-internal.
 
 Defence-in-depth posture for blue-team / forensics / training:
 
