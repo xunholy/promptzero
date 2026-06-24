@@ -92,6 +92,16 @@ var synonyms = map[string][]string{ //nolint:gochecknoglobals
 	"rfid":       {"rfid", "em4100", "t5577", "indala"},
 	"card":       {"nfc", "mifare", "rfid", "emv"},
 	"badge":      {"nfc", "rfid", "wiegand", "pacs"},
+	// Cloud-platform credential triage: the secret-bearing config decoders
+	// name themselves by the platform contraction (kubeconfig_decode,
+	// gcp_service_account_decode), so an operator's full-word phrasing
+	// ("kubernetes config", "google cloud service account") ranked them out
+	// of the top results. These route the spoken platform name to the
+	// contraction the tool name uses. Platform-specific (low collision).
+	"kubernetes": {"kubeconfig"},
+	"k8s":        {"kubeconfig"},
+	"google":     {"gcp"},
+	"gcloud":     {"gcp"},
 	// Financial-data triage: the IBAN / LEI / ISIN / ABA-routing decoder family
 	// (iban_decode, lei_decode, isin_decode, aba_routing_decode) handles the
 	// account / entity / security / US-bank identifiers found in BEC lures,

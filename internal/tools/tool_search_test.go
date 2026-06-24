@@ -186,6 +186,28 @@ func TestToolSearch_FinancialObliqueDiscoverability(t *testing.T) {
 	}
 }
 
+// TestToolSearch_CloudCredentialDiscoverability locks in that the
+// cloud-platform credential decoders, which name themselves by the
+// platform contraction (kubeconfig_decode, gcp_service_account_decode),
+// are reachable by an operator's full-word phrasing. These returned
+// nothing before the kubernetes/k8s/google synonyms were added.
+func TestToolSearch_CloudCredentialDiscoverability(t *testing.T) {
+	cases := map[string]string{
+		"kubernetes config":            "kubeconfig_decode",
+		"k8s credentials":              "kubeconfig_decode",
+		"google cloud service account": "gcp_service_account_decode",
+	}
+	for q, want := range cases {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "`+want+`"`) {
+			t.Errorf("query %q did not surface %s in the top results:\n%s", q, want, out)
+		}
+	}
+}
+
 // TestToolSearch_AirTagDiscoverability locks in that the Apple Continuity
 // decoders (the AirTag / Find My BLE-tracker sweep) are reachable by the
 // consumer terms operators actually use. All of these returned nothing
