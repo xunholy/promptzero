@@ -358,10 +358,45 @@ type WebConfig struct {
 	AllowUnauthedPublic bool `yaml:"allow_unauthed_public,omitempty"`
 }
 
+// Device is one entry in the config `devices:` registry — a friendly
+// name mapped to a signal file on the Flipper SD card, surfaced to the
+// operator/agent by the list_devices tool. Type and Commands are
+// informational (list_devices display only); dispatch uses File.
 type Device struct {
 	Type     string            `yaml:"type"`
 	File     string            `yaml:"file"`
 	Commands map[string]string `yaml:"commands,omitempty"`
+}
+
+// UnmarshalYAML accepts either the full mapping form
+//
+//	garage:
+//	  type: subghz
+//	  file: /ext/subghz/garage.sub
+//
+// or the bare-string shorthand the scenario docs and onboarding flow
+// teach, naming just the signal file:
+//
+//	garage: /ext/subghz/garage.sub
+//
+// The shorthand sets File and leaves Type/Commands empty. Without this
+// the documented shorthand failed to parse (a string can't decode into
+// the struct), so an operator copying the docs got a config that
+// wouldn't load.
+func (d *Device) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		d.File = value.Value
+		return nil
+	}
+	// Alias type drops the UnmarshalYAML method, so the default struct
+	// decoding runs here instead of recursing into this function.
+	type rawDevice Device
+	var raw rawDevice
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*d = Device(raw)
+	return nil
 }
 
 func Load(path string) (*Config, error) {
