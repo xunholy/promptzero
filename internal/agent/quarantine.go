@@ -59,16 +59,24 @@ var notWrappedTools = map[string]struct{}{
 	"run_payload":          {},
 	"generate_deploy_run":  {},
 
-	// Composite workflows — they orchestrate hardware calls internally
-	// but emit structured summaries at the top level.
-	"workflow_nfc_badge_pipeline":       {},
-	"workflow_wifi_target_to_hashcat":   {},
-	"workflow_garage_door_triage":       {},
-	"workflow_rolljam_lab_demo":         {},
-	"workflow_phys_pentest_badge_walk":  {},
-	"workflow_hw_recon_blackbox_device": {},
-	"workflow_badusb_target_profile":    {},
-	"workflow_mousejack":                {},
+	// Composite workflows whose output is entirely our own — a generated
+	// payload preview plus deploy/run status. No phase reads
+	// attacker-controlled data back, so the structured result is trusted.
+	"workflow_badusb_target_profile": {},
+
+	// NOTE: the hardware-READING workflows (wifi_target_to_hashcat,
+	// nfc_badge_pipeline, phys_pentest_badge_walk, hw_recon_blackbox_device,
+	// garage_door_triage, rolljam_lab_demo, mousejack) are deliberately NOT
+	// listed here. Although their top-level summary is ours, the encoded
+	// Result embeds each PhaseResult.Output verbatim (workflows.encode →
+	// json of Result.Phases), i.e. the raw sub-tool reads: scanned SSIDs,
+	// NFC/NDEF records, BT device names, etc. Those are attacker-controlled
+	// — the same value a direct wifi_scan_ap / nfc_read call quarantines —
+	// so the workflow must quarantine too, or it becomes a prompt-injection
+	// bypass of the per-tool wrapping. They fall through to the default
+	// quarantineHardware wrap. (Same fix class as the fileformat_* /
+	// analyze_image / discover_apps moves: "JSON shape is ours, values are
+	// not".)
 }
 
 // auditWrappedTools names tools that read from the audit log. Their

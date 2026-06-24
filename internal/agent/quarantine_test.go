@@ -134,7 +134,21 @@ func TestIsUntrustedHardwareOutput(t *testing.T) {
 		{"audit_stats", false},
 		{"generate_evil_portal", false},
 		{"run_payload", false},
-		{"workflow_nfc_badge_pipeline", false},
+		// Generation+deploy workflow — output is our own payload preview +
+		// deploy/run status, with no attacker-controlled read-back.
+		{"workflow_badusb_target_profile", false},
+		// Hardware-READING workflows must quarantine: their encoded Result
+		// embeds raw PhaseResult.Output (scanned SSIDs, NFC/NDEF records, BT
+		// device names) — the same attacker-controlled data the per-tool
+		// calls wrap — so leaving them unwrapped is a prompt-injection
+		// bypass of the per-tool quarantine.
+		{"workflow_wifi_target_to_hashcat", true},
+		{"workflow_nfc_badge_pipeline", true},
+		{"workflow_phys_pentest_badge_walk", true},
+		{"workflow_hw_recon_blackbox_device", true},
+		{"workflow_garage_door_triage", true},
+		{"workflow_rolljam_lab_demo", true},
+		{"workflow_mousejack", true},
 	}
 	for _, c := range cases {
 		if got := isUntrustedHardwareOutput(c.name); got != c.want {
@@ -172,9 +186,11 @@ func TestQuarantineOutput_WrapsHardwareError(t *testing.T) {
 }
 
 // TestQuarantineOutput_DoesNotWrapStructuredTool confirms tools in the
-// notWrappedTools allowlist (list_devices, generate_*, workflow_*) are
-// never wrapped — their output is structurally trusted PromptZero
-// content with no hardware-origin bytes inside.
+// notWrappedTools allowlist (list_devices, generate_*, and the
+// generation-only workflow_badusb_target_profile) are never wrapped —
+// their output is structurally trusted PromptZero content with no
+// hardware-origin bytes inside. (Hardware-READING workflows are NOT on
+// the allowlist; see TestIsUntrustedHardwareOutput.)
 func TestQuarantineOutput_DoesNotWrapStructuredTool(t *testing.T) {
 	out := quarantineOutput("list_devices", `{"flipper":"connected"}`, false)
 	if strings.Contains(out, "<untrusted-") {
