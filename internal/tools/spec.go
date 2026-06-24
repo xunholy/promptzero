@@ -313,6 +313,25 @@ type Deps struct {
 	// [Deps.RunBuildVerification] which handles the nil guard, so direct
 	// nil checks are not needed in individual handlers.
 	BuildVerify func(ctx context.Context, payloadType string, content []byte, bypass bool) (summary, blockMsg string)
+
+	// Posture returns the live operator-safety posture for the
+	// agent_status diagnostic. The agent wires it to a closure reading
+	// its current read-only / mode / persona state; it is Nil on
+	// transports that don't carry that state (MCP, bare test setups),
+	// where agent_status reports the transport-agnostic facts and says
+	// so. Kept a closure (not a snapshot) so the reading is current at
+	// call time, never stale.
+	Posture func() AgentPosture
+}
+
+// AgentPosture is a point-in-time snapshot of the operator-safety knobs
+// agent_status surfaces. It is descriptive only — no field gates
+// anything; the live rails are read-only dispatch, the per-mode group
+// allow-list, and the persona's tool restrictions.
+type AgentPosture struct {
+	ReadOnly bool   `json:"read_only"`
+	Mode     string `json:"mode"`
+	Persona  string `json:"persona"`
 }
 
 // SnapshotBeforeWrite captures a pre-write copy of path's existing

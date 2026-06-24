@@ -6,6 +6,25 @@ import (
 	"testing"
 )
 
+// TestToolSearch_AgentStatusDiscoverability locks in that the
+// agent_status posture diagnostic is reachable by the natural ways an
+// operator asks about their session's safety state.
+func TestToolSearch_AgentStatusDiscoverability(t *testing.T) {
+	for _, q := range []string{
+		"safety posture",
+		"what mode am i in",
+		"is this session audited",
+	} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "agent_status"`) {
+			t.Errorf("query %q did not surface agent_status in the top results:\n%s", q, out)
+		}
+	}
+}
+
 // TestToolSearchHandler verifies the discovery tool wraps the live registry:
 // an exact tool name ranks first, a task synonym surfaces a relevant tool, the
 // output carries risk/group, and bad input is rejected.
