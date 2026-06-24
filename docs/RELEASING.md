@@ -5,14 +5,26 @@ at `.github/workflows/release.yaml` builds five platform binaries,
 signs checksums with cosign (keyless), generates a CycloneDX SBOM,
 and publishes everything as a GitHub Release.
 
-The release body comes from **`CHANGELOG.md`** — the section whose
-heading matches `## [<version>] - <date>`. That means release notes
-are committed to the repo, reviewable in a PR, and don't depend on
-commit-message hygiene.
+The workflow resolves the release body in priority order (see the
+`Resolve release notes` step in `release.yaml`):
+
+1. The **`CHANGELOG.md`** section whose heading matches
+   `## [<version>] - <date>`, if present.
+2. The **annotated tag message** (`git tag -a` subject + body, minus
+   the signature) when there's no matching CHANGELOG section.
+3. GitHub auto-generated notes — last resort if both are empty.
+
+In current practice the annotated tag message (2) is the common path:
+recent releases carry their notes in the `git tag -a` body rather than a
+CHANGELOG bump, so the workflow falls through to it. Either way the notes
+live in git (a committed CHANGELOG section or the annotated tag object),
+are reviewable, and don't depend on commit-message hygiene. The shape
+below applies to whichever you use.
 
 ## Pattern
 
-Every release CHANGELOG section follows this shape:
+Every release's notes — in a CHANGELOG section or the annotated tag
+body — follow this shape:
 
 ```markdown
 ## [X.Y.Z] - YYYY-MM-DD
@@ -76,24 +88,29 @@ task eval
 go build -o /tmp/flipper-validate ./cmd/flipper-validate
 /tmp/flipper-validate -skip-reboot
 
-# 4. Update CHANGELOG.md:
-#    - Move [Unreleased] content into a new [X.Y.Z] - YYYY-MM-DD
-#      section.
-#    - Populate the Verified block with the numbers from steps 1-3.
-#    - Commit as "docs: release notes for vX.Y.Z".
+# 4. Write the release notes in the shape above, with the Verified
+#    block populated from steps 1-3. Put them EITHER in a new
+#    CHANGELOG.md [X.Y.Z] - YYYY-MM-DD section (committed as
+#    "docs: release notes for vX.Y.Z"), OR — the common path — directly
+#    in the annotated tag body in step 5. The workflow reads CHANGELOG
+#    first, then the tag body.
 
-# 5. Tag + push.
-git tag -a vX.Y.Z -m "vX.Y.Z"
+# 5. Tag + push. Carry the notes in the annotated tag body via a file
+#    (-F) so multi-line notes survive and no shell interpolation mangles
+#    them — avoid backticks in -m, the shell command-substitutes them.
+git tag -a vX.Y.Z -F dist/release-notes.md   # or: git tag -a vX.Y.Z (opens $EDITOR)
 git push origin vX.Y.Z
 ```
+
+Verify the published notes afterwards with `gh release view vX.Y.Z`.
 
 The tag push triggers `.github/workflows/release.yaml`:
 1. Build five platform binaries (linux/amd64+arm64, darwin/amd64+arm64, windows/amd64)
 2. Generate `checksums.txt`, sign with cosign keyless
 3. Generate CycloneDX SBOM (`promptzero.cdx.json`)
-4. Extract the CHANGELOG section matching the tag (falls back to
-   auto-generated notes if the section is missing — forgetting to
-   bump CHANGELOG doesn't block the release)
+4. Resolve the release notes: CHANGELOG section matching the tag →
+   annotated tag body → auto-generated notes (so forgetting to bump
+   CHANGELOG doesn't block the release; the tag body carries the notes)
 5. Publish the GitHub Release with every artefact attached
 
 ## Versioning
