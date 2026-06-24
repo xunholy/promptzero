@@ -2704,6 +2704,16 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Algorithm
 		// verified against four real GLEIF-registered LEIs.
 		"lei_decode",
+		// v0.734 (financial-security decode): isin_decode — the
+		// International Securities Identification Number (ISO 6166), the
+		// securities leg of the financial-data family with iban_decode
+		// (account) and lei_decode (entity). 2-letter prefix + 9-char
+		// NSIN + 1 Luhn check digit (the verification anchor). Turns up in
+		// brokerage statements / trade confirmations / market-data dumps /
+		// investment-fraud lures. Pure offline character-field decode of a
+		// pasted string; reads a string, transmits nothing, so it is Low.
+		// Luhn algorithm verified against five well-known real ISINs.
+		"isin_decode",
 		// v0.551 (travel-document decode): mrz_decode — the ICAO 9303
 		// Machine Readable Zone of a passport / ID / visa (TD1/TD2/TD3),
 		// the BAC-key input for reading an e-passport NFC chip. Fields +

@@ -3022,7 +3022,11 @@ func TestRegistrySize(t *testing.T) {
 	// GLEIF LOU prefix + 14-char entity part + 2 check digits, validated by the same
 	// ISO 7064 MOD-97-10 checksum as iban; the entity-side companion to iban_decode,
 	// algorithm verified against four real GLEIF-registered LEIs). internal/lei.
-	const expected = 687
+	// v0.734.0 added isin_decode (International Securities Identification Number, ISO
+	// 6166 → the 2-letter prefix + 9-char NSIN + 1 Luhn check digit; the securities
+	// leg of the financial-data family with iban/lei, Luhn algorithm verified against
+	// five well-known real ISINs). internal/isin.
+	const expected = 688
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
