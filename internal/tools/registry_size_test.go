@@ -3018,7 +3018,11 @@ func TestRegistrySize(t *testing.T) {
 	// MOD-97-10 check digits from a country code + BBAN and emits a valid IBAN,
 	// round-trip-verified against the decoder; for test-vector / fuzzing-corpus
 	// generation and repairing a known IBAN body). internal/iban.
-	const expected = 686
+	// v0.733.0 added lei_decode (Legal Entity Identifier, ISO 17442 → the 4-char
+	// GLEIF LOU prefix + 14-char entity part + 2 check digits, validated by the same
+	// ISO 7064 MOD-97-10 checksum as iban; the entity-side companion to iban_decode,
+	// algorithm verified against four real GLEIF-registered LEIs). internal/lei.
+	const expected = 687
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

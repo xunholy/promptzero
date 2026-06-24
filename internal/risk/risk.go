@@ -2694,6 +2694,16 @@ var toolLevels = func() map[string]Level {
 		// generation and repairing a known IBAN body. Generation only —
 		// emits a string, transmits nothing, so it is Low.
 		"iban_encode",
+		// v0.733 (financial-entity decode): lei_decode — the Legal Entity
+		// Identifier (ISO 17442), the 20-char entity-side companion to
+		// iban_decode (the account). 4-char GLEIF LOU prefix + 14-char
+		// entity part + 2 check digits, guarded by the same ISO 7064
+		// MOD-97-10 checksum (the verification anchor). Turns up in
+		// regulatory filings (MiFID II / EMIR), SWIFT messaging, and BEC
+		// lures. Pure offline character-field decode of a pasted string;
+		// reads a string, transmits nothing, so it is Low. Algorithm
+		// verified against four real GLEIF-registered LEIs.
+		"lei_decode",
 		// v0.551 (travel-document decode): mrz_decode — the ICAO 9303
 		// Machine Readable Zone of a passport / ID / visa (TD1/TD2/TD3),
 		// the BAC-key input for reading an e-passport NFC chip. Fields +
