@@ -2678,6 +2678,15 @@ var toolLevels = func() map[string]Level {
 		// reads a string, transmits nothing, so it is Low. Calling-code
 		// table code-generated from Google libphonenumber.
 		"iccid_decode",
+		// v0.730 (financial-account decode): iban_decode — the
+		// International Bank Account Number (ISO 13616). 2-letter
+		// country code + 2 check digits + country-specific BBAN, guarded
+		// by the ISO 7064 MOD-97-10 checksum (the verification anchor).
+		// Turns up in leaked spreadsheets / invoice-fraud (BEC) lures /
+		// clipboard-hijacker payloads. Pure offline character-field
+		// decode of a pasted string; reads a string, transmits nothing,
+		// so it is Low. MOD-97-10 arithmetic only, no embedded table.
+		"iban_decode",
 		// v0.551 (travel-document decode): mrz_decode — the ICAO 9303
 		// Machine Readable Zone of a passport / ID / visa (TD1/TD2/TD3),
 		// the BAC-key input for reading an e-passport NFC chip. Fields +
