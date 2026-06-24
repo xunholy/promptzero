@@ -13,7 +13,7 @@ task test            # short suite — should pass on a fresh checkout
 task build           # produces ./bin/promptzero
 ```
 
-Make a change. Run `task test` and `task lint`. Commit. Push. Open a PR. The rest of this file is reference material when you go deeper.
+Make a change. Run `task test` and `task lint` while iterating, then `task ci` before you push (it runs the locally-reproducible CI gates — lint + vet + build + test:full + vuln — in one shot). Commit. Push. Open a PR. The rest of this file is reference material when you go deeper.
 
 ## Development setup
 
@@ -67,6 +67,7 @@ internal/
 | `task lint`                  | `golangci-lint run ./...` — errors with a friendly hint if not installed. |
 | `task vet`                   | `go vet ./...`. |
 | `task vuln`                  | `govulncheck ./...` — CVE scan of deps + reachable stdlib. |
+| `task ci`                    | The locally-reproducible CI gates in one command: lint + vet + build + test:full + vuln. Run before pushing. |
 | `task usecases`              | Operator scenarios against a live Flipper. |
 | `task eval`                  | Golden eval harness (mock transports). |
 | `task --list`                | Every available target. |
@@ -104,7 +105,7 @@ GOOS=windows GOARCH=amd64 go build -o promptzero-windows-amd64.exe ./cmd/promptz
 
 - **Commit messages** follow Conventional Commits in spirit but stay human-readable: `<type>(<scope>): <subject>` where `type` is one of `feat / fix / refactor / perf / test / docs / build / chore`. Example: `fix(security): gate RunTool with audit + confirm chokepoints`.
 - Body lines wrap at ~72 characters and explain *why* before *what*. The diff already shows what changed; the message records the reasoning.
-- PRs include a `## Test plan` checklist. CI runs build/test/lint/vuln; manual hardware checks (when applicable) live in the test plan.
+- PRs include a `## Test plan` checklist. CI runs build/test/lint/vuln (reproduce locally with `task ci`); manual hardware checks (when applicable) live in the test plan.
 
 ## Scope and review
 
