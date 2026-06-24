@@ -174,22 +174,24 @@ against them and diff tool-choice accuracy.
 
 ## 6. Serve the checkpoint
 
-Two viable patterns:
+Serve the checkpoint behind an OpenAI-compatible endpoint — vLLM or
+SGLang are the usual choices:
 
-- **OpenAI-compatible endpoint (recommended)**: serve via vLLM or
-  SGLang, then point PromptZero's `PROMPTZERO_API_BASE` at the
-  local endpoint. Zero code changes needed.
+```sh
+vllm serve ./out --port 8000
+```
 
-  ```sh
-  vllm serve ./out --port 8000
-  export PROMPTZERO_API_BASE=http://localhost:8000/v1
-  export PROMPTZERO_MODEL=./out
-  ```
+Then route PromptZero to it by implementing `internal/provider.Provider`
+(the package already ships an `OpenAICompat` client you can point at any
+OpenAI-compatible base URL) and selecting it per tier — e.g. your
+fine-tune for tool-use, Haiku for verify. This lets you stack multiple
+backends (Ollama, llama.cpp, Together, Anyscale, your local endpoint).
 
-- **Provider plugin**: implement `internal/provider.Provider` to
-  route calls to your inference backend (Ollama, llama.cpp, Together,
-  Anyscale). This is more work but lets you stack multiple backends
-  (e.g. Haiku for verify, your fine-tune for tool-use).
+Note: the `--gen-provider ollama|openrouter` flags route only the payload
+**generation** tier today, not the main agent loop, and there is no
+generic base-URL flag or env var for the main agent yet — wiring a local
+fine-tune as the agent model needs the provider plugin above. A
+one-command `task ft:serve` wrapper is planned (see Future work).
 
 The fine-tune does NOT replace the safety layers — verify_build,
 prospective reflection, quarantine, and confidence scoring still
