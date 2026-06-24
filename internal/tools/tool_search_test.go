@@ -186,6 +186,28 @@ func TestToolSearch_FinancialObliqueDiscoverability(t *testing.T) {
 	}
 }
 
+// TestToolSearch_AirTagDiscoverability locks in that the Apple Continuity
+// decoders (the AirTag / Find My BLE-tracker sweep) are reachable by the
+// consumer terms operators actually use. All of these returned nothing
+// before the airtag/tracker/beacon synonyms were added — only the jargon
+// "apple continuity" worked.
+func TestToolSearch_AirTagDiscoverability(t *testing.T) {
+	for _, q := range []string{
+		"airtag",
+		"find my tracker",
+		"is someone tracking me airtag",
+		"apple beacon",
+	} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "ble_continuity_decode"`) {
+			t.Errorf("query %q did not surface ble_continuity_decode in the top results:\n%s", q, out)
+		}
+	}
+}
+
 // TestToolSearch_CellularObliqueDiscoverability locks in that the cellular
 // identifier triad (iccid/imsi/imei) is reachable by the family terms "sim"
 // and "cellular" — both returned nothing before the cellular synonym cluster
