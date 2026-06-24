@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/risk"
@@ -103,11 +104,32 @@ func init() {
 			if d.Config == nil || len(d.Config.Devices) == 0 {
 				return "No devices configured. Add devices to config.yaml.", nil
 			}
+			// Sort by name so the listing is stable across calls — map
+			// iteration order is random, which makes the output churn and
+			// is unpleasant to read or test.
+			names := make([]string, 0, len(d.Config.Devices))
+			for name := range d.Config.Devices {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+
 			var out string
-			for name, dev := range d.Config.Devices {
-				out += fmt.Sprintf("- %s (type: %s, file: %s)\n", name, dev.Type, dev.File)
-				for cmd, signal := range dev.Commands {
-					out += fmt.Sprintf("    command: %s -> %s\n", cmd, signal)
+			for _, name := range names {
+				dev := d.Config.Devices[name]
+				// Type is optional — the bare-string shorthand sets only
+				// File — so omit it rather than printing an empty "type: ".
+				if dev.Type != "" {
+					out += fmt.Sprintf("- %s (type: %s, file: %s)\n", name, dev.Type, dev.File)
+				} else {
+					out += fmt.Sprintf("- %s (file: %s)\n", name, dev.File)
+				}
+				cmds := make([]string, 0, len(dev.Commands))
+				for cmd := range dev.Commands {
+					cmds = append(cmds, cmd)
+				}
+				sort.Strings(cmds)
+				for _, cmd := range cmds {
+					out += fmt.Sprintf("    command: %s -> %s\n", cmd, dev.Commands[cmd])
 				}
 			}
 			return out, nil
