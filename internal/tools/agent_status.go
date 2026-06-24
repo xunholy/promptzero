@@ -18,14 +18,22 @@ func init() { //nolint:gochecknoinits
 
 // agentStatusReport is the JSON shape agent_status returns.
 type agentStatusReport struct {
-	ReadOnly       *bool    `json:"read_only,omitempty"`
-	Mode           string   `json:"mode,omitempty"`
-	Persona        string   `json:"persona,omitempty"`
-	ConfirmRisk    string   `json:"confirm_risk,omitempty"`
-	ConfirmEnabled *bool    `json:"confirm_enabled,omitempty"`
-	AuditEnabled   bool     `json:"audit_enabled"`
-	Model          string   `json:"model,omitempty"`
-	Notes          []string `json:"notes,omitempty"`
+	ReadOnly       *bool  `json:"read_only,omitempty"`
+	Mode           string `json:"mode,omitempty"`
+	Persona        string `json:"persona,omitempty"`
+	ConfirmRisk    string `json:"confirm_risk,omitempty"`
+	ConfirmEnabled *bool  `json:"confirm_enabled,omitempty"`
+	AuditEnabled   bool   `json:"audit_enabled"`
+	// BuildVerifyEnabled reports whether generated *_build files get an
+	// LLM verification pass before they are written to the device — the
+	// generated-payload-review safety mechanism.
+	BuildVerifyEnabled bool `json:"build_verify_enabled"`
+	// BadUSBAllowCritical reports whether critical-severity BadUSB
+	// payloads are permitted (config: validator.badusb.allow_critical).
+	// Pointer so it is only shown when config is available.
+	BadUSBAllowCritical *bool    `json:"badusb_allow_critical,omitempty"`
+	Model               string   `json:"model,omitempty"`
+	Notes               []string `json:"notes,omitempty"`
 }
 
 var agentStatusSpec = Spec{
@@ -38,6 +46,9 @@ var agentStatusSpec = Spec{
 		"- **confirm_risk** — the risk tier at/above which the interactive confirmation gate fires, and " +
 		"**confirm_enabled** — whether such a gate is actually wired (false on non-interactive surfaces).\n" +
 		"- **audit_enabled** — whether tool calls are being recorded to the audit log.\n" +
+		"- **build_verify_enabled** — whether generated `*_build` files get an LLM review pass before write " +
+		"(the generated-payload-review safety rail), and **badusb_allow_critical** — whether critical BadUSB " +
+		"payloads are permitted.\n" +
 		"- **model** — the configured base Claude model.\n\n" +
 		"Use it to answer questions like \"am I in read-only?\", \"will I be prompted before risky actions?\", or " +
 		"\"is this session audited?\". The live reading is point-in-time and accurate; if the agent does not " +
@@ -53,9 +64,16 @@ var agentStatusSpec = Spec{
 }
 
 func agentStatusHandler(_ context.Context, d *Deps, _ map[string]any) (string, error) {
-	r := agentStatusReport{AuditEnabled: d != nil && d.Audit != nil}
+	r := agentStatusReport{
+		AuditEnabled: d != nil && d.Audit != nil,
+		// Generated-payload review: the LLM verification pass runs only
+		// when a verifier is wired (a live LLM client). Reported live.
+		BuildVerifyEnabled: d != nil && d.BuildVerify != nil,
+	}
 	if d != nil && d.Config != nil {
 		r.Model = d.Config.Model
+		bac := d.Config.Validator.BadUSB.AllowCritical
+		r.BadUSBAllowCritical = &bac
 	}
 	if d != nil && d.Posture != nil {
 		p := d.Posture()
@@ -80,6 +98,11 @@ func agentStatusHandler(_ context.Context, d *Deps, _ map[string]any) (string, e
 	}
 	if !r.AuditEnabled {
 		r.Notes = append(r.Notes, "audit log is NOT enabled for this session — tool calls are not being recorded")
+	}
+	if !r.BuildVerifyEnabled {
+		r.Notes = append(r.Notes,
+			"build verification is NOT active — generated *_build files are written without an LLM review pass "+
+				"(no LLM verifier wired on this transport, e.g. MCP)")
 	}
 	body, _ := json.MarshalIndent(r, "", "  ")
 	return string(body), nil

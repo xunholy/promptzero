@@ -16,9 +16,12 @@ import (
 // live read-only / mode / persona posture when the agent wires the
 // Posture resolver, plus audit + model.
 func TestAgentStatus_ReportsLivePosture(t *testing.T) {
+	allowCrit := config.Config{Model: "claude-opus-4-8"}
+	allowCrit.Validator.BadUSB.AllowCritical = true
 	d := &Deps{
-		Audit:  &audit.Log{}, // non-nil → audit_enabled true (handler only checks != nil)
-		Config: &config.Config{Model: "claude-opus-4-8"},
+		Audit:       &audit.Log{}, // non-nil → audit_enabled true (handler only checks != nil)
+		Config:      &allowCrit,
+		BuildVerify: func(_ context.Context, _ string, _ []byte, _ bool) (string, string) { return "ok", "" },
 		Posture: func() AgentPosture {
 			return AgentPosture{
 				ReadOnly: true, Mode: "recon", Persona: "blue-team-audit",
@@ -51,6 +54,12 @@ func TestAgentStatus_ReportsLivePosture(t *testing.T) {
 	}
 	if !r.AuditEnabled {
 		t.Error("audit_enabled = false, want true")
+	}
+	if !r.BuildVerifyEnabled {
+		t.Error("build_verify_enabled = false, want true (BuildVerify wired)")
+	}
+	if r.BadUSBAllowCritical == nil || !*r.BadUSBAllowCritical {
+		t.Errorf("badusb_allow_critical = %v, want true", r.BadUSBAllowCritical)
 	}
 }
 
