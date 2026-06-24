@@ -142,3 +142,21 @@ func TestToolSearch_ISINDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_ABADiscoverability locks in that aba_routing_decode is
+// reachable by the natural ways an operator would ask for it.
+func TestToolSearch_ABADiscoverability(t *testing.T) {
+	for _, q := range []string{
+		"ABA routing number",
+		"bank routing transit number",
+		"validate RTN",
+	} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "aba_routing_decode"`) {
+			t.Errorf("query %q did not surface aba_routing_decode in the top results:\n%s", q, out)
+		}
+	}
+}

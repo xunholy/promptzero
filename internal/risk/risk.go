@@ -2714,6 +2714,17 @@ var toolLevels = func() map[string]Level {
 		// pasted string; reads a string, transmits nothing, so it is Low.
 		// Luhn algorithm verified against five well-known real ISINs.
 		"isin_decode",
+		// v0.737 (US-domestic bank decode): aba_routing_decode — the ABA
+		// routing transit number, the US counterpart to iban_decode (the
+		// international account). 4-digit Federal Reserve routing symbol +
+		// 4-digit institution id + 1 check digit, guarded by the ABA
+		// weighted modulus-10 checksum (the verification anchor); the
+		// leading two digits resolve the FRB district + institution type.
+		// Turns up in ACH-fraud / BEC lures / direct-deposit forms / check
+		// MICR lines. Pure offline digit-field decode of a pasted number;
+		// reads a string, transmits nothing, so it is Low. Checksum
+		// verified against real bank routing numbers.
+		"aba_routing_decode",
 		// v0.551 (travel-document decode): mrz_decode — the ICAO 9303
 		// Machine Readable Zone of a passport / ID / visa (TD1/TD2/TD3),
 		// the BAC-key input for reading an e-passport NFC chip. Fields +
