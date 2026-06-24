@@ -227,3 +227,18 @@ mcp_clients: []
 #    args: [run, --rm, -i, lauriewired/ghidra-mcp:latest]
 #    sandbox: docker
 #    risk_default: low
+
+# Device registry — map friendly names to signal files on the Flipper SD
+# card. list_devices surfaces these so you can say "open the garage"
+# instead of naming the .sub path. Each entry is either the bare-string
+# shorthand (just the signal file) or the full mapping (type/file plus an
+# optional commands map for multi-signal devices like a TV remote).
+# devices:
+#   garage: /ext/subghz/garage.sub          # shorthand: just the file
+#   office_badge: /ext/nfc/office.nfc
+#   tv:                                      # full form with named commands
+#     type: infrared
+#     file: /ext/infrared/livingroom_tv.ir
+#     commands:
+#       power: /ext/infrared/tv_power.ir
+#       volume_up: /ext/infrared/tv_volup.ir
