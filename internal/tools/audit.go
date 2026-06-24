@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/risk"
@@ -25,9 +27,24 @@ import (
 func init() {
 	Register(Spec{
 		Name: "audit_query",
-		Description: "Query the audit log. Shows recent tool executions with timestamps, inputs, outputs, " +
-			"risk levels, and success/failure status.",
-		Schema:   json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Number of entries to return (default 20)"}}}`),
+		Description: "Query the audit log of tool executions (timestamp, input, output, risk level, " +
+			"success/failure). Returns the most recent matches first. Optional filters narrow the result for " +
+			"incident review:\n" +
+			"- **tool** — substring match on the tool name (e.g. `nfc`, `subghz_transmit`).\n" +
+			"- **risk** — exact tier: `low` | `medium` | `high` | `critical`.\n" +
+			"- **success** — `true` for successes only, `false` for failures only; omit for either.\n" +
+			"- **contains** — substring match on the recorded input OR output.\n" +
+			"With no filters it behaves as before (the most recent `limit` entries). Read-only.",
+		Schema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"limit":{"type":"integer","description":"Max entries to return (default 20)"},
+				"tool":{"type":"string","description":"Substring filter on tool name"},
+				"risk":{"type":"string","enum":["low","medium","high","critical"],"description":"Filter to one risk tier"},
+				"success":{"type":"boolean","description":"true = successes only, false = failures only; omit for either"},
+				"contains":{"type":"string","description":"Substring filter on recorded input or output"}
+			}
+		}`),
 		Required: nil,
 		Risk:     risk.Low,
 		Group:    GroupMetaAudit,
@@ -35,15 +52,27 @@ func init() {
 			if d.Audit == nil {
 				return "Audit logging not enabled", nil
 			}
-			limit := intOr(p, "limit", 20)
-			// Soft-cap the limit so an LLM tool call with
-			// limit=999999 can't tie up SQLite or flood the
-			// agent's tool-result with the whole audit DB. Same
-			// ceiling as the REPL's /audit query command.
-			if limit > audit.MaxQueryLimit {
-				limit = audit.MaxQueryLimit
+			// Validate the risk filter at the boundary so a typo
+			// ("hi") fails loudly instead of silently matching nothing.
+			riskFilter := strings.ToLower(strings.TrimSpace(str(p, "risk")))
+			switch riskFilter {
+			case "", "low", "medium", "high", "critical":
+			default:
+				return "", fmt.Errorf("audit_query: invalid risk %q (want low|medium|high|critical)", riskFilter)
 			}
-			entries, err := d.Audit.Query(limit)
+			// QueryFiltered soft-caps Limit at MaxQueryLimit internally,
+			// so an LLM tool call with limit=999999 can't tie up SQLite
+			// or flood the tool-result with the whole audit DB.
+			f := audit.Filter{
+				Tool:     strings.TrimSpace(str(p, "tool")),
+				Risk:     riskFilter,
+				Contains: strings.TrimSpace(str(p, "contains")),
+				Limit:    intOr(p, "limit", 20),
+			}
+			if v, ok := p["success"].(bool); ok {
+				f.Success = &v
+			}
+			entries, err := d.Audit.QueryFiltered(f)
 			if err != nil {
 				return "", err
 			}

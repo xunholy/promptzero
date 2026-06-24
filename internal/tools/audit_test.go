@@ -134,3 +134,55 @@ func TestAuditToolExposure(t *testing.T) {
 		t.Error("explain_last_result.AgentOnly = false, want true (agent-loop narration helper)")
 	}
 }
+
+// TestAuditQueryTool_Filters exercises the v0.747 filter params (tool /
+// risk / success / contains) wired onto audit_query via QueryFiltered.
+func TestAuditQueryTool_Filters(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "audit.db")
+	log, err := audit.Open(logPath)
+	if err != nil {
+		t.Fatalf("audit.Open: %v", err)
+	}
+	defer log.Close()
+	log.Record("nfc_read", map[string]string{"x": "1"}, "tag found", "low", audit.LevelInfo, 0, true)
+	log.Record("subghz_transmit", map[string]string{"f": "433"}, "sent", "high", audit.LevelAction, 0, true)
+	log.Record("subghz_transmit", map[string]string{"f": "868"}, "tx error: no antenna", "high", audit.LevelAction, 0, false)
+	log.Record("wifi_deauth", map[string]string{"ap": "0"}, "blocked", "critical", audit.LevelAction, 0, false)
+
+	spec, _ := Get("audit_query")
+	count := func(params map[string]any) int {
+		t.Helper()
+		out, err := spec.Handler(context.Background(), &Deps{Audit: log}, params)
+		if err != nil {
+			t.Fatalf("audit_query(%v): %v", params, err)
+		}
+		var rows []map[string]any
+		if jerr := json.Unmarshal([]byte(out), &rows); jerr != nil {
+			t.Fatalf("unmarshal: %v\n%s", jerr, out)
+		}
+		return len(rows)
+	}
+
+	if n := count(map[string]any{}); n != 4 {
+		t.Errorf("no filter: got %d, want 4", n)
+	}
+	if n := count(map[string]any{"risk": "high"}); n != 2 {
+		t.Errorf("risk=high: got %d, want 2", n)
+	}
+	if n := count(map[string]any{"tool": "subghz"}); n != 2 {
+		t.Errorf("tool=subghz: got %d, want 2", n)
+	}
+	if n := count(map[string]any{"success": false}); n != 2 {
+		t.Errorf("success=false: got %d, want 2", n)
+	}
+	if n := count(map[string]any{"tool": "subghz", "success": false}); n != 1 {
+		t.Errorf("tool=subghz+failure: got %d, want 1", n)
+	}
+	if n := count(map[string]any{"contains": "no antenna"}); n != 1 {
+		t.Errorf("contains=no antenna: got %d, want 1", n)
+	}
+	// Invalid risk is rejected at the boundary.
+	if _, err := spec.Handler(context.Background(), &Deps{Audit: log}, map[string]any{"risk": "hi"}); err == nil {
+		t.Error("risk=hi: want validation error, got nil")
+	}
+}
