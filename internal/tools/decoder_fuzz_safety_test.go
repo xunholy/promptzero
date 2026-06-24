@@ -313,6 +313,104 @@ func TestMultiParamDecoders_MalformedInputNeverPanics(t *testing.T) {
 	t.Logf("panic-safety swept %d multi-param host decoders", tested)
 }
 
+// multiParamDecoder pairs a multi-param host Spec with its required
+// params' JSON-schema types, parsed once so the fuzz body doesn't
+// re-unmarshal the schema on every input.
+type multiParamDecoder struct {
+	spec  Spec
+	types map[string]string // required param name -> JSON type
+}
+
+// multiParamDecoderHandlers caches the pure multi-param host decoders
+// (the encoders, KDFs and hashcat-line formatters) together with their
+// param types so FuzzMultiParamDecoders can map fuzzer values onto each
+// param by type without re-scanning the registry per input.
+func multiParamDecoderHandlers() []multiParamDecoder {
+	var out []multiParamDecoder
+	for _, s := range All() {
+		if !isMultiParamHostDecoder(s) {
+			continue
+		}
+		var parsed struct {
+			Properties map[string]struct {
+				Type string `json:"type"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(s.Schema, &parsed); err != nil {
+			continue
+		}
+		types := make(map[string]string, len(s.Required))
+		for _, p := range s.Required {
+			types[p] = parsed.Properties[p].Type
+		}
+		out = append(out, multiParamDecoder{spec: s, types: types})
+	}
+	return out
+}
+
+// FuzzMultiParamDecoders drives every pure offline multi-param host tool
+// (rfid_pacs_encode, ioprox_encode, wpa_pmk_derive, the wifi_*_hc22000
+// formatters, etc.) with fuzzer-generated values, mapping the string
+// args onto each tool's string params and the int args onto its numeric
+// params. It explores the cross-field space — a hex field sliced by a
+// count read from a sibling integer field — far more thoroughly than the
+// fixed battery in TestMultiParamDecoders_MalformedInputNeverPanics,
+// which stays as the fast CI gate; this target is for deep local
+// exploration via `go test -fuzz=FuzzMultiParamDecoders`. It is the
+// multi-param companion to FuzzHexDecoders and FuzzTextDecoders, closing
+// the one decoder family that had a fixed battery but no fuzz target.
+//
+// The contract is "return an error or a benign Result, never panic".
+func FuzzMultiParamDecoders(f *testing.F) {
+	// Seeds pair string + int values that have historically tripped
+	// length-field parsers: empty / max-run hex bodies alongside zero,
+	// negative, and overflow counts.
+	type seed struct {
+		s1, s2 string
+		n1, n2 int
+	}
+	for _, sd := range []seed{
+		{"", "", 0, 0},
+		{"ff", "00", 1, -1},
+		{"ffffffffffffffff", "", 256, 0},
+		{strings.Repeat("ff", 256), "0", 4294967296, 9999999999},
+		{"zz", "::::", -2147483648, 64},
+	} {
+		f.Add(sd.s1, sd.s2, sd.n1, sd.n2)
+	}
+
+	handlers := multiParamDecoderHandlers()
+	if len(handlers) < 10 {
+		f.Fatalf("only %d multi-param host decoders registered; expected 10+", len(handlers))
+	}
+
+	f.Fuzz(func(t *testing.T, s1, s2 string, n1, n2 int) {
+		strs := []any{s1, s2}
+		ints := []any{n1, n2}
+		for _, h := range handlers {
+			args := make(map[string]any, len(h.spec.Required))
+			si, ii := 0, 0
+			for _, p := range h.spec.Required {
+				if h.types[p] == "integer" || h.types[p] == "number" {
+					args[p] = ints[ii%len(ints)]
+					ii++
+				} else {
+					args[p] = strs[si%len(strs)]
+					si++
+				}
+			}
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("%s panicked on args=%v: %v", h.spec.Name, args, r)
+					}
+				}()
+				_, _ = h.spec.Handler(context.Background(), nil, args)
+			}()
+		}
+	})
+}
+
 // hexDecoderHandlers caches the pure hex-decoder handlers once so the
 // fuzz body doesn't re-scan the registry on every input.
 func hexDecoderHandlers() []Spec {
