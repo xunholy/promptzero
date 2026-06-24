@@ -92,6 +92,24 @@ var synonyms = map[string][]string{ //nolint:gochecknoglobals
 	"rfid":       {"rfid", "em4100", "t5577", "indala"},
 	"card":       {"nfc", "mifare", "rfid", "emv"},
 	"badge":      {"nfc", "rfid", "wiegand", "pacs"},
+	// Financial-data triage: the IBAN / LEI / ISIN / ABA-routing decoder family
+	// (iban_decode, lei_decode, isin_decode, aba_routing_decode) handles the
+	// account / entity / security / US-bank identifiers found in BEC lures,
+	// leaked spreadsheets, and wire/ACH-fraud material. Natural finance phrasings
+	// ("wire transfer", "stock ticker", "what bank") otherwise ranked them out of
+	// the top results. Deliberately finance-specific tokens only — "security",
+	// "routing", and "account" are omitted because they collide with the
+	// infosec / network-routing / service-account domains.
+	"bank":       {"iban", "aba", "routing"},
+	"wire":       {"iban", "aba", "routing"},
+	"swift":      {"iban", "lei", "bank"},
+	"iban":       {"iban", "bank"},
+	"ach":        {"aba", "routing"},
+	"stock":      {"isin", "securities"},
+	"ticker":     {"isin", "securities"},
+	"securities": {"isin", "securities"},
+	"brokerage":  {"isin", "securities"},
+	"financial":  {"iban", "lei", "isin", "aba"},
 	"bluetooth":  {"ble", "bluetooth", "bt", "gatt"},
 	"ble":        {"ble", "bluetooth", "gatt"},
 	"ir":         {"ir", "infrared", "pronto"},

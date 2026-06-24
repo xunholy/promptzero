@@ -160,3 +160,28 @@ func TestToolSearch_ABADiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_FinancialObliqueDiscoverability locks in that the
+// financial-data decoder family (iban/lei/isin/aba) is reachable by the
+// oblique task phrasings an operator actually uses — not just the exact
+// acronyms. These all returned nothing before the finance synonym cluster
+// was added to internal/toolsearch.
+func TestToolSearch_FinancialObliqueDiscoverability(t *testing.T) {
+	cases := map[string]string{
+		"wire transfer details":   "iban_decode",
+		"swift payment fields":    "iban_decode",
+		"what bank is this":       "aba_routing_decode",
+		"ach routing":             "aba_routing_decode",
+		"decode a stock ticker":   "isin_decode",
+		"brokerage securities id": "isin_decode",
+	}
+	for q, want := range cases {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "`+want+`"`) {
+			t.Errorf("query %q did not surface %s in the top results:\n%s", q, want, out)
+		}
+	}
+}
