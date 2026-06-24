@@ -97,7 +97,7 @@ prompt-injection quarantine; they compose:
 Defence-in-depth posture for blue-team / forensics / training:
 
 ```bash
-promptzero --read-only --persona blue-team-audit --confirm-risk low
+promptzero --read-only --persona defender --confirm-risk low
 ```
 
 ## Authorised-use reminder
