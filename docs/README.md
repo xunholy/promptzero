@@ -47,7 +47,7 @@ Each transcript in `transcripts/` is the full log of one prompt:
   "response": "final assistant message",
   "tools": [ { "phase": "start|finish", "name": "…", "input": {…}, "output": "…" } ],
   "duration_s": 8.4,
-  "model": "claude-opus-4-7"
+  "model": "claude-opus-4-8"
 }
 ```
 
