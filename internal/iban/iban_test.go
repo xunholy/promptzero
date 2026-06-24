@@ -2,7 +2,10 @@
 
 package iban
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestDecode_Valid runs the canonical example IBANs from the ISO 13616
 // / SWIFT registry. Each must parse, split into the right fields, and
@@ -126,6 +129,82 @@ func TestDecode_StructuralErrors(t *testing.T) {
 	} {
 		if _, err := Decode(in); err == nil {
 			t.Errorf("Decode(%q) = nil error, want structural error", in)
+		}
+	}
+}
+
+// TestEncode_ReproducesCanonical confirms Encode computes the same check
+// digits the canonical example IBANs carry (the inverse of Decode).
+func TestEncode_ReproducesCanonical(t *testing.T) {
+	cases := []struct{ country, bban, want string }{
+		{"GB", "WEST12345698765432", "GB82WEST12345698765432"},
+		{"DE", "370400440532013000", "DE89370400440532013000"},
+		{"FR", "20041010050500013M02606", "FR1420041010050500013M02606"},
+		{"NO", "86011117947", "NO9386011117947"},
+		{"BE", "539007547034", "BE68539007547034"},
+	}
+	for _, c := range cases {
+		r, err := Encode(c.country, c.bban)
+		if err != nil {
+			t.Fatalf("Encode(%q,%q) error: %v", c.country, c.bban, err)
+		}
+		if r.IBAN != c.want {
+			t.Errorf("Encode(%q,%q).IBAN = %q, want %q", c.country, c.bban, r.IBAN, c.want)
+		}
+		if !r.Mod97Valid {
+			t.Errorf("Encode(%q,%q) Mod97Valid = false, want true", c.country, c.bban)
+		}
+	}
+}
+
+// TestEncode_RoundTripsWithDecode is the inverse-pairing invariant:
+// decoding a valid IBAN and re-encoding its parts reproduces it exactly.
+func TestEncode_RoundTrips(t *testing.T) {
+	for _, in := range []string{
+		"GB82WEST12345698765432",
+		"DE89370400440532013000",
+		"FR1420041010050500013M02606",
+		"NO9386011117947",
+		"BE68539007547034",
+	} {
+		d, err := Decode(in)
+		if err != nil {
+			t.Fatalf("Decode(%q): %v", in, err)
+		}
+		e, err := Encode(d.CountryCode, d.BBAN)
+		if err != nil {
+			t.Fatalf("Encode round-trip of %q: %v", in, err)
+		}
+		if e.IBAN != in {
+			t.Errorf("round-trip of %q = %q", in, e.IBAN)
+		}
+	}
+}
+
+// TestEncode_ToleratesSeparators confirms grouped / lower-case inputs
+// encode to the same IBAN.
+func TestEncode_ToleratesSeparators(t *testing.T) {
+	r, err := Encode("gb", "west 1234 5698 7654 32")
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	if r.IBAN != "GB82WEST12345698765432" {
+		t.Errorf("IBAN = %q", r.IBAN)
+	}
+}
+
+// TestEncode_Errors covers the boundary rejections.
+func TestEncode_Errors(t *testing.T) {
+	cases := []struct{ country, bban string }{
+		{"G", "WEST12345698765432"},     // country code too short
+		{"G1", "WEST12345698765432"},    // country code not letters
+		{"GB", "WEST$2345698765432"},    // invalid BBAN character
+		{"GB", "12345"},                 // too short overall
+		{"GB", strings.Repeat("1", 31)}, // too long overall
+	}
+	for _, c := range cases {
+		if _, err := Encode(c.country, c.bban); err == nil {
+			t.Errorf("Encode(%q,%q) = nil error, want error", c.country, c.bban)
 		}
 	}
 }

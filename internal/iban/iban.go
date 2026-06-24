@@ -51,11 +51,10 @@ type Result struct {
 	Notes       []string `json:"notes,omitempty"`
 }
 
-// Decode validates and breaks down an IBAN. Spaces, '-' and ':'
-// separators are tolerated and the input is upper-cased.
-func Decode(raw string) (*Result, error) {
-	// Strip the separators commonly used to group an IBAN for printing,
-	// then upper-case so 'gb' and 'GB' decode identically.
+// normalize strips the separators commonly used to group an IBAN / BBAN
+// for printing and upper-cases the rest, so 'gb82 west …' and
+// 'GB82WEST…' are treated identically.
+func normalize(raw string) string {
 	s := strings.Map(func(r rune) rune {
 		switch r {
 		case ' ', '-', ':', '\t', '\n', '\r':
@@ -63,8 +62,13 @@ func Decode(raw string) (*Result, error) {
 		}
 		return r
 	}, raw)
-	s = strings.ToUpper(s)
+	return strings.ToUpper(s)
+}
 
+// Decode validates and breaks down an IBAN. Spaces, '-' and ':'
+// separators are tolerated and the input is upper-cased.
+func Decode(raw string) (*Result, error) {
+	s := normalize(raw)
 	if s == "" {
 		return nil, fmt.Errorf("iban: empty input")
 	}
@@ -109,6 +113,35 @@ func Decode(raw string) (*Result, error) {
 		"the BBAN is surfaced whole — the bank / branch / account split is country-specific with no single "+
 			"public rule, so it is not guessed (no confidently-wrong output)")
 	return r, nil
+}
+
+// Encode builds a valid IBAN from a country code and a BBAN by computing
+// the ISO 7064 MOD-97-10 check digits — the inverse of Decode.
+// Separators are tolerated and the inputs are upper-cased. The returned
+// Result is the assembled IBAN run back through Decode, so mod97_valid is
+// true by construction (the output is round-trip-verified, not asserted).
+func Encode(country, bban string) (*Result, error) {
+	cc := normalize(country)
+	b := normalize(bban)
+	if len(cc) != 2 || !isAlpha(cc[0]) || !isAlpha(cc[1]) {
+		return nil, fmt.Errorf("iban: country code must be 2 letters, got %q", cc)
+	}
+	for i := 0; i < len(b); i++ {
+		if isDigit(b[i]) || isAlpha(b[i]) {
+			continue
+		}
+		return nil, fmt.Errorf("iban: BBAN character %q is not a letter or digit", b[i])
+	}
+	// The IBAN is the 2-letter country code + 2 check digits + the BBAN;
+	// keep the total inside the ISO 13616 15-34 envelope.
+	if total := 4 + len(b); total < 15 || total > 34 {
+		return nil, fmt.Errorf(
+			"iban: BBAN of %d chars yields a %d-char IBAN, outside the 15-34 range (ISO 13616)", len(b), total)
+	}
+	// ISO 7064: the check digits make MOD-97-10 of (BBAN + country + DD)
+	// equal 1; DD = 98 - the remainder with "00" in the check positions.
+	check := 98 - mod97(b+cc+"00")
+	return Decode(fmt.Sprintf("%s%02d%s", cc, check, b))
 }
 
 func isAlpha(c byte) bool { return c >= 'A' && c <= 'Z' }

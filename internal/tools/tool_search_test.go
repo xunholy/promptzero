@@ -92,4 +92,17 @@ func TestToolSearch_IBANDiscoverability(t *testing.T) {
 			t.Errorf("query %q did not surface iban_decode in the top results:\n%s", q, out)
 		}
 	}
+	// The encoder must be reachable by generation-flavoured queries.
+	for _, q := range []string{
+		"build a valid IBAN",
+		"compute IBAN check digits",
+	} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "iban_encode"`) {
+			t.Errorf("query %q did not surface iban_encode in the top results:\n%s", q, out)
+		}
+	}
 }
