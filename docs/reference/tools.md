@@ -21,8 +21,9 @@ Canonical definitions: the tool registry lives in `internal/tools/` — each
 
 ## Device & session (info)
 
-### `system_info` · low
-No parameters. Returns firmware, hardware, radio, region, UID.
+### `device_info` · low
+No parameters. Returns firmware, hardware, radio, region, UID. (Also
+reachable by its legacy alias `system_info`.)
 
 **Prompt:** *"What's my Flipper's firmware version and hardware
 revision?"* — [transcript smoke-test](../transcripts/01-storage-list.log)
@@ -488,7 +489,7 @@ when the user's goal is a *task* rather than a single command.
 **Prompt:** *"Run the black-box hardware recon workflow on whatever's
 hooked up to my GPIO header right now"* → single
 `workflow_hw_recon_blackbox_device` call, aggregates i2c_scan /
-onewire_search / GPIO sweep / bt_hci_info / system_info.
+onewire_search / GPIO sweep / bt_hci_info / device_info.
 ([transcript 15](../transcripts/15-workflow-hwrecon.json))
 
 ### `workflow_garage_door_triage` · medium (RX only)
