@@ -127,13 +127,18 @@ var AuditToolNames = []string{
 }
 
 // StructuredInternalToolNames are the always-trusted, never-wrapped
-// tools — meta utilities and the structured-output workflows that
-// don't surface attacker-controllable text. The set is small by
-// design; expanding it requires explicit security review.
+// tools — meta utilities and the generation-only pipeline whose output
+// is our own content (a payload preview / path / status), never
+// attacker-controllable text. The set is small by design; expanding it
+// requires explicit security review.
+//
+// The hardware-READING workflows (wifi_target_to_hashcat,
+// nfc_badge_pipeline, …) are intentionally NOT here: their encoded
+// Result embeds each PhaseResult.Output verbatim — the raw scanned
+// SSIDs / NFC records / device names — so they must quarantine like any
+// other hardware-origin tool, or they become a prompt-injection bypass.
 var StructuredInternalToolNames = []string{
 	"list_devices",
-	"workflow_nfc_badge_pipeline",
-	"workflow_wifi_target_to_hashcat",
 	"generate_evil_portal",
 	"generate_badusb",
 }
