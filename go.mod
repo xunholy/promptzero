@@ -1,6 +1,6 @@
 module github.com/xunholy/promptzero
 
-go 1.25.0
+go 1.25.5
 
 toolchain go1.25.11
 
@@ -9,7 +9,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/creack/pty v1.1.24
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/mark3labs/mcp-go v0.48.0
+	github.com/mark3labs/mcp-go v0.55.0
 	github.com/prometheus/client_golang v1.23.2
 	go.bug.st/serial v1.6.4
 	go.opentelemetry.io/otel v1.43.0
@@ -52,6 +52,7 @@ require (
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/saltosystems/winrt-go v0.0.0-20260317170058-9c2fec580d96 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/soypat/cyw43439 v0.1.0 // indirect
 	github.com/soypat/lneto v0.1.0 // indirect
