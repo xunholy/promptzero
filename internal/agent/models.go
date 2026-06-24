@@ -55,7 +55,7 @@ var defaultModelsByTier = map[string]string{
 	TierClassify: "claude-haiku-4-5",
 	TierGenerate: "claude-sonnet-4-6",
 	TierPlan:     "claude-sonnet-4-6",
-	TierExploit:  "claude-opus-4-7",
+	TierExploit:  "claude-opus-4-8",
 }
 
 // ModelFor returns the model name the agent should use for the given

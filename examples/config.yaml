@@ -8,11 +8,11 @@
 api_key: ""
 # Optional OpenAI key for Whisper voice transcription.
 openai_api_key: ""
-# Claude model. Defaults to claude-opus-4-7 if omitted.
-# Options: claude-opus-4-7 (most capable, $15/$75 per M tok),
+# Claude model. Defaults to claude-opus-4-8 if omitted.
+# Options: claude-opus-4-8 (most capable, $5/$25 per M tok),
 #          claude-sonnet-4-6 (fast + cheap, $3/$15),
-#          claude-haiku-4-5  (cheapest, $0.80/$4).
-model: "claude-opus-4-7"
+#          claude-haiku-4-5  (cheapest, $1/$5).
+model: "claude-opus-4-8"
 
 # --- Flipper Zero connection ---------------------------------------------
 serial:
@@ -166,9 +166,9 @@ cost:
     # claude-sonnet-4-6:
     #   input: 3.00
     #   output: 15.00
-    # claude-opus-4-7:
-    #   input: 15.00
-    #   output: 75.00
+    # claude-opus-4-8:
+    #   input: 5.00
+    #   output: 25.00
 
 # --- Reactive rules ------------------------------------------------------
 # Inline rules can go here, or keep them in examples/rules.yaml and merge

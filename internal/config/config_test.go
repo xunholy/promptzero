@@ -92,8 +92,8 @@ func TestLoad_DefaultsWhenFileMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Model != "claude-opus-4-7" {
-		t.Errorf("default Model = %q, want claude-opus-4-7", cfg.Model)
+	if cfg.Model != "claude-opus-4-8" {
+		t.Errorf("default Model = %q, want claude-opus-4-8", cfg.Model)
 	}
 	if cfg.Serial.Port != "/dev/ttyACM0" {
 		t.Errorf("default Serial.Port = %q", cfg.Serial.Port)

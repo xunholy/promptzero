@@ -161,8 +161,8 @@ func TestNew(t *testing.T) {
 		if a == nil {
 			t.Fatal("New(nil, \"\") returned nil Analyzer")
 		}
-		if a.model != "claude-opus-4-7" {
-			t.Errorf("default model = %q, want claude-opus-4-7", a.model)
+		if a.model != "claude-opus-4-8" {
+			t.Errorf("default model = %q, want claude-opus-4-8", a.model)
 		}
 		if a.client != nil {
 			t.Errorf("client field = %v, want nil (verbatim)", a.client)

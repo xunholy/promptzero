@@ -36,7 +36,7 @@ type Result struct {
 
 func New(client *anthropic.Client, model string) *Analyzer {
 	if model == "" {
-		model = "claude-opus-4-7"
+		model = "claude-opus-4-8"
 	}
 	return &Analyzer{client: client, model: model}
 }
