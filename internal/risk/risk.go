@@ -2687,6 +2687,13 @@ var toolLevels = func() map[string]Level {
 		// decode of a pasted string; reads a string, transmits nothing,
 		// so it is Low. MOD-97-10 arithmetic only, no embedded table.
 		"iban_decode",
+		// v0.731 (financial-account encode): iban_encode — the inverse
+		// of iban_decode. Computes the ISO 7064 MOD-97-10 check digits
+		// from a country code + BBAN and emits a valid IBAN, round-trip-
+		// verified against the decoder. For test-vector / fuzzing-corpus
+		// generation and repairing a known IBAN body. Generation only —
+		// emits a string, transmits nothing, so it is Low.
+		"iban_encode",
 		// v0.551 (travel-document decode): mrz_decode — the ICAO 9303
 		// Machine Readable Zone of a passport / ID / visa (TD1/TD2/TD3),
 		// the BAC-key input for reading an e-passport NFC chip. Fields +

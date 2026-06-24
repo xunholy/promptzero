@@ -3014,7 +3014,11 @@ func TestRegistrySize(t *testing.T) {
 	// 2-letter country code + 2 check digits + country-specific BBAN, validated by
 	// the ISO 7064 MOD-97-10 checksum as the verification anchor; the financial-
 	// account leg of the data-decoder family with track2/iccid/imei). internal/iban.
-	const expected = 685
+	// v0.731.0 added iban_encode (inverse of iban_decode → computes the ISO 7064
+	// MOD-97-10 check digits from a country code + BBAN and emits a valid IBAN,
+	// round-trip-verified against the decoder; for test-vector / fuzzing-corpus
+	// generation and repairing a known IBAN body). internal/iban.
+	const expected = 686
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
