@@ -42,6 +42,11 @@ var toolLevels = func() map[string]Level {
 		// Read-only registry discovery — ranks tools by a free-text query.
 		"tool_search", "find_tool", "search_tools",
 		"power_info", "device_info", "list_devices",
+		// agent_status reports the live operator-safety posture (read-only
+		// / mode / persona / audit / model) — a pure read-only diagnostic
+		// that transmits nothing, so it stays runnable even in read-only
+		// mode. v0.745.
+		"agent_status",
 		"storage_list", "storage_read", "storage_info",
 		"gpio_read", "led_set", "vibro",
 		"wifi_stop_scan", "wifi_list_aps", "wifi_list_ssids", "wifi_list_stations",

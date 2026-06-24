@@ -1406,6 +1406,19 @@ func (a *Agent) deps() *toolsreg.Deps {
 		TargetMem:       a.targetMem,
 		WorkflowConfirm: a.workflowConfirmHook,
 		BuildVerify:     a.runBuildVerification,
+		// Live operator-safety posture for the agent_status diagnostic.
+		// Read lock-free at call time so the report is never stale.
+		Posture: func() toolsreg.AgentPosture {
+			p := ""
+			if pa := a.personaAtomic.Load(); pa != nil {
+				p = pa.Name
+			}
+			return toolsreg.AgentPosture{
+				ReadOnly: a.readOnly.Load(),
+				Mode:     string(a.Mode()),
+				Persona:  p,
+			}
+		},
 	}
 }
 

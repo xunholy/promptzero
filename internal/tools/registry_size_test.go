@@ -3030,7 +3030,10 @@ func TestRegistrySize(t *testing.T) {
 	// Reserve routing symbol + 4-digit institution id + 1 check digit, ABA weighted
 	// modulus-10 checksum + FRB district/type from the leading two digits; the US-
 	// domestic bank counterpart to iban_decode, verified against real RTNs). internal/aba.
-	const expected = 689
+	// v0.745.0 added agent_status (read-only diagnostic → live operator-safety posture:
+	// read_only / mode / persona / audit_enabled / model, with honest notes when the
+	// transport doesn't expose live posture; the "am I read-only?" check). internal/tools.
+	const expected = 690
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
