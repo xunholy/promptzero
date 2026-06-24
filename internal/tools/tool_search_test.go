@@ -185,3 +185,26 @@ func TestToolSearch_FinancialObliqueDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_CellularObliqueDiscoverability locks in that the cellular
+// identifier triad (iccid/imsi/imei) is reachable by the family terms "sim"
+// and "cellular" — both returned nothing before the cellular synonym cluster
+// was added. (The "card"-heavy phrasing "sim card number" is deliberately
+// not pinned: it is dominated by the card-decoder cluster, a legitimate
+// interpretation.)
+func TestToolSearch_CellularObliqueDiscoverability(t *testing.T) {
+	cases := map[string]string{
+		"decode this sim":      "iccid_decode",
+		"cellular identifiers": "imei_decode",
+		"sim swap forensics":   "iccid_decode",
+	}
+	for q, want := range cases {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: handler: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "`+want+`"`) {
+			t.Errorf("query %q did not surface %s in the top results:\n%s", q, want, out)
+		}
+	}
+}
