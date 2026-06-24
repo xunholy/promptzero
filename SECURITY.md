@@ -36,8 +36,11 @@ These are features, not bugs:
 - `generate_evil_portal` and `generate_badusb` producing phishing / HID
   payloads without extra confirmation. Generating is the primary workflow;
   deployment tools (`wifi_evil_portal_start`, `badusb_run`) are risk-gated.
-- MCP mode executing all tools without confirmation. MCP has no shell to
-  prompt on — a startup banner warns explicitly.
+- MCP mode running **Low/Medium**-risk tools without a confirmation
+  prompt — MCP has no shell to prompt on. Note that **High/Critical**-risk
+  tools are *refused by default* in MCP mode; operators opt in per tier
+  via `PROMPTZERO_MCP_ALLOW_HIGH=1` / `PROMPTZERO_MCP_ALLOW_CRITICAL=1`,
+  and every call is audited. A startup banner states this explicitly.
 - The web UI not requiring authentication. It's local-first by default
   (`127.0.0.1`), and non-loopback binds print a warning.
 - Bugs in AI-generated payloads (scripts, signal files, portal HTML).
