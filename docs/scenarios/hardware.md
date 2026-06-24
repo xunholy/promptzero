@@ -13,7 +13,7 @@ Fires `workflow_hw_recon_blackbox_device`. Aggregates:
 - `i2c_scan` (0x00–0x7F sweep)
 - `onewire_search` (1-Wire bus enumeration)
 - `gpio_read` across all 8 pins
-- `bt_hci_info`, `system_info` as reference context
+- `bt_hci_info`, `device_info` as reference context
 
 Returns a structured report with chip-ID hints for common I²C
 addresses (0x3c OLED, 0x68 RTC/IMU, 0x76/0x77 BMP280, etc.).

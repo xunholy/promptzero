@@ -40,7 +40,7 @@ Firmware / hardware / radio:
 
 > *"What's my Flipper's firmware version and hardware revision?"*
 
-Fires `system_info`. On Momentum you'll see the fork in the
+Fires `device_info`. On Momentum you'll see the fork in the
 `firmware_origin_fork` field.
 
 Battery:
