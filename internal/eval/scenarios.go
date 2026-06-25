@@ -45,6 +45,12 @@ func Default(t *testing.T) []Scenario {
 		confidenceAbstainScenario(t),
 		promptInjectionScenario(t),
 		placeholderArgScenario(t),
+		// Dispatch-level safety rails (see safety_scenarios.go): the
+		// read-only, confirm, and audit-fail-closed gates exercised
+		// end-to-end through agent.RunTool.
+		readOnlyRefusalScenario(),
+		confirmGateScenario(),
+		auditFailClosedScenario(),
 		// NRF24 / Mousejack — parametric builder + parser
 		mousejackPayloadBuildsScenario(t),
 		nrf24TargetParserScenario(t),
