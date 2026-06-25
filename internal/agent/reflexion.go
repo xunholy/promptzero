@@ -94,6 +94,13 @@ func maybeAppendReflection(
 // the full turn. If this ever gets called from a different path,
 // promote to ModelFor (the public, mutex-acquiring wrapper).
 func (a *Agent) reflect(ctx context.Context, toolName string, input json.RawMessage, output string) string {
+	// Reflexion needs the LLM to diagnose the failure. With no client wired
+	// (e.g. a test harness driving the Run loop through an injected turn
+	// function, or a degraded construction) skip it rather than nil-deref —
+	// maybeAppendReflection treats "" as "no reflection appended".
+	if a.client == nil {
+		return ""
+	}
 	const system = "You are diagnosing a tool failure for an AI agent controlling a Flipper Zero + ESP32 Marauder. " +
 		"Given the tool name, input, and the raw error output, answer in at most 2 short sentences: " +
 		"what went wrong, and what the agent should try next. Be specific about device state (reposition, reconnect, " +
