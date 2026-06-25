@@ -285,3 +285,17 @@ func TestToolSearch_WigleWardriveDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_WigleAnalyzeDiscoverability locks in that the wardrive
+// import/triage tool is reachable by its natural terms.
+func TestToolSearch_WigleAnalyzeDiscoverability(t *testing.T) {
+	for _, q := range []string{"analyze wardrive", "import wigle csv", "wardrive"} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "wigle_wardrive_analyze"`) {
+			t.Errorf("query %q did not surface wigle_wardrive_analyze:\n%s", q, out)
+		}
+	}
+}

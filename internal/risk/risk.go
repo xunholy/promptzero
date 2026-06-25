@@ -58,6 +58,9 @@ var toolLevels = func() map[string]Level {
 		// Offline formatter: turns captured WiFi APs + a GPS fix into a
 		// WiGLE wardrive CSV. No transmit, no write, no upload. v0.752.
 		"wigle_wardrive_export",
+		// Offline parser/triage of a WiGLE/Kismet wardrive CSV (read-only,
+		// no transmit). The inverse of wigle_wardrive_export. v0.753.
+		"wigle_wardrive_analyze",
 		"docs_search",
 		"target_recall",
 		"nrf24_list_targets",

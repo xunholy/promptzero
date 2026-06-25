@@ -5,6 +5,7 @@ package tools
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -98,5 +99,63 @@ func TestWigleExport_Errors(t *testing.T) {
 				t.Errorf("expected error for %s", c.name)
 			}
 		})
+	}
+}
+
+// TestWigleAnalyze covers the import/triage tool end-to-end: round-trip from
+// the exporter, the security summary, and the soft-target sample.
+func TestWigleAnalyze(t *testing.T) {
+	spec, ok := Get("wigle_wardrive_analyze")
+	if !ok {
+		t.Fatal("wigle_wardrive_analyze not registered")
+	}
+	csv := "WigleWifi-1.4,appRelease=x\n" +
+		"MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type\n" +
+		"AA:BB:CC:DD:EE:01,FreeWifi,[ESS],2026-06-25 12:00:00,1,-40,10.0,20.0,0,0,WIFI\n" +
+		"AA:BB:CC:DD:EE:02,OldNet,[WEP][ESS],2026-06-25 12:00:00,6,-60,11.0,21.0,0,0,WIFI\n" +
+		"AA:BB:CC:DD:EE:03,SecureNet,[WPA2-PSK-CCMP][ESS],2026-06-25 12:00:00,6,-50,10.5,20.5,0,0,WIFI\n" +
+		"bad-row-here\n" +
+		"AA:BB:CC:DD:EE:04,Phone,,2026-06-25 12:00:00,0,-70,10.0,20.0,0,0,BT\n"
+
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{"csv": csv})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	var r struct {
+		ParsedObs   int `json:"parsed_observations"`
+		SkippedRows int `json:"skipped_rows"`
+		Summary     struct {
+			SoftTargets int            `json:"soft_targets"`
+			Encryption  map[string]int `json:"encryption"`
+		} `json:"summary"`
+		SoftTargetSample []struct {
+			Encryption string `json:"encryption"`
+		} `json:"soft_target_sample"`
+	}
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, out)
+	}
+	if r.ParsedObs != 3 { // 3 WIFI rows; bad-row + BT skipped
+		t.Errorf("parsed_observations = %d, want 3", r.ParsedObs)
+	}
+	if r.SkippedRows < 2 {
+		t.Errorf("skipped_rows = %d, want >=2 (bad row + BT)", r.SkippedRows)
+	}
+	if r.Summary.SoftTargets != 2 { // open + WEP
+		t.Errorf("soft_targets = %d, want 2", r.Summary.SoftTargets)
+	}
+	if len(r.SoftTargetSample) != 2 {
+		t.Errorf("soft_target_sample len = %d, want 2", len(r.SoftTargetSample))
+	}
+}
+
+// TestWigleAnalyze_Errors covers the boundary guards.
+func TestWigleAnalyze_Errors(t *testing.T) {
+	spec, _ := Get("wigle_wardrive_analyze")
+	if _, err := spec.Handler(context.Background(), &Deps{}, map[string]any{}); err == nil {
+		t.Error("missing csv should error")
+	}
+	if _, err := spec.Handler(context.Background(), &Deps{}, map[string]any{"csv": "foo,bar,baz\n1,2,3\n"}); err == nil {
+		t.Error("csv with no MAC column should error")
 	}
 }
