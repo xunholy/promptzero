@@ -155,6 +155,12 @@ var synonyms = map[string][]string{ //nolint:gochecknoglobals
 	"pager":     {"pocsag", "pager"},
 	"badusb":    {"badusb", "ducky", "hid", "keystroke"},
 	"keystroke": {"badusb", "hid", "usb"},
+	// Wardrive export: wigle_wardrive_export turns scanned APs + a GPS fix
+	// into a WiGLE CSV. "wardrive"/"wigle" already match by name; these route
+	// the inflected / descriptive phrasings ("wardriving", "geolocate access
+	// points") to the tool. Domain-specific (low collision).
+	"wardriving": {"wardrive", "wigle"},
+	"geolocate":  {"wardrive", "wigle", "gps"},
 }
 
 // Search returns the tools whose fields best match query, highest score first,
