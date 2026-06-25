@@ -1,18 +1,34 @@
 name: CI
 
+# CI gates pull requests only. main is updated exclusively through squash
+# PRs, so the merged commit is the exact diff this workflow already
+# validated on the PR — a second post-merge run on push:main would just
+# re-do that work, so it is intentionally omitted. Per-platform build
+# coverage (darwin / windows / arm64) lives in release.yaml, which builds
+# every target on each tag; running a 5-way cross-compile on every PR
+# duplicated that for no extra signal, so it was removed here.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    # Documentation-only changes don't affect the build/test/lint/vuln
+    # surface, so skip the Go pipeline entirely for them.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.github/assets/**'
+
+# Cancel a PR's in-flight CI when a new commit is pushed to it, instead of
+# letting superseded runs finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 # All actions below are pinned to versions whose JavaScript runtime
-# targets Node.js 24, matching the GitHub-hosted runner default. The
-# previous `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` env workaround is no
-# longer needed — Node 20 has been removed from the runners.
+# targets Node.js 24, matching the GitHub-hosted runner default.
 
 jobs:
   build:
@@ -40,7 +56,7 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test -v -race -count=1 ./...
+        run: go test -race -count=1 ./...
 
   lint:
     runs-on: ubuntu-latest
@@ -69,15 +85,17 @@ jobs:
           go-version: '1.25.11'
           cache: true
 
+      # Pinned (not @latest) so the tool version is reproducible and the
+      # module download is served from the setup-go cache instead of being
+      # re-resolved every run.
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
 
       - name: govulncheck
         run: govulncheck ./...
 
   dependency-review:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v5
 
@@ -89,40 +107,3 @@ jobs:
           # license gating stays manual for now since GitHub's catalog
           # mis-classifies some niche RF/hardware deps we use.
           fail-on-severity: moderate
-
-  cross-compile:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.25.11'
-          cache: true
-
-      - name: Cross-compile
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          BINARY="promptzero-${GOOS}-${GOARCH}"
-          if [ "${GOOS}" = "windows" ]; then
-            BINARY="${BINARY}.exe"
-          fi
-          go build -trimpath -ldflags '-s -w' -o "${BINARY}" ./cmd/promptzero
-          ls -lh "${BINARY}"

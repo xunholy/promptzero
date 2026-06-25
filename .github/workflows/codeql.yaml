@@ -1,12 +1,23 @@
 name: CodeQL
 
+# Scans pull requests, plus a weekly scheduled run for main-branch drift.
+# The post-merge push:main run was redundant with the PR scan (squash PRs
+# merge the exact diff already analysed) and the weekly schedule, so it
+# was dropped.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.github/assets/**'
   schedule:
     - cron: '0 6 * * 1'
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   actions: read
