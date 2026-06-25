@@ -159,3 +159,53 @@ func TestWigleAnalyze_Errors(t *testing.T) {
 		t.Error("csv with no MAC column should error")
 	}
 }
+
+// TestWigleMerge covers the merge tool end-to-end: two overlapping
+// wardrive CSVs consolidate to a deduped set, keeping the strongest sighting.
+func TestWigleMerge(t *testing.T) {
+	spec, ok := Get("wigle_wardrive_merge")
+	if !ok {
+		t.Fatal("wigle_wardrive_merge not registered")
+	}
+	hdr := "MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,Type\n"
+	csvA := hdr +
+		"AA:BB:CC:DD:EE:01,Net1,[WPA2][ESS],2026-06-25 10:00:00,6,-80,10.0,20.0,0,0,WIFI\n" +
+		"AA:BB:CC:DD:EE:02,Net2,[ESS],2026-06-25 10:00:00,1,-50,11.0,21.0,0,0,WIFI\n"
+	csvB := hdr +
+		"AA:BB:CC:DD:EE:01,Net1,[WPA2][ESS],2026-06-25 11:00:00,6,-40,10.5,20.5,0,0,WIFI\n" // stronger sighting of AP01
+
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{
+		"csvs": []any{csvA, csvB},
+	})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	var r struct {
+		InputFiles        int    `json:"input_files"`
+		ObservationsIn    int    `json:"observations_in"`
+		UniqueAfterMerge  int    `json:"unique_after_merge"`
+		DuplicatesRemoved int    `json:"duplicates_removed"`
+		CSV               string `json:"csv"`
+	}
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, out)
+	}
+	if r.InputFiles != 2 || r.ObservationsIn != 3 || r.UniqueAfterMerge != 2 || r.DuplicatesRemoved != 1 {
+		t.Errorf("merge counts wrong: %+v", r)
+	}
+	// AP01 kept the stronger -40 sighting (lat 10.5).
+	if !strings.Contains(r.CSV, "AA:BB:CC:DD:EE:01,Net1,[WPA2][ESS],2026-06-25 11:00:00,6,-40,10.5,20.5") {
+		t.Errorf("merged CSV did not keep the strongest AP01 sighting:\n%s", r.CSV)
+	}
+}
+
+// TestWigleMerge_Errors covers the boundary guards.
+func TestWigleMerge_Errors(t *testing.T) {
+	spec, _ := Get("wigle_wardrive_merge")
+	if _, err := spec.Handler(context.Background(), &Deps{}, map[string]any{"csvs": []any{}}); err == nil {
+		t.Error("empty csvs should error")
+	}
+	if _, err := spec.Handler(context.Background(), &Deps{}, map[string]any{"csvs": []any{"foo,bar\n1,2\n"}}); err == nil {
+		t.Error("a csv with no MAC column should error")
+	}
+}

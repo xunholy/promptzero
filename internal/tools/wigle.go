@@ -25,7 +25,13 @@ import (
 func init() { //nolint:gochecknoinits
 	Register(wigleWardriveExportSpec)
 	Register(wigleWardriveAnalyzeSpec)
+	Register(wigleWardriveMergeSpec)
 }
+
+// maxMergeFiles bounds how many wardrive CSVs a single merge call accepts,
+// so a runaway caller can't pass an unbounded slice. Per-file row counts
+// are bounded by ParseCSV.
+const maxMergeFiles = 64
 
 // maxAnalyzeInput caps the CSV text the analyze tool will ingest, so a
 // pasted multi-hundred-MB file can't blow up the tool-result. ParseCSV also
@@ -244,6 +250,109 @@ func wigleWardriveAnalyzeHandler(_ context.Context, _ *Deps, p map[string]any) (
 		}
 	}
 
+	body, _ := json.MarshalIndent(out, "", "  ")
+	return string(body), nil
+}
+
+// wigleMergeOutput is the JSON the merge tool returns.
+type wigleMergeOutput struct {
+	InputFiles        int    `json:"input_files"`
+	ObservationsIn    int    `json:"observations_in"`
+	UniqueAfterMerge  int    `json:"unique_after_merge"`
+	DuplicatesRemoved int    `json:"duplicates_removed"`
+	SkippedRows       int    `json:"skipped_rows"`
+	DroppedNoTime     int    `json:"dropped_no_timestamp,omitempty"`
+	CSV               string `json:"csv"`
+}
+
+var wigleWardriveMergeSpec = Spec{
+	Name: "wigle_wardrive_merge",
+	Description: "Merge multiple WiGLE/Kismet wardrive CSVs into one deduplicated `WigleWifi-1.4` file. " +
+		"Operators accumulate overlapping drives over time; concatenating the files lists the same AP many " +
+		"times, so this consolidates by BSSID — keeping, for each radio, the sighting with the strongest signal " +
+		"(most reliable fix), and adopting an SSID/encryption seen in another pass if the strongest sighting was " +
+		"hidden. Output is sorted by BSSID. Pairs with `wigle_wardrive_export` (build one) and " +
+		"`wigle_wardrive_analyze` (triage one). Offline, read-only, no transmit. Low risk.",
+	Schema: json.RawMessage(`{
+		"type":"object",
+		"properties":{
+			"csvs":{
+				"type":"array",
+				"description":"The wardrive CSVs to merge (each WigleWifi-1.4 or a close variant)",
+				"items":{"type":"string"}
+			}
+		},
+		"required":["csvs"]
+	}`),
+	Required:  []string{"csvs"},
+	Risk:      risk.Low,
+	Group:     GroupMetaUtil,
+	AgentOnly: false,
+	Handler:   wigleWardriveMergeHandler,
+}
+
+func wigleWardriveMergeHandler(_ context.Context, _ *Deps, p map[string]any) (string, error) {
+	rawCSVs, ok := p["csvs"].([]any)
+	if !ok || len(rawCSVs) == 0 {
+		return "", fmt.Errorf("wigle_wardrive_merge: csvs must be a non-empty array")
+	}
+	if len(rawCSVs) > maxMergeFiles {
+		return "", fmt.Errorf("wigle_wardrive_merge: %d files exceeds cap of %d", len(rawCSVs), maxMergeFiles)
+	}
+
+	var (
+		all     []wigle.Observation
+		skipped int
+	)
+	for i, raw := range rawCSVs {
+		csv, ok := raw.(string)
+		if !ok {
+			return "", fmt.Errorf("wigle_wardrive_merge: csvs[%d] is not a string", i)
+		}
+		if len(csv) > maxAnalyzeInput {
+			return "", fmt.Errorf("wigle_wardrive_merge: csvs[%d] is %d bytes, exceeds cap of %d", i, len(csv), maxAnalyzeInput)
+		}
+		res, err := wigle.ParseCSV([]byte(csv))
+		if err != nil {
+			return "", fmt.Errorf("wigle_wardrive_merge: csvs[%d]: %w", i, err)
+		}
+		all = append(all, res.Observations...)
+		skipped += res.SkippedRows
+	}
+
+	merged := wigle.Merge(all)
+
+	// Encode requires a timestamp per row (a dateless wardrive row is
+	// malformed). Real WiGLE files always carry FirstSeen; drop and count
+	// any timestamp-less survivors rather than failing the whole merge or
+	// fabricating a time.
+	datable := make([]wigle.Observation, 0, len(merged.Observations))
+	dropped := 0
+	for _, o := range merged.Observations {
+		if o.FirstSeen.IsZero() {
+			dropped++
+			continue
+		}
+		datable = append(datable, o)
+	}
+	if len(datable) == 0 {
+		return "", fmt.Errorf("wigle_wardrive_merge: no datable observations to merge (all rows lacked a timestamp)")
+	}
+
+	csvBytes, err := wigle.Encode(wigle.Metadata{}, version.Version, datable)
+	if err != nil {
+		return "", err
+	}
+
+	out := wigleMergeOutput{
+		InputFiles:        len(rawCSVs),
+		ObservationsIn:    merged.InputCount,
+		UniqueAfterMerge:  len(merged.Observations),
+		DuplicatesRemoved: merged.Duplicates,
+		SkippedRows:       skipped,
+		DroppedNoTime:     dropped,
+		CSV:               string(csvBytes),
+	}
 	body, _ := json.MarshalIndent(out, "", "  ")
 	return string(body), nil
 }
