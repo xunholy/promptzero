@@ -24,7 +24,18 @@ import (
 
 func init() { //nolint:gochecknoinits
 	Register(wigleWardriveExportSpec)
+	Register(wigleWardriveAnalyzeSpec)
 }
+
+// maxAnalyzeInput caps the CSV text the analyze tool will ingest, so a
+// pasted multi-hundred-MB file can't blow up the tool-result. ParseCSV also
+// caps rows; this bounds the byte input before parsing.
+const maxAnalyzeInput = 32 << 20 // 32 MiB
+
+// maxSoftTargetSample bounds the open/WEP network detail returned, so a
+// wardrive full of open networks doesn't flood the tool-result. The full
+// counts are always in the summary.
+const maxSoftTargetSample = 50
 
 var wigleWardriveExportSpec = Spec{
 	Name: "wigle_wardrive_export",
@@ -150,4 +161,89 @@ func parseRFC3339Opt(s string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("invalid first_seen %q: want RFC3339 (e.g. 2026-06-25T12:34:56Z): %w", s, err)
 	}
 	return ts, nil
+}
+
+// softTarget is one open/WEP network surfaced for triage.
+type softTarget struct {
+	BSSID      string  `json:"bssid"`
+	SSID       string  `json:"ssid,omitempty"`
+	Encryption string  `json:"encryption"`
+	Channel    int     `json:"channel"`
+	Latitude   float64 `json:"latitude"`
+	Longitude  float64 `json:"longitude"`
+}
+
+// wigleAnalyzeOutput is the JSON the analyze tool returns.
+type wigleAnalyzeOutput struct {
+	DataRows         int           `json:"data_rows"`
+	ParsedObs        int           `json:"parsed_observations"`
+	SkippedRows      int           `json:"skipped_rows"`
+	Summary          wigle.Summary `json:"summary"`
+	SoftTargetSample []softTarget  `json:"soft_target_sample,omitempty"`
+}
+
+var wigleWardriveAnalyzeSpec = Spec{
+	Name: "wigle_wardrive_analyze",
+	Description: "Parse and **triage a WiGLE / Kismet wardrive CSV** — the inverse of `wigle_wardrive_export`. " +
+		"Load an existing wardrive (a `WigleWifi-1.4` export, or a close variant with extra/reordered columns) " +
+		"and get a security-oriented summary:\n" +
+		"- **encryption breakdown** (open / WEP / WPA / WPA2 / WPA3 / unknown) and a **soft_targets** count " +
+		"(open + WEP — the networks worth looking at first), with a sample of those networks;\n" +
+		"- unique BSSIDs, hidden (no-SSID) networks, channel distribution;\n" +
+		"- geographic bounding box + center over the located observations (0,0 'no-fix' rows excluded);\n" +
+		"- the most common SSIDs.\n\n" +
+		"Resilient: malformed rows and non-WiFi (BT/BLE/GSM) rows are skipped and counted, not fatal. Offline, " +
+		"read-only; nothing is transmitted. Low risk.",
+	Schema: json.RawMessage(`{
+		"type":"object",
+		"properties":{
+			"csv":{"type":"string","description":"The wardrive CSV text (WigleWifi-1.4 or a close variant)"},
+			"top_ssids":{"type":"integer","description":"How many of the most common SSIDs to list (default 10)"}
+		},
+		"required":["csv"]
+	}`),
+	Required:  []string{"csv"},
+	Risk:      risk.Low,
+	Group:     GroupMetaUtil,
+	AgentOnly: false,
+	Handler:   wigleWardriveAnalyzeHandler,
+}
+
+func wigleWardriveAnalyzeHandler(_ context.Context, _ *Deps, p map[string]any) (string, error) {
+	csv := str(p, "csv")
+	if csv == "" {
+		return "", fmt.Errorf("wigle_wardrive_analyze: csv is required")
+	}
+	if len(csv) > maxAnalyzeInput {
+		return "", fmt.Errorf("wigle_wardrive_analyze: input %d bytes exceeds cap of %d", len(csv), maxAnalyzeInput)
+	}
+
+	res, err := wigle.ParseCSV([]byte(csv))
+	if err != nil {
+		return "", err
+	}
+
+	out := wigleAnalyzeOutput{
+		DataRows:    res.DataRows,
+		ParsedObs:   len(res.Observations),
+		SkippedRows: res.SkippedRows,
+		Summary:     wigle.Summarize(res.Observations, intOr(p, "top_ssids", 10)),
+	}
+	// Surface a capped sample of the actionable (open/WEP) networks.
+	for _, o := range res.Observations {
+		enc := wigle.Classify(o.AuthMode)
+		if enc != wigle.EncOpen && enc != wigle.EncWEP {
+			continue
+		}
+		out.SoftTargetSample = append(out.SoftTargetSample, softTarget{
+			BSSID: o.BSSID, SSID: o.SSID, Encryption: enc,
+			Channel: o.Channel, Latitude: o.Latitude, Longitude: o.Longitude,
+		})
+		if len(out.SoftTargetSample) >= maxSoftTargetSample {
+			break
+		}
+	}
+
+	body, _ := json.MarshalIndent(out, "", "  ")
+	return string(body), nil
 }

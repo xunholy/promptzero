@@ -49,3 +49,34 @@ func FuzzEncode(f *testing.F) {
 		}
 	})
 }
+
+// FuzzParseCSV throws arbitrary bytes at the wardrive importer. It must
+// never panic, must stay within its row cap, and any observation it yields
+// must itself re-encode (the parser cannot emit a row Encode would reject).
+func FuzzParseCSV(f *testing.F) {
+	f.Add([]byte("MAC,SSID,CurrentLatitude,CurrentLongitude,Type\naa:bb:cc:dd:ee:ff,N,10,20,WIFI\n"))
+	f.Add([]byte("WigleWifi-1.4,x\nMAC,CurrentLatitude,CurrentLongitude\nzz,1,2\n"))
+	f.Add([]byte(""))
+	f.Add([]byte("MAC\n"))
+	f.Add([]byte("not csv at all \x00\x01"))
+	ts := time.Unix(1750000000, 0).UTC()
+	f.Fuzz(func(t *testing.T, data []byte) {
+		res, err := ParseCSV(data)
+		if err != nil {
+			return
+		}
+		if len(res.Observations) > maxParseRows {
+			t.Fatalf("parsed %d observations, exceeds cap %d", len(res.Observations), maxParseRows)
+		}
+		// Summarize must not panic on whatever was parsed.
+		_ = Summarize(res.Observations, 5)
+		// Every parsed observation must be re-encodable: the parser must not
+		// produce a row the encoder considers invalid.
+		for _, o := range res.Observations {
+			o.FirstSeen = ts // parser may leave FirstSeen zero; Encode requires it
+			if _, err := Encode(Metadata{}, "fuzz", []Observation{o}); err != nil {
+				t.Fatalf("parsed observation not re-encodable: %v (%+v)", err, o)
+			}
+		}
+	})
+}
