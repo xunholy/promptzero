@@ -201,6 +201,40 @@ func (s *Server) ServeStdio() error {
 	return mcpserver.ServeStdio(s.srv)
 }
 
+// Operator-facing refusal messages for the MCP risk-consent gate. Shared
+// between consentDecision and its tests so the wording can't drift.
+const (
+	consentDenyCritical = "tool requires consent — set PROMPTZERO_MCP_ALLOW_CRITICAL=1 to allow critical-risk MCP calls (audit will still record)"
+	consentDenyHigh     = "tool requires consent — set PROMPTZERO_MCP_ALLOW_HIGH=1 to allow high-risk MCP calls (audit will still record)"
+)
+
+// consentDecision is the single source of truth for the MCP risk-consent
+// gate: may an MCP client run a tool of the given risk level, under the
+// operator's opt-in flags? It is pure (no env reads, no I/O) so the full
+// decision matrix can be unit-tested directly.
+//
+// Rules:
+//   - Low / Medium tools are never gated here (allowed regardless of flags).
+//   - High tools require allowHigh OR allowCritical.
+//   - Critical tools require allowCritical.
+//
+// The one-directional implication is deliberate: ALLOW_CRITICAL=1 also
+// permits High (opting into the strictest tier opens the lesser one), but
+// ALLOW_HIGH=1 must never unlock Critical. denyMsg is the operator-facing
+// reason when allowed is false (empty when allowed).
+func consentDecision(level risk.Level, allowHigh, allowCritical bool) (allowed bool, denyMsg string) {
+	// ALLOW_CRITICAL implies ALLOW_HIGH; the reverse never holds.
+	allowHigh = allowHigh || allowCritical
+	switch {
+	case level >= risk.Critical && !allowCritical:
+		return false, consentDenyCritical
+	case level >= risk.High && !allowHigh:
+		return false, consentDenyHigh
+	default:
+		return true, ""
+	}
+}
+
 // add registers a tool against the underlying MCP server. The handler is
 // wrapped with argument unmarshalling, required-field validation, risk
 // consent gating, and risk-based MCP annotations.
@@ -244,30 +278,17 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 		levelStr := capturedLevel.String()
 
 		// Risk consent gate: refuse risk≥High unless the operator has
-		// opted in via environment variable. Always audit the attempt.
-		//
-		// ALLOW_CRITICAL=1 implies ALLOW_HIGH (see package docstring) —
-		// an operator who's already chosen to permit destructive
-		// critical-tier calls would be surprised if a less-destructive
-		// High call was still denied. The High check below honours both
-		// env vars so the implication is real, not just documented.
+		// opted in via environment variable. The decision lives in the
+		// pure consentDecision function (single source of truth, fully
+		// matrix-tested); here we read the env flags, apply it, and audit
+		// a refused attempt before returning.
 		allowCritical := os.Getenv("PROMPTZERO_MCP_ALLOW_CRITICAL") == "1"
-		allowHigh := allowCritical || os.Getenv("PROMPTZERO_MCP_ALLOW_HIGH") == "1"
-		if capturedLevel == risk.Critical && !allowCritical {
+		allowHigh := os.Getenv("PROMPTZERO_MCP_ALLOW_HIGH") == "1"
+		if allowed, denyMsg := consentDecision(capturedLevel, allowHigh, allowCritical); !allowed {
 			if s.audit != nil {
 				s.audit.RecordCtx(ctx, capturedName, args, "", levelStr, audit.LevelAction, 0, false)
 			}
-			return mcp.NewToolResultError(
-				"tool requires consent — set PROMPTZERO_MCP_ALLOW_CRITICAL=1 to allow critical-risk MCP calls (audit will still record)",
-			), nil
-		}
-		if capturedLevel == risk.High && !allowHigh {
-			if s.audit != nil {
-				s.audit.RecordCtx(ctx, capturedName, args, "", levelStr, audit.LevelAction, 0, false)
-			}
-			return mcp.NewToolResultError(
-				"tool requires consent — set PROMPTZERO_MCP_ALLOW_HIGH=1 to allow high-risk MCP calls (audit will still record)",
-			), nil
+			return mcp.NewToolResultError(denyMsg), nil
 		}
 
 		start := time.Now()
