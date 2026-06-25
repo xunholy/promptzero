@@ -271,3 +271,17 @@ func TestToolSearch_CellularObliqueDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_WigleWardriveDiscoverability locks in that the wardrive
+// CSV exporter is reachable by the terms a wardriver actually uses.
+func TestToolSearch_WigleWardriveDiscoverability(t *testing.T) {
+	for _, q := range []string{"wardrive", "wardriving", "wigle", "geolocate access points"} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "wigle_wardrive_export"`) {
+			t.Errorf("query %q did not surface wigle_wardrive_export:\n%s", q, out)
+		}
+	}
+}

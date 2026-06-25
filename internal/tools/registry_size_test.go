@@ -3033,7 +3033,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.745.0 added agent_status (read-only diagnostic → live operator-safety posture:
 	// read_only / mode / persona / audit_enabled / model, with honest notes when the
 	// transport doesn't expose live posture; the "am I read-only?" check). internal/tools.
-	const expected = 690
+	// v0.752.0 added wigle_wardrive_export (offline formatter → WiGLE WigleWifi-1.4
+	// wardrive CSV from scanned APs + a GPS fix; composes Marauder scan + gps_nmea_decode,
+	// no transmit/upload). internal/tools + internal/wigle.
+	const expected = 691
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
