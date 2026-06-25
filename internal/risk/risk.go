@@ -61,6 +61,9 @@ var toolLevels = func() map[string]Level {
 		// Offline parser/triage of a WiGLE/Kismet wardrive CSV (read-only,
 		// no transmit). The inverse of wigle_wardrive_export. v0.753.
 		"wigle_wardrive_analyze",
+		// Offline merge/dedupe of multiple wardrive CSVs into one
+		// (read-only, no transmit). v0.754.
+		"wigle_wardrive_merge",
 		"docs_search",
 		"target_recall",
 		"nrf24_list_targets",

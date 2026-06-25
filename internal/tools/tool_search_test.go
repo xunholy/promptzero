@@ -299,3 +299,17 @@ func TestToolSearch_WigleAnalyzeDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_WigleMergeDiscoverability locks in discoverability of the
+// wardrive merge tool.
+func TestToolSearch_WigleMergeDiscoverability(t *testing.T) {
+	for _, q := range []string{"merge wardrive", "consolidate wardrive csv", "dedupe wigle"} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "wigle_wardrive_merge"`) {
+			t.Errorf("query %q did not surface wigle_wardrive_merge:\n%s", q, out)
+		}
+	}
+}
