@@ -150,8 +150,13 @@ type Agent struct {
 	// partially-advanced history.
 	turnMu sync.Mutex
 
-	mu           sync.Mutex
-	client       *anthropic.Client
+	mu     sync.Mutex
+	client *anthropic.Client
+	// turnFn, when non-nil, produces each assistant turn instead of the
+	// live streaming path. Production leaves it nil (the real Anthropic
+	// client drives turns); tests inject a scripted implementation to
+	// exercise the multi-turn Run loop end-to-end. See runModelTurn.
+	turnFn       modelTurnFunc
 	flipper      *flipper.Flipper
 	marauder     *marauder.Marauder
 	bruce        *bruce.Client
@@ -1001,7 +1006,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	var pendingRevisions []string
 
 	for {
-		resp, err := a.streamOnceWithRetry(ctx, sysPrompt, tools)
+		resp, err := a.runModelTurn(ctx, sysPrompt, tools)
 		if err != nil {
 			return "", fmt.Errorf("claude API: %w", err)
 		}
@@ -1307,6 +1312,25 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		a.compactHistoryLocked()
 		a.autoSaveLocked()
 	}
+}
+
+// modelTurnFunc produces one assistant turn — the assembled message for
+// the current history, system prompt, and tool set. Production wires this
+// to the live streaming path (streamOnceWithRetry); tests inject a
+// scripted implementation so the multi-turn Run loop — tool dispatch,
+// reflexion, the per-turn tool-call cap, and the read-only / confirm
+// gates — can be exercised end-to-end without a live Anthropic API.
+type modelTurnFunc func(ctx context.Context, sysPrompt string, tools []anthropic.ToolUnionParam) (*anthropic.Message, error)
+
+// runModelTurn returns the next assistant turn, delegating to the injected
+// turnFn when set and otherwise to the real streaming-with-retry path. The
+// seam keeps the production path unchanged (turnFn nil) while making the
+// Run loop testable.
+func (a *Agent) runModelTurn(ctx context.Context, sysPrompt string, tools []anthropic.ToolUnionParam) (*anthropic.Message, error) {
+	if a.turnFn != nil {
+		return a.turnFn(ctx, sysPrompt, tools)
+	}
+	return a.streamOnceWithRetry(ctx, sysPrompt, tools)
 }
 
 // streamOnce issues a single streaming Messages request, relays text
