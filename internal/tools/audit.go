@@ -130,6 +130,31 @@ func init() {
 	})
 
 	Register(Spec{
+		Name: "audit_verify",
+		Description: "Verify the **tamper-evidence** of the audit log. Each row is hash-chained onto the " +
+			"previous one, so a post-hoc edit, mid-chain deletion, reorder, or forged insert made directly " +
+			"against the database (e.g. via the sqlite3 CLI) breaks the chain. Returns whether the chain is " +
+			"intact, the row id of the first break if not, counts of verified vs legacy (pre-chain) rows, and " +
+			"the current head hash — record the head hash out-of-band to also detect a full-chain rewrite or " +
+			"tail truncation, which the in-database chain alone cannot. Read-only.",
+		Schema:   json.RawMessage(`{"type":"object","properties":{}}`),
+		Required: nil,
+		Risk:     risk.Low,
+		Group:    GroupMetaAudit,
+		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+			if d.Audit == nil {
+				return "Audit logging not enabled", nil
+			}
+			res, err := d.Audit.VerifyChain()
+			if err != nil {
+				return "", err
+			}
+			out, _ := json.MarshalIndent(res, "", "  ")
+			return string(out), nil
+		},
+	})
+
+	Register(Spec{
 		Name: "explain_last_result",
 		Description: "Returns the most recent audit log entry as a structured summary so " +
 			"the agent can explain what just happened in plain language. Optimised for " +

@@ -368,3 +368,17 @@ func TestToolSearch_CoseMessageDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_AuditVerifyDiscoverability locks in discoverability of the
+// audit tamper-evidence tool.
+func TestToolSearch_AuditVerifyDiscoverability(t *testing.T) {
+	for _, q := range []string{"audit verify", "audit log integrity", "detect tampered audit"} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "audit_verify"`) {
+			t.Errorf("query %q did not surface audit_verify:\n%s", q, out)
+		}
+	}
+}
