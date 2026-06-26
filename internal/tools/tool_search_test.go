@@ -354,3 +354,17 @@ func TestToolSearch_CWTDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_CoseMessageDiscoverability locks in discoverability of the
+// general COSE message decoder.
+func TestToolSearch_CoseMessageDiscoverability(t *testing.T) {
+	for _, q := range []string{"cose message", "cose_sign1 decode", "cose signed attestation"} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "cose_message_decode"`) {
+			t.Errorf("query %q did not surface cose_message_decode:\n%s", q, out)
+		}
+	}
+}

@@ -3051,7 +3051,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.758.0 added cwt_decode (CBOR Web Token, RFC 8392 — the CBOR/IoT counterpart of
 	// jwt_decode: unwraps the COSE envelope, reports the alg, decodes iss/sub/aud/exp/nbf/
 	// iat/cti; built on internal/cbordecode + internal/cose). internal/tools + internal/cwt.
-	const expected = 696
+	// v0.759.0 added cose_message_decode (general COSE message decoder per RFC 9052: type /
+	// headers / payload / signature|tag|ciphertext, single + multi-recipient; built on
+	// internal/cbordecode + internal/cose). internal/tools + internal/cose.
+	const expected = 697
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
