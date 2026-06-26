@@ -313,3 +313,17 @@ func TestToolSearch_WigleMergeDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_WebAuthnDiscoverability locks in discoverability of the
+// WebAuthn authenticator-data decoder.
+func TestToolSearch_WebAuthnDiscoverability(t *testing.T) {
+	for _, q := range []string{"webauthn", "fido2 authenticator data", "passkey attestation"} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "webauthn_authdata_decode"`) {
+			t.Errorf("query %q did not surface webauthn_authdata_decode:\n%s", q, out)
+		}
+	}
+}

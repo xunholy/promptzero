@@ -929,6 +929,10 @@ var toolLevels = func() map[string]Level {
 		// tls_handshake_decode (whose Certificate body is raw
 		// hex). Stdlib crypto/x509 for the ASN.1 DER walk.
 		"x509_certificate_decode",
+		// Offline WebAuthn/FIDO2 authenticator-data decoder (flags,
+		// sign-count, AAGUID, credential ID + COSE key). Read-only,
+		// transmits nothing. v0.756.
+		"webauthn_authdata_decode",
 		// v0.243 (NATIVE-fit gap in the modern web-auth decode
 		// space): JWT decoder per RFC 7519 + 7515 + 7516.
 		// Three-segment JWS compact + five-segment JWE detection.

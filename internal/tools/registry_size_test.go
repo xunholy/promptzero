@@ -3042,7 +3042,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.754.0 added wigle_wardrive_merge (consolidate multiple wardrive CSVs → one deduped
 	// WigleWifi-1.4 file: dedupe by BSSID keeping strongest signal + SSID enrichment;
 	// completes the export/merge/analyze trio, read-only). internal/tools + internal/wigle.
-	const expected = 693
+	// v0.756.0 added webauthn_authdata_decode (offline WebAuthn/FIDO2 authenticator-data
+	// decoder: flags/sign-count/AAGUID/credential-ID/COSE-key, with a bounds-checked CBOR
+	// item-length scanner; read-only). internal/tools + internal/webauthn.
+	const expected = 694
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
