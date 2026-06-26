@@ -165,6 +165,14 @@ func asInt(v *cbordecode.Value) (int64, bool) {
 	}
 }
 
+// AlgorithmName maps a COSE algorithm identifier (the value at COSE header
+// label 1, or COSE_Key label 3) to its IANA name, or "unknown(<id>)". The
+// registry is shared by COSE keys and COSE message headers (e.g. CWT), so
+// it is exported for reuse rather than duplicated.
+func AlgorithmName(id int64) string {
+	return nameOr(algNames, id)
+}
+
 // nameOr returns the registry name for id, or "unknown(<id>)".
 func nameOr(table map[int64]string, id int64) string {
 	if n, ok := table[id]; ok {

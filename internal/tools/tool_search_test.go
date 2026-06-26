@@ -341,3 +341,16 @@ func TestToolSearch_CoseKeyDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_CWTDiscoverability locks in discoverability of the CWT decoder.
+func TestToolSearch_CWTDiscoverability(t *testing.T) {
+	for _, q := range []string{"cwt", "cbor web token", "decode cwt token"} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "cwt_decode"`) {
+			t.Errorf("query %q did not surface cwt_decode:\n%s", q, out)
+		}
+	}
+}
