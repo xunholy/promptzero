@@ -939,6 +939,10 @@ var toolLevels = func() map[string]Level {
 		// Offline CWT (CBOR Web Token, RFC 8392) decoder — the CBOR/IoT
 		// counterpart of jwt_decode. Read-only, no verification. v0.758.
 		"cwt_decode",
+		// Offline general COSE message decoder (RFC 9052 → type / headers /
+		// payload / signature|tag|ciphertext). Pairs with cose_key_decode
+		// and cwt_decode; structure only, no verification. v0.759.
+		"cose_message_decode",
 		// v0.243 (NATIVE-fit gap in the modern web-auth decode
 		// space): JWT decoder per RFC 7519 + 7515 + 7516.
 		// Three-segment JWS compact + five-segment JWE detection.
