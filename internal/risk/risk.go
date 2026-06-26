@@ -933,6 +933,9 @@ var toolLevels = func() map[string]Level {
 		// sign-count, AAGUID, credential ID + COSE key). Read-only,
 		// transmits nothing. v0.756.
 		"webauthn_authdata_decode",
+		// Offline COSE_Key decoder (RFC 9052 → key type / alg / curve /
+		// coordinates). Pairs with webauthn; read-only. v0.757.
+		"cose_key_decode",
 		// v0.243 (NATIVE-fit gap in the modern web-auth decode
 		// space): JWT decoder per RFC 7519 + 7515 + 7516.
 		// Three-segment JWS compact + five-segment JWE detection.

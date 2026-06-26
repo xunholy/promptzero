@@ -3045,7 +3045,10 @@ func TestRegistrySize(t *testing.T) {
 	// v0.756.0 added webauthn_authdata_decode (offline WebAuthn/FIDO2 authenticator-data
 	// decoder: flags/sign-count/AAGUID/credential-ID/COSE-key, with a bounds-checked CBOR
 	// item-length scanner; read-only). internal/tools + internal/webauthn.
-	const expected = 694
+	// v0.757.0 added cose_key_decode (offline COSE_Key decoder per RFC 9052/IANA: key type /
+	// algorithm / curve / coordinates; pairs with webauthn_authdata_decode, built on
+	// internal/cbordecode). internal/tools + internal/cose.
+	const expected = 695
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
