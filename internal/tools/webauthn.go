@@ -36,7 +36,7 @@ var webauthnAuthDataDecodeSpec = Spec{
 		"cloned-authenticator tell);\n" +
 		"- **rp_id_hash** — SHA-256 of the Relying Party ID;\n" +
 		"- on registration: the **AAGUID** (authenticator model), the **credential ID**, and the credential " +
-		"**COSE public key** (raw bytes — pipe to `cbor_decode` for the key parameters).\n\n" +
+		"**COSE public key** (raw bytes — pipe to `cose_key_decode` for the key type / algorithm / curve).\n\n" +
 		"Offline, read-only; transmits nothing. Low risk.",
 	Schema: json.RawMessage(`{
 		"type":"object",

@@ -327,3 +327,17 @@ func TestToolSearch_WebAuthnDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_CoseKeyDiscoverability locks in discoverability of the
+// COSE_Key decoder.
+func TestToolSearch_CoseKeyDiscoverability(t *testing.T) {
+	for _, q := range []string{"cose key", "decode cose_key", "credential public key cose"} {
+		out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+		if err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		if !strings.Contains(out, `"name": "cose_key_decode"`) {
+			t.Errorf("query %q did not surface cose_key_decode:\n%s", q, out)
+		}
+	}
+}
