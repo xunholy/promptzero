@@ -54,7 +54,7 @@ var toolLevels = func() map[string]Level {
 		"wifi_info", "wifi_settings",
 		// Stop-only verb — terminates an active TX session, never starts one.
 		"wifi_evil_portal_stop",
-		"audit_query", "audit_export", "audit_stats",
+		"audit_query", "audit_export", "audit_stats", "audit_verify",
 		// Offline formatter: turns captured WiFi APs + a GPS fix into a
 		// WiGLE wardrive CSV. No transmit, no write, no upload. v0.752.
 		"wigle_wardrive_export",

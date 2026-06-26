@@ -110,6 +110,16 @@ type Log struct {
 	techResolve    TechniqueResolver
 	personaResolve PersonaContextResolver
 
+	// writeMu serialises the read-head/compute-hash/insert sequence in
+	// RecordCtx so two concurrent writers in this process can't fork the
+	// hash chain. The cross-process flock guarantees a single writer
+	// process; writeMu covers intra-process concurrency.
+	writeMu sync.Mutex
+	// headHash is the hex entry_hash of the most recent row, the chain
+	// link the next insert hashes onto. Empty means "no hashed row yet"
+	// (fresh DB, or a legacy DB whose tail rows predate the hash chain).
+	headHash string
+
 	obsMu     sync.RWMutex
 	observers []func(Entry)
 }
@@ -174,7 +184,8 @@ func Open(dbPath string) (*Log, error) {
 			level TEXT NOT NULL,
 			session_id TEXT,
 			duration_ms INTEGER,
-			success INTEGER DEFAULT 1
+			success INTEGER DEFAULT 1,
+			entry_hash TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_audit_tool ON audit_log(tool);
@@ -185,6 +196,16 @@ func Open(dbPath string) (*Log, error) {
 		_ = db.Close()
 		_ = releaseFlock(lockFile)
 		return nil, fmt.Errorf("creating audit tables: %w", err)
+	}
+
+	// Migrate audit logs created before the tamper-evidence hash chain:
+	// add entry_hash if it is missing. SQLite has no ADD COLUMN IF NOT
+	// EXISTS, so a duplicate-column error on an already-migrated DB is
+	// expected and ignored. Pre-existing rows keep a NULL hash and are
+	// reported as "legacy / unverifiable" by VerifyChain.
+	if _, aerr := db.Exec(`ALTER TABLE audit_log ADD COLUMN entry_hash TEXT`); aerr != nil &&
+		!strings.Contains(strings.ToLower(aerr.Error()), "duplicate column") {
+		obs.Default().Warn("audit_migrate_entry_hash_failed", "err", aerr)
 	}
 
 	// Audit log can contain secrets embedded in tool inputs/outputs.
@@ -206,7 +227,7 @@ func Open(dbPath string) (*Log, error) {
 		obs.Default().Warn("audit_wal_enable_failed", "err", err)
 	}
 
-	return &Log{
+	l := &Log{
 		db: db,
 		// UnixNano avoids same-second collisions when an operator
 		// reopens the audit log inside a tight loop (quick `Open` →
@@ -215,7 +236,17 @@ func Open(dbPath string) (*Log, error) {
 		sessionID: fmt.Sprintf("session-%d", time.Now().UnixNano()),
 		path:      actualPath,
 		lockFile:  lockFile,
-	}, nil
+	}
+
+	// Seed the in-memory chain head from the last row so a reopened log
+	// continues the existing chain. A NULL/empty hash (fresh or legacy
+	// tail) leaves headHash empty, which the next insert treats as genesis.
+	var head sql.NullString
+	if qerr := db.QueryRow(`SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1`).Scan(&head); qerr == nil && head.Valid {
+		l.headHash = head.String
+	}
+
+	return l, nil
 }
 
 func (l *Log) Close() error {
@@ -284,19 +315,34 @@ func (l *Log) RecordCtx(ctx context.Context, tool string, input interface{}, out
 	}
 
 	ts := time.Now().UTC()
+	tsStr := ts.Format(time.RFC3339)
+	durMs := duration.Milliseconds()
+
+	// Tamper-evidence: chain each row's hash onto the previous one's, so a
+	// post-hoc edit, mid-deletion, reorder, or forged insert into the DB
+	// breaks the chain at VerifyChain time. writeMu makes the
+	// read-head/compute/insert/update-head sequence atomic within the
+	// process; the flock keeps it single-writer across processes.
+	l.writeMu.Lock()
+	entryHash := chainHash(l.headHash, tsStr, tool, string(inputJSON), output, risk, string(level), l.sessionID, durMs, success)
 	_, err = l.db.Exec(`
-		INSERT INTO audit_log (timestamp, tool, input, output, risk, level, session_id, duration_ms, success)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		ts.Format(time.RFC3339),
+		INSERT INTO audit_log (timestamp, tool, input, output, risk, level, session_id, duration_ms, success, entry_hash)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		tsStr,
 		tool,
 		string(inputJSON),
 		output,
 		risk,
 		string(level),
 		l.sessionID,
-		duration.Milliseconds(),
+		durMs,
 		success,
+		entryHash,
 	)
+	if err == nil {
+		l.headHash = entryHash
+	}
+	l.writeMu.Unlock()
 	if err != nil {
 		obs.Default().Warn("audit_record_failed", "tool", tool, "err", err)
 		return

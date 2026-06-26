@@ -3054,7 +3054,8 @@ func TestRegistrySize(t *testing.T) {
 	// v0.759.0 added cose_message_decode (general COSE message decoder per RFC 9052: type /
 	// headers / payload / signature|tag|ciphertext, single + multi-recipient; built on
 	// internal/cbordecode + internal/cose). internal/tools + internal/cose.
-	const expected = 697
+	// v0.761.0 added audit_verify (tamper-evidence check of the hash-chained audit log).
+	const expected = 698
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
