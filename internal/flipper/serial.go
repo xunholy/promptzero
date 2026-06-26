@@ -428,23 +428,58 @@ func (f *Flipper) notifyReconnect(phase, message string) {
 // a physical-disconnect signal from the transport. Timeout reads and
 // harmless errors are ignored.
 func (f *Flipper) markDisconnectedIfRelevant(err error) {
+	if isDisconnectError(err) {
+		f.disconnected.Store(true)
+	}
+}
+
+// disconnectNeedles are the lowercased substrings that mark a transport-level
+// disconnect across transports that surface it as a plain message (the serial
+// pty, BLE, or a wrapped CLI error). They are the last-resort layer of
+// isDisconnectError — typed-sentinel checks run first.
+var disconnectNeedles = []string{
+	"port has been closed",
+	"no such device",
+	"input/output error",
+	"device not configured",
+	"bad file descriptor",
+	"file already closed",
+}
+
+// isDisconnectError reports whether err is a physical-disconnect signal from
+// the transport — the device was unplugged, the fd was closed, or the link
+// died. Detection is layered, most-robust first:
+//
+//  1. typed sentinels via errors.Is (os.ErrClosed) — robust to wrapping and
+//     message-format drift across Go / library versions;
+//  2. platform syscall errnos (EIO / ENODEV / ENXIO / EBADF on Unix; a no-op
+//     elsewhere) — catches a device-gone fd even when a wrapper reformats the
+//     message;
+//  3. a transport-agnostic substring fallback for transports that only carry
+//     a plain string.
+//
+// Timeout and other benign errors match none of these and return false, so a
+// merely slow read never triggers a spurious reconnect. A missed disconnect
+// (false negative) is the worse failure here — it leaves the operator to
+// reconnect by hand — so the typed checks deliberately widen coverage beyond
+// the original string list without adding timeout-class false positives.
+func isDisconnectError(err error) bool {
 	if err == nil {
-		return
+		return false
+	}
+	if errors.Is(err, os.ErrClosed) {
+		return true
+	}
+	if isDisconnectSyscallErr(err) {
+		return true
 	}
 	s := strings.ToLower(err.Error())
-	for _, needle := range []string{
-		"port has been closed",
-		"no such device",
-		"input/output error",
-		"device not configured",
-		"bad file descriptor",
-		"file already closed",
-	} {
+	for _, needle := range disconnectNeedles {
 		if strings.Contains(s, needle) {
-			f.disconnected.Store(true)
-			return
+			return true
 		}
 	}
+	return false
 }
 
 // reconnectIfNeededLocked is called by every op-start path. When the
