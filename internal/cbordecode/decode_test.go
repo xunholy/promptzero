@@ -475,3 +475,34 @@ func TestDecodeBytes_NestedBombBounded(t *testing.T) {
 		t.Errorf("within-limit nest not reconstructed: depth=%d", depth)
 	}
 }
+
+// TestValue_AsInt covers the shared integer accessor used by COSE / CWT label
+// maps: unsigned and negative ints decode; non-integers, nil, and an unsigned
+// value past MaxInt64 report ok=false.
+func TestValue_AsInt(t *testing.T) {
+	mk := func(hex string) *Value {
+		v, err := Decode(hex)
+		if err != nil {
+			t.Fatalf("Decode(%s): %v", hex, err)
+		}
+		return v
+	}
+	if n, ok := mk("0a").AsInt(); !ok || n != 10 { // uint 10
+		t.Errorf("uint: got %d,%v", n, ok)
+	}
+	if n, ok := mk("29").AsInt(); !ok || n != -10 { // negint -10
+		t.Errorf("negint: got %d,%v", n, ok)
+	}
+	if _, ok := mk("6161").AsInt(); ok { // text "a"
+		t.Error("text string should not decode as int")
+	}
+	if _, ok := mk("43010203").AsInt(); ok { // byte string
+		t.Error("byte string should not decode as int")
+	}
+	if _, ok := (*Value)(nil).AsInt(); ok {
+		t.Error("nil value should report ok=false")
+	}
+	if _, ok := mk("1bffffffffffffffff").AsInt(); ok { // uint 2^64-1 > MaxInt64
+		t.Error("uint past MaxInt64 should report ok=false")
+	}
+}

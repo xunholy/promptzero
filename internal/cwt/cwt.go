@@ -185,8 +185,8 @@ func readAlg(arr *cbordecode.Value, out *CWT) {
 		return
 	}
 	for _, e := range hdr.Map {
-		if lbl, ok := asInt(e.Key); ok && lbl == 1 {
-			if alg, ok := asInt(e.Value); ok {
+		if lbl, ok := e.Key.AsInt(); ok && lbl == 1 {
+			if alg, ok := e.Value.AsInt(); ok {
 				a := alg
 				out.AlgorithmID = &a
 				out.Algorithm = cose.AlgorithmName(alg)
@@ -200,7 +200,7 @@ func readAlg(arr *cbordecode.Value, out *CWT) {
 func decodeClaims(m *cbordecode.Value) (*Claims, error) {
 	c := &Claims{}
 	for _, e := range m.Map {
-		lbl, isInt := asInt(e.Key)
+		lbl, isInt := e.Key.AsInt()
 		if !isInt {
 			// Text-keyed custom claim.
 			if e.Key != nil && e.Key.MajorType == 3 {
@@ -273,22 +273,4 @@ func asTime(v *cbordecode.Value) *Time {
 		return nil
 	}
 	return &Time{Epoch: secs, RFC3339: time.Unix(secs, 0).UTC().Format(time.RFC3339)}
-}
-
-// asInt reads a CBOR integer (unsigned or negative) from a Value.
-func asInt(v *cbordecode.Value) (int64, bool) {
-	if v == nil {
-		return 0, false
-	}
-	switch {
-	case v.Uint != nil:
-		if *v.Uint > 1<<63-1 {
-			return 0, false
-		}
-		return int64(*v.Uint), true
-	case v.Int != nil:
-		return *v.Int, true
-	default:
-		return 0, false
-	}
 }
