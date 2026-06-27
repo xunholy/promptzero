@@ -243,7 +243,7 @@ func (f *Federation) registerTools(cfg ClientConfig, mc *managedClient) (int, []
 			Risk:        level,
 			Group:       tools.GroupMetaUtil,
 			AgentOnly:   false,
-			Handler:     buildHandler(mc, t.Name),
+			Handler:     buildHandler(mc, t.Name, cfg.maxResultBytes()),
 		}
 
 		// tools.Register panics on duplicates — guard with recover so
@@ -262,14 +262,15 @@ func (f *Federation) registerTools(cfg ClientConfig, mc *managedClient) (int, []
 }
 
 // buildHandler closes over the managedClient to produce the tools.Handler
-// that the agent dispatch path will call.
-func buildHandler(mc *managedClient, remoteName string) tools.Handler {
+// that the agent dispatch path will call. maxBytes bounds the untrusted
+// remote's rendered output (see ClientConfig.MaxResultBytes).
+func buildHandler(mc *managedClient, remoteName string, maxBytes int) tools.Handler {
 	return func(ctx context.Context, _ *tools.Deps, args map[string]any) (string, error) {
 		res, err := mc.callTool(ctx, remoteName, args)
 		if err != nil {
 			return "", err
 		}
-		return extractText(res)
+		return extractText(res, maxBytes)
 	}
 }
 

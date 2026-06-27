@@ -67,6 +67,15 @@ type ClientConfig struct {
 	// raise it for servers with genuinely long operations.
 	CallTimeout time.Duration `yaml:"call_timeout,omitempty"`
 
+	// MaxResultBytes caps the rendered output of a single federated tool
+	// call. A federated server is untrusted: without a bound, a malicious or
+	// buggy remote could return gigabytes that flood the agent's LLM context
+	// (token-cost blowup), bloat the audit log, and pressure memory. Output
+	// past the cap is truncated with a marker. Zero defaults to 1 MiB;
+	// negative is rejected by Validate. Raise it for servers with genuinely
+	// large but trusted output.
+	MaxResultBytes int `yaml:"max_result_bytes,omitempty"`
+
 	// HealthInterval sets the Ping cadence. Zero defaults to 30s.
 	// Negative disables health checks entirely (rely on call-path
 	// failure detection only).
@@ -135,6 +144,11 @@ func (c ClientConfig) Validate() error {
 		}
 	}
 
+	if c.MaxResultBytes < 0 {
+		return fmt.Errorf("mcpfed[%s]: max_result_bytes must be >= 0 (0 = default %d), got %d",
+			c.Prefix, defaultMaxResultBytes, c.MaxResultBytes)
+	}
+
 	return nil
 }
 
@@ -201,6 +215,21 @@ func (c ClientConfig) callTimeout() time.Duration {
 		return 5 * time.Minute
 	}
 	return c.CallTimeout
+}
+
+// defaultMaxResultBytes bounds a federated tool's rendered output when the
+// config leaves MaxResultBytes unset. 1 MiB is generous for legitimate large
+// outputs (e.g. an nmap host list) while still stopping a runaway remote.
+const defaultMaxResultBytes = 1 << 20
+
+// maxResultBytes returns the effective per-call output cap, applying the
+// default when the field is unset. Negative values are rejected by Validate,
+// so a non-positive field here means "unset".
+func (c ClientConfig) maxResultBytes() int {
+	if c.MaxResultBytes <= 0 {
+		return defaultMaxResultBytes
+	}
+	return c.MaxResultBytes
 }
 
 // healthInterval returns (cadence, enabled). A zero field defaults to 30s;

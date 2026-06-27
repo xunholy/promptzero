@@ -25,12 +25,17 @@ import (
 // IsError on the result becomes a returned error — "error" is the right
 // signal because the agent's risk + reflexion paths inspect err for retry
 // vs. abort decisions.
-func extractText(res *mcp.CallToolResult) (string, error) {
+func extractText(res *mcp.CallToolResult, maxBytes int) (string, error) {
 	if res == nil {
 		return "", fmt.Errorf("mcpfed: nil CallToolResult")
 	}
 
-	body := renderBody(res)
+	// Bound the federated server's output before it flows into the agent's
+	// LLM context, the audit log, and the error message. The server is
+	// untrusted, so this caps token-cost / memory / log impact of a runaway
+	// or malicious remote. Applied to both the success body and the error
+	// body below.
+	body := capBytes(renderBody(res), maxBytes)
 
 	if res.IsError {
 		// Surface the rendered body in the error message itself —
@@ -43,6 +48,23 @@ func extractText(res *mcp.CallToolResult) (string, error) {
 	}
 
 	return body, nil
+}
+
+// capBytes truncates s to at most maxBytes, walking back to a UTF-8 rune
+// boundary so the result stays valid UTF-8 (the downstream model and audit
+// log reject U+FFFD / invalid sequences), and appends a marker noting the
+// original size. maxBytes <= 0 means "no cap" (callers pass a resolved
+// positive value; the guard keeps the helper safe in isolation).
+func capBytes(s string, maxBytes int) string {
+	if maxBytes <= 0 || len(s) <= maxBytes {
+		return s
+	}
+	cut := maxBytes
+	// Back up off any continuation bytes so we don't split a rune.
+	for cut > 0 && s[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return s[:cut] + fmt.Sprintf("\n... [federated output truncated: %d of %d bytes shown]", cut, len(s))
 }
 
 func renderBody(res *mcp.CallToolResult) string {

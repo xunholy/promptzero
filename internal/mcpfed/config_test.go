@@ -22,8 +22,10 @@ func TestClientConfigValidate(t *testing.T) {
 		{"http sandbox docker", ClientConfig{Prefix: "ok", Transport: "http", URL: "http://x", Sandbox: "docker"}, true},
 		{"unknown sandbox", ClientConfig{Prefix: "ok", Transport: "stdio", Command: "x", Sandbox: "bogus"}, true},
 		{"unknown risk default", ClientConfig{Prefix: "ok", Transport: "stdio", Command: "x", RiskDefault: "bogus"}, true},
+		{"negative max_result_bytes", ClientConfig{Prefix: "ok", Transport: "stdio", Command: "x", MaxResultBytes: -1}, true},
 
 		{"valid stdio", ClientConfig{Prefix: "ok", Transport: "stdio", Command: "x"}, false},
+		{"valid max_result_bytes", ClientConfig{Prefix: "ok", Transport: "stdio", Command: "x", MaxResultBytes: 4096}, false},
 		{"valid http", ClientConfig{Prefix: "ok", Transport: "http", URL: "http://x"}, false},
 		{"valid sse", ClientConfig{Prefix: "ok", Transport: "sse", URL: "http://x"}, false},
 		{"valid all sandboxes", ClientConfig{Prefix: "ok", Transport: "stdio", Command: "x", Sandbox: "docker"}, false},
@@ -161,5 +163,15 @@ func TestClientConfigHealthInterval(t *testing.T) {
 	}
 	if d != 0 {
 		t.Errorf("disabled healthInterval cadence = %v, want 0", d)
+	}
+}
+
+// TestMaxResultBytesResolver pins the default-vs-explicit resolution.
+func TestMaxResultBytesResolver(t *testing.T) {
+	if got := (ClientConfig{}).maxResultBytes(); got != defaultMaxResultBytes {
+		t.Errorf("unset = %d, want default %d", got, defaultMaxResultBytes)
+	}
+	if got := (ClientConfig{MaxResultBytes: 4096}).maxResultBytes(); got != 4096 {
+		t.Errorf("explicit = %d, want 4096", got)
 	}
 }
