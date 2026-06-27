@@ -135,17 +135,38 @@ func init() {
 			"previous one, so a post-hoc edit, mid-chain deletion, reorder, or forged insert made directly " +
 			"against the database (e.g. via the sqlite3 CLI) breaks the chain. Returns whether the chain is " +
 			"intact, the row id of the first break if not, counts of verified vs legacy (pre-chain) rows, and " +
-			"the current head hash — record the head hash out-of-band to also detect a full-chain rewrite or " +
-			"tail truncation, which the in-database chain alone cannot. Read-only.",
-		Schema:   json.RawMessage(`{"type":"object","properties":{}}`),
+			"the current `head_hash` + `hashed_rows`.\n\n" +
+			"**Out-of-band anchoring:** save the returned `head_hash` and `hashed_rows` somewhere outside the " +
+			"database (git, a remote, paper). Passing them back later as `expect_head_hash` + `expect_hashed_rows` " +
+			"additionally detects the two attacks the in-database chain alone cannot: a consistent full-chain " +
+			"rewrite (the anchored prefix re-hashes to a different head) and truncation of the newest rows " +
+			"(fewer hashed rows than anchored). Provide both anchor params together or neither. Read-only.",
+		Schema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"expect_head_hash":{"type":"string","description":"A previously-recorded head_hash to anchor against (with expect_hashed_rows)"},
+				"expect_hashed_rows":{"type":"integer","description":"The hashed_rows recorded alongside expect_head_hash"}
+			}
+		}`),
 		Required: nil,
 		Risk:     risk.Low,
 		Group:    GroupMetaAudit,
-		Handler: func(_ context.Context, d *Deps, _ map[string]any) (string, error) {
+		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			if d.Audit == nil {
 				return "Audit logging not enabled", nil
 			}
-			res, err := d.Audit.VerifyChain()
+			expectHash := strings.TrimSpace(str(p, "expect_head_hash"))
+			expectRows := intOr(p, "expect_hashed_rows", 0)
+			// Both anchor params must travel together; one alone is a usage
+			// error rather than a silently-ignored half-anchor.
+			if (expectHash == "") != (expectRows == 0) {
+				return "", fmt.Errorf("audit_verify: provide both expect_head_hash and expect_hashed_rows, or neither")
+			}
+			var anchor *audit.CheckpointAnchor
+			if expectHash != "" {
+				anchor = &audit.CheckpointAnchor{HashedRows: expectRows, HeadHash: expectHash}
+			}
+			res, err := d.Audit.VerifyChainAgainst(anchor)
 			if err != nil {
 				return "", err
 			}

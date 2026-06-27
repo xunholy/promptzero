@@ -63,24 +63,56 @@ type VerifyResult struct {
 	// FirstBrokenID is the id of the first row whose hash failed, or 0 when
 	// the chain is intact.
 	FirstBrokenID int64 `json:"first_broken_id,omitempty"`
-	// HeadHash is the hash of the last hashed row — record it out-of-band to
-	// anchor against a full-chain rewrite (which this in-DB chain alone,
-	// without an external anchor, cannot detect).
+	// HeadHash is the hash of the last hashed row — record it (with
+	// HashedRows) out-of-band as a CheckpointAnchor to later detect a
+	// full-chain rewrite or tail truncation, which the in-DB chain alone
+	// cannot.
 	HeadHash string `json:"head_hash,omitempty"`
+
+	// Anchor* are populated only when an anchor is supplied to
+	// VerifyChainAgainst. AnchorChecked distinguishes "anchor matched"
+	// (AnchorValid true) from "no anchor was provided" (AnchorChecked false).
+	AnchorChecked bool   `json:"anchor_checked"`
+	AnchorValid   bool   `json:"anchor_valid"`
+	AnchorDetail  string `json:"anchor_detail,omitempty"`
+
 	// Detail is a human-readable summary.
 	Detail string `json:"detail"`
+}
+
+// CheckpointAnchor is an out-of-band record of the chain's state at a point
+// in time: the head hash after HashedRows hashed rows. Recording one (e.g.
+// to git, a remote store, or paper) and later passing it to
+// VerifyChainAgainst closes the two gaps the in-DB chain cannot cover on its
+// own — a consistent full-chain rewrite (the re-hashed prefix yields a
+// different head than the anchor) and truncation of the newest rows (the
+// current chain holds fewer hashed rows than the anchor).
+type CheckpointAnchor struct {
+	HashedRows int    `json:"hashed_rows"`
+	HeadHash   string `json:"head_hash"`
 }
 
 // VerifyChain walks the audit log in id order and recomputes the hash chain,
 // detecting any post-hoc modification, mid-chain deletion, reorder, or forged
 // insert made directly against the database.
 //
-// Scope: this is tamper-EVIDENCE against casual edits (e.g. someone opening
-// the DB in sqlite3 and changing or deleting a row without recomputing the
-// chain). It does NOT defend against an attacker who rewrites the entire
-// chain in place, nor against truncation of the newest rows — both need an
-// out-of-band anchor of HeadHash, which callers can record from this result.
+// Scope: on its own this is tamper-EVIDENCE against casual edits (e.g.
+// someone opening the DB in sqlite3 and changing or deleting a row without
+// recomputing the chain). To also catch a consistent full-chain rewrite or
+// truncation of the newest rows, record a CheckpointAnchor from HeadHash +
+// HashedRows out-of-band and pass it to VerifyChainAgainst.
 func (l *Log) VerifyChain() (*VerifyResult, error) {
+	return l.VerifyChainAgainst(nil)
+}
+
+// VerifyChainAgainst performs the in-DB chain verification of VerifyChain
+// and, when anchor is non-nil, additionally checks the chain against that
+// out-of-band anchor: the chain re-walked to anchor.HashedRows rows must
+// still yield anchor.HeadHash (else the anchored prefix was rewritten), and
+// the current chain must still hold at least that many hashed rows (else the
+// newest rows were truncated). Together with the in-DB check this detects
+// every direct-to-database tampering class.
+func (l *Log) VerifyChainAgainst(anchor *CheckpointAnchor) (*VerifyResult, error) {
 	rows, err := l.db.Query(`
 		SELECT id, timestamp, tool, input, output, risk, level, session_id, duration_ms, success, entry_hash
 		FROM audit_log ORDER BY id ASC`)
@@ -91,6 +123,8 @@ func (l *Log) VerifyChain() (*VerifyResult, error) {
 
 	res := &VerifyResult{Valid: true}
 	prevHash := "" // genesis link for the first hashed row
+	headAtAnchor := ""
+	anchorPosReached := false
 
 	for rows.Next() {
 		var (
@@ -127,6 +161,13 @@ func (l *Log) VerifyChain() (*VerifyResult, error) {
 		// Chain onto the STORED hash so a single tampered row pinpoints to
 		// itself rather than cascading every later row into "broken".
 		prevHash = storedHash.String
+
+		// Capture the running head at the anchored position so a rewrite of
+		// the anchored prefix shows up as a head mismatch below.
+		if anchor != nil && !anchorPosReached && res.HashedRows == anchor.HashedRows {
+			headAtAnchor = prevHash
+			anchorPosReached = true
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("audit verify: rows: %w", err)
@@ -140,6 +181,23 @@ func (l *Log) VerifyChain() (*VerifyResult, error) {
 		res.Detail = fmt.Sprintf("chain intact: %d hashed rows verified (%d legacy)", res.HashedRows, res.LegacyRows)
 	default:
 		res.Detail = fmt.Sprintf("chain BROKEN at row id %d — the log was modified after it was written", res.FirstBrokenID)
+	}
+
+	if anchor != nil {
+		res.AnchorChecked = true
+		switch {
+		case anchor.HashedRows <= 0 || anchor.HeadHash == "":
+			res.AnchorDetail = "invalid anchor: hashed_rows must be > 0 and head_hash non-empty"
+		case res.HashedRows < anchor.HashedRows:
+			res.AnchorDetail = fmt.Sprintf("TAIL TRUNCATED: %d hashed rows now, anchor recorded %d — newest rows were deleted",
+				res.HashedRows, anchor.HashedRows)
+		case !anchorPosReached || headAtAnchor != anchor.HeadHash:
+			res.AnchorDetail = fmt.Sprintf("PREFIX REWRITTEN: head after %d hashed rows does not match the anchored hash — the log was rewritten",
+				anchor.HashedRows)
+		default:
+			res.AnchorValid = true
+			res.AnchorDetail = fmt.Sprintf("anchor matched: the first %d hashed rows are unchanged since the checkpoint", anchor.HashedRows)
+		}
 	}
 	return res, nil
 }
