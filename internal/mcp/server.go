@@ -72,6 +72,7 @@ import (
 	"github.com/xunholy/promptzero/internal/marauder"
 	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/provider"
+	"github.com/xunholy/promptzero/internal/quarantine"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/snapshot"
 	"github.com/xunholy/promptzero/internal/targetmem"
@@ -304,10 +305,17 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 			s.audit.RecordCtx(ctx, capturedName, args, output, levelStr, audit.LevelAction, dur, success)
 		}
 
+		// Prompt-injection quarantine: tool output returned to the MCP host
+		// is fed to that host's LLM, so attacker-controllable hardware bytes
+		// (SSIDs, NFC URIs, BLE names, SD-card filenames) must be sanitised
+		// and wrapped exactly as the agent loop does — the same shared policy,
+		// keyed by tool name. Errors are wrapped too: a failure message can
+		// embed attacker-controlled text. Our own consent/validation messages
+		// above are returned raw; only the handler's output is untrusted.
 		if herr != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("error: %v", herr)), nil
+			return mcp.NewToolResultError(quarantine.Output(capturedName, fmt.Sprintf("error: %v", herr), true)), nil
 		}
-		return mcp.NewToolResultText(result), nil
+		return mcp.NewToolResultText(quarantine.Output(capturedName, result, false)), nil
 	})
 	s.tools = append(s.tools, name)
 }
