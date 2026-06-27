@@ -51,6 +51,10 @@ func Default(t *testing.T) []Scenario {
 		readOnlyRefusalScenario(),
 		confirmGateScenario(),
 		auditFailClosedScenario(),
+		// Audit tamper-evidence (v0.761/0.762) exercised through the agent
+		// dispatch path, plus decoder-tool dispatch coverage.
+		auditChainIntegrityScenario(t),
+		decoderDispatchScenario(),
 		// NRF24 / Mousejack — parametric builder + parser
 		mousejackPayloadBuildsScenario(t),
 		nrf24TargetParserScenario(t),
