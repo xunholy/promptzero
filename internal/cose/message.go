@@ -50,11 +50,36 @@ type Message struct {
 	TagHex        string `json:"tag_hex,omitempty"`        // COSE_Mac0 authentication tag
 	CiphertextHex string `json:"ciphertext_hex,omitempty"` // COSE_Encrypt0
 
-	// Multi-recipient structures.
-	SignatureCount *int `json:"signature_count,omitempty"` // COSE_Sign
-	RecipientCount *int `json:"recipient_count,omitempty"` // COSE_Mac / COSE_Encrypt
+	// Multi-recipient structures: the count plus the decoded per-entry
+	// detail (each entry's own protected/unprotected headers and signature /
+	// encrypted-key bytes), so a multi-signer attestation or multi-recipient
+	// encrypted message is fully readable rather than just counted.
+	SignatureCount *int            `json:"signature_count,omitempty"` // COSE_Sign
+	Signatures     []COSESignature `json:"signatures,omitempty"`      // COSE_Sign
+	RecipientCount *int            `json:"recipient_count,omitempty"` // COSE_Mac / COSE_Encrypt
+	Recipients     []COSERecipient `json:"recipients,omitempty"`      // COSE_Mac / COSE_Encrypt
 
 	Note string `json:"note"`
+}
+
+// COSESignature is one signer of a COSE_Sign message (RFC 9052 §4.1): its
+// own protected & unprotected headers (algorithm, kid, …) and the signature
+// bytes.
+type COSESignature struct {
+	Protected    Header `json:"protected_header"`
+	Unprotected  Header `json:"unprotected_header"`
+	SignatureHex string `json:"signature_hex,omitempty"`
+}
+
+// COSERecipient is one recipient of a COSE_Encrypt / COSE_Mac message
+// (RFC 9052 §5.1 / §6.1): its own protected & unprotected headers (the
+// key-management algorithm, kid, …) and the encrypted content-encryption key.
+// Nested recipients (multi-layer key management) are not recursed — a single
+// level covers the common case.
+type COSERecipient struct {
+	Protected       Header `json:"protected_header"`
+	Unprotected     Header `json:"unprotected_header"`
+	EncryptedKeyHex string `json:"encrypted_key_hex,omitempty"`
 }
 
 // DecodeMessage parses raw CBOR bytes as a COSE message and surfaces its
@@ -125,6 +150,7 @@ func DecodeMessage(raw []byte) (*Message, error) {
 		if arr[3].MajorType == 4 {
 			c := len(arr[3].Array)
 			out.SignatureCount = &c
+			out.Signatures = decodeSignatures(arr[3].Array)
 		}
 	case "COSE_Mac":
 		setPayload(out, arr[2])
@@ -132,12 +158,14 @@ func DecodeMessage(raw []byte) (*Message, error) {
 		if n >= 5 && arr[4].MajorType == 4 {
 			c := len(arr[4].Array)
 			out.RecipientCount = &c
+			out.Recipients = decodeRecipients(arr[4].Array)
 		}
 	case "COSE_Encrypt":
 		out.CiphertextHex = bytesOf(arr[2])
 		if n >= 4 && arr[3].MajorType == 4 {
 			c := len(arr[3].Array)
 			out.RecipientCount = &c
+			out.Recipients = decodeRecipients(arr[3].Array)
 		}
 	}
 	return out, nil
@@ -251,6 +279,43 @@ func decodeHeaderMap(m *cbordecode.Value) Header {
 		}
 	}
 	return h
+}
+
+// decodeSignatures decodes the COSE_Signature array of a COSE_Sign message.
+// Each entry is a [protected, unprotected, signature] triple; malformed
+// entries (not a ≥3-element array) are skipped rather than aborting the
+// whole decode.
+func decodeSignatures(entries []*cbordecode.Value) []COSESignature {
+	out := make([]COSESignature, 0, len(entries))
+	for _, e := range entries {
+		if e == nil || e.MajorType != 4 || len(e.Array) < 3 {
+			continue
+		}
+		out = append(out, COSESignature{
+			Protected:    decodeProtectedHeader(e.Array[0]),
+			Unprotected:  decodeHeaderMap(e.Array[1]),
+			SignatureHex: bytesOf(e.Array[2]),
+		})
+	}
+	return out
+}
+
+// decodeRecipients decodes the COSE_recipient array of a COSE_Encrypt /
+// COSE_Mac message. Each entry is a [protected, unprotected, encrypted-key]
+// triple; malformed entries are skipped. Nested recipients are not recursed.
+func decodeRecipients(entries []*cbordecode.Value) []COSERecipient {
+	out := make([]COSERecipient, 0, len(entries))
+	for _, e := range entries {
+		if e == nil || e.MajorType != 4 || len(e.Array) < 3 {
+			continue
+		}
+		out = append(out, COSERecipient{
+			Protected:       decodeProtectedHeader(e.Array[0]),
+			Unprotected:     decodeHeaderMap(e.Array[1]),
+			EncryptedKeyHex: bytesOf(e.Array[2]),
+		})
+	}
+	return out
 }
 
 // setPayload records the payload bytes, or marks it detached when the
