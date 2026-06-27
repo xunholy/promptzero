@@ -52,14 +52,29 @@ var keyTypeNames = map[int64]string{
 	1: "OKP", 2: "EC2", 3: "RSA", 4: "Symmetric", 5: "HSS-LMS", 6: "WalnutDSA",
 }
 
-// COSE algorithms (IANA "COSE Algorithms"), label 3 — the signature and
-// common AEAD identifiers a decoded credential key is likely to carry.
+// COSE algorithms (IANA "COSE Algorithms"), label 3. Covers the signature,
+// MAC, AEAD, and key-wrap identifiers a decoded COSE_Key, COSE_Sign1 /
+// COSE_Mac0 / COSE_Encrypt0 header, or CWT is likely to carry. Identifiers
+// outside this set fall back to "unknown(<id>)" — never a wrong name.
 var algNames = map[int64]string{
+	// Signature.
 	-7: "ES256", -35: "ES384", -36: "ES512", -47: "ES256K",
 	-8:   "EdDSA",
 	-257: "RS256", -258: "RS384", -259: "RS512",
 	-37: "PS256", -38: "PS384", -39: "PS512",
+	// MAC (HMAC).
+	4: "HMAC 256/64", 5: "HMAC 256/256", 6: "HMAC 384/384", 7: "HMAC 512/512",
+	// MAC (AES-MAC).
+	14: "AES-MAC 128/64", 15: "AES-MAC 256/64", 25: "AES-MAC 128/128", 26: "AES-MAC 256/128",
+	// AEAD (AES-GCM).
 	1: "A128GCM", 2: "A192GCM", 3: "A256GCM",
+	// AEAD (AES-CCM).
+	10: "AES-CCM-16-64-128", 11: "AES-CCM-16-64-256", 12: "AES-CCM-64-64-128", 13: "AES-CCM-64-64-256",
+	30: "AES-CCM-16-128-128", 31: "AES-CCM-16-128-256", 32: "AES-CCM-64-128-128", 33: "AES-CCM-64-128-256",
+	// AEAD (ChaCha20/Poly1305).
+	24: "ChaCha20/Poly1305",
+	// Content-key distribution (AES key wrap / direct).
+	-3: "A128KW", -4: "A192KW", -5: "A256KW", -6: "direct",
 }
 
 // COSE elliptic curves (IANA "COSE Elliptic Curves").
@@ -83,7 +98,7 @@ func DecodeKey(raw []byte) (*Key, error) {
 	// a non-integer key means this isn't a COSE_Key.
 	labels := make(map[int64]*cbordecode.Value, len(v.Map))
 	for _, e := range v.Map {
-		lbl, ok := asInt(e.Key)
+		lbl, ok := e.Key.AsInt()
 		if !ok {
 			return nil, fmt.Errorf("cose: non-integer key label in map (not a COSE_Key)")
 		}
@@ -94,7 +109,7 @@ func DecodeKey(raw []byte) (*Key, error) {
 	if !ok {
 		return nil, fmt.Errorf("cose: missing required kty (label 1)")
 	}
-	kty, ok := asInt(ktyV)
+	kty, ok := ktyV.AsInt()
 	if !ok {
 		return nil, fmt.Errorf("cose: kty (label 1) is not an integer")
 	}
@@ -102,7 +117,7 @@ func DecodeKey(raw []byte) (*Key, error) {
 	k := &Key{KeyTypeID: kty, KeyType: nameOr(keyTypeNames, kty)}
 
 	if algV, ok := labels[3]; ok {
-		if alg, ok := asInt(algV); ok {
+		if alg, ok := algV.AsInt(); ok {
 			a := alg
 			k.AlgID = &a
 			k.Algorithm = nameOr(algNames, alg)
@@ -116,7 +131,7 @@ func DecodeKey(raw []byte) (*Key, error) {
 	switch kty {
 	case 1, 2: // OKP, EC2
 		if crvV, ok := labels[-1]; ok {
-			if crv, ok := asInt(crvV); ok {
+			if crv, ok := crvV.AsInt(); ok {
 				c := crv
 				k.CurveID = &c
 				k.Curve = nameOr(curveNames, crv)
@@ -144,25 +159,6 @@ func DecodeKey(raw []byte) (*Key, error) {
 	}
 
 	return k, nil
-}
-
-// asInt reads a CBOR integer (unsigned or negative) from a Value.
-func asInt(v *cbordecode.Value) (int64, bool) {
-	if v == nil {
-		return 0, false
-	}
-	switch {
-	case v.Uint != nil:
-		// Guard the rare > MaxInt64 case rather than wrapping negative.
-		if *v.Uint > 1<<63-1 {
-			return 0, false
-		}
-		return int64(*v.Uint), true
-	case v.Int != nil:
-		return *v.Int, true
-	default:
-		return 0, false
-	}
 }
 
 // AlgorithmName maps a COSE algorithm identifier (the value at COSE header

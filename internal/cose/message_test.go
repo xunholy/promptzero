@@ -134,3 +134,22 @@ func TestDecodeMessage_Errors(t *testing.T) {
 		})
 	}
 }
+
+// TestDecodeMessage_Mac0_HMAC verifies a COSE_Mac0 protected header naming an
+// HMAC algorithm decodes to its registry name (previously unknown(5)).
+func TestDecodeMessage_Mac0_HMAC(t *testing.T) {
+	// d1(tag17) 84 43a10105(prot {1:5} HMAC 256/256) a0 42cafe 44deadbeef
+	m, err := DecodeMessage(msgHex(t, "d18443a10105a042cafe44deadbeef"))
+	if err != nil {
+		t.Fatalf("DecodeMessage: %v", err)
+	}
+	if m.Type != "COSE_Mac0" {
+		t.Errorf("type = %q, want COSE_Mac0", m.Type)
+	}
+	if m.Protected.Algorithm != "HMAC 256/256" {
+		t.Errorf("alg = %q, want HMAC 256/256", m.Protected.Algorithm)
+	}
+	if m.TagHex != "DEADBEEF" {
+		t.Errorf("tag = %q", m.TagHex)
+	}
+}

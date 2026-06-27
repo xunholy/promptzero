@@ -111,3 +111,26 @@ func TestDecodeKey_Errors(t *testing.T) {
 		})
 	}
 }
+
+// TestAlgorithmName covers the MAC / AEAD / key-wrap identifiers added to the
+// registry so COSE_Mac0 / COSE_Encrypt0 headers name their algorithm instead
+// of falling back to unknown(N), plus the unknown fallback itself.
+func TestAlgorithmName(t *testing.T) {
+	cases := map[int64]string{
+		-7:    "ES256",             // signature (regression)
+		5:     "HMAC 256/256",      // MAC
+		7:     "HMAC 512/512",      // MAC
+		25:    "AES-MAC 128/128",   // MAC
+		3:     "A256GCM",           // AEAD (regression)
+		10:    "AES-CCM-16-64-128", // AEAD
+		24:    "ChaCha20/Poly1305", // AEAD
+		-3:    "A128KW",            // key wrap
+		-6:    "direct",            // direct
+		-9999: "unknown(-9999)",    // fallback — never a wrong name
+	}
+	for id, want := range cases {
+		if got := AlgorithmName(id); got != want {
+			t.Errorf("AlgorithmName(%d) = %q, want %q", id, got, want)
+		}
+	}
+}

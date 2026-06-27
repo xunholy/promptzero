@@ -123,6 +123,28 @@ type MapEntry struct {
 	Value *Value `json:"value"`
 }
 
+// AsInt returns the value as a signed int64 when it is a CBOR unsigned or
+// negative integer (major types 0 and 1), reporting ok=false otherwise — for
+// a nil value, a non-integer item, or an unsigned value that exceeds
+// math.MaxInt64. It is the common accessor for CBOR maps keyed or valued by
+// integers, such as COSE / CWT label maps. A nil receiver is safe.
+func (v *Value) AsInt() (int64, bool) {
+	if v == nil {
+		return 0, false
+	}
+	switch {
+	case v.Uint != nil:
+		if *v.Uint > 1<<63-1 { // would overflow int64
+			return 0, false
+		}
+		return int64(*v.Uint), true
+	case v.Int != nil:
+		return *v.Int, true
+	default:
+		return 0, false
+	}
+}
+
 // Decode parses a hex-encoded CBOR data item. Trailing bytes
 // after the first item are rejected.
 func Decode(hexBlob string) (*Value, error) {

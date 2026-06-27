@@ -210,13 +210,13 @@ func decodeHeaderMap(m *cbordecode.Value) Header {
 		return h
 	}
 	for _, e := range m.Map {
-		lbl, ok := asInt(e.Key)
+		lbl, ok := e.Key.AsInt()
 		if !ok {
 			continue
 		}
 		switch lbl {
 		case 1: // alg
-			if alg, ok := asInt(e.Value); ok {
+			if alg, ok := e.Value.AsInt(); ok {
 				a := alg
 				h.AlgID = &a
 				h.Algorithm = AlgorithmName(alg)
@@ -224,7 +224,7 @@ func decodeHeaderMap(m *cbordecode.Value) Header {
 		case 2: // crit
 			if e.Value != nil && e.Value.MajorType == 4 {
 				for _, item := range e.Value.Array {
-					if c, ok := asInt(item); ok {
+					if c, ok := item.AsInt(); ok {
 						h.Critical = append(h.Critical, c)
 					}
 				}
@@ -233,7 +233,7 @@ func decodeHeaderMap(m *cbordecode.Value) Header {
 			if e.Value != nil {
 				if e.Value.Text != "" {
 					h.ContentType = e.Value.Text
-				} else if ct, ok := asInt(e.Value); ok {
+				} else if ct, ok := e.Value.AsInt(); ok {
 					h.ContentType = fmt.Sprintf("ContentFormat(%d)", ct)
 				}
 			}
