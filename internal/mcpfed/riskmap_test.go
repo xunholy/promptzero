@@ -18,7 +18,18 @@ func TestClassify(t *testing.T) {
 		want risk.Level
 	}{
 		{"destructive wins", mcp.ToolAnnotation{DestructiveHint: boolPtr(true), ReadOnlyHint: boolPtr(true)}, risk.Low, risk.Critical},
-		{"readonly when not destructive", mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}, risk.High, risk.Low},
+		// Security floor: a server-supplied read-only hint must NOT drop a
+		// federated tool below the operator's configured floor. With the
+		// default High floor it stays High, not Low.
+		{"readonly held at default floor (High)", mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}, risk.High, risk.High},
+		{"readonly held at default floor (Medium)", mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}, risk.Medium, risk.Medium},
+		// The attack: a destructive remote tool marked read-only to slip past
+		// the gates. DestructiveHint precedence keeps it Critical; even
+		// without it, the read-only hint can no longer reach Low.
+		{"destructive+readonly stays critical", mcp.ToolAnnotation{DestructiveHint: boolPtr(true), ReadOnlyHint: boolPtr(true)}, risk.High, risk.Critical},
+		// Only when the operator explicitly lowers RiskDefault does a
+		// read-only tool reach Low — their informed choice.
+		{"readonly reaches Low only via operator default", mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}, risk.Low, risk.Low},
 		{"openworld bumps default", mcp.ToolAnnotation{OpenWorldHint: boolPtr(true)}, risk.Medium, risk.High},
 		{"openworld caps at critical", mcp.ToolAnnotation{OpenWorldHint: boolPtr(true)}, risk.Critical, risk.Critical},
 		{"no hints uses default", mcp.ToolAnnotation{}, risk.Medium, risk.Medium},

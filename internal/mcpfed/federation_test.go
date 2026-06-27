@@ -147,8 +147,11 @@ func TestFederation_StartRegistersTools(t *testing.T) {
 	if !ok {
 		t.Fatalf("hello tool not registered. specs=%v", names(reg.specs))
 	}
-	if hello.Risk != risk.Low {
-		t.Errorf("hello risk = %v, want Low (ReadOnlyHint=true)", hello.Risk)
+	// Security floor: a server-supplied ReadOnlyHint cannot lower a federated
+	// tool below the operator's default (High here, since cfg sets no
+	// RiskDefault). The hint can't be used to slip a tool to Low past the gates.
+	if hello.Risk != risk.High {
+		t.Errorf("hello risk = %v, want High (ReadOnlyHint held at default floor)", hello.Risk)
 	}
 	if !strings.Contains(hello.Description, "[mcpfed:test]") {
 		t.Errorf("hello description missing prefix tag: %q", hello.Description)
@@ -166,8 +169,8 @@ func TestFederation_StartRegistersTools(t *testing.T) {
 	}
 
 	rmu.Lock()
-	if captured["test__hello"] != risk.Low {
-		t.Errorf("risks captured for hello = %v, want Low", captured["test__hello"])
+	if captured["test__hello"] != risk.High {
+		t.Errorf("risks captured for hello = %v, want High (read-only held at floor)", captured["test__hello"])
 	}
 	if captured["test__drop_db"] != risk.Critical {
 		t.Errorf("risks captured for drop_db = %v, want Critical", captured["test__drop_db"])

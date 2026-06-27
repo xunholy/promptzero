@@ -25,16 +25,22 @@
 //
 // MCP advertises optional behaviour hints on each tool via
 // `mcp.ToolAnnotation` (ReadOnlyHint, DestructiveHint, IdempotentHint,
-// OpenWorldHint). mcpfed maps these to [risk.Level] before registration:
+// OpenWorldHint). These hints come from the untrusted federated server, so
+// mcpfed honours them only in the cautious direction — a hint may raise risk
+// but never lower it below the operator's configured floor:
 //
-//   - DestructiveHint=true                    → Critical
-//   - ReadOnlyHint=true                       → Low
-//   - OpenWorldHint=true (and not read-only)  → +1 tier vs. baseline
-//   - no annotations                          → ClientConfig.RiskDefault
-//     (or High if unset)
+//   - DestructiveHint=true        → Critical
+//   - OpenWorldHint=true          → +1 tier vs. the floor (capped at Critical)
+//   - ReadOnlyHint=true           → the floor (ClientConfig.RiskDefault); it
+//     is treated as "no escalation needed", never as a reduction below it
+//   - no annotations              → the floor (ClientConfig.RiskDefault,
+//     or High if unset)
 //
-// The mapping is conservative: every federated tool gets at least High unless
-// the server explicitly declares it read-only.
+// The mapping is conservative: every federated tool is at least the operator's
+// configured default (High by default). A server cannot mark a destructive
+// tool read-only to drop to Low and slip past the confirm / audit /
+// read-only-mode gates — to lower a server's tools, the operator must lower
+// that server's RiskDefault deliberately.
 //
 // # Sandboxing
 //
