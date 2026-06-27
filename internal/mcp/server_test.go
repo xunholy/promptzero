@@ -496,3 +496,39 @@ func firstText(t *testing.T, res *mcplib.CallToolResult) string {
 	t.Fatalf("no text content in result: %+v", res.Content)
 	return ""
 }
+
+// TestServer_CallTool_QuarantinesHardwareOutput proves the MCP surface runs
+// tool output through the shared prompt-injection quarantine before returning
+// it to the host: a hardware-origin tool is wrapped in
+// <untrusted-hardware-output>, while a structured-internal tool is not.
+func TestServer_CallTool_QuarantinesHardwareOutput(t *testing.T) {
+	c, _ := newTestHarness(t, false)
+	defer c.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// device_info is hardware-origin (not on the structured allowlist) → wrapped.
+	var hw mcplib.CallToolRequest
+	hw.Params.Name = "device_info"
+	res, err := c.CallTool(ctx, hw)
+	if err != nil {
+		t.Fatalf("CallTool device_info: %v", err)
+	}
+	if text := firstText(t, res); !strings.Contains(text, "<untrusted-hardware-output>") {
+		t.Errorf("device_info output not quarantined on the MCP surface: %q", text)
+	}
+
+	// list_devices is on the structured-internal allowlist → not wrapped.
+	var st mcplib.CallToolRequest
+	st.Params.Name = "list_devices"
+	res2, err := c.CallTool(ctx, st)
+	if err != nil {
+		t.Fatalf("CallTool list_devices: %v", err)
+	}
+	if res2.IsError {
+		t.Skipf("list_devices errored in harness (%v); wrap-policy assertion needs a successful structured tool", firstText(t, res2))
+	}
+	if text := firstText(t, res2); strings.Contains(text, "untrusted-") {
+		t.Errorf("structured-internal list_devices should not be wrapped: %q", text)
+	}
+}
