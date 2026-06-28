@@ -3055,7 +3055,9 @@ func TestRegistrySize(t *testing.T) {
 	// headers / payload / signature|tag|ciphertext, single + multi-recipient; built on
 	// internal/cbordecode + internal/cose). internal/tools + internal/cose.
 	// v0.761.0 added audit_verify (tamper-evidence check of the hash-chained audit log).
-	const expected = 698
+	// v0.770.0 added csr_decode + crl_decode (offline PKCS#10 CSR + X.509 CRL decoders,
+	// completing the X.509 PKI decoder family). internal/tools + internal/x509decode.
+	const expected = 700
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
