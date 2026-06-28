@@ -936,6 +936,9 @@ var toolLevels = func() map[string]Level {
 		// Offline OCSP response decoder (RFC 6960) — query-based revocation
 		// status, the per-certificate counterpart to crl_decode. Read-only. v0.771.
 		"ocsp_decode",
+		// Offline X.509 chain linkage verifier (signature links + ordering +
+		// expiry; not full path validation). Read-only. v0.772.
+		"x509_chain_verify",
 		// Offline WebAuthn/FIDO2 authenticator-data decoder (flags,
 		// sign-count, AAGUID, credential ID + COSE key). Read-only,
 		// transmits nothing. v0.756.

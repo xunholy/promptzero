@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// x509_csr_crl.go registers csr_decode and crl_decode, completing the X.509
-// PKI decoder family (certificate + request + revocation) alongside
-// x509_certificate_decode. Both delegate to internal/x509decode.
+// x509_csr_crl.go registers the X.509 PKI tools beyond the single-certificate
+// decoder: csr_decode (request), crl_decode + ocsp_decode (revocation), and
+// x509_chain_verify (chain linkage). All delegate to internal/x509decode.
 
 package tools
 
@@ -20,6 +20,7 @@ func init() { //nolint:gochecknoinits
 	Register(csrDecodeSpec)
 	Register(crlDecodeSpec)
 	Register(ocspDecodeSpec)
+	Register(x509ChainVerifySpec)
 }
 
 var csrDecodeSpec = Spec{
@@ -125,6 +126,45 @@ func ocspDecodeHandler(_ context.Context, _ *Deps, p map[string]any) (string, er
 	res, err := x509decode.DecodeOCSP(raw)
 	if err != nil {
 		return "", fmt.Errorf("ocsp_decode: %w", err)
+	}
+	out, _ := json.MarshalIndent(res, "", "  ")
+	return string(out), nil
+}
+
+var x509ChainVerifySpec = Spec{
+	Name: "x509_chain_verify",
+	Description: "Verify an **X.509 certificate chain** — the natural next step after `x509_certificate_decode` " +
+		"and the #1 PKI debugging task. Paste a PEM bundle (multiple `-----BEGIN CERTIFICATE-----` blocks, in " +
+		"leaf→root order) or a hex-DER concatenation. Checks the **signature linkage** between adjacent " +
+		"certificates (each must be signed by the next, by a parent that is a CA permitted to sign), and reports:\n" +
+		"- **ordered** — whether every adjacent link verifies in the supplied order;\n" +
+		"- **reaches_self_signed_root** — whether a self-signed trust-anchor terminates the chain;\n" +
+		"- **any_expired** — whether any cert is past NotAfter (a common 'chain looks right but is rejected' cause);\n" +
+		"- per-certificate subject/issuer/CA/expiry and per-link validity (with the exact error on a broken link).\n\n" +
+		"Diagnoses wrong ordering, a missing intermediate, or an expired link. Signature/linkage only — not full " +
+		"RFC 5280 path validation against a root store. Offline, read-only. Low risk.",
+	Schema: json.RawMessage(`{
+		"type":"object",
+		"properties":{
+			"input":{"type":"string","description":"PEM bundle (leaf->root order) or hex-DER concatenation of the chain"}
+		},
+		"required":["input"]
+	}`),
+	Required:  []string{"input"},
+	Risk:      risk.Low,
+	Group:     GroupHostTools,
+	AgentOnly: false,
+	Handler:   x509ChainVerifyHandler,
+}
+
+func x509ChainVerifyHandler(_ context.Context, _ *Deps, p map[string]any) (string, error) {
+	raw := str(p, "input")
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("x509_chain_verify: 'input' is required")
+	}
+	res, err := x509decode.VerifyChain(raw)
+	if err != nil {
+		return "", fmt.Errorf("x509_chain_verify: %w", err)
 	}
 	out, _ := json.MarshalIndent(res, "", "  ")
 	return string(out), nil
