@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	pb "github.com/xunholy/promptzero/internal/flipper/rpc/pb"
@@ -105,6 +106,87 @@ func TestFramingVarintEdgeCases(t *testing.T) {
 	if got.CommandId != 7 {
 		t.Errorf("CommandId: got %d, want 7", got.CommandId)
 	}
+}
+
+// timeoutReader replays a script of read results. A "" element models an idle
+// read-timeout — the transports return (0, nil) there, NOT an error or EOF —
+// so it must leave buf untouched and report n=0.
+type timeoutReader struct {
+	steps []string // each: a chunk of bytes to deliver, or "" for a (0,nil) timeout
+	i     int
+}
+
+func (tr *timeoutReader) Read(p []byte) (int, error) {
+	if tr.i >= len(tr.steps) {
+		return 0, io.EOF
+	}
+	s := tr.steps[tr.i]
+	if s == "" { // idle timeout: no bytes, no error
+		tr.i++
+		return 0, nil
+	}
+	n := copy(p, s)
+	if n < len(s) {
+		tr.steps[tr.i] = s[n:] // partial consume, stay on this step
+	} else {
+		tr.i++
+	}
+	return n, nil
+}
+
+// TestReadVarintToleratesIdleTimeouts is the regression guard for the framing
+// desync bug: readVarint must not consume a stale byte when the transport
+// returns (0, nil) on an idle read-timeout. The headline case is a timeout
+// landing BETWEEN the two bytes of varint(300) = {0xAC, 0x02}: the buggy reader
+// re-consumed the stale 0xAC and returned 38444, permanently desyncing the RPC
+// stream.
+func TestReadVarintToleratesIdleTimeouts(t *testing.T) {
+	t.Run("timeout mid-varint does not corrupt length", func(t *testing.T) {
+		// varint(300) split by an idle timeout between its two bytes.
+		r := &timeoutReader{steps: []string{"\xac", "", "", "\x02"}}
+		got, err := readVarint(r)
+		if err != nil {
+			t.Fatalf("readVarint: %v", err)
+		}
+		if got != 300 {
+			t.Fatalf("got %d, want 300 (stale-byte re-consume regression)", got)
+		}
+	})
+
+	t.Run("timeout before any byte yields empty frame, not corruption", func(t *testing.T) {
+		// (0,nil) with no data is the no-frame-yet poll signal: length 0.
+		r := &timeoutReader{steps: []string{"", ""}}
+		got, err := readVarint(r)
+		if err != nil {
+			t.Fatalf("readVarint: %v", err)
+		}
+		if got != 0 {
+			t.Fatalf("got %d, want 0 (no-data poll path)", got)
+		}
+	})
+
+	t.Run("full frame round-trips through idle timeouts", func(t *testing.T) {
+		// A 256-byte payload (3-byte varint prefix) interleaved with timeouts
+		// at the prefix boundary must still decode intact.
+		msg := &pb.Main{
+			CommandId: 11,
+			Content:   &pb.Main_GuiScreenFrame{GuiScreenFrame: &pb.ScreenFrame{Data: make([]byte, 200)}},
+		}
+		var buf bytes.Buffer
+		if err := writeFramed(&buf, msg); err != nil {
+			t.Fatalf("writeFramed: %v", err)
+		}
+		raw := buf.Bytes()
+		// Deliver: first prefix byte, a timeout, the rest of the frame.
+		r := &timeoutReader{steps: []string{string(raw[:1]), "", string(raw[1:])}}
+		got, err := readFramed(r)
+		if err != nil {
+			t.Fatalf("readFramed: %v", err)
+		}
+		if got.CommandId != 11 {
+			t.Errorf("CommandId: got %d, want 11", got.CommandId)
+		}
+	})
 }
 
 // TestFramingOversizedLengthRejected guards the unbounded-allocation hazard: a
