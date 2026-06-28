@@ -37,15 +37,25 @@ type Pricer struct {
 // DefaultRates returns a copy of the built-in rate table. Base
 // input/output USD per million tokens, verified against Anthropic's
 // public pricing page (platform.claude.com/docs/en/about-claude/pricing):
-// Opus 4.x (4.6/4.7/4.8) $5/$25, Sonnet 4.6 $3/$15, Haiku 4.5 $1/$5.
+// Opus 4.x (4.6/4.7/4.8) $5/$25, Sonnet 4.6 $3/$15, Haiku 4.5 $1/$5, Fable 5 $10/$50.
 // Values should track that page; adjust via config override when it
 // drifts.
 func DefaultRates() map[string]Rate {
 	return map[string]Rate{
+		// All Opus 4.x tiers share $5 / $25 per Mtok. claude-opus-4-6 was
+		// previously omitted despite the comment above listing it, so
+		// opus-4-6 usage priced at $0 (Rate miss -> zero rates),
+		// under-counting cost and budget for a live model. Keep this in sync
+		// with the comment and with any new Opus 4.x tier.
 		"claude-opus-4-8":   {InputPerMTok: 5.0, OutputPerMTok: 25.0},
 		"claude-opus-4-7":   {InputPerMTok: 5.0, OutputPerMTok: 25.0},
+		"claude-opus-4-6":   {InputPerMTok: 5.0, OutputPerMTok: 25.0},
 		"claude-sonnet-4-6": {InputPerMTok: 3.0, OutputPerMTok: 15.0},
 		"claude-haiku-4-5":  {InputPerMTok: 1.0, OutputPerMTok: 5.0},
+		// Fable 5 — a current model that was unpriced (-> $0). Rate per the
+		// 2026-06-24 verification against the official pricing page; re-fetch
+		// if it drifts.
+		"claude-fable-5": {InputPerMTok: 10.0, OutputPerMTok: 50.0},
 	}
 }
 

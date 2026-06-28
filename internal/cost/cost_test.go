@@ -11,8 +11,10 @@ func TestPricer_DefaultsKnownModels(t *testing.T) {
 	cases := map[string]Rate{
 		"claude-opus-4-8":   {InputPerMTok: 5, OutputPerMTok: 25},
 		"claude-opus-4-7":   {InputPerMTok: 5, OutputPerMTok: 25},
+		"claude-opus-4-6":   {InputPerMTok: 5, OutputPerMTok: 25}, // regression: was omitted -> priced at $0
 		"claude-sonnet-4-6": {InputPerMTok: 3, OutputPerMTok: 15},
 		"claude-haiku-4-5":  {InputPerMTok: 1, OutputPerMTok: 5},
+		"claude-fable-5":    {InputPerMTok: 10, OutputPerMTok: 50}, // was omitted -> priced at $0
 	}
 	for model, want := range cases {
 		got, ok := p.Rate(model)
