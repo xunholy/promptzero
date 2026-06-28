@@ -387,9 +387,10 @@ func TestToolSearch_AuditVerifyDiscoverability(t *testing.T) {
 // and CRL decoders.
 func TestToolSearch_CSRCRLDiscoverability(t *testing.T) {
 	checks := map[string][]string{
-		"csr_decode":  {"certificate signing request", "csr decode", "pkcs10 request"},
-		"crl_decode":  {"x509 crl", "crl decode", "revoked certificates"},
-		"ocsp_decode": {"ocsp", "ocsp response", "certificate revocation status"},
+		"csr_decode":        {"certificate signing request", "csr decode", "pkcs10 request"},
+		"crl_decode":        {"x509 crl", "crl decode", "revoked certificates"},
+		"ocsp_decode":       {"ocsp", "ocsp response", "certificate revocation status"},
+		"x509_chain_verify": {"certificate chain", "verify chain", "chain of trust"},
 	}
 	for name, queries := range checks {
 		for _, q := range queries {

@@ -124,3 +124,44 @@ func TestOCSPDecodeTool(t *testing.T) {
 		t.Error("missing input should error")
 	}
 }
+
+func TestX509ChainVerifyTool(t *testing.T) {
+	spec, ok := Get("x509_chain_verify")
+	if !ok {
+		t.Fatal("x509_chain_verify not registered")
+	}
+	far := time.Now().Add(24 * time.Hour)
+	// Root CA (self-signed).
+	rootKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	rootTmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Root CA"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: far,
+		IsCA: true, KeyUsage: x509.KeyUsageCertSign, BasicConstraintsValid: true,
+	}
+	rootDER, _ := x509.CreateCertificate(rand.Reader, rootTmpl, rootTmpl, &rootKey.PublicKey, rootKey)
+	rootCert, _ := x509.ParseCertificate(rootDER)
+	// Leaf signed by root.
+	leafKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	leafTmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "leaf.example.com"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: far,
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	leafDER, _ := x509.CreateCertificate(rand.Reader, leafTmpl, rootCert, &leafKey.PublicKey, rootKey)
+	leafCert, _ := x509.ParseCertificate(leafDER)
+
+	var b strings.Builder
+	b.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafCert.Raw}))
+	b.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootCert.Raw}))
+
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{"input": b.String()})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if !strings.Contains(out, `"ordered": true`) || !strings.Contains(out, `"reaches_self_signed_root": true`) {
+		t.Errorf("chain should verify ordered to root:\n%s", out)
+	}
+	if _, err := spec.Handler(context.Background(), &Deps{}, map[string]any{}); err == nil {
+		t.Error("missing input should error")
+	}
+}
