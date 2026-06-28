@@ -929,6 +929,10 @@ var toolLevels = func() map[string]Level {
 		// tls_handshake_decode (whose Certificate body is raw
 		// hex). Stdlib crypto/x509 for the ASN.1 DER walk.
 		"x509_certificate_decode",
+		// Offline PKCS#10 CSR + X.509 CRL decoders — the request and
+		// revocation counterparts to x509_certificate_decode. Read-only. v0.770.
+		"csr_decode",
+		"crl_decode",
 		// Offline WebAuthn/FIDO2 authenticator-data decoder (flags,
 		// sign-count, AAGUID, credential ID + COSE key). Read-only,
 		// transmits nothing. v0.756.

@@ -382,3 +382,23 @@ func TestToolSearch_AuditVerifyDiscoverability(t *testing.T) {
 		}
 	}
 }
+
+// TestToolSearch_CSRCRLDiscoverability locks in discoverability of the CSR
+// and CRL decoders.
+func TestToolSearch_CSRCRLDiscoverability(t *testing.T) {
+	checks := map[string][]string{
+		"csr_decode": {"certificate signing request", "csr decode", "pkcs10 request"},
+		"crl_decode": {"x509 crl", "crl decode", "revoked certificates"},
+	}
+	for name, queries := range checks {
+		for _, q := range queries {
+			out, err := toolSearchHandler(context.Background(), nil, map[string]any{"query": q, "limit": 8})
+			if err != nil {
+				t.Fatalf("%q: %v", q, err)
+			}
+			if !strings.Contains(out, `"name": "`+name+`"`) {
+				t.Errorf("query %q did not surface %s:\n%s", q, name, out)
+			}
+		}
+	}
+}
