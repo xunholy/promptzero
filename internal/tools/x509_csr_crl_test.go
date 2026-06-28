@@ -8,12 +8,15 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"math/big"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ocsp"
 )
 
 func TestCSRDecodeTool(t *testing.T) {
@@ -82,6 +85,40 @@ func TestCRLDecodeTool(t *testing.T) {
 	}
 	if !strings.Contains(out, `"revoked_count": 1`) || !strings.Contains(out, "ABC") {
 		t.Errorf("crl output missing expected fields:\n%s", out)
+	}
+	if _, err := spec.Handler(context.Background(), &Deps{}, map[string]any{}); err == nil {
+		t.Error("missing input should error")
+	}
+}
+
+func TestOCSPDecodeTool(t *testing.T) {
+	spec, ok := Get("ocsp_decode")
+	if !ok {
+		t.Fatal("ocsp_decode not registered")
+	}
+	caKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	now := time.Now()
+	caTmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "OCSP CA"},
+		NotBefore: now.Add(-time.Hour), NotAfter: now.Add(24 * time.Hour),
+		IsCA: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign, BasicConstraintsValid: true,
+	}
+	caDER, _ := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+	caCert, _ := x509.ParseCertificate(caDER)
+	respDER, err := ocsp.CreateResponse(caCert, caCert, ocsp.Response{
+		Status: ocsp.Revoked, SerialNumber: big.NewInt(0x99), ThisUpdate: now, NextUpdate: now.Add(time.Hour),
+		RevokedAt: now.Add(-time.Hour), RevocationReason: ocsp.CessationOfOperation,
+	}, caKey)
+	if err != nil {
+		t.Fatalf("create OCSP: %v", err)
+	}
+
+	out, err := spec.Handler(context.Background(), &Deps{}, map[string]any{"input": base64.StdEncoding.EncodeToString(respDER)})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if !strings.Contains(out, `"status": "revoked"`) || !strings.Contains(out, "cessationOfOperation") {
+		t.Errorf("ocsp output missing expected fields:\n%s", out)
 	}
 	if _, err := spec.Handler(context.Background(), &Deps{}, map[string]any{}); err == nil {
 		t.Error("missing input should error")
