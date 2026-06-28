@@ -67,32 +67,89 @@ mitigation) within 14 days for critical issues, 30 days for others.
 
 ## Defensive postures (operator-facing safety rails)
 
-PromptZero ships two operator-facing toggles plus an always-on
-prompt-injection quarantine; they compose:
+PromptZero's safety model is defence-in-depth: a tool call passes through
+several independent gates, and untrusted data crossing any boundary into the
+model is sanitised or bounded. The rails compose; none relies on another.
 
-- **`--read-only` (or `read_only: true`)** — refuses any tool whose
-  `Spec.Risk` is above `risk.Low` at dispatch. No writes, no
-  transmits, no emulation, no payload generation. Introduced in
-  v0.19.0; layers with the per-mode group allow-list in `--mode`
-  (`standard` / `recon` / `intel` / `stealth` / `assault`):
-  dispatch consults `--read-only` first, then the per-mode gate.
-  As a defence-in-depth convenience, `--mode recon|intel|stealth`
-  also engages `--read-only` automatically.
-- **`--confirm-risk <level>`** — interactive confirmation prompt
-  before any tool at or above the given risk tier dispatches. Default
-  is `high`; pair with `--read-only` for belt-and-suspenders if you
-  also want confirms on Low-risk reads in sensitive sessions.
-- **Prompt-injection quarantine** (always on, no flag) — tool output
-  that originates from hardware or other untrusted sources (scanned
-  WiFi SSIDs, NFC/NDEF records, BLE device names, SD-card file
-  contents, and the results of composite workflows that read them) is
-  control-character sanitised and wrapped in `<untrusted-hardware-output>`
-  tags before it reaches the model, with a paired system-prompt clause
-  instructing the model to treat tagged content as data, not
-  instructions. This blunts prompt-injection carried in
-  attacker-controllable RF/NFC/file content an operator encounters
-  during a scan. It is an allow-list (default-wrap / fail-closed): a
-  new tool is quarantined unless explicitly marked structured-internal.
+### Risk gating
+
+- **Risk classification with a safe default.** Every tool carries a
+  `Spec.Risk` tier (`Low` / `Medium` / `High` / `Critical`); an
+  *unknown* tool classifies as `High`, so a misconfiguration fails
+  cautious rather than open. A regression test additionally guards that
+  any tool whose name denotes an active high-blast-radius operation
+  (transmit / emulate / deauth / jam / spam / flood / inject / replay /
+  bruteforce) is `High` or above — it can never be auto-approved or slip
+  past the gates below.
+- **`--read-only` (or `read_only: true`)** — refuses any tool above
+  `risk.Low` at dispatch. No writes, transmits, emulation, or payload
+  generation. Introduced in v0.19.0; layers with the per-mode group
+  allow-list in `--mode` (`standard` / `recon` / `intel` / `stealth` /
+  `assault`): dispatch consults `--read-only` first, then the per-mode
+  gate. `--mode recon|intel|stealth` engages `--read-only` automatically.
+- **`--confirm-risk <level>`** — interactive confirmation before any tool
+  at or above the given tier dispatches. Default `high`. The operator can
+  approve, deny, approve-all, or revise; **approve-all is scoped** — it
+  auto-approves same-or-lower-risk tools in the turn but re-prompts on an
+  escalation to a higher tier, and `Critical` always re-prompts.
+
+### Audit trail (accountability, fail-closed + tamper-evident)
+
+- **Fail-closed audit gate.** When no audit log is wired, every action at
+  `High` or above is *refused* (`RequireOpen`) — high-consequence
+  operations cannot run unrecorded. Low-risk reads still proceed.
+- **Tamper-evidence (v0.761).** Each audit row is hash-chained onto the
+  previous (`SHA-256(prev ‖ row)`), so a post-hoc edit, mid-chain
+  deletion, reorder, or forged insert made directly against the SQLite DB
+  breaks the chain. `audit_verify` reports the break and the offending
+  row. This is tamper-*evidence* against casual DB edits, not
+  cryptographic non-repudiation.
+- **Out-of-band anchor (v0.762).** `audit_verify` returns the chain head
+  hash + row count; recording them externally and passing them back later
+  also detects a full-chain rewrite or truncation of the newest rows —
+  the two attacks the in-DB chain alone cannot catch.
+
+### Prompt-injection quarantine (always on)
+
+Tool output from hardware or other untrusted sources (scanned SSIDs,
+NFC/NDEF records, BLE device names, SD-card file contents, and the results
+of composite workflows that read them) is control-character sanitised and
+wrapped in `<untrusted-hardware-output>` / `<untrusted-audit-content>` tags,
+with a paired system-prompt clause telling the model to treat tagged
+content as data, not instructions. A smuggled closing tag is neutralised so
+the boundary can't be escaped. It is an allow-list (default-wrap /
+fail-closed): a new tool is quarantined unless explicitly marked
+structured-internal. The quarantine is a **shared primitive**
+(`internal/quarantine`, v0.766) applied identically on the agent loop **and**
+the MCP server surface, so a tool invoked by an external MCP host is
+quarantined too.
+
+### MCP server and federation (untrusted-edge hardening)
+
+- **MCP consent gate.** Over MCP, tools at `High`/`Critical` are refused by
+  default; the operator opts in per-tier via environment variables, and
+  enabling `High` does **not** unlock `Critical`.
+- **Federated servers are untrusted.** PromptZero can federate external
+  MCP servers; their tool output is **size-bounded** before it reaches the
+  model/audit log (a malicious/buggy remote can't flood the context,
+  v0.767), and their self-declared annotations may **raise** a tool's risk
+  but never lower it below the operator's configured floor — a server
+  cannot mark a destructive tool "read-only" to bypass the gates (v0.768).
+
+### Transport and outbound robustness
+
+- **Bounded device reads.** Both the Flipper (serial/BLE) and the Marauder
+  read loops cap accumulation (8 MiB), so a flooded RF environment or a
+  malicious/malfunctioning board returns truncated output instead of
+  exhausting memory (v0.769).
+- **Webhook SSRF guard.** Event webhooks refuse private, loopback,
+  link-local (incl. the cloud-metadata `169.254.169.254`), and CGNAT
+  destinations unless explicitly allowed, and the webhook *response* is
+  discarded, never read back into the agent.
+- **Adversarial-input-hardened decoders.** The byte-ingesting decoders
+  bound their allocations against the input length and are fuzzed, so a
+  crafted artifact (captured frame, SD-card file, certificate, token)
+  cannot trigger an unbounded allocation or a panic.
 
 Defence-in-depth posture for blue-team / forensics / training:
 
