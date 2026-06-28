@@ -933,6 +933,9 @@ var toolLevels = func() map[string]Level {
 		// revocation counterparts to x509_certificate_decode. Read-only. v0.770.
 		"csr_decode",
 		"crl_decode",
+		// Offline OCSP response decoder (RFC 6960) — query-based revocation
+		// status, the per-certificate counterpart to crl_decode. Read-only. v0.771.
+		"ocsp_decode",
 		// Offline WebAuthn/FIDO2 authenticator-data decoder (flags,
 		// sign-count, AAGUID, credential ID + COSE key). Read-only,
 		// transmits nothing. v0.756.
