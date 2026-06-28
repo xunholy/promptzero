@@ -3,6 +3,7 @@ package marauder
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -13,6 +14,20 @@ import (
 
 	"github.com/xunholy/promptzero/internal/obs"
 )
+
+// defaultMaxAccumBytes bounds how much data a single Marauder read can buffer
+// before it is treated as a runaway. The Marauder reports attacker-influenced
+// data (SSIDs / BSSIDs / BLE names from the surrounding RF environment, which
+// an adversary can flood with thousands of forged beacons) over a link that
+// could also be a malfunctioning or malicious board, so an unbounded read
+// accumulator is a memory-DoS vector. 8 MiB matches the Flipper serial cap
+// (internal/flipper.defaultMaxAccumBytes) so both transports share one bound.
+const defaultMaxAccumBytes = 8 * 1024 * 1024 // 8 MiB
+
+// ErrResponseTruncated is returned (alongside the partial output) when a read
+// exceeds the accumulator cap before the prompt arrives. Mirrors
+// flipper.ErrResponseTruncated.
+var ErrResponseTruncated = errors.New("marauder response truncated: exceeded max accumulator size")
 
 // Port is the subset of go.bug.st/serial.Port the package actually uses.
 // Exported so sibling test packages (internal/testmocks) can inject a
@@ -46,6 +61,31 @@ type Marauder struct {
 	// tests set it small. On expiry Stream stops the device scan (stopscan)
 	// just like an explicit done, so the marauder is never left scanning.
 	streamBackpressure time.Duration
+	// maxAccumBytes caps the in-flight read buffer for readUntilPromptCtx and
+	// Stream. Zero means defaultMaxAccumBytes. See SetMaxAccumBytes.
+	maxAccumBytes int
+}
+
+// SetMaxAccumBytes overrides the per-read accumulator cap. Values <= 0 reset
+// to the default. Mirrors flipper.(*Flipper).SetMaxAccumBytes.
+func (m *Marauder) SetMaxAccumBytes(n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if n <= 0 {
+		m.maxAccumBytes = 0
+		return
+	}
+	m.maxAccumBytes = n
+}
+
+// accumCap returns the effective accumulator cap. Reads m.maxAccumBytes
+// without locking — callers (readUntilPromptCtx, the Stream goroutine) already
+// hold m.mu for the duration of a read.
+func (m *Marauder) accumCap() int {
+	if m.maxAccumBytes > 0 {
+		return m.maxAccumBytes
+	}
+	return defaultMaxAccumBytes
 }
 
 // NewWithPort wires a Marauder around a caller-supplied Port. Production
@@ -311,6 +351,17 @@ func (m *Marauder) Stream(command string) (<-chan string, chan<- struct{}, error
 			if suffix := strings.TrimSpace(string(accum)); suffix == ">" || suffix == "> " {
 				return
 			}
+
+			// Bound the incomplete-line buffer: accum normally holds only the
+			// current unterminated line (it is trimmed at every '\n' above), so
+			// exceeding the cap means a single line with no newline is flooding
+			// memory — a malfunctioning or hostile board. Stop the scan and end
+			// the stream cleanly rather than grow without limit.
+			if len(accum) > m.accumCap() {
+				obs.Default().Warn("marauder_stream_accum_overflow", "cmd", command, "bytes", len(accum))
+				_, _ = m.port.Write([]byte("stopscan\n"))
+				return
+			}
 		}
 	})
 
@@ -350,6 +401,12 @@ func (m *Marauder) readUntilPromptCtx(ctx context.Context, timeout time.Duration
 		accum = append(accum, buf[:n]...)
 		if idx := marauderPromptIndex(accum); idx >= 0 {
 			return parseMarauderResponse(accum[:idx]), nil
+		}
+		// Bound the accumulator: a runaway or hostile board that never sends
+		// the prompt must not grow this buffer without limit. Return the
+		// partial output with ErrResponseTruncated, matching the Flipper path.
+		if len(accum) > m.accumCap() {
+			return parseMarauderResponse(accum), ErrResponseTruncated
 		}
 	}
 }
