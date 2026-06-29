@@ -634,3 +634,69 @@ func TestScreen_MirrorActiveStaysConsistent_ConcurrentAcquire(t *testing.T) {
 		t.Errorf("post-state: mirrorActive=true with holder=nil — fast-path guard desynced from holder")
 	}
 }
+
+// gatedRPCProvider blocks inside EnterRPC until release of the `proceed`
+// channel, so a test can inject a holder-disconnect during the EnterRPC gap
+// (the TOCTOU window in handleScreenAcquire). It records whether the returned
+// release func was invoked.
+type gatedRPCProvider struct {
+	entered  chan struct{}
+	proceed  chan struct{}
+	mu       sync.Mutex
+	released bool
+}
+
+func (p *gatedRPCProvider) EnterRPC(_ context.Context) (screenClient, func(), error) {
+	close(p.entered)
+	<-p.proceed
+	cli := &fakeScreenClient{frames: make(chan flipperrpc.ScreenFrame)}
+	release := func() {
+		p.mu.Lock()
+		p.released = true
+		p.mu.Unlock()
+	}
+	return cli, release, nil
+}
+
+// TestScreen_AcquireReleasedDuringEnterRPC_HandsDeviceBack guards the
+// acquire/disconnect TOCTOU: if the holder is released while EnterRPC is in
+// flight, handleScreenAcquire must NOT store the (now-orphaned) release func —
+// it must call cancel()+release() to hand the Flipper back. Pre-fix, release
+// was never called, leaving the device wedged in RPC mode with a leaked stream
+// goroutine and mirrorActive desynced from the live RPC session.
+func TestScreen_AcquireReleasedDuringEnterRPC_HandsDeviceBack(t *testing.T) {
+	rpc := &gatedRPCProvider{entered: make(chan struct{}), proceed: make(chan struct{})}
+	s, _ := screenServer(t, rpc)
+
+	c := &sessionConn{id: "holder", out: make(chan []byte, 8), outBin: make(chan []byte, 8)}
+
+	done := make(chan struct{})
+	go func() { defer close(done); s.handleScreenAcquire(c) }()
+
+	<-rpc.entered // EnterRPC is now parked; holder==c, cancel/release still nil
+
+	// Simulate the holder's WS connection dropping mid-acquire (what the
+	// handleWebSocket defer does): releaseScreen sees a nil cancel/release and
+	// can only nil the holder.
+	s.releaseScreen("holder_disconnect")
+
+	close(rpc.proceed) // EnterRPC returns; acquire resumes past the gap
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handleScreenAcquire did not return")
+	}
+
+	rpc.mu.Lock()
+	released := rpc.released
+	rpc.mu.Unlock()
+	if !released {
+		t.Fatal("release() was never called — Flipper left wedged in RPC mode (orphaned acquire)")
+	}
+	s.screenMu.Lock()
+	defer s.screenMu.Unlock()
+	if s.screenHolder != nil || s.screenRelease != nil || s.screenActiveRPC != nil {
+		t.Errorf("orphaned screen state after handed-back acquire: holder=%v release=%v rpc=%v",
+			s.screenHolder, s.screenRelease != nil, s.screenActiveRPC != nil)
+	}
+}
