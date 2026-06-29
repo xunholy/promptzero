@@ -313,26 +313,11 @@ func generateDeployRun(ctx context.Context, d *Deps, payloadType, description, p
 }
 
 // genRunPayloadRisk returns the underlying tool name and effective risk level
-// for a given deployed payload path. Mirrors resolveRunPayloadRisk in
-// internal/agent/agent.go — kept local to avoid a circular import between
-// internal/tools and internal/agent.
+// for a given deployed payload path. Delegates to risk.ResolveRunPayloadRisk,
+// the single source of truth shared with the agent loop, RunTool, and the MCP
+// consent gate so the surfaces cannot drift.
 func genRunPayloadRisk(path string) (underlyingTool string, level risk.Level) {
-	switch {
-	case strings.Contains(path, "evil_portal"):
-		return "MarauderEvilPortalStart", risk.Critical
-	case strings.HasSuffix(path, ".txt") && strings.Contains(path, "badusb"):
-		return "BadUSBRun", risk.Critical
-	case strings.HasSuffix(path, ".sub"):
-		return "SubGHzTx", risk.Critical
-	case strings.HasSuffix(path, ".nfc"):
-		return "NFCEmulate", risk.High
-	case strings.HasSuffix(path, ".ir"):
-		return "IRUniversal", risk.Low
-	case strings.HasSuffix(path, ".rfid"):
-		return "RFIDEmulate", risk.High
-	default:
-		return "unknown", risk.High
-	}
+	return risk.ResolveRunPayloadRisk(path)
 }
 
 // genDefaultPath mirrors the generator package's default-path selection.

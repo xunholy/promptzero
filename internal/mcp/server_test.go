@@ -532,3 +532,38 @@ func TestServer_CallTool_QuarantinesHardwareOutput(t *testing.T) {
 		t.Errorf("structured-internal list_devices should not be wrapped: %q", text)
 	}
 }
+
+// TestServer_CallTool_RunPayloadCriticalNotUnlockedByAllowHigh guards the MCP
+// consent surface against the run_payload risk-downgrade: run_payload classifies
+// statically as High, but a .sub/badusb/evil-portal path dispatches to a
+// Critical op. With ALLOW_HIGH=1 but ALLOW_CRITICAL unset, such a call MUST be
+// refused — otherwise ALLOW_HIGH would unlock a Critical operation, breaking the
+// gate's core invariant.
+func TestServer_CallTool_RunPayloadCriticalNotUnlockedByAllowHigh(t *testing.T) {
+	t.Setenv("PROMPTZERO_MCP_ALLOW_HIGH", "1")
+	t.Setenv("PROMPTZERO_MCP_ALLOW_CRITICAL", "")
+
+	c, _ := newTestHarness(t, false, testmocks.WithFlipperHandler("subghz", func(args []string) string {
+		return "tx complete" // would succeed if the gate wrongly allowed it
+	}))
+	defer c.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var req mcplib.CallToolRequest
+	req.Params.Name = "run_payload"
+	req.Params.Arguments = map[string]any{"path": "/ext/subghz/x.sub"}
+
+	res, err := c.CallTool(ctx, req)
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("run_payload(.sub) must be refused with ALLOW_HIGH but not ALLOW_CRITICAL (Critical slipped through the High gate)")
+	}
+	text := firstText(t, res)
+	if !strings.Contains(text, "PROMPTZERO_MCP_ALLOW_CRITICAL") {
+		t.Errorf("denial should be the Critical-tier message, got %q", text)
+	}
+}

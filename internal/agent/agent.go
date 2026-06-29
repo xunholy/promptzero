@@ -1079,7 +1079,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 					Path string `json:"path"`
 				}
 				if err := json.Unmarshal(tc.Input, &rp); err == nil {
-					_, resolved := resolveRunPayloadRisk(rp.Path)
+					_, resolved := risk.ResolveRunPayloadRisk(rp.Path)
 					if resolved > toolRisk {
 						toolRisk = resolved
 					}
@@ -1488,6 +1488,18 @@ func (a *Agent) RunTool(ctx context.Context, tool string, params map[string]inte
 			toolRisk = resolved
 		}
 	}
+	// run_payload's effective risk depends on the target path (a .sub / badusb
+	// / evil-portal payload dispatches to a Critical op). The Run loop already
+	// escalates here; RunTool must too, or a Critical payload invoked via the
+	// rules engine, the campaign executor, or a direct RunTool call would skip
+	// the Critical confirm gate. Resolve from the path and take the maximum.
+	if tool == "run_payload" {
+		if path, ok := params["path"].(string); ok {
+			if _, resolved := risk.ResolveRunPayloadRisk(path); resolved > toolRisk {
+				toolRisk = resolved
+			}
+		}
+	}
 
 	// Audit gate (fail-closed for High/Critical without audit log).
 	if err := audit.RequireOpen(a.auditLog, toolRisk); err != nil {
@@ -1892,29 +1904,6 @@ func isMissingFileErr(err error) bool {
 	return strings.Contains(msg, "does not exist") ||
 		strings.Contains(msg, "no such file") ||
 		strings.Contains(msg, "not found")
-}
-
-// resolveRunPayloadRisk inspects the path argument of a run_payload call and
-// returns the name of the underlying operation it will dispatch to along with
-// the effective risk level. This mirrors the dispatch logic in runPayload so
-// the confirm gate can gate on the real risk before executing anything.
-func resolveRunPayloadRisk(path string) (underlyingTool string, level risk.Level) {
-	switch {
-	case strings.Contains(path, "evil_portal"):
-		return "MarauderEvilPortalStart", risk.Critical
-	case strings.HasSuffix(path, ".txt") && strings.Contains(path, "badusb"):
-		return "BadUSBRun", risk.Critical
-	case strings.HasSuffix(path, ".sub"):
-		return "SubGHzTx", risk.Critical
-	case strings.HasSuffix(path, ".nfc"):
-		return "NFCEmulate", risk.High
-	case strings.HasSuffix(path, ".ir"):
-		return "IRUniversal", risk.Low
-	case strings.HasSuffix(path, ".rfid"):
-		return "RFIDEmulate", risk.High
-	default:
-		return "unknown", risk.High
-	}
 }
 
 // SetRAGIndex installs a custom RAG index. Nil restores the default
