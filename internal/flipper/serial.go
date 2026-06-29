@@ -369,6 +369,19 @@ func (f *Flipper) Reconnect(ctx context.Context) error {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// BLE cannot reconnect through this path. The firmware exposes only RPC
+	// over BLE Serial (no text CLI — rpcMode is permanently latched), so
+	// reconnectIfNeededLocked's CLI handshake can never complete. Worse, it
+	// would first tear down the WORKING BLE link via transport.Reconnect and
+	// then bounce it on every failed handshake retry until the deadline,
+	// leaving the connection broken and bleClient state out of sync — i.e.
+	// /reconnect would actively destroy a healthy BLE session. Refuse with a
+	// clear, actionable error instead. (A BLE-aware recovery that re-opens the
+	// peripheral + RPC client while skipping the handshake/identity check is a
+	// separate follow-up.)
+	if f.IsBLE() {
+		return usbOnlyError("reconnect")
+	}
 	f.disconnected.Store(true)
 	return f.reconnectIfNeededLocked(ctx)
 }
