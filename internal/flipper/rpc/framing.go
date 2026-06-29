@@ -61,17 +61,43 @@ func readFramed(r io.Reader) (*pb.Main, error) {
 }
 
 // readVarint reads a protowire varint one byte at a time from r.
+//
+// The transports return (0, nil) from Read on an idle read-timeout — their
+// documented poll signal, not EOF. buf is a fixed one-byte scratch that is NOT
+// refilled on such a read, so the byte count must be honoured: a naive
+// `r.Read(buf[:])` that ignores n would re-consume the stale previous byte.
+// Before the first varint byte that is harmless (it yields length 0, i.e. an
+// empty frame, which is how callers poll and re-check ctx between frames), but
+// mid-varint it silently corrupts the length and desyncs the stream for the
+// rest of the session. So:
+//   - n == 0 before any byte (s == 0): return length 0 so readFramed yields an
+//     empty frame and the caller loop re-checks ctx — the established
+//     no-data-yet path.
+//   - n == 0 mid-varint (s > 0): keep polling. The rest of the prefix is in
+//     flight (writeFramed emits the prefix and body contiguously); waiting for
+//     the real byte is correct, re-consuming the stale one is not.
 func readVarint(r io.Reader) (uint64, error) {
 	var (
 		x   uint64
 		buf [1]byte
 	)
 	for s := uint(0); s < 64; s += 7 {
-		_, err := r.Read(buf[:])
-		if err != nil {
-			return 0, err
+		var b byte
+		for {
+			n, err := r.Read(buf[:])
+			if err != nil {
+				return 0, err
+			}
+			if n > 0 {
+				b = buf[0]
+				break
+			}
+			// n == 0, err == nil — idle read-timeout poll; buf unchanged.
+			if s == 0 {
+				return 0, nil // no frame available yet
+			}
+			// Mid-varint: poll for the remaining in-flight byte.
 		}
-		b := buf[0]
 		x |= uint64(b&0x7f) << s
 		if b < 0x80 {
 			return x, nil
