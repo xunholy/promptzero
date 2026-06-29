@@ -49,16 +49,23 @@ func init() {
 		AgentOnly: false,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			path := str(p, "file")
-			if rep, err := runBadUSBValidator(d, path); err == nil {
-				if rep.Severity == validator.SeverityCritical {
-					if d.Config == nil || !d.Config.Validator.BadUSB.AllowCritical {
-						return "", fmt.Errorf("badusb_run blocked by sandbox validator:\n%s\nSet validator.badusb.allow_critical=true to override, or call badusb_validate to triage", rep.RenderText())
-					}
+			// Fail closed: the pre-flight validator is a security control, so
+			// if it cannot run (e.g. the script can't be read off the SD card)
+			// we refuse rather than execute an unvalidated payload. An operator
+			// who deliberately opts out via validator.badusb.enabled=false gets
+			// no error from runBadUSBValidator and still proceeds.
+			rep, err := runBadUSBValidator(d, path)
+			if err != nil {
+				return "", fmt.Errorf("badusb_run blocked: pre-flight validator could not run: %w", err)
+			}
+			if rep.Severity == validator.SeverityCritical {
+				if d.Config == nil || !d.Config.Validator.BadUSB.AllowCritical {
+					return "", fmt.Errorf("badusb_run blocked by sandbox validator:\n%s\nSet validator.badusb.allow_critical=true to override, or call badusb_validate to triage", rep.RenderText())
 				}
-				if rep.Severity == validator.SeverityWarn {
-					if d.Config != nil && d.Config.Validator.BadUSB.WarnAction == "block" {
-						return "", fmt.Errorf("badusb_run blocked (warn-action=block):\n%s", rep.RenderText())
-					}
+			}
+			if rep.Severity == validator.SeverityWarn {
+				if d.Config != nil && d.Config.Validator.BadUSB.WarnAction == "block" {
+					return "", fmt.Errorf("badusb_run blocked (warn-action=block):\n%s", rep.RenderText())
 				}
 			}
 			return d.Flipper.BadUSBRun(path)
@@ -102,16 +109,21 @@ func init() {
 		AgentOnly: false,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			path := str(p, "file")
-			if rep, err := runBadUSBValidator(d, path); err == nil {
-				if rep.Severity == validator.SeverityCritical {
-					if d.Config == nil || !d.Config.Validator.BadUSB.AllowCritical {
-						return "", fmt.Errorf("badkb_run blocked by sandbox validator:\n%s\nSet validator.badusb.allow_critical=true to override, or call badusb_validate to triage", rep.RenderText())
-					}
+			// Fail closed on validator error — same security rationale as
+			// badusb_run above; the payload risk is identical, only the
+			// transport (BLE HID) differs.
+			rep, err := runBadUSBValidator(d, path)
+			if err != nil {
+				return "", fmt.Errorf("badkb_run blocked: pre-flight validator could not run: %w", err)
+			}
+			if rep.Severity == validator.SeverityCritical {
+				if d.Config == nil || !d.Config.Validator.BadUSB.AllowCritical {
+					return "", fmt.Errorf("badkb_run blocked by sandbox validator:\n%s\nSet validator.badusb.allow_critical=true to override, or call badusb_validate to triage", rep.RenderText())
 				}
-				if rep.Severity == validator.SeverityWarn {
-					if d.Config != nil && d.Config.Validator.BadUSB.WarnAction == "block" {
-						return "", fmt.Errorf("badkb_run blocked (warn-action=block):\n%s", rep.RenderText())
-					}
+			}
+			if rep.Severity == validator.SeverityWarn {
+				if d.Config != nil && d.Config.Validator.BadUSB.WarnAction == "block" {
+					return "", fmt.Errorf("badkb_run blocked (warn-action=block):\n%s", rep.RenderText())
 				}
 			}
 			// Open the BadBT app via the loader, passing the script

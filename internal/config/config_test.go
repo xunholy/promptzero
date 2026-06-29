@@ -287,3 +287,38 @@ func TestRequireAPIKey(t *testing.T) {
 		t.Errorf("RequireAPIKey should pass with key set: %v", err)
 	}
 }
+
+// TestLoad_WarnActionNormalization pins the BadUSB warn_action enum handling:
+// unset -> "warn" (documented default), recognized values pass through
+// case-insensitively, and any unrecognized value fails CLOSED to "block" so a
+// typo can't silently run a warn-severity payload.
+func TestLoad_WarnActionNormalization(t *testing.T) {
+	cases := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{"unset defaults to warn", "model: x\n", "warn"},
+		{"explicit warn", "validator:\n  badusb:\n    warn_action: warn\n", "warn"},
+		{"explicit block", "validator:\n  badusb:\n    warn_action: block\n", "block"},
+		{"uppercase block normalizes", "validator:\n  badusb:\n    warn_action: BLOCK\n", "block"},
+		{"mixed case block normalizes", "validator:\n  badusb:\n    warn_action: Block\n", "block"},
+		{"unknown value fails closed to block", "validator:\n  badusb:\n    warn_action: deny\n", "block"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yaml")
+			if err := os.WriteFile(path, []byte(tc.yaml), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := cfg.Validator.BadUSB.WarnAction; got != tc.want {
+				t.Errorf("warn_action = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -475,6 +476,23 @@ func Load(path string) (*Config, error) {
 		if port, perr := strconv.Atoi(p); perr == nil && port > 0 && port <= 65535 {
 			cfg.Web.Port = port
 		}
+	}
+
+	// Normalize + validate the BadUSB warn-action enum. The handler compares
+	// against "block" exactly, so a typo (e.g. "Block", "BLOCK", "deny") would
+	// otherwise silently behave as the permissive default and run a
+	// warn-severity payload. Empty means unset -> the documented "warn"
+	// default; any other unrecognized value is a misconfiguration of a safety
+	// setting, so fail closed to "block" with a loud notice (mirrors the
+	// unknown-confirm-risk -> High precedent).
+	switch wa := strings.ToLower(strings.TrimSpace(cfg.Validator.BadUSB.WarnAction)); wa {
+	case "":
+		cfg.Validator.BadUSB.WarnAction = "warn"
+	case "warn", "block":
+		cfg.Validator.BadUSB.WarnAction = wa
+	default:
+		fmt.Fprintf(os.Stderr, "\x1b[33m●\x1b[0m config: unknown validator.badusb.warn_action %q; using \"block\" (valid: warn, block)\n", cfg.Validator.BadUSB.WarnAction)
+		cfg.Validator.BadUSB.WarnAction = "block"
 	}
 
 	return cfg, nil
