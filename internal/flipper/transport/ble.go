@@ -176,6 +176,15 @@ const bleScanTimeout = 30 * time.Second
 // step 6 of the original phase-B checklist at the top of this file.
 const bleDrainTimeout = 250 * time.Millisecond
 
+// bleCreditStallTimeout bounds how long a Write chunk waits for the firmware
+// to advertise enough flow-control credit before giving up. A healthy board
+// refreshes credit at its BT scheduling tick (sub-second), so a stall this
+// long means the peer is wedged or has silently dropped the link; without a
+// bound, consumeCredit's creditCond.Wait would block Write forever (only a
+// Close could unblock it), ignoring the caller's intent. Conservative enough
+// never to false-positive on a busy-but-live board.
+const bleCreditStallTimeout = 15 * time.Second
+
 // bleDefaultMTU is the BLE spec's minimum ATT MTU (23 bytes total, of
 // which 3 are ATT overhead so the usable payload per characteristic
 // write is 20 bytes). Used as the Write chunk size before MTU
@@ -386,6 +395,11 @@ type bleTransport struct {
 	// increased (a fresh flow-control notification arrived) or that
 	// the transport is closing.
 	creditCond *sync.Cond
+
+	// creditStallTimeout overrides bleCreditStallTimeout for the credit
+	// wait in consumeCredit. Zero means use the package default; tests set
+	// a small value to exercise the stall path without a 15s wait.
+	creditStallTimeout time.Duration
 }
 
 // Dial enables the adapter and runs the scan → connect → discover →
@@ -1118,6 +1132,11 @@ func (t *bleTransport) Write(p []byte) (int, error) {
 func (t *bleTransport) consumeCredit(n uint32) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	stall := t.creditStallTimeout
+	if stall <= 0 {
+		stall = bleCreditStallTimeout
+	}
+	deadline := time.Now().Add(stall)
 	for {
 		if t.closed {
 			return os.ErrClosed
@@ -1126,11 +1145,17 @@ func (t *bleTransport) consumeCredit(n uint32) error {
 			t.credit -= n
 			return nil
 		}
-		// Credit insufficient — wait for the next FlowCtrl notification
-		// (or Close). No deadline here; the firmware refreshes credit
-		// every time it drains its inbound fifo, which happens at the
-		// scheduling tick of the BT service.
-		t.creditCond.Wait()
+		// Credit insufficient — wait for the next FlowCtrl notification or
+		// Close. The firmware normally refreshes credit at its BT scheduling
+		// tick (sub-second), so we wake on creditCond; but a wedged or
+		// silently-dropped peer would never signal, so the wait is bounded by
+		// a deadline. Exceeding it returns an error instead of blocking Write
+		// forever.
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("ble: flow-control credit stalled (%d of %d bytes available after %s) — peer wedged or disconnected", t.credit, n, stall)
+		}
+		waitCondTimeout(t.creditCond, remaining)
 	}
 }
 

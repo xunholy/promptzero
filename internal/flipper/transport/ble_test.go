@@ -395,3 +395,91 @@ func TestParseBLEAddressClassification(t *testing.T) {
 // interface the rest of the package consumes. Keeps newBLEForTest
 // honest if the interface grows a new method.
 var _ io.ReadWriteCloser = (*bleTransport)(nil)
+
+// TestConsumeCredit_StallTimesOut guards the flow-control write path against an
+// unbounded hang: when the firmware stops advertising credit (wedged / dropped
+// peer), consumeCredit must return an error within the stall timeout rather
+// than block Write forever.
+func TestConsumeCredit_StallTimesOut(t *testing.T) {
+	tx := newBLEForTest(t)
+	tx.creditStallTimeout = 50 * time.Millisecond
+	tx.credit = 0 // never enough; no FlowCtrl notification will arrive
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() { done <- tx.consumeCredit(16) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected a stall error, got nil (Write would have hung)")
+		}
+		if !strings.Contains(err.Error(), "stalled") {
+			t.Errorf("error = %v, want a 'stalled' message", err)
+		}
+		if elapsed := time.Since(start); elapsed > time.Second {
+			t.Errorf("stall took %v, want ~50ms (deadline not honored)", elapsed)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("consumeCredit did not return — the wait is still unbounded")
+	}
+}
+
+// TestConsumeCredit_CloseWakesWaiter confirms a Close while parked returns
+// ErrClosed promptly (not after the stall timeout).
+func TestConsumeCredit_CloseWakesWaiter(t *testing.T) {
+	tx := newBLEForTest(t)
+	tx.creditStallTimeout = 10 * time.Second // long, so the timeout isn't what wakes us
+	tx.credit = 0
+
+	done := make(chan error, 1)
+	go func() { done <- tx.consumeCredit(16) }()
+
+	// Let the goroutine park, then flip closed + signal as Close does.
+	time.Sleep(20 * time.Millisecond)
+	tx.mu.Lock()
+	tx.closed = true
+	tx.creditCond.Broadcast()
+	tx.mu.Unlock()
+
+	select {
+	case err := <-done:
+		if err != os.ErrClosed {
+			t.Errorf("err = %v, want os.ErrClosed", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not wake the credit waiter")
+	}
+}
+
+// TestConsumeCredit_CreditArrivesSucceeds confirms the normal path: a fresh
+// FlowCtrl notification that raises credit lets the waiter proceed and deduct.
+func TestConsumeCredit_CreditArrivesSucceeds(t *testing.T) {
+	tx := newBLEForTest(t)
+	tx.creditStallTimeout = 10 * time.Second
+	tx.credit = 0
+
+	done := make(chan error, 1)
+	go func() { done <- tx.consumeCredit(16) }()
+
+	time.Sleep(20 * time.Millisecond)
+	tx.mu.Lock()
+	tx.credit = 64 // firmware advertised a fresh window
+	tx.creditCond.Broadcast()
+	tx.mu.Unlock()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("expected success once credit arrived, got %v", err)
+		}
+		tx.mu.Lock()
+		remaining := tx.credit
+		tx.mu.Unlock()
+		if remaining != 48 { // 64 - 16
+			t.Errorf("credit after consume = %d, want 48", remaining)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("consumeCredit did not proceed after credit arrived")
+	}
+}
