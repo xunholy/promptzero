@@ -97,6 +97,20 @@ func (s *Server) handleScreenAcquire(c *sessionConn) {
 	}
 
 	s.screenMu.Lock()
+	if s.screenHolder != c {
+		// The holder was released while EnterRPC was in flight — e.g. this
+		// WS connection dropped and the disconnect path called
+		// releaseScreen, which saw a still-nil screenCancel/screenRelease
+		// and so could not tear down the RPC session it didn't yet know
+		// about. Hand the device back here instead of storing an orphaned
+		// release func, which would leave the Flipper wedged in RPC mode,
+		// leak the stream goroutine, and desync mirrorActive (now false)
+		// from the live RPC session.
+		s.screenMu.Unlock()
+		cancel()
+		release()
+		return
+	}
 	s.screenCancel = cancel
 	s.screenRelease = release
 	s.screenActiveRPC = rpcClient
