@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -408,4 +409,45 @@ func TestDispatcher_FireConcurrentWithClose(t *testing.T) {
 	// any panic would have already failed the test under -race.
 	close(stop)
 	producers.Wait()
+}
+
+// TestDispatcher_RefusesRedirectToInternal guards the SSRF redirect gap: the
+// configured webhook URL is vetted at load, but a (compromised / open-redirect)
+// receiver could 302 the credential-bearing envelope to an internal target.
+// The dispatcher's CheckRedirect must refuse such a hop — and because
+// CheckRedirect fires before the redirected request is sent, the internal host
+// is never contacted.
+func TestDispatcher_RefusesRedirectToInternal(t *testing.T) {
+	var internalHit atomic.Bool
+	// A would-be internal target; if the guard fails, this gets hit.
+	internal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		internalHit.Store(true)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer internal.Close()
+
+	// The configured (legit, public-in-prod) receiver that redirects onward.
+	// httptest serves on loopback, which isInternalHost flags — exactly the
+	// target class we must refuse on the redirect hop.
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, internal.URL+"/latest/meta-data/", http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	d := New([]Subscription{{Name: "primary", URL: redirector.URL, Events: []Event{EventSessionStarted}}}).(*dispatcher)
+	defer func() { _ = d.Close(context.Background()) }()
+
+	d.Fire(EventSessionStarted, map[string]any{"secret": "creds"})
+	waitFor(t, 2*time.Second, func() bool { return len(d.RecentResults("primary")) >= 1 })
+
+	got := d.RecentResults("primary")
+	if got[0].Err == nil {
+		t.Fatalf("expected redirect-to-internal to be refused, got success: %+v", got[0])
+	}
+	if !strings.Contains(got[0].Err.Error(), "internal") {
+		t.Errorf("error = %v, want an internal-target refusal", got[0].Err)
+	}
+	if internalHit.Load() {
+		t.Fatal("internal target was contacted — CheckRedirect did not run before the redirected request")
+	}
 }

@@ -279,8 +279,32 @@ var getenv = os.Getenv
 // dispatcher so callers don't branch on nil.
 func New(subs []Subscription) Dispatcher {
 	d := &dispatcher{
-		subs:    subs,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		subs: subs,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+			// Re-apply the SSRF guard on every redirect hop. ValidateSubscription
+			// only vets the configured URL; without this, a configured receiver
+			// (compromised, or an open-redirect endpoint) could 30x the
+			// credential-bearing envelope to an internal/loopback/metadata target
+			// like 169.254.169.254. CheckRedirect fires BEFORE the redirected
+			// request is sent, so a rejected hop never reaches the internal host.
+			// Mirrors signal_import's allowlist re-check; honours the same
+			// internalAllowed() opt-out as config-time validation. We supply our
+			// own redirect cap because setting CheckRedirect replaces net/http's
+			// default 10-hop limit.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("stopped after 10 redirects")
+				}
+				if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+					return fmt.Errorf("webhook redirect to non-http(s) scheme %q refused", req.URL.Scheme)
+				}
+				if isInternalHost(req.URL.Hostname()) && !internalAllowed() {
+					return fmt.Errorf("webhook redirect to internal/loopback target %q refused", req.URL.Hostname())
+				}
+				return nil
+			},
+		},
 		queue:   make(chan job, queueCapacity),
 		closed:  make(chan struct{}),
 		results: map[string][]SendResult{},
