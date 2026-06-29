@@ -238,11 +238,20 @@ func Open(dbPath string) (*Log, error) {
 		lockFile:  lockFile,
 	}
 
-	// Seed the in-memory chain head from the last row so a reopened log
-	// continues the existing chain. A NULL/empty hash (fresh or legacy
-	// tail) leaves headHash empty, which the next insert treats as genesis.
+	// Seed the in-memory chain head from the most recent HASHED row so a
+	// reopened log continues the existing chain. We must skip trailing rows
+	// that carry no hash (rows written by a pre-chain binary, i.e. a version
+	// downgrade, or a directly-inserted legacy row): seeding from such a tail
+	// would reset headHash to empty and chain the next insert from genesis
+	// even though earlier hashed rows exist — which VerifyChain (it skips
+	// hashless rows and keeps the running prevHash) would then report as a
+	// false break on an untampered log. When there is no hashed row at all
+	// (fresh or all-legacy log) the query returns nothing and headHash stays
+	// empty, correctly starting a new chain.
 	var head sql.NullString
-	if qerr := db.QueryRow(`SELECT entry_hash FROM audit_log ORDER BY id DESC LIMIT 1`).Scan(&head); qerr == nil && head.Valid {
+	if qerr := db.QueryRow(`SELECT entry_hash FROM audit_log
+		WHERE entry_hash IS NOT NULL AND entry_hash <> ''
+		ORDER BY id DESC LIMIT 1`).Scan(&head); qerr == nil && head.Valid {
 		l.headHash = head.String
 	}
 

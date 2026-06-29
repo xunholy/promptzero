@@ -116,6 +116,56 @@ func TestVerifyChain_LegacyPrefixCountedSuffixVerified(t *testing.T) {
 	}
 }
 
+// TestVerifyChain_LegacyTailDoesNotFalsePositive guards the head re-seed
+// against a hashless row sitting at the TAIL (e.g. written by a pre-chain
+// binary after a version downgrade, or inserted directly). Open must re-seed
+// the chain head from the last HASHED row, not the literal last row — else the
+// next insert chains from genesis while earlier hashed rows exist, and
+// VerifyChain (which skips hashless rows but keeps the running prevHash) reports
+// a false break on an untampered log.
+func TestVerifyChain_LegacyTailDoesNotFalsePositive(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/audit.db"
+
+	l1, err := Open(path)
+	if err != nil {
+		t.Fatalf("open1: %v", err)
+	}
+	l1.Record("nfc", map[string]int{"i": 0}, "ok", "low", LevelAction, 0, true)
+	l1.Record("nfc", map[string]int{"i": 1}, "ok", "low", LevelAction, 0, true)
+	wantHead := l1.headHash
+	// A hashless row appended AFTER the hashed rows (legacy tail).
+	if _, err := l1.db.Exec(`INSERT INTO audit_log
+		(timestamp, tool, input, output, risk, level, session_id, duration_ms, success)
+		VALUES ('2020-01-01T00:00:00Z','legacy','{}','x','low','action','old',0,1)`); err != nil {
+		t.Fatalf("legacy tail insert: %v", err)
+	}
+	l1.Close()
+
+	l2, err := Open(path)
+	if err != nil {
+		t.Fatalf("open2: %v", err)
+	}
+	defer l2.Close()
+	// Head must be re-seeded from the last hashed row, NOT reset to empty by
+	// the hashless tail.
+	if l2.headHash != wantHead {
+		t.Errorf("reopened headHash = %q, want %q (hashless tail reset the head)", l2.headHash, wantHead)
+	}
+	l2.Record("nfc", map[string]int{"i": 2}, "ok", "low", LevelAction, 0, true)
+
+	res, err := l2.VerifyChain()
+	if err != nil {
+		t.Fatalf("VerifyChain: %v", err)
+	}
+	if !res.Valid {
+		t.Errorf("untampered log with a legacy tail must verify, got break at id %d: %+v", res.FirstBrokenID, res)
+	}
+	if res.HashedRows != 3 || res.LegacyRows != 1 {
+		t.Errorf("HashedRows=%d LegacyRows=%d, want 3 and 1", res.HashedRows, res.LegacyRows)
+	}
+}
+
 // TestVerifyChain_ContinuesAcrossReopen confirms Open re-seeds the chain head
 // so a reopened log extends rather than forks the existing chain.
 func TestVerifyChain_ContinuesAcrossReopen(t *testing.T) {
