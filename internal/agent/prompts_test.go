@@ -118,3 +118,19 @@ func TestSystemPromptHash_StableForSameInputs(t *testing.T) {
 		t.Errorf("hash unstable: %s vs %s", a, b)
 	}
 }
+
+// TestBuildSystemPrompt_TrustClauseCoversGroundingBlocks pins that the trust
+// clause names the <device-state> and <ui-context> grounding blocks as
+// data-only. buildDeviceStateBlock embeds device-controllable strings (the
+// dolphin name, firmware fork/version) into a user turn; JSON escaping prevents
+// tag breakout, but the model must also be told to treat those values as
+// context, not instructions — and buildDeviceStateBlock's docstring claims this
+// clause exists. Guards that the claim stays true.
+func TestBuildSystemPrompt_TrustClauseCoversGroundingBlocks(t *testing.T) {
+	got := BuildSystemPrompt(nil, false, false)
+	for _, want := range []string{"<device-state>", "<ui-context", "never as instructions"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("trust clause does not cover grounding blocks — missing %q:\n%s", want, got)
+		}
+	}
+}
