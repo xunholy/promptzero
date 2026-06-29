@@ -18,7 +18,7 @@ import (
 // Critical, ensuring run_payload for Sub-GHz transmission is gated at the
 // Critical level even though the nominal run_payload classification is High.
 func TestResolveRunPayloadRisk_SubGHz(t *testing.T) {
-	_, level := resolveRunPayloadRisk("garage_door.sub")
+	_, level := risk.ResolveRunPayloadRisk("garage_door.sub")
 	if level != risk.Critical {
 		t.Errorf("expected Critical for .sub path, got %v", level)
 	}
@@ -28,7 +28,7 @@ func TestResolveRunPayloadRisk_SubGHz(t *testing.T) {
 // to Critical, since it dispatches to BadUSBRun which executes arbitrary
 // keystrokes on the target.
 func TestResolveRunPayloadRisk_BadUSB(t *testing.T) {
-	_, level := resolveRunPayloadRisk("bar_badusb.txt")
+	_, level := risk.ResolveRunPayloadRisk("bar_badusb.txt")
 	if level != risk.Critical {
 		t.Errorf("expected Critical for badusb .txt path, got %v", level)
 	}
@@ -38,7 +38,7 @@ func TestResolveRunPayloadRisk_BadUSB(t *testing.T) {
 // that max(High, Low) = High — so run_payload for IR stays at the nominal
 // run_payload risk level (High) rather than being bumped up or down.
 func TestResolveRunPayloadRisk_IR(t *testing.T) {
-	_, level := resolveRunPayloadRisk("blah.ir")
+	_, level := risk.ResolveRunPayloadRisk("blah.ir")
 	if level != risk.Low {
 		t.Errorf("expected Low for .ir path, got %v", level)
 	}
@@ -55,7 +55,7 @@ func TestResolveRunPayloadRisk_IR(t *testing.T) {
 
 // TestResolveRunPayloadRisk_EvilPortal verifies evil_portal paths resolve to Critical.
 func TestResolveRunPayloadRisk_EvilPortal(t *testing.T) {
-	_, level := resolveRunPayloadRisk("/ext/apps_data/evil_portal/index.html")
+	_, level := risk.ResolveRunPayloadRisk("/ext/apps_data/evil_portal/index.html")
 	if level != risk.Critical {
 		t.Errorf("expected Critical for evil_portal path, got %v", level)
 	}
@@ -198,5 +198,42 @@ func TestApproveAllDoesNotBypassCritical_TwoTools(t *testing.T) {
 	}
 	if len(seen) != 2 || seen[0] != "subghz_transmit" || seen[1] != "wifi_deauth" {
 		t.Errorf("unexpected prompt sequence: %v", seen)
+	}
+}
+
+// TestRunTool_RunPayloadCriticalGate guards the RunTool surface against the
+// run_payload risk-downgrade: with --confirm-risk critical, a run_payload whose
+// path dispatches to a Critical op (.sub transmit) must still hit the confirm
+// gate at Critical. Before the fix, RunTool gated on the static High
+// classification and a Critical payload slipped past (reachable from the rules
+// engine, the campaign executor, and direct RunTool callers).
+func TestRunTool_RunPayloadCriticalGate(t *testing.T) {
+	cfg := &config.Config{Model: "claude-mock"}
+	a := New(testmocks.NewMockAnthropic(t, []testmocks.AnthropicScript{}), nil, cfg)
+	a.SetConfirmThreshold(risk.Critical) // only Critical-tier calls gate
+	auditLog, err := audit.Open(t.TempDir() + "/audit.db")
+	if err != nil {
+		t.Fatalf("audit.Open: %v", err)
+	}
+	defer auditLog.Close()
+	a.SetAuditLog(auditLog)
+
+	var seenRisk risk.Level
+	var calls int
+	a.SetConfirmCallback(func(_ context.Context, req ConfirmRequest) ConfirmResponse {
+		calls++
+		seenRisk = req.Risk
+		return ConfirmResponse{Decision: DecisionDeny} // deny -> never dispatches
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, _ = a.RunTool(ctx, "run_payload", map[string]interface{}{"path": "/ext/subghz/x.sub"})
+
+	if calls != 1 {
+		t.Fatalf("confirm gate must fire once for run_payload(.sub) at confirm-risk=critical, got %d (risk downgrade on RunTool)", calls)
+	}
+	if seenRisk != risk.Critical {
+		t.Errorf("confirm request risk = %v, want Critical (escalated from the .sub path)", seenRisk)
 	}
 }

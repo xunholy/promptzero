@@ -276,7 +276,22 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 			), nil
 		}
 
-		levelStr := capturedLevel.String()
+		// run_payload's static classification (High) understates a payload
+		// whose target path dispatches to a Critical op (a .sub transmit,
+		// badusb script, or evil-portal launch). Classify-by-name can't see
+		// the path, so resolve the effective level here, per call, before the
+		// consent gate — else PROMPTZERO_MCP_ALLOW_HIGH (without
+		// ALLOW_CRITICAL) would run a Critical payload, breaking the invariant
+		// that ALLOW_HIGH never unlocks Critical.
+		effectiveLevel := capturedLevel
+		if capturedName == "run_payload" {
+			if path, ok := args["path"].(string); ok {
+				if _, resolved := risk.ResolveRunPayloadRisk(path); resolved > effectiveLevel {
+					effectiveLevel = resolved
+				}
+			}
+		}
+		levelStr := effectiveLevel.String()
 
 		// Risk consent gate: refuse risk≥High unless the operator has
 		// opted in via environment variable. The decision lives in the
@@ -285,7 +300,7 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 		// a refused attempt before returning.
 		allowCritical := os.Getenv("PROMPTZERO_MCP_ALLOW_CRITICAL") == "1"
 		allowHigh := os.Getenv("PROMPTZERO_MCP_ALLOW_HIGH") == "1"
-		if allowed, denyMsg := consentDecision(capturedLevel, allowHigh, allowCritical); !allowed {
+		if allowed, denyMsg := consentDecision(effectiveLevel, allowHigh, allowCritical); !allowed {
 			if s.audit != nil {
 				s.audit.RecordCtx(ctx, capturedName, args, "", levelStr, audit.LevelAction, 0, false)
 			}

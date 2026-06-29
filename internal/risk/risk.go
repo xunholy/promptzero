@@ -1,6 +1,9 @@
 package risk
 
-import "sync"
+import (
+	"strings"
+	"sync"
+)
 
 type Level int
 
@@ -4333,6 +4336,34 @@ func ClassifyExplicit(tool string) (Level, bool) {
 	runtimeMu.RUnlock()
 	l, ok := toolLevels[tool]
 	return l, ok
+}
+
+// ResolveRunPayloadRisk returns the underlying operation and effective risk
+// level a run_payload call would actually perform, derived from the target
+// path. run_payload's nominal classification (High) understates a payload that
+// dispatches to a Critical operation (a .sub transmit, a badusb script, an
+// evil-portal launch), so every dispatch surface that gates run_payload must
+// escalate to this level before its confirm/consent gate — otherwise a Critical
+// payload slips through a High gate. This is the single source of truth; the
+// agent loop, RunTool, the MCP consent gate, and the generator all share it so
+// the surfaces cannot drift apart.
+func ResolveRunPayloadRisk(path string) (underlyingTool string, level Level) {
+	switch {
+	case strings.Contains(path, "evil_portal"):
+		return "MarauderEvilPortalStart", Critical
+	case strings.HasSuffix(path, ".txt") && strings.Contains(path, "badusb"):
+		return "BadUSBRun", Critical
+	case strings.HasSuffix(path, ".sub"):
+		return "SubGHzTx", Critical
+	case strings.HasSuffix(path, ".nfc"):
+		return "NFCEmulate", High
+	case strings.HasSuffix(path, ".ir"):
+		return "IRUniversal", Low
+	case strings.HasSuffix(path, ".rfid"):
+		return "RFIDEmulate", High
+	default:
+		return "unknown", High
+	}
 }
 
 // AutoApprove returns whether a tool at the given risk level should auto-execute.
