@@ -546,6 +546,20 @@ type RiskCount struct {
 	Count int
 }
 
+// likeEscape escapes the SQL LIKE metacharacters so a filter value matches
+// literally. Without this, a "%" or "_" in operator input acts as a wildcard:
+// a forensic search for tool "nfc_detect" would also match "nfcXdetect",
+// silently over-including rows in evidence retrieval. The backslash is the
+// escape character (declared via ESCAPE '\' on each LIKE clause) and so must
+// be escaped first. Values are still bound as parameters — this is about match
+// semantics, not injection.
+func likeEscape(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "%", `\%`)
+	s = strings.ReplaceAll(s, "_", `\_`)
+	return s
+}
+
 // QueryFiltered returns audit entries matching f. All user-supplied values
 // are bound as SQL parameters — no string interpolation, so operator input
 // cannot inject SQL. An empty Filter returns the most recent 100 entries.
@@ -555,8 +569,8 @@ func (l *Log) QueryFiltered(f Filter) ([]Entry, error) {
 		args    []interface{}
 	)
 	if f.Tool != "" {
-		clauses = append(clauses, "tool LIKE ?")
-		args = append(args, "%"+f.Tool+"%")
+		clauses = append(clauses, `tool LIKE ? ESCAPE '\'`)
+		args = append(args, "%"+likeEscape(f.Tool)+"%")
 	}
 	if f.Risk != "" {
 		clauses = append(clauses, "risk = ?")
@@ -583,8 +597,9 @@ func (l *Log) QueryFiltered(f Filter) ([]Entry, error) {
 		}
 	}
 	if f.Contains != "" {
-		clauses = append(clauses, "(input LIKE ? OR output LIKE ?)")
-		args = append(args, "%"+f.Contains+"%", "%"+f.Contains+"%")
+		clauses = append(clauses, `(input LIKE ? ESCAPE '\' OR output LIKE ? ESCAPE '\')`)
+		esc := "%" + likeEscape(f.Contains) + "%"
+		args = append(args, esc, esc)
 	}
 	limit := f.Limit
 	if limit <= 0 {

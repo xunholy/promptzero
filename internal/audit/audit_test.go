@@ -1011,3 +1011,35 @@ func TestOpen_WALSidecarsInheritMainDBPerms(t *testing.T) {
 		}
 	}
 }
+
+// TestQueryFiltered_LikeWildcardsEscaped guards forensic-filter precision: SQL
+// LIKE treats "_" (any single char) and "%" (any run) as wildcards, so an
+// unescaped operator filter would silently over-match evidence retrieval. The
+// filter values must match literally.
+func TestQueryFiltered_LikeWildcardsEscaped(t *testing.T) {
+	// "_" is a single-char wildcard; these tool names differ only at that
+	// position, so an unescaped "nfc_detect" filter matches both.
+	log := openTestLog(t)
+	log.Record("nfc_detect", map[string]string{}, "ok", "low", LevelAction, 0, true)
+	log.Record("nfcZdetect", map[string]string{}, "ok", "low", LevelAction, 0, true)
+	got, err := log.QueryFiltered(Filter{Tool: "nfc_detect"})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(got) != 1 || got[0].Tool != "nfc_detect" {
+		t.Fatalf("Tool filter must match '_' literally, got %d rows: %+v", len(got), got)
+	}
+
+	// "%" is an any-run wildcard; a Contains search for a literal "%" must not
+	// match arbitrary text between the surrounding characters.
+	log2 := openTestLog(t)
+	log2.Record("a", map[string]string{}, "100%done", "low", LevelAction, 0, true)
+	log2.Record("b", map[string]string{}, "100ZZdone", "low", LevelAction, 0, true)
+	got2, err := log2.QueryFiltered(Filter{Contains: "100%done"})
+	if err != nil {
+		t.Fatalf("QueryFiltered: %v", err)
+	}
+	if len(got2) != 1 {
+		t.Fatalf("Contains must treat '%%' literally, got %d rows: %+v", len(got2), got2)
+	}
+}
