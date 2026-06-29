@@ -148,3 +148,61 @@ func TestBadUSBValidate_ReturnsCritical(t *testing.T) {
 		t.Errorf("badusb_validate result should contain rm_rf_root finding, got: %s", result)
 	}
 }
+
+// TestBadUSBRun_FailsClosedOnValidatorError pins the security invariant that
+// when the pre-flight validator cannot run (here: StorageRead fails), badusb_run
+// REFUSES rather than executing an unvalidated payload. A "badusb" handler that
+// would succeed is registered so the only way the call can error is the
+// fail-closed refusal — proving the payload was not executed.
+func TestBadUSBRun_FailsClosedOnValidatorError(t *testing.T) {
+	f := testmocks.NewMockFlipper(t,
+		// "storage read" returns a Storage error banner -> StorageRead errors
+		// -> runBadUSBValidator errors.
+		testmocks.WithFlipperHandler("storage", flippermock.Handler(func(args []string) string {
+			return "Storage error: /ext/badusb/x.txt not found"
+		})),
+		// If the gate were still fail-open, this would execute and return nil.
+		testmocks.WithFlipperHandler("badusb", flippermock.Handler(func(args []string) string {
+			return "ok"
+		})),
+	)
+	deps := &Deps{Flipper: f, Config: badUSBMakeCfg(false, nil)}
+
+	spec, ok := Get("badusb_run")
+	if !ok {
+		t.Fatal("badusb_run not registered")
+	}
+	_, err := spec.Handler(context.Background(), deps, map[string]any{"file": "/ext/badusb/x.txt"})
+	if err == nil {
+		t.Fatal("expected fail-closed refusal when validator cannot run, got nil (payload executed unvalidated)")
+	}
+	if !strings.Contains(err.Error(), "validator could not run") {
+		t.Errorf("expected validator-could-not-run refusal, got: %v", err)
+	}
+}
+
+// TestBadKBRun_FailsClosedOnValidatorError pins the same invariant for the BLE
+// HID variant.
+func TestBadKBRun_FailsClosedOnValidatorError(t *testing.T) {
+	f := testmocks.NewMockFlipper(t,
+		testmocks.WithFlipperHandler("storage", flippermock.Handler(func(args []string) string {
+			return "Storage error: /ext/badusb/x.txt not found"
+		})),
+		testmocks.WithFlipperHandler("loader", flippermock.Handler(func(args []string) string {
+			return "ok"
+		})),
+	)
+	deps := &Deps{Flipper: f, Config: badUSBMakeCfg(false, nil)}
+
+	spec, ok := Get("badkb_run")
+	if !ok {
+		t.Fatal("badkb_run not registered")
+	}
+	_, err := spec.Handler(context.Background(), deps, map[string]any{"file": "/ext/badusb/x.txt"})
+	if err == nil {
+		t.Fatal("expected fail-closed refusal when validator cannot run, got nil")
+	}
+	if !strings.Contains(err.Error(), "validator could not run") {
+		t.Errorf("expected validator-could-not-run refusal, got: %v", err)
+	}
+}
