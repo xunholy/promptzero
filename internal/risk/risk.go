@@ -4366,6 +4366,29 @@ func ResolveRunPayloadRisk(path string) (underlyingTool string, level Level) {
 	}
 }
 
+// EscalateForPath raises a tool's base risk level when a path-style argument
+// selects a more dangerous underlying operation than the tool's name implies,
+// returning max(base, derived). Today only run_payload escalates — its target
+// path dispatches to an op (a .sub transmit, a badusb script, an evil-portal
+// launch) whose risk can exceed run_payload's nominal level — but the rule is
+// keyed on the tool so future dispatcher tools can be added in one place.
+//
+// Every dispatch surface (the agent Run loop, agent.RunTool, and the MCP
+// server) must apply this before its audit and consent gates so a Critical
+// payload can't slip through a lower gate. These surfaces have drifted before
+// — run_payload escalation was once missing from RunTool — so the shared rule
+// lives here, not copied per surface. A non-escalating tool or empty path
+// returns base unchanged.
+func EscalateForPath(tool string, base Level, path string) Level {
+	if tool != "run_payload" || path == "" {
+		return base
+	}
+	if _, resolved := ResolveRunPayloadRisk(path); resolved > base {
+		return resolved
+	}
+	return base
+}
+
 // AutoApprove returns whether a tool at the given risk level should auto-execute.
 func AutoApprove(threshold Level, toolRisk Level) bool {
 	return toolRisk <= threshold

@@ -285,11 +285,8 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 		// that ALLOW_HIGH never unlocks Critical.
 		effectiveLevel := capturedLevel
 		if capturedName == "run_payload" {
-			if path, ok := args["path"].(string); ok {
-				if _, resolved := risk.ResolveRunPayloadRisk(path); resolved > effectiveLevel {
-					effectiveLevel = resolved
-				}
-			}
+			path, _ := args["path"].(string)
+			effectiveLevel = risk.EscalateForPath(capturedName, effectiveLevel, path)
 		}
 		levelStr := effectiveLevel.String()
 
