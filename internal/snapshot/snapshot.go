@@ -214,6 +214,21 @@ func (m *Manager) Restore(sessionID, id string) (Entry, []byte, error) {
 	if err != nil {
 		return Entry{}, nil, fmt.Errorf("snapshot data %s: %w", id, err)
 	}
+	// Verify the on-disk content against the digest recorded at Store time
+	// before handing it back: /rewind writes this straight to the Flipper SD
+	// card, so a corrupted .bak (bad sector, a partial write by an external
+	// process) or a tampered meta must not silently push the wrong bytes to the
+	// device under a "restored" banner. Store always records SHA256; an older
+	// snapshot that predates it (empty digest) is restored unverified rather
+	// than blocked, since there is nothing to check against.
+	if entry.SHA256 != "" {
+		sum := sha256.Sum256(content)
+		if got := hex.EncodeToString(sum[:]); got != entry.SHA256 {
+			return Entry{}, nil, fmt.Errorf(
+				"snapshot %s: content integrity check failed (have sha256 %s, recorded %s) — refusing to restore a corrupted or tampered snapshot",
+				id, got, entry.SHA256)
+		}
+	}
 	entry.DataFile = dataPath
 	return entry, content, nil
 }

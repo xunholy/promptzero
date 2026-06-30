@@ -333,3 +333,27 @@ func TestDefaultRoot_EndsInSnapshots(t *testing.T) {
 		t.Fatalf("DefaultRoot = %q, want ~/.promptzero/snapshots", root)
 	}
 }
+
+// TestManager_Restore_DetectsTamperedContent pins the integrity check: if the
+// on-disk .bak content no longer matches the SHA256 recorded at Store time
+// (corruption or tamper), Restore must refuse — /rewind writes this straight to
+// the device, so a silent mismatch would push wrong bytes under a "restored"
+// banner.
+func TestManager_Restore_DetectsTamperedContent(t *testing.T) {
+	root := t.TempDir()
+	m := NewManager(root)
+	entry, err := m.Store("sess-tamper", "/ext/a.sub", []byte("original bytes"))
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	// Corrupt the backing content while leaving the meta's recorded digest.
+	bak := filepath.Join(root, "sess-tamper", entry.ID+".bak")
+	if err := os.WriteFile(bak, []byte("TAMPERED CONTENT"), 0o600); err != nil {
+		t.Fatalf("tamper: %v", err)
+	}
+	if _, _, err := m.Restore("sess-tamper", entry.ID); err == nil {
+		t.Fatal("Restore must reject content not matching the recorded SHA256")
+	} else if !strings.Contains(err.Error(), "integrity") {
+		t.Errorf("error = %v, want an integrity-check failure", err)
+	}
+}
