@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/risk"
@@ -37,6 +38,11 @@ const MinimumConfirmDelay = 2 * time.Second
 //	    ...
 //	}
 type ConfirmDelayGate struct {
+	// mu guards shownAt: Show() runs on the agent's Run goroutine (the prompt
+	// is rendered from a tool-status callback) while Remaining()/Open() run on
+	// the REPL's key-reading goroutine. delay and now are set at construction
+	// and never mutated, so they need no lock.
+	mu      sync.Mutex
 	shownAt time.Time
 	delay   time.Duration
 	now     func() time.Time
@@ -53,16 +59,21 @@ func NewConfirmDelayGate(delay time.Duration) *ConfirmDelayGate {
 // — each call resets the countdown, useful if the prompt is redrawn
 // on a resize.
 func (g *ConfirmDelayGate) Show() {
+	g.mu.Lock()
 	g.shownAt = g.now()
+	g.mu.Unlock()
 }
 
 // Remaining returns how much of the delay window is left. A zero or
 // negative return means the gate is open.
 func (g *ConfirmDelayGate) Remaining() time.Duration {
-	if g.shownAt.IsZero() {
+	g.mu.Lock()
+	shownAt := g.shownAt
+	g.mu.Unlock()
+	if shownAt.IsZero() {
 		return g.delay
 	}
-	return g.delay - g.now().Sub(g.shownAt)
+	return g.delay - g.now().Sub(shownAt)
 }
 
 // Open reports whether enough time has elapsed since Show() for an
