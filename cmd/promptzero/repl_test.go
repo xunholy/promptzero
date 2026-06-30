@@ -7,8 +7,12 @@ import (
 	"time"
 
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/config"
+	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/risk"
 	streampkg "github.com/xunholy/promptzero/internal/streaming"
+	"github.com/xunholy/promptzero/internal/testmocks"
 )
 
 // makeConfirmState builds a confirmState for testing resolveConfirmKey.
@@ -276,5 +280,43 @@ func TestMetricToolLabel(t *testing.T) {
 		if got := metricToolLabel(n); got != metricUnknownTool {
 			t.Errorf("unregistered %q: got %q, want %q", n, got, metricUnknownTool)
 		}
+	}
+}
+
+// TestApplyWatchPersona_ScopesAndRestores pins that a watch rule's persona is
+// applied for its turn and then reverted, so the rule's persona (and its tool
+// scope) does not leak into the operator's later interactive turns. Empty or
+// unknown rule personas leave the active persona untouched and return no
+// restore.
+func TestApplyWatchPersona_ScopesAndRestores(t *testing.T) {
+	reg := persona.NewRegistry()
+	def, ok := reg.Get("default")
+	if !ok {
+		t.Fatal("built-in 'default' persona missing")
+	}
+	ai := agent.New(testmocks.NewMockAnthropic(t, []testmocks.AnthropicScript{}), &flipper.Flipper{}, &config.Config{Model: "claude-mock"})
+	ai.SetPersona(def)
+
+	restore := applyWatchPersona(ai, reg, "defender")
+	if restore == nil {
+		t.Fatal("expected a restore func for a known rule persona")
+	}
+	if got := ai.Persona(); got == nil || got.Name != "defender" {
+		t.Fatalf("persona not switched to defender for the watch turn, got %v", got)
+	}
+	restore()
+	if got := ai.Persona(); got == nil || got.Name != "default" {
+		t.Errorf("persona not restored after the watch turn, got %v", got)
+	}
+
+	// Empty / unknown rule persona: no switch, nil restore.
+	if applyWatchPersona(ai, reg, "") != nil {
+		t.Error("empty rule persona should return nil restore")
+	}
+	if applyWatchPersona(ai, reg, "nonexistent-persona") != nil {
+		t.Error("unknown rule persona should return nil restore")
+	}
+	if got := ai.Persona(); got == nil || got.Name != "default" {
+		t.Errorf("active persona changed by a no-op apply, got %v", got)
 	}
 }

@@ -434,3 +434,32 @@ func TestScheduleDispatch_RecoversPanickingHandler(t *testing.T) {
 		t.Errorf("scheduleDispatch entry still pending after timer fired — debounce path didn't run")
 	}
 }
+
+// TestWatcher_StoppedSuppressesFiredTimer pins the shutdown guard: a debounce
+// timer that has already fired but is blocked acquiring mu when the watcher
+// stops (flushTimers) must NOT dispatch after Run returns. Deterministic via
+// the same window the bug needs — grab mu before the timer fires, mark stopped
+// (as flushTimers does), then release so the fired goroutine proceeds and must
+// bail.
+func TestWatcher_StoppedSuppressesFiredTimer(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "x.sub")
+	if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w := New([]string{dir}, []Rule{{Pattern: "*.sub", Prompt: "go"}})
+	w.debounce = 50 * time.Millisecond
+	var fired atomic.Int32
+	handler := func(Rule, string) error { fired.Add(1); return nil }
+
+	w.scheduleDispatch(f, handler) // arm the 50ms timer
+	w.mu.Lock()                    // hold mu before it fires
+	time.Sleep(120 * time.Millisecond)
+	w.stopped = true // what flushTimers does on shutdown
+	w.mu.Unlock()    // fired AfterFunc unblocks; must see stopped and bail
+	time.Sleep(80 * time.Millisecond)
+
+	if n := fired.Load(); n != 0 {
+		t.Errorf("dispatch fired %d time(s) after the watcher stopped; want 0", n)
+	}
+}
