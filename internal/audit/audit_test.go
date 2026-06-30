@@ -1043,3 +1043,47 @@ func TestQueryFiltered_LikeWildcardsEscaped(t *testing.T) {
 		t.Fatalf("Contains must treat '%%' literally, got %d rows: %+v", len(got2), got2)
 	}
 }
+
+// TestCSVQuote_NeutralizesFormulaPrefixes pins CSV/formula-injection
+// neutralization: a cell beginning with =, +, -, @, TAB, or CR must be
+// prefixed with a single quote so spreadsheets treat it as literal text, while
+// ordinary values and a mid-cell '=' are left untouched.
+func TestCSVQuote_NeutralizesFormulaPrefixes(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"=cmd|'/c calc'!A1", "'=cmd|'/c calc'!A1"},
+		{"+ping", "'+ping"},
+		{"-2+3", "'-2+3"},
+		{"@SUM(1)", "'@SUM(1)"},
+		{"\tlead-tab", "'\tlead-tab"},
+		{"normal ssid", "normal ssid"},
+		{"a=b+c", "a=b+c"}, // formula char not first -> untouched
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := csvQuote(c.in); got != c.want {
+			t.Errorf("csvQuote(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestExportCSV_NeutralizesFormulaInjection is the end-to-end guard: an
+// attacker-controlled tool output beginning with '=' must be neutralized in the
+// exported CSV, so opening it in a spreadsheet does not execute the formula.
+func TestExportCSV_NeutralizesFormulaInjection(t *testing.T) {
+	log := openTestLog(t)
+	log.sessionID = "csv-formula"
+	// No comma/quote/newline, so RFC 4180 quoting alone would leave it bare.
+	log.Record("wifi_scan_ap", map[string]string{"k": "v"}, "=2+5+cmd", "low", LevelAction, 0, true)
+
+	out, err := log.ExportCSV()
+	if err != nil {
+		t.Fatalf("ExportCSV: %v", err)
+	}
+	if !strings.Contains(out, "'=2+5+cmd") {
+		t.Errorf("formula output not neutralized with a leading quote:\n%s", out)
+	}
+	// The dangerous bare form must not appear as a cell value.
+	if strings.Contains(out, ",=2+5+cmd") {
+		t.Errorf("bare formula cell present (unneutralized):\n%s", out)
+	}
+}
