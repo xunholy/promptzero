@@ -595,6 +595,13 @@ func (s *Server) handleRewindRestore(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// The rewind restore writes to the Flipper SD card; the read-only rail must
+	// block it like any device write. This direct-write path predates the rail
+	// and bypassed it (dry-run above still works under read-only).
+	if s.agent != nil && s.agent.ReadOnly() {
+		writeError(w, http.StatusForbidden, "rewind blocked by read-only mode")
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	if err := s.flipper.WriteFileCtx(ctx, entry.OriginalPath, content); err != nil {
