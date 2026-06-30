@@ -33,10 +33,14 @@ var ansiCSIRE = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
 var ansiC1RE = regexp.MustCompile(`\x1b[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)`)
 
 // otherControlsRE strips remaining non-printable control bytes after ANSI:
-// NUL through BEL/BS, vertical tab, form feed, SO through US, and DEL.
+// NUL through BEL/BS, vertical tab, form feed, SO through US, DEL, and the
+// 8-bit C1 controls U+0080–U+009F. The C1 range includes 8-bit forms of CSI
+// (0x9B), OSC (0x9D), DCS (0x90), and NEL (0x85) — live terminal-control
+// introducers on a Latin-1/8-bit terminal — so leaving them in would
+// undermine the same "safe to embed raw" guarantee the ANSI strip provides.
 // Newline (\x0a), carriage return (\x0d), and tab (\x09) are preserved —
 // Flipper and Marauder both emit tabular output using those characters.
-var otherControlsRE = regexp.MustCompile(`[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]`)
+var otherControlsRE = regexp.MustCompile(`[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]`)
 
 // notWrappedTools names tools whose output originates inside PromptZero
 // (structured JSON, our own summaries, generated-payload previews) rather
@@ -165,11 +169,33 @@ func Output(toolName, output string, isErr bool) string {
 	}
 }
 
-// neutralizeCloseTag replaces literal `</NAME>` occurrences inside the
-// wrapped content with `< /NAME>` (a space after `<`). The two render almost
-// identically to a human but the second is structurally NOT a close tag — so
-// a smuggled `</untrusted-hardware-output>` in an attacker-controlled SSID,
-// NFC URI, or filename can't end the quarantine boundary prematurely.
+// closeTagREs holds a precompiled close-tag matcher per wrapper name. The
+// match is case-insensitive and tolerates whitespace immediately inside the
+// tag (`</untrusted-hardware-output >`, `</untrusted-hardware-output\t>`,
+// `</UNTRUSTED-HARDWARE-OUTPUT>`) — all of which a model (and a human) read as
+// the closing boundary. An exact byte match would neutralize only the literal
+// lowercase form and let those variants through, which is precisely the escape
+// the neutralizer exists to prevent. There are exactly two wrapper names, so
+// precompile both rather than build a regex per call.
+var closeTagREs = map[string]*regexp.Regexp{
+	"untrusted-hardware-output": regexp.MustCompile(`(?i)</\s*untrusted-hardware-output\s*>`),
+	"untrusted-audit-content":   regexp.MustCompile(`(?i)</\s*untrusted-audit-content\s*>`),
+}
+
+// neutralizeCloseTag rewrites any close tag for the given wrapper name found
+// inside the wrapped content to `< /NAME>` (a space after `<`). The two render
+// almost identically to a human but the second is structurally NOT a close tag
+// — so a smuggled close tag in an attacker-controlled SSID, NFC URI, or
+// filename (in any case/whitespace variant) can't end the quarantine boundary
+// prematurely. SanitizeControlChars runs before this, so a control byte hidden
+// inside the tag is already gone by the time we match.
 func neutralizeCloseTag(content, name string) string {
-	return strings.ReplaceAll(content, "</"+name+">", "< /"+name+">")
+	re := closeTagREs[name]
+	if re == nil {
+		// Defensive: an unrecognised wrapper name should never reach here, but
+		// fall back to the exact-match replacement rather than skip
+		// neutralization entirely.
+		return strings.ReplaceAll(content, "</"+name+">", "< /"+name+">")
+	}
+	return re.ReplaceAllString(content, "< /"+name+">")
 }
