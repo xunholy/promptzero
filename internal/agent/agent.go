@@ -1069,21 +1069,17 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		for _, tc := range toolCalls {
 			input := json.RawMessage(tc.Input)
 			toolRisk := risk.Classify(tc.Name)
-			// For run_payload, resolve the effective risk of the underlying
-			// operation from the path argument and use the maximum of the two.
-			// This ensures a run_payload that dispatches to a Critical op is
-			// always gated as Critical, not just as the nominal High of the
-			// run_payload tool name.
+			// For run_payload, escalate to the effective risk of the underlying
+			// operation selected by the path argument (a .sub transmit, badusb
+			// script, evil-portal launch can be Critical), so it is gated at the
+			// real level, not the nominal run_payload name. risk.EscalateForPath
+			// is the shared rule every dispatch surface applies.
 			if tc.Name == "run_payload" {
 				var rp struct {
 					Path string `json:"path"`
 				}
-				if err := json.Unmarshal(tc.Input, &rp); err == nil {
-					_, resolved := risk.ResolveRunPayloadRisk(rp.Path)
-					if resolved > toolRisk {
-						toolRisk = resolved
-					}
-				}
+				_ = json.Unmarshal(tc.Input, &rp) // path "" on error → no escalation
+				toolRisk = risk.EscalateForPath(tc.Name, toolRisk, rp.Path)
 			}
 
 			// Risk gate: consult the confirm callback before destructive tools run.
@@ -1494,11 +1490,8 @@ func (a *Agent) RunTool(ctx context.Context, tool string, params map[string]inte
 	// rules engine, the campaign executor, or a direct RunTool call would skip
 	// the Critical confirm gate. Resolve from the path and take the maximum.
 	if tool == "run_payload" {
-		if path, ok := params["path"].(string); ok {
-			if _, resolved := risk.ResolveRunPayloadRisk(path); resolved > toolRisk {
-				toolRisk = resolved
-			}
-		}
+		path, _ := params["path"].(string)
+		toolRisk = risk.EscalateForPath(tool, toolRisk, path)
 	}
 
 	// Audit gate (fail-closed for High/Critical without audit log).

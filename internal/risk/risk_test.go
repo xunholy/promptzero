@@ -205,3 +205,36 @@ func TestRegister_AcceptsBoundaryLevels(t *testing.T) {
 		})
 	}
 }
+
+// TestEscalateForPath pins the shared run_payload escalation rule that every
+// dispatch surface (agent Run loop, RunTool, MCP) applies before its gates.
+func TestEscalateForPath(t *testing.T) {
+	cases := []struct {
+		name string
+		tool string
+		base Level
+		path string
+		want Level
+	}{
+		// run_payload escalates to the underlying op's level when higher.
+		{"sub_to_critical", "run_payload", High, "/ext/subghz/door.sub", Critical},
+		{"evilportal_to_critical", "run_payload", Medium, "/ext/apps_data/evil_portal/index.html", Critical},
+		{"badusb_to_critical", "run_payload", Medium, "/ext/badusb/payload.txt", Critical},
+		{"nfc_to_high", "run_payload", Low, "/ext/nfc/card.nfc", High},
+		{"rfid_to_high", "run_payload", Low, "/ext/lfrfid/tag.rfid", High},
+		{"unknown_ext_defaults_high", "run_payload", Low, "/ext/misc/file.bin", High},
+		// Never lowers: base already at or above the derived level wins.
+		{"ir_keeps_higher_base", "run_payload", High, "/ext/infrared/tv.ir", High},
+		{"already_critical_stays", "run_payload", Critical, "/ext/nfc/card.nfc", Critical},
+		// No escalation conditions.
+		{"empty_path_no_change", "run_payload", Medium, "", Medium},
+		{"non_dispatcher_tool_unchanged", "nfc_detect", Low, "/ext/subghz/door.sub", Low},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := EscalateForPath(c.tool, c.base, c.path); got != c.want {
+				t.Errorf("EscalateForPath(%q, %v, %q) = %v, want %v", c.tool, c.base, c.path, got, c.want)
+			}
+		})
+	}
+}
