@@ -12,6 +12,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/obs"
+	"github.com/xunholy/promptzero/internal/persona"
 	"github.com/xunholy/promptzero/internal/risk"
 	streampkg "github.com/xunholy/promptzero/internal/streaming"
 	"github.com/xunholy/promptzero/internal/tools"
@@ -36,6 +37,24 @@ func metricToolLabel(name string) string {
 		return name
 	}
 	return metricUnknownTool
+}
+
+// applyWatchPersona temporarily switches the agent to the persona named by a
+// watch rule and returns a restore func that reverts to the persona active
+// before. It returns nil when the rule names no persona (or an unknown one), so
+// a watch rule's (possibly broader) persona is scoped to its own turn and never
+// persists into the operator's subsequent interactive turns.
+func applyWatchPersona(ai *agent.Agent, personas *persona.Registry, ruleName string) func() {
+	if ruleName == "" || ai == nil || personas == nil {
+		return nil
+	}
+	p, ok := personas.Get(ruleName)
+	if !ok {
+		return nil
+	}
+	prev := ai.Persona()
+	ai.SetPersona(p)
+	return func() { ai.SetPersona(prev) }
 }
 
 // turnResult is the outcome of one ai.Run, delivered back to the REPL
@@ -1234,16 +1253,22 @@ func startWatch(ctx context.Context, deps *REPLDeps, dispatchTurn func(string)) 
 					case <-time.After(250 * time.Millisecond):
 					}
 				}
-				if ev.rule.Persona != "" {
-					if p, ok := deps.personas.Get(ev.rule.Persona); ok {
-						deps.ai.SetPersona(p)
-					}
-				}
+				// A watch rule may run its turn under a named persona. Apply it
+				// only for the duration of this watch turn and restore the
+				// operator's persona afterwards — otherwise a rule's (possibly
+				// broader) persona would silently persist into the operator's
+				// subsequent interactive turns, eroding least privilege. The
+				// dispatcher waits for the REPL to be idle before running, so no
+				// concurrent user turn observes the swap.
+				restorePersona := applyWatchPersona(deps.ai, deps.personas, ev.rule.Persona)
 				ed.writeOutput(func() {
 					fmt.Fprintf(os.Stderr, "  %s● watch fired:%s %s %s→%s %s\n",
 						yellow, reset, ev.path, dim, reset, collapseWS(ev.rule.Prompt))
 				})
 				dispatchTurn(ev.rule.Prompt)
+				if restorePersona != nil {
+					restorePersona()
+				}
 			}
 		}
 	})

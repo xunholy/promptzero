@@ -61,6 +61,11 @@ type Watcher struct {
 	paused  atomic.Bool
 	history []Event
 	pending map[string]*time.Timer
+	// stopped is set by flushTimers on shutdown. A debounce timer that has
+	// already fired but is blocked acquiring mu when flushTimers runs would
+	// otherwise still dispatch after Run returns; the fired goroutine checks
+	// this flag under mu and bails. Guarded by mu.
+	stopped bool
 }
 
 // debounceWindow collapses writes to the same path inside this interval
@@ -200,7 +205,13 @@ func (w *Watcher) scheduleDispatch(path string, handler Handler) {
 		}()
 		w.mu.Lock()
 		delete(w.pending, path)
+		stopped := w.stopped
 		w.mu.Unlock()
+		// If the watcher shut down (flushTimers) while this timer was firing
+		// and waiting on mu, don't dispatch after Run has returned.
+		if stopped {
+			return
+		}
 		w.dispatch(path, handler)
 	})
 }
@@ -210,6 +221,7 @@ func (w *Watcher) scheduleDispatch(path string, handler Handler) {
 func (w *Watcher) flushTimers() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.stopped = true
 	for k, t := range w.pending {
 		t.Stop()
 		delete(w.pending, k)
