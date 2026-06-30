@@ -1612,3 +1612,43 @@ func TestToolsList_RankedSearch(t *testing.T) {
 		t.Errorf("exact-name query: first = %v, want device_info", f2["name"])
 	}
 }
+
+// TestRewindRestore_BlockedByReadOnly pins that a real (non-dry-run) rewind
+// restore is refused under read-only mode. /rewind writes to the Flipper SD
+// card via a direct path that predated the read-only rail; this guards that the
+// rail now covers it. A 403 (not the 502 a sentinelFlipper write would yield)
+// proves the guard fires before WriteFileCtx.
+func TestRewindRestore_BlockedByReadOnly(t *testing.T) {
+	mgr := snapshot.NewManager(t.TempDir())
+	entry, err := mgr.Store("sess-1", "/ext/a.sub", []byte("hello"))
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	s, ts := apiServer(t, &fakeAgent{snapshotMgr: mgr, sessionID: "sess-1", readOnly: true})
+	s.flipper = sentinelFlipper(t)
+
+	code, body := postJSON(t, ts, "/api/rewind/restore", map[string]any{"id": entry.ID})
+	if code != http.StatusForbidden {
+		t.Fatalf("code = %d, want 403 (read-only must block the device write); body=%s", code, body)
+	}
+	if !strings.Contains(string(body), "read-only") {
+		t.Errorf("body = %s, want a read-only refusal", body)
+	}
+}
+
+// TestRewindRestore_DryRunAllowedUnderReadOnly confirms the read-only guard is
+// placed after the dry-run branch — inspection must still work under read-only.
+func TestRewindRestore_DryRunAllowedUnderReadOnly(t *testing.T) {
+	mgr := snapshot.NewManager(t.TempDir())
+	entry, err := mgr.Store("sess-1", "/ext/a.sub", []byte("hello"))
+	if err != nil {
+		t.Fatalf("Store: %v", err)
+	}
+	s, ts := apiServer(t, &fakeAgent{snapshotMgr: mgr, sessionID: "sess-1", readOnly: true})
+	s.flipper = sentinelFlipper(t)
+
+	code, _ := postJSON(t, ts, "/api/rewind/restore", map[string]any{"id": entry.ID, "dry_run": true})
+	if code != http.StatusOK {
+		t.Fatalf("dry-run must be allowed under read-only, code=%d", code)
+	}
+}

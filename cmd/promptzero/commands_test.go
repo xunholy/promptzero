@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/session"
+	"github.com/xunholy/promptzero/internal/snapshot"
 
 	"github.com/xunholy/promptzero/internal/config"
 	"github.com/xunholy/promptzero/internal/cost"
@@ -675,5 +681,41 @@ func TestPrintHelp_ListsStatsSubcommands(t *testing.T) {
 	})
 	if !strings.Contains(out, "/stats [cache|tokens|all]") {
 		t.Errorf("/help should list /stats sub-commands explicitly (cache|tokens|all); got: %q", out)
+	}
+}
+
+// TestHandleRewind_BlockedByReadOnly pins that the REPL /rewind restore (the
+// primary path) refuses to write to the device under read-only mode. /rewind
+// writes directly via deps.flip.WriteFileCtx, predating the read-only rail;
+// this guards that the rail now covers it.
+func TestHandleRewind_BlockedByReadOnly(t *testing.T) {
+	mgr := snapshot.NewManager(t.TempDir())
+	client := testmocks.NewMockAnthropic(t, []testmocks.AnthropicScript{})
+	a := agent.New(client, &flipper.Flipper{}, &config.Config{Model: "claude-mock"})
+	a.SetSnapshotManager(mgr)
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("session.NewStore: %v", err)
+	}
+	a.SetSessionStore(store) // assigns a session id
+	sid := a.SessionID()
+	entry, err := mgr.Store(sid, "/ext/a.sub", []byte("hi"))
+	if err != nil {
+		t.Fatalf("snapshot Store: %v", err)
+	}
+	a.SetReadOnly(true)
+
+	deps := &REPLDeps{
+		ai:   a,
+		flip: &flipper.Flipper{}, // never reached: the guard fires first
+		ctx:  context.Background(),
+		ed:   newLineEditor(&termUI{enabled: false}),
+	}
+	out := captureStderr(t, func() { handleRewind(deps, entry.ID) })
+	if !strings.Contains(out, "blocked by read-only") {
+		t.Errorf("expected a read-only refusal, got: %q", out)
+	}
+	if strings.Contains(out, "restored") {
+		t.Errorf("rewind wrote despite read-only mode: %q", out)
 	}
 }

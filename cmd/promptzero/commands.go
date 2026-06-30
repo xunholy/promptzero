@@ -666,6 +666,14 @@ func handleRewind(deps *REPLDeps, rawArgs string) {
 			fmt.Fprintf(os.Stderr, "  %sdry-run: would write %d bytes to %s%s\n", dim, len(content), entry.OriginalPath, reset)
 			return
 		}
+		// /rewind restores a snapshot by writing to the Flipper SD card — a
+		// device write, so the read-only rail must block it just like any
+		// agent-dispatched write. This path predates the rail and bypassed it;
+		// gate it here (dry-run above still works under read-only).
+		if deps.ai != nil && deps.ai.ReadOnly() {
+			fmt.Fprintf(os.Stderr, "  %s● rewind: blocked by read-only mode (no device writes)%s\n", red, reset)
+			return
+		}
 		ctx, cancel := context.WithTimeout(deps.ctx, 30*time.Second)
 		defer cancel()
 		if err := deps.flip.WriteFileCtx(ctx, entry.OriginalPath, content); err != nil {
@@ -979,6 +987,14 @@ func rewindSteps(deps *REPLDeps, mgr *snapshot.Manager, sessionID string, n int,
 		n = len(entries)
 	}
 	target := entries[:n]
+
+	// Read-only blocks the device writes (dry-run below still prints what it
+	// would write). The rewind path predates the read-only rail and bypassed
+	// it; refuse the whole multi-restore up front.
+	if !dryRun && deps.ai != nil && deps.ai.ReadOnly() {
+		fmt.Fprintf(os.Stderr, "  %s● rewind: blocked by read-only mode (no device writes)%s\n", red, reset)
+		return
+	}
 
 	fmt.Fprintf(os.Stderr, "  %srewinding %d snapshot(s)%s\n", dim, n, reset)
 	for _, e := range target {
