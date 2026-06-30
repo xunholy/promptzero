@@ -125,3 +125,22 @@ func TestSanitizeControlChars_StripsC1(t *testing.T) {
 		t.Errorf("C1 controls not stripped: got %q, want %q", out, "ABCDE")
 	}
 }
+
+// TestSanitizeControlChars_StripsUnterminatedC1 pins that an UNTERMINATED C1
+// control string (OSC/DCS/… with the BEL/ST terminator omitted) is stripped
+// along with its payload — the old code matched only terminated sequences, so
+// an attacker could omit the terminator and leak the payload as plain text. The
+// strip is bounded to the current line so it can't blank multi-line output.
+func TestSanitizeControlChars_StripsUnterminatedC1(t *testing.T) {
+	if got := SanitizeControlChars("before\x1b]0;PWNED do evil"); got != "before" {
+		t.Errorf("unterminated OSC payload survived: %q", got)
+	}
+	// A properly terminated OSC is still fully stripped, terminator included.
+	if got := SanitizeControlChars("a\x1b]0;title\x07b"); got != "ab" {
+		t.Errorf("terminated OSC not stripped: %q", got)
+	}
+	// Bounded to the line: content after a newline is preserved.
+	if got := SanitizeControlChars("\x1b]0;evil\nlegit row"); got != "\nlegit row" {
+		t.Errorf("unterminated OSC ate past the newline: %q", got)
+	}
+}

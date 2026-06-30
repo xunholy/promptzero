@@ -276,3 +276,26 @@ func TestCollectRuntime(t *testing.T) {
 		t.Errorf("CollectRuntime plat = %q, want %q", plat, wantPlat)
 	}
 }
+
+// TestRender_SanitizesDeviceReportedModel pins that a device-reported string
+// (the Flipper firmware model) carrying ANSI/OSC escapes — which a compromised
+// device could emit to inject terminal-control sequences into the operator's
+// /debug box — is stripped before rendering.
+func TestRender_SanitizesDeviceReportedModel(t *testing.T) {
+	snap := DebugSnapshot{
+		FlipperPort:  "/dev/ttyACM0",
+		FlipperUp:    true,
+		FlipperModel: "Evil\x1b[31m\x1b]0;pwn\x07\nINJECTED",
+	}
+	var buf bytes.Buffer
+	snap.Render(&buf, 68)
+	got := buf.String()
+
+	if strings.Contains(got, "\x1b]0;pwn") || strings.Contains(got, "\x1b[31m") || strings.Contains(got, "\x07") {
+		t.Errorf("device model ANSI/OSC escape survived into /debug output:\n%q", got)
+	}
+	// The printable text survives (control chars removed, not the whole value).
+	if !strings.Contains(got, "Evil") || !strings.Contains(got, "INJECTED") {
+		t.Errorf("device model text dropped by sanitization: %q", got)
+	}
+}

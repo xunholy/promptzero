@@ -80,12 +80,12 @@ func TestSanitizeControlChars_StripsOSC(t *testing.T) {
 			want: "pq",
 		},
 		{
-			name: "unterminated_osc_falls_back_to_byte_stripper",
-			// No BEL or ST: the C1 regex doesn't match, but
-			// otherControlsRE still strips the ESC — body survives
-			// as plain text (degraded but harmless).
+			name: "unterminated_osc_stripped",
+			// No BEL or ST terminator: ansiC1UntermRE strips the introducer
+			// plus its rest-of-line payload so the body can't leak as plain
+			// text (previously it survived as "]0;no-terminatorafter").
 			in:   "before\x1b]0;no-terminatorafter",
-			want: "before]0;no-terminatorafter",
+			want: "before",
 		},
 		{
 			name: "csi_then_osc_both_stripped",

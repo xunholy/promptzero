@@ -32,6 +32,17 @@ var ansiCSIRE = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
 // sequence including the payload. Terminator can be BEL (\x07) or ST (ESC \).
 var ansiC1RE = regexp.MustCompile(`\x1b[\]PX^_][^\x07\x1b]*(?:\x07|\x1b\\)`)
 
+// ansiC1UntermRE strips an UNTERMINATED C1 control string — an OSC/DCS/SOS/PM/
+// APC whose BEL/ST terminator the attacker omitted so ansiC1RE (which requires
+// the terminator) doesn't match. Without this the leading ESC alone is removed
+// by otherControlsRE and the payload survives as readable text (e.g.
+// "]0;PWNED do evil"), defeating the "strips the full sequence including the
+// payload" guarantee. The match is bounded to the rest of the current line
+// (it stops at \n, BEL, or another ESC) so a single unterminated sequence
+// can't blank multi-line tool output below it. Applied after ansiC1RE so
+// terminated sequences (and their terminators) are removed first.
+var ansiC1UntermRE = regexp.MustCompile("\x1b[\\]PX^_][^\x07\x1b\n]*")
+
 // otherControlsRE strips remaining non-printable control bytes after ANSI:
 // NUL through BEL/BS, vertical tab, form feed, SO through US, DEL, and the
 // 8-bit C1 controls U+0080–U+009F. The C1 range includes 8-bit forms of CSI
@@ -134,6 +145,8 @@ func SanitizeControlChars(s string) string {
 	// present when the C1 regex matches; otherwise the byte-stripper would
 	// consume \x1b first and the C1 body would survive as plain text.
 	s = ansiC1RE.ReplaceAllString(s, "")
+	// Then strip any UNTERMINATED C1 introducer + its (rest-of-line) payload.
+	s = ansiC1UntermRE.ReplaceAllString(s, "")
 	s = otherControlsRE.ReplaceAllString(s, "")
 	return s
 }

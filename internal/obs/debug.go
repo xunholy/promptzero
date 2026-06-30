@@ -7,7 +7,15 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"github.com/xunholy/promptzero/internal/quarantine"
 )
+
+// kvLineReplacer flattens the whitespace control chars SanitizeControlChars
+// deliberately preserves (newline, CR, tab) into spaces, since each kv line is
+// single-line — a device-reported value containing them would otherwise break
+// the box layout.
+var kvLineReplacer = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ")
 
 // DebugSnapshot is the state bag /debug renders. Each field is optional
 // — callers fill what they can from their local surface. The Render
@@ -115,6 +123,12 @@ func section(w io.Writer, width int, title string) {
 
 // kv writes one "│ label: value" row padded to width.
 func kv(w io.Writer, width int, key, val string) {
+	// Values can include device-reported strings (the Flipper firmware model,
+	// the serial/BLE port path); a compromised device could embed ANSI escapes
+	// or newlines to inject terminal-control sequences or break the /debug box
+	// on the operator's terminal. Strip control chars and flatten the
+	// whitespace ones the sanitizer keeps for tabular tool output.
+	val = kvLineReplacer.Replace(quarantine.SanitizeControlChars(val))
 	var body string
 	if key == "" {
 		body = " " + val
