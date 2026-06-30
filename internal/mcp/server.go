@@ -293,6 +293,17 @@ func (s *Server) add(name, desc string, opts []mcp.ToolOption, required []string
 		}
 		levelStr := effectiveLevel.String()
 
+		// Audit fail-closed (rail #1) — matches the REPL and --web dispatch,
+		// which both call audit.RequireOpen before running a tool. If no audit
+		// log is wired (e.g. audit.Open failed at startup), refuse any
+		// High/Critical action so a destructive MCP call can never execute
+		// unrecorded. The RecordCtx calls below are best-effort and nil-guarded;
+		// this is the hard gate that keeps "every destructive action is audited"
+		// true on the MCP surface too. Low/Medium tools are unaffected.
+		if err := audit.RequireOpen(s.audit, effectiveLevel); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
 		// Risk consent gate: refuse risk≥High unless the operator has
 		// opted in via environment variable. The decision lives in the
 		// pure consentDecision function (single source of truth, fully

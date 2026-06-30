@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,6 +33,17 @@ func newTestHarness(t *testing.T, withMarauder bool, flipperOpts ...testmocks.Mo
 	} else {
 		s = NewServer(flip, nil)
 	}
+
+	// Wire an audit log by default — production MCP mode wires one, and the
+	// dispatch path's fail-closed audit gate (audit.RequireOpen) now refuses
+	// High/Critical tools when it is nil. Tests that exercise the nil-audit
+	// refusal call s.SetAuditLog(nil) explicitly.
+	al, err := audit.Open(t.TempDir() + "/mcp-audit.db")
+	if err != nil {
+		t.Fatalf("audit.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = al.Close() })
+	s.SetAuditLog(al)
 
 	serverIn, clientOut := io.Pipe()
 	clientIn, serverOut := io.Pipe()
@@ -565,5 +577,46 @@ func TestServer_CallTool_RunPayloadCriticalNotUnlockedByAllowHigh(t *testing.T) 
 	text := firstText(t, res)
 	if !strings.Contains(text, "PROMPTZERO_MCP_ALLOW_CRITICAL") {
 		t.Errorf("denial should be the Critical-tier message, got %q", text)
+	}
+}
+
+// TestServer_CallTool_AuditFailClosedWhenNoAuditLog pins the audit fail-closed
+// rail on the MCP surface: when no audit log is wired (e.g. audit.Open failed
+// at startup), a High/Critical tool must be refused — never run unrecorded —
+// even though the operator opted in via PROMPTZERO_MCP_ALLOW_HIGH/CRITICAL.
+// This matches the REPL and --web dispatch, which both call audit.RequireOpen.
+func TestServer_CallTool_AuditFailClosedWhenNoAuditLog(t *testing.T) {
+	t.Setenv("PROMPTZERO_MCP_ALLOW_HIGH", "1")
+	t.Setenv("PROMPTZERO_MCP_ALLOW_CRITICAL", "1")
+
+	var ran atomic.Bool
+	c, s := newTestHarness(t, false, testmocks.WithFlipperHandler("subghz", func(args []string) string {
+		ran.Store(true)
+		return "tx complete"
+	}))
+	defer c.Close()
+
+	// Simulate audit.Open having failed at startup.
+	s.SetAuditLog(nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var req mcplib.CallToolRequest
+	req.Params.Name = "subghz_transmit"
+	req.Params.Arguments = map[string]any{"file": "/ext/subghz/test.sub"}
+
+	res, err := c.CallTool(ctx, req)
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("high-risk tool with no audit log must be refused; got success: %+v", res.Content)
+	}
+	if text := firstText(t, res); !strings.Contains(text, "audit log not initialized") {
+		t.Errorf("expected audit fail-closed message, got %q", text)
+	}
+	if ran.Load() {
+		t.Error("tool handler executed despite the audit fail-closed refusal")
 	}
 }
