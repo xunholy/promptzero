@@ -1,10 +1,12 @@
 package targetmem
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -257,5 +259,50 @@ func TestDefaultPath_IsPromptzeroScoped(t *testing.T) {
 	}
 	if !strings.HasSuffix(p, filepath.Join(".promptzero", "targetmem.db")) {
 		t.Errorf("unexpected default path: %q", p)
+	}
+}
+
+// TestRemember_PrunesToMaxTargets pins the retention cap: after the row count
+// exceeds maxTargets, the oldest targets (by last_seen) are evicted on the next
+// write so the table self-bounds. Without this, a flood of distinct identifiers
+// grows the DB without limit.
+func TestRemember_PrunesToMaxTargets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "targetmem.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer s.Close()
+	s.maxTargets = 3
+
+	base := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		if err := s.Remember(Target{
+			Identifier: fmt.Sprintf("id-%d", i),
+			Kind:       KindBSSID,
+			FirstSeen:  base,
+			LastSeen:   base.Add(time.Duration(i) * time.Minute), // strictly increasing
+		}); err != nil {
+			t.Fatalf("Remember %d: %v", i, err)
+		}
+	}
+
+	got, err := s.Recent(100)
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("after pruning to maxTargets=3, got %d rows, want 3", len(got))
+	}
+	// The 3 most-recently-seen survive; the 2 oldest are evicted.
+	for _, want := range []string{"id-2", "id-3", "id-4"} {
+		if _, ok, _ := s.Lookup(want, KindBSSID); !ok {
+			t.Errorf("%s should survive pruning (among the 3 newest)", want)
+		}
+	}
+	for _, gone := range []string{"id-0", "id-1"} {
+		if _, ok, _ := s.Lookup(gone, KindBSSID); ok {
+			t.Errorf("%s should have been pruned (oldest by last_seen)", gone)
+		}
 	}
 }
