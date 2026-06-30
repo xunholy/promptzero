@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -391,4 +392,30 @@ func TestQuarantineOutput_ExportedSurface(t *testing.T) {
 	if !strings.Contains(out, "<untrusted-hardware-output>") {
 		t.Errorf("isErr=true should still wrap hardware output: %q", out)
 	}
+}
+
+// TestConfirmDelayGate_ConcurrentShowAndCheck exercises the gate the way the
+// REPL does: Show() runs on the agent's Run goroutine while Open()/Remaining()
+// run on the key-reading goroutine. `go test -race` is the real assertion that
+// the shownAt access is synchronized; the body also confirms the gate stays
+// usable (no panic, fail-closed) under the interleaving.
+func TestConfirmDelayGate_ConcurrentShowAndCheck(t *testing.T) {
+	g := NewConfirmDelayGate(10 * time.Millisecond)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			g.Show()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			_ = g.Open()
+			_ = g.Remaining()
+		}
+	}()
+	wg.Wait()
 }
