@@ -47,18 +47,29 @@ const (
 	KindIButton  = "ibutton"
 )
 
-// MaxRecent caps the per-call row count returned by Recent. The
-// targets table grows without bound across sessions; a Recent(1000000)
-// call (operator typo, malicious LLM tool call) would tie up SQLite
-// and serialise a multi-MB JSON. 1000 is generous for any reasonable
+// MaxRecent caps the per-call row count returned by Recent. A
+// Recent(1000000) call (operator typo, malicious LLM tool call) would tie up
+// SQLite and serialise a multi-MB JSON. 1000 is generous for any reasonable
 // recall flow.
 const MaxRecent = 1000
+
+// MaxTargets caps the total number of rows the store retains. Re-observing a
+// target upserts on the (identifier, kind) primary key, so growth comes only
+// from DISTINCT identifiers — but a flood of distinct attacker-presented UIDs
+// (a scan loop against many spoofed badges/SSIDs) would otherwise grow the DB
+// without bound. After each write the store prunes to the most-recently-seen
+// MaxTargets rows. 50000 small rows is generous for any realistic pentest
+// history while bounding a hostile flood to a few MB.
+const MaxTargets = 50000
 
 // Store is the persistent target memory. Safe for concurrent use;
 // a single SQLite connection is serialised internally.
 type Store struct {
 	mu sync.Mutex
 	db *sql.DB
+	// maxTargets is the retention cap enforced after each write. Zero falls
+	// back to MaxTargets; set lower in tests to exercise pruning.
+	maxTargets int
 }
 
 // DefaultPath returns ~/.promptzero/targetmem.db.
@@ -108,7 +119,7 @@ func Open(path string) (*Store, error) {
 	if err := os.Chmod(path, 0o600); err != nil {
 		obs.Default().Warn("targetmem_chmod_failed", "path", path, "err", err)
 	}
-	return &Store{db: db}, nil
+	return &Store{db: db, maxTargets: MaxTargets}, nil
 }
 
 // Close releases the database connection.
@@ -151,7 +162,36 @@ func (s *Store) Remember(t Target) error {
 			facts = excluded.facts,
 			last_seen = excluded.last_seen
 	`, t.Identifier, t.Kind, string(factsJSON), t.FirstSeen.Format(time.RFC3339), t.LastSeen.Format(time.RFC3339))
-	return err
+	if err != nil {
+		return err
+	}
+	return s.pruneLocked()
+}
+
+// pruneLocked enforces the row-count retention cap, deleting the oldest rows
+// (by last_seen) beyond maxTargets. Called under s.mu after a write. A cheap
+// COUNT guards the DELETE so the common already-under-cap case does no work.
+// last_seen is stored as RFC3339, so a lexicographic ORDER BY is chronological
+// and uses idx_targets_last_seen.
+func (s *Store) pruneLocked() error {
+	limit := s.maxTargets
+	if limit <= 0 {
+		limit = MaxTargets
+	}
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM targets`).Scan(&n); err != nil {
+		return fmt.Errorf("targetmem: prune count: %w", err)
+	}
+	if n <= limit {
+		return nil
+	}
+	if _, err := s.db.Exec(`
+		DELETE FROM targets WHERE rowid NOT IN (
+			SELECT rowid FROM targets ORDER BY last_seen DESC LIMIT ?
+		)`, limit); err != nil {
+		return fmt.Errorf("targetmem: prune delete: %w", err)
+	}
+	return nil
 }
 
 // Lookup returns a target by identifier+kind or (zero, false) when
