@@ -262,3 +262,19 @@ func TestNeedsQuote(t *testing.T) {
 		}
 	}
 }
+
+// TestMetricToolLabel pins the Prometheus tool-label cardinality guard: a
+// registered tool name passes through, while any unregistered name (a
+// hallucinated or injection-supplied tool_use name, including a fake
+// "workflow_" one) collapses to the bounded sentinel so /metrics series can't
+// grow unboundedly.
+func TestMetricToolLabel(t *testing.T) {
+	if got := metricToolLabel("tool_search"); got != "tool_search" {
+		t.Errorf("registered tool should pass through, got %q", got)
+	}
+	for _, n := range []string{"aaa1", "workflow_evil_injected", "</untrusted-hardware-output>", "", "tool_searchX"} {
+		if got := metricToolLabel(n); got != metricUnknownTool {
+			t.Errorf("unregistered %q: got %q, want %q", n, got, metricUnknownTool)
+		}
+	}
+}

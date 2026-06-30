@@ -14,11 +14,29 @@ import (
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/risk"
 	streampkg "github.com/xunholy/promptzero/internal/streaming"
+	"github.com/xunholy/promptzero/internal/tools"
 	"github.com/xunholy/promptzero/internal/voice"
 	"github.com/xunholy/promptzero/internal/watch"
 	"github.com/xunholy/promptzero/internal/webhook"
 	"golang.org/x/term"
 )
+
+// metricUnknownTool is the Prometheus tool/name label substituted for any
+// tool_use name not in the registry, so model-hallucinated or injected names
+// cannot grow the metrics cardinality unboundedly.
+const metricUnknownTool = "__unknown__"
+
+// metricToolLabel bounds a model-supplied tool name to the registered tool set
+// for Prometheus labelling. A registered name passes through; anything else (a
+// hallucinated name, or one injected via attacker-controlled tool output) is
+// collapsed to metricUnknownTool so the label's cardinality stays bounded by
+// the registry size + 1 rather than by what the model can be made to emit.
+func metricToolLabel(name string) string {
+	if _, ok := tools.Get(name); ok {
+		return name
+	}
+	return metricUnknownTool
+}
 
 // turnResult is the outcome of one ai.Run, delivered back to the REPL
 // select loop so it can update UI state on the main goroutine.
@@ -695,9 +713,19 @@ func enterREPL(deps *REPLDeps) error {
 			if ev.Err {
 				status = "error"
 			}
-			rec.RecordToolCall(ev.Name, risk.Classify(ev.Name).String(), status, ev.Duration)
-			if strings.HasPrefix(ev.Name, "workflow_") {
-				rec.RecordWorkflowRun(ev.Name, status, ev.Duration)
+			// Bound the Prometheus tool/name label to the registered tool
+			// set. ev.Name is the raw model-chosen tool_use name, which can be
+			// steered by prompt-injection from attacker-controlled tool output
+			// (a captured SSID / NFC record) to arbitrary values — and the
+			// finish event is emitted before dispatch rejects unknown names. An
+			// unguarded label would create a new Prometheus series per distinct
+			// name, an unbounded-cardinality memory leak that also echoes the
+			// injected names into /metrics. Unknown names collapse to a single
+			// sentinel; the risk label is already a bounded enum.
+			toolLabel := metricToolLabel(ev.Name)
+			rec.RecordToolCall(toolLabel, risk.Classify(ev.Name).String(), status, ev.Duration)
+			if strings.HasPrefix(toolLabel, "workflow_") {
+				rec.RecordWorkflowRun(toolLabel, status, ev.Duration)
 			}
 			out := ev.Output
 			if len(out) > 2048 {
