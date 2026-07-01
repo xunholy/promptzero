@@ -123,6 +123,15 @@ func ParseYAML(data []byte) (*Campaign, error) {
 		if s.DependsOn == s.ID {
 			return nil, fmt.Errorf("campaign %q step %q: self-dependency", c.Name, s.ID)
 		}
+		// A when clause is evaluated against the predecessor's output, so it is
+		// only meaningful with a depends_on. Without one, the Runner never
+		// reaches the when check and the step runs UNCONDITIONALLY — an operator
+		// gating a destructive tool with `when:` would get a silently-inert
+		// guard (fail-open). Reject at load so the misconfiguration surfaces
+		// loudly instead of running the tool.
+		if s.When != "" && s.DependsOn == "" {
+			return nil, fmt.Errorf("campaign %q step %q: when clause requires depends_on (a when is evaluated against the predecessor's output; without one the step would run unconditionally)", c.Name, s.ID)
+		}
 	}
 
 	// Third pass: declaration-order check. The Runner iterates steps in

@@ -513,3 +513,23 @@ func (r *recordingExecutor) Run(ctx context.Context, tool string, _ map[string]i
 	}
 	return "ok", nil
 }
+
+// TestParseYAML_RejectsWhenWithoutDependsOn pins the fail-closed fix for the
+// inert-gate bug: a `when` clause is evaluated against the predecessor's output,
+// so without a depends_on the Runner never reaches the when check and the step
+// runs UNCONDITIONALLY. An operator gating a destructive tool with `when:` would
+// otherwise get a silently-inert guard. Such a campaign must be rejected at load.
+func TestParseYAML_RejectsWhenWithoutDependsOn(t *testing.T) {
+	yamlDoc := `campaign: ungated-when
+steps:
+  - id: scan
+    tool: wifi_scan_ap
+  - id: gated
+    tool: wifi_sniff_pmkid
+    when: contains "AUTHORIZED"
+`
+	_, err := ParseYAML([]byte(yamlDoc))
+	if err == nil || !strings.Contains(err.Error(), "when clause requires depends_on") {
+		t.Errorf("a when without depends_on must be rejected (else the gate runs unconditionally): %v", err)
+	}
+}
