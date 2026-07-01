@@ -1521,6 +1521,18 @@ type WebDeps struct {
 	WebShare bool
 }
 
+// webShareURL builds the copy-friendly URL printed by --web-share. The bearer
+// token is carried in the URL FRAGMENT (#token=), never the query string: a
+// fragment is not sent to the server, so it stays out of access logs, proxy
+// logs, browser history persistence, and the Referer header — the same reason
+// /ws refuses query-string tokens. The fragment is also the form the web
+// client's authBootstrap actually parses (and scrubs from history after
+// reading), so a query-string token both leaks the secret and fails to log the
+// teammate in.
+func webShareURL(addr, token string) string {
+	return fmt.Sprintf("http://%s/#token=%s", addr, token)
+}
+
 // runWebMode binds the HTTP UI on the configured address and serves
 // until the context is cancelled. web.NewServer warns internally when
 // the bind is non-loopback; we re-read srv.Addr() so the status line
@@ -1549,8 +1561,7 @@ func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps
 		if cfg.Web.Token == "" {
 			statusWarn("--web-share refused: no auth token set. Sharing an unauthenticated URL is unsafe.")
 		} else {
-			statusOK(fmt.Sprintf("Web share URL: %shttp://%s/?token=%s%s",
-				bold, addr, cfg.Web.Token, reset))
+			statusOK(fmt.Sprintf("Web share URL: %s%s%s", bold, webShareURL(addr, cfg.Web.Token), reset))
 		}
 	}
 	// Wire the Phase-14 panel surface. Flipper may be nil when the
