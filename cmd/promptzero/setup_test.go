@@ -241,3 +241,18 @@ func TestWireMCPSidecars_NoSidecarsConfigured(t *testing.T) {
 		t.Errorf("audit log banner missing from MCP wiring; got: %q", out)
 	}
 }
+
+// TestWebShareURL_UsesFragmentNotQuery pins that the --web-share URL carries the
+// bearer token in the URL fragment (#token=), not a query string (?token=). A
+// query-string token leaks the secret to access/proxy logs, browser history,
+// and the Referer header, and the web client only parses the fragment — so the
+// query form both leaks and fails to authenticate the recipient.
+func TestWebShareURL_UsesFragmentNotQuery(t *testing.T) {
+	got := webShareURL("192.168.1.20:8080", "s3cr3t-token")
+	if strings.Contains(got, "?token=") {
+		t.Errorf("share URL carries the token in a query string (leaks to logs/Referer): %q", got)
+	}
+	if !strings.Contains(got, "#token=s3cr3t-token") {
+		t.Errorf("share URL should carry the token in the fragment: %q", got)
+	}
+}
