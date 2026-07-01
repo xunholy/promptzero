@@ -144,6 +144,14 @@ func (e *Engine) Register(r Rule) {
 	defer e.mu.Unlock()
 	cp := r
 	cp.Enabled = true
+	// A negative cooldown would slip past the `Cooldown > 0` suppression guard
+	// in Handle and behave as "no cooldown" — a silently-disabled rate limit if
+	// an operator fat-fingered a sign. Normalise to 0 (the documented
+	// no-cooldown value) so List reports it honestly and the intent is explicit.
+	if cp.Cooldown < 0 {
+		obs.Default().Warn("rule_negative_cooldown_clamped", "rule", r.Name, "cooldown", cp.Cooldown.String())
+		cp.Cooldown = 0
+	}
 	e.rules[r.Name] = &cp
 	delete(e.lastFire, r.Name)
 	e.fires[r.Name] = 0
@@ -224,7 +232,7 @@ func (e *Engine) List() []Snapshot {
 // audit observer path must not block on them.
 func (e *Engine) Handle(entry audit.Entry) {
 	e.mu.Lock()
-	candidates := make([]*Rule, 0, len(e.rules))
+	candidates := make([]firedRule, 0, len(e.rules))
 	for _, r := range e.rules {
 		if !r.Enabled {
 			continue
@@ -238,15 +246,54 @@ func (e *Engine) Handle(entry audit.Entry) {
 				continue
 			}
 		}
-		e.lastFire[r.Name] = e.deps.Now()
+		// Optimistically record the fire under the lock so a concurrent
+		// Handle for the same rule is suppressed by the cooldown. If it turns
+		// out nothing actually dispatched (see fire's return), we roll this
+		// back below so a no-op fire doesn't consume the cooldown window.
+		prev, had := e.lastFire[r.Name]
+		bump := e.deps.Now()
+		e.lastFire[r.Name] = bump
 		e.fires[r.Name]++
-		candidates = append(candidates, r)
+		candidates = append(candidates, firedRule{rule: r, prevLast: prev, hadLast: had, bump: bump})
 	}
 	e.mu.Unlock()
 
-	for _, r := range candidates {
-		e.fire(r, entry)
+	for _, c := range candidates {
+		if e.fire(c.rule, entry) {
+			continue
+		}
+		// Nothing dispatched — e.g. the rule's only action was an ActionTool
+		// dropped because inFlight was saturated. Roll back the optimistic
+		// accounting: otherwise the rule is reported as fired and, worse, its
+		// cooldown clock is now running, so the NEXT genuinely-matching event
+		// inside the window is wrongly suppressed. Restore lastFire only if it
+		// still holds our bump (a concurrent fire for the same rule may have
+		// legitimately advanced it — for Cooldown==0, where lastFire is
+		// display-only; with a cooldown, concurrent same-rule fires can't both
+		// pass the check above).
+		e.mu.Lock()
+		if e.fires[c.rule.Name] > 0 {
+			e.fires[c.rule.Name]--
+		}
+		if e.lastFire[c.rule.Name].Equal(c.bump) {
+			if c.hadLast {
+				e.lastFire[c.rule.Name] = c.prevLast
+			} else {
+				delete(e.lastFire, c.rule.Name)
+			}
+		}
+		e.mu.Unlock()
 	}
+}
+
+// firedRule captures the pre-fire accounting state for a rule Handle decided to
+// fire, so a fire whose actions all no-op (e.g. a saturation-dropped tool) can
+// be rolled back to not consume its cooldown or inflate its fire count.
+type firedRule struct {
+	rule     *Rule
+	prevLast time.Time
+	hadLast  bool
+	bump     time.Time
 }
 
 // Test renders the actions without side effects and returns the
@@ -266,10 +313,16 @@ func (e *Engine) Test(name string, entry audit.Entry) ([]string, error) {
 	return out, nil
 }
 
-func (e *Engine) fire(r *Rule, entry audit.Entry) {
+// fire dispatches a matched rule's actions and reports whether at least one
+// action actually dispatched. It returns false when every action no-ops — a
+// missing webhook/tool dispatcher, an unknown kind, or an ActionTool dropped
+// because the concurrency cap is saturated — so Handle can roll back the
+// optimistic fire accounting for a rule that did nothing.
+func (e *Engine) fire(r *Rule, entry audit.Entry) bool {
 	payload := entryPayload(entry)
 	logger := obs.Default().With("rule", r.Name, "tool", entry.Tool, "trace_id", entry.TraceID)
 
+	dispatched := false
 	for _, a := range r.Actions {
 		switch a.Kind {
 		case ActionWebhook:
@@ -278,8 +331,10 @@ func (e *Engine) fire(r *Rule, entry audit.Entry) {
 				continue
 			}
 			e.deps.WebhookFire(a.Webhook, withTemplated(a.Params, payload, entry))
+			dispatched = true
 		case ActionLog:
 			logger.Info("rule_fired", "message", render(firstString(a.Params, "message"), entry))
+			dispatched = true
 		case ActionTool:
 			if e.deps.RunTool == nil {
 				logger.Warn("rule_action_skipped", "kind", string(a.Kind), "reason", "no tool runner")
@@ -317,10 +372,14 @@ func (e *Engine) fire(r *Rule, entry audit.Entry) {
 					}
 				}
 			})
+			// The slot is reserved and the goroutine launched; count it as
+			// dispatched even though completion is async.
+			dispatched = true
 		default:
 			logger.Warn("rule_unknown_kind", "kind", string(a.Kind))
 		}
 	}
+	return dispatched
 }
 
 // matches applies the AND-over-non-empty predicate. Trailing "*" in Tool

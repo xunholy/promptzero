@@ -603,3 +603,94 @@ func TestMatch_SuccessTrue_CombinedWithToolGlob(t *testing.T) {
 		t.Errorf("expected 1 fire (workflow_* + success), got %d", fires)
 	}
 }
+
+// snapOf returns the named rule's snapshot, failing if absent.
+func snapOf(t *testing.T, e *Engine, name string) Snapshot {
+	t.Helper()
+	for _, s := range e.List() {
+		if s.Name == name {
+			return s
+		}
+	}
+	t.Fatalf("rule %q not found in List()", name)
+	return Snapshot{}
+}
+
+// waitForCond polls until cond() or the deadline, failing on timeout.
+func waitForCond(t *testing.T, d time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition not met before deadline")
+}
+
+// TestEngine_SaturationDropDoesNotConsumeCooldown pins the fix for the
+// cooldown-accounting bug: a rule whose only action is a tool dropped because
+// the concurrency cap is saturated must NOT be counted as fired and must NOT
+// start its cooldown — otherwise the next genuinely-matching event inside the
+// window would be wrongly suppressed (a real trigger silently swallowed).
+func TestEngine_SaturationDropDoesNotConsumeCooldown(t *testing.T) {
+	now := time.Now()
+	var mu sync.Mutex
+	var calls int
+	eng := New(Deps{
+		Now: func() time.Time { return now },
+		RunTool: func(_ context.Context, _ string, _ map[string]interface{}) (string, error) {
+			mu.Lock()
+			calls++
+			mu.Unlock()
+			return "", nil
+		},
+	})
+	eng.Register(Rule{
+		Name:     "gated",
+		Match:    Match{Tool: "trigger"},
+		Actions:  []Action{{Kind: ActionTool, Tool: "slow_tool"}},
+		Cooldown: time.Hour,
+		Enabled:  true,
+	})
+	entry := audit.Entry{Tool: "trigger"}
+
+	// Saturate the global tool-action cap so the next dispatch is dropped.
+	eng.inFlight.Store(maxToolActions)
+	eng.Handle(entry)
+
+	if snap := snapOf(t, eng, "gated"); snap.Fires != 0 {
+		t.Errorf("Fires=%d after saturation drop, want 0 (nothing dispatched)", snap.Fires)
+	} else if !snap.LastFire.IsZero() {
+		t.Error("LastFire set after saturation drop — cooldown wrongly consumed")
+	}
+
+	// Free the cap; the SAME event must now fire, proving the earlier drop did
+	// not consume the 1h cooldown window.
+	eng.inFlight.Store(0)
+	eng.Handle(entry)
+
+	if snap := snapOf(t, eng, "gated"); snap.Fires != 1 {
+		t.Errorf("Fires=%d after cap freed, want 1 (drop must not have consumed cooldown)", snap.Fires)
+	} else if snap.LastFire.IsZero() {
+		t.Error("LastFire not set after a real fire")
+	}
+	waitForCond(t, 2*time.Second, func() bool { mu.Lock(); defer mu.Unlock(); return calls == 1 })
+}
+
+// TestEngine_NegativeCooldownClampedToZero pins that a negative cooldown (an
+// operator sign typo) is normalised to 0 rather than silently slipping past the
+// `Cooldown > 0` suppression guard as "no cooldown".
+func TestEngine_NegativeCooldownClampedToZero(t *testing.T) {
+	eng := New(Deps{})
+	eng.Register(Rule{
+		Name:     "typo",
+		Match:    Match{Tool: "x"},
+		Actions:  []Action{{Kind: ActionLog}},
+		Cooldown: -5 * time.Second,
+	})
+	if snap := snapOf(t, eng, "typo"); snap.Cooldown != 0 {
+		t.Errorf("negative cooldown not clamped: got %v, want 0", snap.Cooldown)
+	}
+}
