@@ -199,3 +199,39 @@ func TestVerifyChain_ContinuesAcrossReopen(t *testing.T) {
 		t.Errorf("chain should span the reopen: %+v", res)
 	}
 }
+
+// TestVerifyChain_PoisonedSuccessReportsBreak pins that a row whose success
+// column is poisoned out-of-range (2) or to NULL by an attacker with direct DB
+// write is reported as a chain break — not surfaced as an opaque scan error
+// that aborts the entire verification walk. success and entry_hash are
+// independent columns; scanning success as a bare bool turned a tamper into a
+// DoS on the forensic integrity check.
+func TestVerifyChain_PoisonedSuccessReportsBreak(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		poke string
+	}{
+		{"out_of_range", `UPDATE audit_log SET success=2 WHERE id=2`},
+		{"null", `UPDATE audit_log SET success=NULL WHERE id=2`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := openTestLog(t)
+			for i := 0; i < 4; i++ {
+				l.Record("nfc", map[string]int{"i": i}, "ok", "low", LevelAction, 0, true)
+			}
+			if _, err := l.db.Exec(tc.poke); err != nil {
+				t.Fatalf("poison: %v", err)
+			}
+			res, err := l.VerifyChain()
+			if err != nil {
+				t.Fatalf("VerifyChain errored on a poisoned success value (must report a break, not abort the walk): %v", err)
+			}
+			if res.Valid {
+				t.Fatal("poisoned success value not detected as a chain break")
+			}
+			if res.FirstBrokenID != 2 {
+				t.Errorf("FirstBrokenID = %d, want 2", res.FirstBrokenID)
+			}
+		})
+	}
+}

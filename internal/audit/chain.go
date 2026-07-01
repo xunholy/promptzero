@@ -132,8 +132,17 @@ func (l *Log) VerifyChainAgainst(anchor *CheckpointAnchor) (*VerifyResult, error
 			timestamp, tool, level         string
 			input, output, risk, sessionID sql.NullString
 			durationMs                     sql.NullInt64
-			success                        bool
-			storedHash                     sql.NullString
+			// success is scanned as NullInt64, not a bare bool: legitimate rows
+			// always store 0/1, but success and entry_hash are independent
+			// columns an attacker with direct DB write can set separately. A
+			// bare-bool scan of a poisoned NULL or out-of-range value (e.g. 2)
+			// fails the scan and aborts the entire verification walk with an
+			// opaque type error — turning a tamper into a DoS on the integrity
+			// check rather than the designed "chain broken at row N" verdict.
+			// Scanning defensively lets any non-1 value flow into the hash
+			// recompute below, where it correctly fails the comparison.
+			success    sql.NullInt64
+			storedHash sql.NullString
 		)
 		if err := rows.Scan(&id, &timestamp, &tool, &input, &output, &risk, &level,
 			&sessionID, &durationMs, &success, &storedHash); err != nil {
@@ -151,7 +160,7 @@ func (l *Log) VerifyChainAgainst(anchor *CheckpointAnchor) (*VerifyResult, error
 		res.HashedRows++
 
 		want := chainHash(prevHash, timestamp, tool, input.String, output.String,
-			risk.String, level, sessionID.String, durationMs.Int64, success)
+			risk.String, level, sessionID.String, durationMs.Int64, success.Int64 == 1)
 		if want != storedHash.String {
 			if res.Valid { // record only the first break
 				res.Valid = false
