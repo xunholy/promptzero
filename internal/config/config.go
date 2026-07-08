@@ -81,6 +81,7 @@ type Config struct {
 	Validator     ValidatorConfig     `yaml:"validator,omitempty"`
 	Rules         []RuleConfig        `yaml:"rules,omitempty"`
 	Cost          CostConfig          `yaml:"cost,omitempty"`
+	Wigle         WigleConfig         `yaml:"wigle,omitempty"`
 
 	// MCPClients is the raw YAML for outbound MCP federation entries
 	// (internal/mcpfed). Stored as []yaml.Node so config.go has no
@@ -216,6 +217,29 @@ type CostConfig struct {
 	// (the default) disables the budget. The CLI flag --budget
 	// overrides this value. See internal/cost.Tracker.SetBudget.
 	BudgetUSD float64 `yaml:"budget_usd,omitempty"`
+}
+
+// WigleConfig holds the credentials and opt-in flag for wigle_upload — the
+// tool that POSTs a wardrive CSV to wigle.net. Outward network egress of
+// captured location data is off by default: UploadEnabled must be explicitly
+// set to true to arm it, and even then each upload is a High-risk tool call
+// gated by the confirmation prompt. APIName/APIToken are the account's API
+// credentials (WiGLE account page → "Show my token"); prefer the
+// WIGLE_API_NAME / WIGLE_API_TOKEN environment variables over the config file.
+type WigleConfig struct {
+	// UploadEnabled arms live uploads. False (the default) makes wigle_upload
+	// refuse with a friendly message so the egress capability can't be used
+	// until the operator deliberately turns it on.
+	UploadEnabled bool `yaml:"upload_enabled,omitempty"`
+	// APIName is the WiGLE API name (e.g. AIDxxxxxxxx), used as the HTTP Basic
+	// auth username. Env: WIGLE_API_NAME.
+	APIName string `yaml:"api_name,omitempty"`
+	// APIToken is the WiGLE API token, used as the HTTP Basic auth password.
+	// A secret — keep it in the environment (WIGLE_API_TOKEN), not a file.
+	APIToken string `yaml:"api_token,omitempty"`
+	// Endpoint overrides the WiGLE upload URL. Empty uses the real API; tests
+	// point it at a local httptest server so no live egress occurs.
+	Endpoint string `yaml:"endpoint,omitempty"`
 }
 
 // CostRateConfig is one pricing entry. InputPerMTok and OutputPerMTok
@@ -464,6 +488,14 @@ func Load(path string) (*Config, error) {
 	}
 	if tok := os.Getenv("PROMPTZERO_WEB_TOKEN"); tok != "" {
 		cfg.Web.Token = tok
+	}
+	// WiGLE upload credentials belong in the environment, not a checked-in
+	// config file — they are account secrets. Env always wins over the file.
+	if name := os.Getenv("WIGLE_API_NAME"); name != "" {
+		cfg.Wigle.APIName = name
+	}
+	if tok := os.Getenv("WIGLE_API_TOKEN"); tok != "" {
+		cfg.Wigle.APIToken = tok
 	}
 	// PROMPTZERO_WEB_HOST / PROMPTZERO_WEB_PORT let a container or other
 	// 12-factor deployment bind the web UI without mounting a config file —
