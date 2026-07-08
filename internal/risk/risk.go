@@ -4131,6 +4131,10 @@ var toolLevels = func() map[string]Level {
 
 	// Active transmission, emulation, execution
 	register(High,
+		// Outward network egress of captured location data: POSTs a wardrive
+		// CSV to wigle.net. High because it transmits capture off-box; also
+		// gated by wigle.upload_enabled and confirmation. v0.799.
+		"wigle_upload",
 		"subghz_transmit",
 		"ir_transmit",
 		// Raw IR TX (arbitrary frequency/duty/timings) — strictly more

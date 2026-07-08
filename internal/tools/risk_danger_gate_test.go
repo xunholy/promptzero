@@ -50,7 +50,8 @@ var gatedTools = map[string]bool{ //nolint:gochecknoglobals
 	"wifi_evil_portal_set_ap": true, "wifi_evil_portal_set_html": true, "wifi_evil_portal_start": true, "wifi_join": true,
 	"wifi_karma": true, "wifi_ping_scan": true, "wifi_port_scan": true, "wifi_portscan_service": true,
 	"wifi_probe_flood": true, "wifi_reboot": true, "wifi_sae_flood": true, "wifi_sniff_pmkid": true,
-	"wifi_sniff_sae": true, "workflow_badusb_target_profile": true, "workflow_mousejack": true, "workflow_nfc_badge_pipeline": true,
+	"wifi_sniff_sae": true, "wigle_upload": true,
+	"workflow_badusb_target_profile": true, "workflow_mousejack": true, "workflow_nfc_badge_pipeline": true,
 	"workflow_rolljam_lab_demo": true, "workflow_wifi_target_to_hashcat": true,
 }
 

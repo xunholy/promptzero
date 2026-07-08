@@ -8,8 +8,13 @@
 // AP scans (SSID / BSSID / RSSI / channel) and GPS NMEA fixes (lat / lon /
 // altitude) — into the file a wardriver imports or uploads. Encoding is
 // offline and deterministic: the same observations always produce the same
-// bytes. Upload itself is intentionally out of scope — it is an
-// outward-facing, authenticated action the operator performs explicitly.
+// bytes.
+//
+// Upload (Client.Upload, client.go) POSTs a CSV to the WiGLE API. Because that
+// is outward network egress of captured location data, it is off by default:
+// the wigle_upload tool refuses unless the operator sets wigle.upload_enabled,
+// and even then each upload is a High-risk, confirmation-gated tool call. No
+// upload occurs during encoding or from anywhere else in this package.
 //
 // The one genuinely tricky correctness point is that SSIDs are
 // attacker-controllable and may contain commas, quotes, or newlines; all

@@ -3061,7 +3061,10 @@ func TestRegistrySize(t *testing.T) {
 	// X.509 revocation picture alongside crl_decode). internal/tools + internal/x509decode.
 	// v0.772.0 added x509_chain_verify (offline X.509 chain linkage / ordering / expiry
 	// verifier). internal/tools + internal/x509decode.
-	const expected = 702
+	// v0.799.0 added wigle_upload (authenticated wardrive-CSV upload to wigle.net; roadmap
+	// P2-26). Outward network egress, High risk, gated by wigle.upload_enabled + confirmation.
+	// internal/tools + internal/wigle.Client.
+	const expected = 703
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

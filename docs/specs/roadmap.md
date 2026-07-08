@@ -497,7 +497,13 @@ only explicit deferral, tracked with P2-19 Campaigns).
 - **How:**
   - `flipper_gps_fix` tool returns `(lat, lon, fix)`.
   - Marauder scan tools auto-stamp captures when fix is available.
-  - `wigle_upload` tool with OAuth; honors API rate limit.
+  - ~~`wigle_upload` tool with OAuth; honors API rate limit.~~ **Done (v0.799.0):**
+    `wigle_upload` POSTs a `WigleWifi-1.4` CSV to the WiGLE v2 file-upload API
+    with HTTP Basic auth (WiGLE's actual auth; not OAuth) and reports the 429
+    rate-limit / 401 distinctly. Outward egress, so High risk + double-gated
+    (`wigle.upload_enabled` opt-in + per-call confirmation). Offline-tested
+    against a mock. **Remaining:** GPS auto-stamping (`flipper_gps_fix` +
+    Marauder scan stamping) is hardware-dependent and still open.
 
 ### P2-27 — Semantic cache for generated payloads
 
