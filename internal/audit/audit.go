@@ -140,7 +140,17 @@ func Open(dbPath string) (*Log, error) {
 	}
 
 	actualPath := dbPath
-	lockFile, locked, err := tryFlock(dbPath)
+	// Flock a sibling ".lock" file rather than the database itself. On
+	// macOS flock(2) is implemented over fcntl(2), so an flock held on
+	// the .db file shadows sqlite's own fcntl locking and every write
+	// (starting with CREATE TABLE) fails with SQLITE_BUSY — Open would
+	// leave a 0-byte db behind and the fail-closed RequireOpen gate would
+	// then refuse every High/Critical tool. Linux keeps the two lock
+	// families independent so it never bit there, and Windows LockFileEx
+	// would shadow sqlite the same way macOS does; locking a non-db
+	// sibling is correct on every platform. Single-writer semantics are
+	// unchanged: all processes still contend on one path.
+	lockFile, locked, err := tryFlock(dbPath + ".lock")
 	if err != nil {
 		return nil, fmt.Errorf("locking audit db: %w", err)
 	}
@@ -151,7 +161,7 @@ func Open(dbPath string) (*Log, error) {
 			"fallback", fallback,
 			"reason", "another process holds the primary db flock",
 		)
-		lockFile, locked, err = tryFlock(fallback)
+		lockFile, locked, err = tryFlock(fallback + ".lock")
 		if err != nil {
 			return nil, fmt.Errorf("locking audit db fallback %s: %w", fallback, err)
 		}
@@ -159,7 +169,7 @@ func Open(dbPath string) (*Log, error) {
 			// Extremely unlikely: two processes with the same PID raced.
 			// Disambiguate with a timestamp and retry once.
 			fallback = fmt.Sprintf("%s.%d-%d", dbPath, os.Getpid(), time.Now().UnixNano())
-			lockFile, locked, err = tryFlock(fallback)
+			lockFile, locked, err = tryFlock(fallback + ".lock")
 			if err != nil || !locked {
 				return nil, fmt.Errorf("locking audit db fallback %s: %w", fallback, err)
 			}
