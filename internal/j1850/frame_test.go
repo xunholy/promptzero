@@ -4,19 +4,25 @@ import (
 	"testing"
 )
 
-// TestComputeCRC pins a known SAE J1850 CRC test vector.
-// Per SAE J1850 §5.4 reference: input bytes 6C F1 10 01 00 →
-// CRC = 0xB8. (Standard OBD-II Mode 1 PID 00 request from
-// diagnostic tool to ECM with no payload.)
+// TestComputeCRC pins the SAE J1850 CRC-8 (poly 0x1D, init 0xFF,
+// xorout 0xFF, no reflection) against two references:
+//
+//   - the protocol's canonical check value — CRC of the ASCII string
+//     "123456789" is 0x4B. This is the spec-defined self-test and
+//     catches any regression in the polynomial, init, xorout, or bit
+//     ordering.
+//   - a worked OBD-II frame: 6C F1 10 01 00 (Mode 1 PID 00 request from
+//     diagnostic tool to ECM) → 0x8B.
+//
+// The previous version asserted only that the result was non-zero, so a
+// CRC regression would have passed; its comment also mis-stated the
+// frame CRC as 0xB8 (transposed nibbles of the real 0x8B).
 func TestComputeCRC(t *testing.T) {
-	// Build a request frame body without CRC
-	body := []byte{0x6C, 0xF1, 0x10, 0x01, 0x00}
-	got := computeCRC(body)
-	// We expect CRC computation to be deterministic. Pin to
-	// what our implementation produces (which we use for the
-	// CRC-valid round-trip test below).
-	if got == 0 {
-		t.Errorf("computeCRC returned 0 — likely uninitialised state")
+	if got := computeCRC([]byte("123456789")); got != 0x4B {
+		t.Errorf("SAE J1850 canonical check: computeCRC(%q) = 0x%02X, want 0x4B", "123456789", got)
+	}
+	if got := computeCRC([]byte{0x6C, 0xF1, 0x10, 0x01, 0x00}); got != 0x8B {
+		t.Errorf("computeCRC(6C F1 10 01 00) = 0x%02X, want 0x8B", got)
 	}
 }
 
