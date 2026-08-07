@@ -119,3 +119,66 @@ func TestDecode_Errors(t *testing.T) {
 		}
 	}
 }
+
+// TestDecode_DynamicallyDefineDataIdentifier pins the 0x2C fix. Per ISO
+// 14229-1 the layout is SID | definitionType(sub-function) | DDDI(2) |
+// … — so the sub-function must be read before the identifier. Before the
+// fix 0x2C was absent from hasSubFunction, so the sub-function was
+// dropped and the DDDI read one byte early (0x01F2 instead of 0xF201).
+func TestDecode_DynamicallyDefineDataIdentifier(t *testing.T) {
+	// 2C 01 F201 F190 0101 — defineByIdentifier, DDDI 0xF201, source spec.
+	u, err := Decode("2C01F201F1900101")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if u.Service != "DynamicallyDefineDataIdentifier" {
+		t.Errorf("service = %s", u.Service)
+	}
+	if u.SubFunction == nil || *u.SubFunction != 0x01 {
+		t.Fatalf("SubFunction = %v; want 0x01", u.SubFunction)
+	}
+	if u.SubFunctionName != "defineByIdentifier" {
+		t.Errorf("SubFunctionName = %q; want defineByIdentifier", u.SubFunctionName)
+	}
+	if u.DataIdentifier == nil || *u.DataIdentifier != 0xF201 {
+		t.Errorf("DataIdentifier = %v; want 0xF201 (read after the sub-function)", u.DataIdentifier)
+	}
+	if u.PayloadHex != "F1900101" {
+		t.Errorf("PayloadHex = %q; want F1900101", u.PayloadHex)
+	}
+}
+
+// TestDecode_DIDServicesStructureIdentifier covers the sibling sweep:
+// 0x24 (ReadScalingDataByIdentifier) and 0x2F
+// (InputOutputControlByIdentifier) are DID-first services (like
+// 0x22/0x2E) whose 2-byte identifier was previously left in the raw
+// payload instead of being surfaced as DataIdentifier.
+func TestDecode_DIDServicesStructureIdentifier(t *testing.T) {
+	cases := []struct {
+		hexIn   string
+		service string
+		did     int
+		payload string
+	}{
+		{"24F19012", "ReadScalingDataByIdentifier", 0xF190, "12"},
+		{"2FF19003FF", "InputOutputControlByIdentifier", 0xF190, "03FF"},
+	}
+	for _, c := range cases {
+		u, err := Decode(c.hexIn)
+		if err != nil {
+			t.Fatalf("Decode(%s): %v", c.hexIn, err)
+		}
+		if u.Service != c.service {
+			t.Errorf("%s: service = %s; want %s", c.hexIn, u.Service, c.service)
+		}
+		if u.SubFunction != nil {
+			t.Errorf("%s: unexpected SubFunction %v (service has no sub-function)", c.hexIn, *u.SubFunction)
+		}
+		if u.DataIdentifier == nil || *u.DataIdentifier != c.did {
+			t.Errorf("%s: DataIdentifier = %v; want 0x%04X", c.hexIn, u.DataIdentifier, c.did)
+		}
+		if u.PayloadHex != c.payload {
+			t.Errorf("%s: PayloadHex = %q; want %q", c.hexIn, u.PayloadHex, c.payload)
+		}
+	}
+}
