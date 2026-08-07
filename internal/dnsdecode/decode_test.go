@@ -337,6 +337,43 @@ func TestRCodeNameTable(t *testing.T) {
 	}
 }
 
+// TestDecode_DNSKEYKeyClassification pins RFC 4034 §2.1.1 KSK/ZSK
+// classification. The Zone Key flag (0x0100) is set on both key types;
+// the SEP flag (0x0001) tells them apart, and the two are mutually
+// exclusive. Regression for a KSK (flags=257) being reported as both.
+//
+// Message layout (only the 2-byte flags field varies): DNS response
+// header, root question for DNSKEY, one root DNSKEY answer whose RDATA is
+// flags(2) + protocol 03 + algorithm 08 + a 2-byte dummy key.
+func TestDecode_DNSKEYKeyClassification(t *testing.T) {
+	const prefix = "12348180000100010000000000003000010000300001" + "00000E10" + "0006"
+	const suffix = "0308AABB" // protocol 3, algorithm 8, dummy key
+	cases := []struct {
+		name             string
+		flags            string // 2-byte hex
+		wantKSK, wantZSK bool
+	}{
+		{"KSK zone+SEP (257)", "0101", true, false},
+		{"ZSK zone only (256)", "0100", false, true},
+		{"SEP without zone key (1)", "0001", false, false},
+		{"neither (0)", "0000", false, false},
+	}
+	for _, c := range cases {
+		m, err := Decode(prefix + c.flags + suffix)
+		if err != nil {
+			t.Fatalf("%s: decode: %v", c.name, err)
+		}
+		if len(m.Answers) != 1 || m.Answers[0].DNSKEY == nil {
+			t.Fatalf("%s: no DNSKEY answer parsed", c.name)
+		}
+		k := m.Answers[0].DNSKEY
+		if k.IsKSK != c.wantKSK || k.IsZSK != c.wantZSK {
+			t.Errorf("%s (flags=%d): IsKSK=%v IsZSK=%v; want %v/%v",
+				c.name, k.Flags, k.IsKSK, k.IsZSK, c.wantKSK, c.wantZSK)
+		}
+	}
+}
+
 // --- test helpers --------------------------------------------------
 
 func encodeName(name string) []byte {

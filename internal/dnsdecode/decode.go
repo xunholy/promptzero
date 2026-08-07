@@ -468,10 +468,17 @@ func decodeRDATA(r *Record, rdata, full []byte, rdataOff, rrType int, ttl uint32
 	case 48: // DNSKEY
 		if len(rdata) >= 4 {
 			flags := int(binary.BigEndian.Uint16(rdata[0:2]))
+			// RFC 4034 §2.1.1: bit 7 (0x0100) is the Zone Key flag — set on
+			// every DNSSEC zone key, KSK and ZSK alike; bit 15 (0x0001) is
+			// the SEP flag, conventionally marking a Key Signing Key. A key
+			// is a KSK when it is a zone key with SEP set and a ZSK when it
+			// is a zone key with SEP clear — the two are mutually exclusive.
+			// (Gating IsZSK on the Zone Key flag alone mislabelled every KSK,
+			// flags=257, as both KSK and ZSK.)
 			r.DNSKEY = &DNSKEYData{
 				Flags:         flags,
-				IsKSK:         flags&0x0001 != 0,
-				IsZSK:         flags&0x0100 != 0,
+				IsKSK:         flags&0x0100 != 0 && flags&0x0001 != 0,
+				IsZSK:         flags&0x0100 != 0 && flags&0x0001 == 0,
 				Protocol:      int(rdata[2]),
 				Algorithm:     int(rdata[3]),
 				AlgorithmName: dnssecAlgName(int(rdata[3])),
