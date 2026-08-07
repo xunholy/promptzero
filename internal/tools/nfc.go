@@ -56,9 +56,15 @@ func init() {
 		Description: "Run an arbitrary NFC subshell subcommand. Valid subcommands: scanner, emulate, dump, field, raw, apdu, mfu. Fork-gated: requires the nfc CLI subshell (stock/Unleashed/RogueMaster). Not available on Xtreme.",
 		Schema:      json.RawMessage(`{"type":"object","properties":{"subcommand":{"type":"string","description":"Subcommand (scanner/emulate/dump/field/raw/apdu/mfu)"},"timeout_seconds":{"type":"number","description":"Wait time (default 30)"}}}`),
 		Required:    []string{"subcommand"},
-		Risk:        risk.Medium,
-		Group:       GroupFlipperNFC,
-		AgentOnly:   false,
+		// High, not Medium: this passthrough admits emulate / raw / apdu / mfu
+		// write — the same firmware operations nfc_emulate / nfc_raw_frame /
+		// nfc_apdu / nfc_mfu_wrbl each classify High. Gating it Medium let a
+		// High-risk NFC op run through the low-risk name, bypassing the
+		// confirmation and MCP allow-high gates. Read-only recon is served by
+		// nfc_detect / nfc_dump_protocol.
+		Risk:      risk.High,
+		Group:     GroupFlipperNFC,
+		AgentOnly: false,
 		Handler: func(_ context.Context, d *Deps, p map[string]any) (string, error) {
 			return d.Flipper.NFCSubcommand(
 				str(p, "subcommand"),

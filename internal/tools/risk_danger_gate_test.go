@@ -40,7 +40,7 @@ var gatedTools = map[string]bool{ //nolint:gochecknoglobals
 	"loader_seader": true, "loader_sentry_safe": true, "loader_signal": true, "loader_subghz_bruteforcer": true,
 	"loader_subghz_playlist": true, "loader_t5577_multiwriter": true, "mfcuk_attack": true, "mfkey32_recover": true,
 	"mfoc_attack": true, "mifare_hardnested_host": true, "nfc_apdu": true, "nfc_emulate": true,
-	"nfc_mfu_wrbl": true, "nfc_raw_frame": true, "nrf24_mousejack_start": true, "port_scan_tcp": true,
+	"nfc_mfu_wrbl": true, "nfc_raw_frame": true, "nfc_subcommand": true, "nrf24_mousejack_start": true, "port_scan_tcp": true,
 	"power_reboot_dfu": true, "rfid_emulate": true, "rfid_raw_emulate": true, "rfid_write": true,
 	"run_payload": true, "subghz_bruteforce": true, "subghz_chat": true, "subghz_transmit": true,
 	"subghz_tx_key": true, "update_install": true, "wifi_arp_scan": true, "wifi_attack_badmsg": true,
