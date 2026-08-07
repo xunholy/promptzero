@@ -341,12 +341,21 @@ func encodingForFunction(f int) string {
 	}
 }
 
-// pocsagNumericTable maps the 4-bit nibbles operators see in
-// POCSAG numeric pages to their display characters. Source:
-// ITU-R M.584-2 §3.3 (numeric message format).
+// pocsagNumericTable maps the logical 4-bit numeric code — the value
+// decodeNumeric produces after bit-reversing each LSB-first nibble — to
+// its display character. Indices 0-9 are BCD digits; 10-15 are the spare
+// symbols '.', 'U' (urgency), space, '-', ']', '['.
+//
+// Source: ITU-R M.584-2 §3.3 (numeric message format), cross-checked
+// against multimon-ng's reference table (its on-wire conv_table
+// "084 2.6]195-3U7[" reversed into logical order yields exactly this).
+// The five non-digit symbols other than 'U' were previously wrong
+// (space and '-' — the two most common in real numeric pages — decoded
+// as '-' and ')'); the shared encode/decode table hid it from
+// round-trip tests. See TestNumericTableMatchesReference.
 var pocsagNumericTable = [16]byte{
 	'0', '1', '2', '3', '4', '5', '6', '7',
-	'8', '9', ' ', 'U', '-', ')', '(', ' ',
+	'8', '9', '.', 'U', ' ', '-', ']', '[',
 }
 
 // decodeNumeric renders a numeric-message bit-stream — 4-bit

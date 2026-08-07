@@ -381,16 +381,18 @@ func packNumericDigits(digits string) uint32 {
 		switch {
 		case d >= '0' && d <= '9':
 			nibble = uint8(d - '0')
-		case d == ' ':
+		case d == '.':
 			nibble = 0x0A
 		case d == 'U':
 			nibble = 0x0B
-		case d == '-':
+		case d == ' ':
 			nibble = 0x0C
-		case d == ')':
+		case d == '-':
 			nibble = 0x0D
-		case d == '(':
+		case d == ']':
 			nibble = 0x0E
+		case d == '[':
+			nibble = 0x0F
 		}
 		// LSB-first within the nibble: reverse before placing.
 		reversed := bits.Reverse8(nibble) >> 4
@@ -431,4 +433,44 @@ func packAlphanumeric(s string) uint32 {
 		}
 	}
 	return v
+}
+
+// nibbleBits renders a 4-bit wire nibble as an MSB-first bit string,
+// the form decodeNumeric consumes (it bit-reverses each nibble itself).
+func nibbleBits(wire uint8) string { return fmt.Sprintf("%04b", wire&0x0F) }
+
+// TestNumericTableMatchesReference pins the numeric character table to
+// the de-facto reference — multimon-ng's on-wire conv_table
+// "084 2.6]195-3U7[" (pocsag.c print_msg_numeric, indexed by the raw
+// nibble). Feeding decodeNumeric each wire nibble 0..15 must reproduce
+// that table exactly. This is the authoritative guard against the
+// regression where five of the six non-digit symbols were wrong (issue:
+// space decoded as '-', '-' as ')'). It deliberately does NOT use the
+// packNumericDigits helper, so it can't share a bug with the encoder.
+func TestNumericTableMatchesReference(t *testing.T) {
+	const reference = "084 2.6]195-3U7[" // multimon-ng, indexed by wire nibble
+	var b strings.Builder
+	for wire := 0; wire < 16; wire++ {
+		b.WriteString(nibbleBits(uint8(wire)))
+	}
+	got := decodeNumeric(b.String())
+	if got != reference {
+		t.Fatalf("numeric table mismatch vs multimon-ng reference:\n got  %q\n want %q", got, reference)
+	}
+}
+
+// TestDecodeNumeric_HyphenAndSpace guards the exact user-visible symptom:
+// a numeric page like a phone/callback number must render '-' and ' '
+// literally, not the pre-fix ')' and '-'. Wire nibbles are computed as
+// reverse4(logical): '5'→0xA, '-'(logical 13)→0xB, '1'→0x8, ' '(logical
+// 12)→0x3, '2'→0x4.
+func TestDecodeNumeric_HyphenAndSpace(t *testing.T) {
+	wire := []uint8{0xA, 0xB, 0x8, 0x3, 0x4} // "5-1 2"
+	var b strings.Builder
+	for _, w := range wire {
+		b.WriteString(nibbleBits(w))
+	}
+	if got, want := decodeNumeric(b.String()), "5-1 2"; got != want {
+		t.Fatalf("decodeNumeric = %q, want %q (hyphen/space must not decode as ')'/'-')", got, want)
+	}
 }

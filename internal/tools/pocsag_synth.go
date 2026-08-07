@@ -37,7 +37,7 @@ var pocsagSynthSpec = Spec{
 		"Inputs:\n" +
 		" - `address`: 21-bit RIC (decimal or 0x-hex). The low 3 bits set the batch frame position.\n" +
 		" - `function`: 0 = numeric, 1/2 = alphanumeric, 3 = tone-only (message must be empty).\n" +
-		" - `message`: the body. Numeric allows 0-9, space, U, -, (, ); alphanumeric is 7-bit ASCII.\n\n" +
+		" - `message`: the body. Numeric allows 0-9, '.', U, space, -, ], [; alphanumeric is 7-bit ASCII.\n\n" +
 		"Bounded to one batch: a message that doesn't fit after the address frame errors (multi-batch " +
 		"deferred) rather than emit a wrong layout. Numeric has no on-wire length field, so a short " +
 		"numeric message is space-padded to its codeword (POCSAG convention). Output is the '0'/'1' " +
@@ -49,7 +49,7 @@ var pocsagSynthSpec = Spec{
 		"properties":{
 			"address":{"type":"string","description":"21-bit RIC address: decimal or 0x-hex (e.g. 1234567 or 0x12D687)."},
 			"function":{"type":"integer","description":"0=numeric, 1/2=alphanumeric, 3=tone-only."},
-			"message":{"type":"string","description":"Page body. Numeric: 0-9 space U - ( ). Alphanumeric: 7-bit ASCII. Empty for tone."}
+			"message":{"type":"string","description":"Page body. Numeric: 0-9 . U space - ] [. Alphanumeric: 7-bit ASCII. Empty for tone."}
 		},
 		"required":["address","function"]
 	}`),
