@@ -198,28 +198,35 @@ func TestParseAPList_InjectionPayloadStaysInSSID(t *testing.T) {
 	}
 }
 
-// TestMarauderPromptIndex_FindsLastPrompt covers the offset
-// helper used by readUntilPromptCtx to slice off everything
-// before the trailing prompt. The "> " marker can appear inside
-// command output (rare but possible), so the function uses
-// bytes.LastIndex — confirm it picks the LATEST occurrence.
-func TestMarauderPromptIndex_FindsLastPrompt(t *testing.T) {
+// TestMarauderPromptTail covers the terminal-prompt detector used by
+// readUntilPromptCtx to slice off the trailing prompt. It must recognise the
+// prompt ONLY when it stands on its own at the tail (whole buffer, or after a
+// line break) — never a "> " embedded in a field value, since the detector
+// runs on every partial read and an attacker-controlled SSID like
+// "Free > WiFi" would otherwise truncate the response mid-stream.
+func TestMarauderPromptTail(t *testing.T) {
 	cases := []struct {
 		name string
 		in   string
 		want int
 	}{
 		{"trailing_prompt", "scan complete\n> ", 14},
-		{"two_prompts_picks_last", "ok > result\n> ", 12},
+		{"real_prompt_after_embedded", "ok > result\n> ", 12},
+		{"prompt_only", "> ", 0},
+		{"trailing_prompt_crlf", "row a\r\n> ", 7},
 		{"no_prompt", "no prompt here", -1},
 		{"empty_input", "", -1},
-		{"prompt_only", "> ", 0},
+		// The regression: a partial read whose latest "> " is embedded in a
+		// field value, with no terminal prompt yet, must NOT be treated as
+		// complete (old bytes.LastIndex returned the embedded offset here).
+		{"embedded_prompt_not_at_tail", "0 | OPEN | Free > WiFi", -1},
+		{"embedded_prompt_midline_more_after", "a\n0 | Free > WiFi | OPEN\n1 | net", -1},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := marauderPromptIndex([]byte(c.in))
+			got := marauderPromptTail([]byte(c.in))
 			if got != c.want {
-				t.Errorf("marauderPromptIndex(%q) = %d, want %d", c.in, got, c.want)
+				t.Errorf("marauderPromptTail(%q) = %d, want %d", c.in, got, c.want)
 			}
 		})
 	}

@@ -399,7 +399,7 @@ func (m *Marauder) readUntilPromptCtx(ctx context.Context, timeout time.Duration
 			continue
 		}
 		accum = append(accum, buf[:n]...)
-		if idx := marauderPromptIndex(accum); idx >= 0 {
+		if idx := marauderPromptTail(accum); idx >= 0 {
 			return parseMarauderResponse(accum[:idx]), nil
 		}
 		// Bound the accumulator: a runaway or hostile board that never sends
@@ -411,11 +411,31 @@ func (m *Marauder) readUntilPromptCtx(ctx context.Context, timeout time.Duration
 	}
 }
 
-// marauderPromptIndex returns the byte offset of the last '> ' in b, or -1.
-// Using bytes.LastIndex is safe because the prompt always appears at the end
-// of the response; taking everything before the last occurrence is correct.
-func marauderPromptIndex(b []byte) int {
-	return bytes.LastIndex(b, []byte("> "))
+// marauderPromptTail reports the offset at which a terminal Marauder prompt
+// ("> ") begins, or -1 if the buffer does not currently end with one. The
+// prompt is terminal only when it stands on its own — the whole buffer, or
+// immediately after a line break — because the firmware always emits it on a
+// fresh line once the response is complete.
+//
+// readUntilPromptCtx runs this on every partial read, so it must not fire on a
+// "> " embedded in a field value. The old bytes.LastIndex approach did exactly
+// that: a chunk boundary landing after an attacker-controlled SSID like
+// "Free > WiFi" but before the real prompt truncated the response and returned
+// the partial read as success. This mirrors the Stream path, which treats a
+// standalone "> " line as the prompt.
+func marauderPromptTail(b []byte) int {
+	// Once the response is complete the prompt stands alone on the final line:
+	// "> " (some firmware/paths emit a bare ">"), optionally followed by CR/LF.
+	// Strip trailing CR/LF, then require the last line to be exactly the
+	// prompt, so a "> " mid-line in a field value never ends a partial read.
+	trimmed := bytes.TrimRight(b, "\r\n")
+	lineStart := bytes.LastIndexByte(trimmed, '\n') + 1
+	switch string(trimmed[lineStart:]) {
+	case "> ", ">":
+		return lineStart
+	default:
+		return -1
+	}
 }
 
 // parseMarauderResponse normalizes line endings, strips the command echo line

@@ -2,6 +2,7 @@ package marauder
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -401,4 +402,34 @@ func TestListAPsParsedAndListStationsParsed(t *testing.T) {
 			t.Errorf("Stations[0].MAC = %q, want 11:22:33:44:55:66", res.Stations[0].MAC)
 		}
 	})
+}
+
+// TestListAPs_EmbeddedPromptInSSIDNotTruncated is the end-to-end regression
+// for the prompt-truncation bug: a large `list -a` response whose first row's
+// SSID contains "> " (attacker-controlled) arrives across multiple 512-byte
+// reads. The reader must wait for the real terminal prompt, not stop at the
+// embedded "> " and report the partial list as success.
+func TestListAPs_EmbeddedPromptInSSIDNotTruncated(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("0 | -55 | 6 | aa:bb:cc:dd:ee:ff | OPEN | Free > WiFi\r\n")
+	for i := 1; i < 25; i++ {
+		fmt.Fprintf(&b, "%d | -60 | 11 | aa:bb:cc:dd:ee:%02x | WPA2 | net%d\r\n", i, i, i)
+	}
+	b.WriteString("99 | -70 | 1 | ff:ff:ff:ff:ff:ff | OPEN | LASTROW_SENTINEL\r\n")
+
+	fp := newFakePort()
+	fp.respond("list -a", b.String())
+	m := newMarauderWithPort(fp)
+	t.Cleanup(func() { _ = m.Close() })
+
+	out, err := m.ListAPs()
+	if err != nil {
+		t.Fatalf("ListAPs: %v", err)
+	}
+	if !strings.Contains(out, "LASTROW_SENTINEL") {
+		t.Errorf("response truncated at embedded '> ': last row missing.\ngot %d bytes: %q", len(out), out)
+	}
+	if !strings.Contains(out, "Free > WiFi") {
+		t.Errorf("first row's SSID with embedded '> ' not preserved: %q", out)
+	}
 }
