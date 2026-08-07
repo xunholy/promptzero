@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.25.11']
+        go-version: ['1.25.12']
 
     steps:
       - uses: actions/checkout@v5
@@ -66,7 +66,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.11'
+          go-version: '1.25.12'
           cache: true
 
       - name: golangci-lint
@@ -82,14 +82,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.11'
+          go-version: '1.25.12'
           cache: true
 
       # Pinned (not @latest) so the tool version is reproducible and the
       # module download is served from the setup-go cache instead of being
       # re-resolved every run.
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.4.0
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
 
       - name: govulncheck
         run: govulncheck ./...
