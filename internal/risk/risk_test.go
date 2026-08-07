@@ -13,6 +13,9 @@ func TestClassify_spots(t *testing.T) {
 		{"storage_read", Low},
 		{"rfid_write", High},
 		{"nfc_emulate", High},
+		// nfc_subcommand is a passthrough that can dispatch emulate / raw /
+		// apdu / mfu-write, so it must gate as High, not Medium.
+		{"nfc_subcommand", High},
 		// a few more anchors across tiers
 		{"wifi_scan_ap", Medium},
 		{"wifi_beacon_spam", High},
