@@ -147,7 +147,7 @@ func encodeMessage(encoding, msg string) ([]uint32, error) {
 		for _, r := range msg {
 			v, ok := numericCode(byte(r))
 			if !ok {
-				return nil, fmt.Errorf("pocsag: numeric message has unsupported character %q (allowed: 0-9 space U - ( ))", string(r))
+				return nil, fmt.Errorf("pocsag: numeric message has unsupported character %q (allowed: 0-9 . U space - ] [)", string(r))
 			}
 			payload.WriteString(reverseBitsString(v, 4))
 		}
@@ -165,11 +165,11 @@ func encodeMessage(encoding, msg string) ([]uint32, error) {
 		return nil, nil
 	}
 	// Pad up to a whole number of 20-bit codewords. Numeric pads with the
-	// space code (0xA, bit-reversed); alphanumeric pads with 0 (the decoder
-	// strips NUL).
+	// space code (logical index 0xC, bit-reversed); alphanumeric pads with 0
+	// (the decoder strips NUL).
 	for len(bitsStr)%20 != 0 {
 		if encoding == "numeric" && len(bitsStr)%4 == 0 {
-			bitsStr += reverseBitsString(0xA, 4) // space
+			bitsStr += reverseBitsString(0xC, 4) // space (logical index 12)
 		} else {
 			bitsStr += "0"
 		}
