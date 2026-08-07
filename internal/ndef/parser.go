@@ -172,17 +172,82 @@ func DecodeBytes(b []byte) (Message, error) {
 func decodeBytes(b []byte, depth int) (Message, error) {
 	msg := Message{}
 	off := 0
+
+	// Chunked-record reassembly (NFC Forum NDEF 1.0 §2.3.3). A record
+	// with CF=1 opens a chunk sequence carrying the real TNF + TYPE; each
+	// following chunk is TNF=UNCHANGED with type-length 0, and the final
+	// chunk clears CF. The reassembled record decodes the concatenated
+	// payload once, under the first chunk's TNF + TYPE — otherwise the
+	// first chunk decodes a truncated payload and the continuations are
+	// emitted as orphan UNCHANGED records (silent data loss).
+	var (
+		inChunk    bool
+		chunkFirst Record
+		chunkPay   []byte
+		chunkCount int
+	)
+
 	for off < len(b) {
-		rec, consumed, err := parseRecord(b[off:], depth)
+		rec, payload, consumed, err := parseRecord(b[off:], depth)
 		if err != nil {
 			return msg, fmt.Errorf("ndef: at offset %d: %w", off, err)
 		}
-		msg.Records = append(msg.Records, rec)
 		off += consumed
+		unchanged := TNF(rec.TNF) == TNFUnchanged
+
+		switch {
+		case !inChunk && rec.ChunkFlag && !unchanged:
+			// First chunk of a new chunked record: buffer it.
+			inChunk, chunkFirst, chunkCount = true, rec, 1
+			chunkPay = append([]byte(nil), payload...)
+
+		case inChunk && unchanged:
+			// Continuation chunk — must be UNCHANGED with an empty type.
+			if len(rec.Type) != 0 {
+				msg.Warnings = append(msg.Warnings,
+					"chunk continuation carried a non-empty type (should be UNCHANGED, type-length 0)")
+			}
+			chunkPay = append(chunkPay, payload...)
+			chunkCount++
+			if !rec.ChunkFlag {
+				// Final chunk: emit the reassembled record.
+				msg.Records = append(msg.Records, finaliseChunk(chunkFirst, chunkPay, rec.MessageEnd, depth))
+				msg.Warnings = append(msg.Warnings,
+					fmt.Sprintf("reassembled chunked record from %d chunks (%d payload bytes)", chunkCount, len(chunkPay)))
+				inChunk, chunkPay = false, nil
+			}
+
+		case inChunk && !unchanged:
+			// A new record began before the open chunk sequence was
+			// terminated (missing final UNCHANGED chunk). Flush best-effort,
+			// then handle this record normally below.
+			msg.Records = append(msg.Records, finaliseChunk(chunkFirst, chunkPay, false, depth))
+			msg.Warnings = append(msg.Warnings,
+				"chunk sequence not terminated before a new record (missing final UNCHANGED chunk)")
+			inChunk, chunkPay = false, nil
+			msg.Records = append(msg.Records, rec)
+
+		default:
+			// Normal, non-chunked record — or an orphan UNCHANGED with no
+			// open chunk sequence (a protocol oddity, surfaced not dropped).
+			if unchanged {
+				msg.Warnings = append(msg.Warnings, "UNCHANGED record with no open chunk sequence (orphan continuation)")
+			}
+			msg.Records = append(msg.Records, rec)
+		}
+
 		if rec.MessageEnd {
 			break
 		}
 	}
+
+	if inChunk {
+		// Stream ended mid-sequence: emit what we have, flagged.
+		msg.Records = append(msg.Records, finaliseChunk(chunkFirst, chunkPay, false, depth))
+		msg.Warnings = append(msg.Warnings,
+			"unterminated chunk sequence at end of message (missing final UNCHANGED chunk)")
+	}
+
 	msg.Count = len(msg.Records)
 	if msg.Count == 0 {
 		return msg, fmt.Errorf("ndef: no records parsed")
@@ -197,11 +262,26 @@ func decodeBytes(b []byte, depth int) (Message, error) {
 	return msg, nil
 }
 
-// parseRecord parses one NDEF record at b[0]. Returns the record
-// + bytes consumed. depth tracks nested-message recursion.
-func parseRecord(b []byte, depth int) (Record, int, error) {
+// finaliseChunk rebuilds a single logical record from a completed chunk
+// sequence: the first chunk's header/TNF/type, the concatenated payload,
+// the message-end flag of the terminating chunk, and a fresh per-type
+// decode of the joined payload. ChunkFlag is cleared — the reassembled
+// record is no longer a chunk.
+func finaliseChunk(first Record, payload []byte, messageEnd bool, depth int) Record {
+	first.ChunkFlag = false
+	first.MessageEnd = messageEnd
+	first.PayloadHex = strings.ToUpper(hex.EncodeToString(payload))
+	first.Decoded = decodePayload(first.TNF, first.Type, payload, depth)
+	return first
+}
+
+// parseRecord parses one NDEF record at b[0]. Returns the record, its
+// raw payload bytes (a sub-slice of b — the caller copies before
+// retaining, needed for chunk reassembly), and bytes consumed. depth
+// tracks nested-message recursion.
+func parseRecord(b []byte, depth int) (Record, []byte, int, error) {
 	if len(b) == 0 {
-		return Record{}, 0, fmt.Errorf("unexpected end of input")
+		return Record{}, nil, 0, fmt.Errorf("unexpected end of input")
 	}
 	hdr := b[0]
 	tnf := int(hdr & 0x07)
@@ -217,20 +297,20 @@ func parseRecord(b []byte, depth int) (Record, int, error) {
 	}
 	off := 1
 	if off+1 > len(b) {
-		return rec, 0, fmt.Errorf("truncated: no type-length byte")
+		return rec, nil, 0, fmt.Errorf("truncated: no type-length byte")
 	}
 	typeLen := int(b[off])
 	off++
 	var payloadLen uint32
 	if rec.ShortRecord {
 		if off+1 > len(b) {
-			return rec, 0, fmt.Errorf("truncated: no payload-length byte (SR)")
+			return rec, nil, 0, fmt.Errorf("truncated: no payload-length byte (SR)")
 		}
 		payloadLen = uint32(b[off])
 		off++
 	} else {
 		if off+4 > len(b) {
-			return rec, 0, fmt.Errorf("truncated: no payload-length 4 bytes (non-SR)")
+			return rec, nil, 0, fmt.Errorf("truncated: no payload-length 4 bytes (non-SR)")
 		}
 		payloadLen = binary.BigEndian.Uint32(b[off : off+4])
 		off += 4
@@ -238,14 +318,14 @@ func parseRecord(b []byte, depth int) (Record, int, error) {
 	var idLen int
 	if rec.IDLength {
 		if off+1 > len(b) {
-			return rec, 0, fmt.Errorf("truncated: no id-length byte")
+			return rec, nil, 0, fmt.Errorf("truncated: no id-length byte")
 		}
 		idLen = int(b[off])
 		off++
 	}
 	end := off + typeLen + idLen + int(payloadLen)
 	if end > len(b) {
-		return rec, 0, fmt.Errorf("declared lengths exceed buffer: type=%d id=%d payload=%d, remaining=%d",
+		return rec, nil, 0, fmt.Errorf("declared lengths exceed buffer: type=%d id=%d payload=%d, remaining=%d",
 			typeLen, idLen, payloadLen, len(b)-off)
 	}
 	typeBytes := b[off : off+typeLen]
@@ -264,7 +344,7 @@ func parseRecord(b []byte, depth int) (Record, int, error) {
 	rec.PayloadHex = strings.ToUpper(hex.EncodeToString(payload))
 	rec.Decoded = decodePayload(rec.TNF, rec.Type, payload, depth)
 
-	return rec, off, nil
+	return rec, payload, off, nil
 }
 
 // decodePayload dispatches per-TNF and per-well-known-type
