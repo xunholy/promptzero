@@ -140,19 +140,26 @@ var subFnDecoders = map[int]map[int]string{
 	0x85: {0x01: "on", 0x02: "off"},
 	0x28: {0x00: "enableRxAndTx", 0x01: "enableRxAndDisableTx", 0x02: "disableRxAndEnableTx", 0x03: "disableRxAndTx"},
 	0x3E: {0x00: "zeroSubFunction"},
+	0x2C: {0x01: "defineByIdentifier", 0x02: "defineByMemoryAddress", 0x03: "clearDynamicallyDefinedDataIdentifier"},
 }
 
 // hasSubFunction reports whether a service's first data byte is a
 // sub-function (with the suppressPositiveResponse bit in bit 7).
+// 0x2C DynamicallyDefineDataIdentifier carries a sub-function (the
+// definitionType) *before* its 2-byte DDDI, so it appears here and in
+// hasDID; omitting it here dropped the sub-function and shifted the DID
+// read one byte early.
 var hasSubFunction = map[int]bool{
 	0x10: true, 0x11: true, 0x19: true, 0x27: true, 0x28: true,
-	0x29: true, 0x31: true, 0x3E: true, 0x83: true, 0x85: true,
-	0x86: true, 0x87: true,
+	0x29: true, 0x2C: true, 0x31: true, 0x3E: true, 0x83: true,
+	0x85: true, 0x86: true, 0x87: true,
 }
 
-// hasDID reports whether a service's first two data bytes are a 16-bit
-// data identifier.
-var hasDID = map[int]bool{0x22: true, 0x2E: true, 0x2C: true}
+// hasDID reports whether a service's next two data bytes (after any
+// sub-function) are a 16-bit data identifier. 0x2C reads its DDDI after
+// the sub-function; 0x24 (ReadScalingDataByIdentifier) and 0x2F
+// (InputOutputControlByIdentifier) are DID-first like 0x22/0x2E.
+var hasDID = map[int]bool{0x22: true, 0x24: true, 0x2C: true, 0x2E: true, 0x2F: true}
 
 var knownDIDs = map[int]string{
 	0xF180: "BootSoftwareIdentification",
