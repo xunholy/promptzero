@@ -320,6 +320,103 @@ func TestDecode_ToleratesSeparators(t *testing.T) {
 	}
 }
 
+// TestDecode_ChunkedRecordReassembled covers the documented but
+// previously-absent chunked-record reassembly (NFC Forum NDEF 1.0
+// §2.3.3). Before the fix a chunked URI "http://xyz" truncated to
+// "http://x" (only the first chunk) and dropped the "yz" continuation
+// as an orphan UNCHANGED record, with no warning.
+//
+// Wire layout of the two-chunk URI:
+//
+//	B1 01 02 55 03 78   first chunk: MB=1 CF=1 SR=1 TNF=Well-Known,
+//	                    type "U", payload 03("http://") 78("x")
+//	56 00 02 79 7A      final chunk: ME=1 CF=0 SR=1 TNF=Unchanged,
+//	                    type-length 0, payload 79 7A ("yz")
+func TestDecode_ChunkedRecordReassembled(t *testing.T) {
+	got, err := Decode("B1 01 02 55 03 78 56 00 02 79 7A")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.Count != 1 {
+		t.Fatalf("Count = %d; want 1 (chunks must reassemble to one record), records=%+v", got.Count, got.Records)
+	}
+	r := got.Records[0]
+	if r.TNFName != "Well-Known" || r.Type != "U" {
+		t.Errorf("reassembled record TNF/type = %q/%q; want Well-Known/U", r.TNFName, r.Type)
+	}
+	if r.ChunkFlag {
+		t.Error("reassembled record must have ChunkFlag cleared")
+	}
+	if !r.MessageEnd {
+		t.Error("reassembled record must carry ME from the final chunk")
+	}
+	if got := r.Decoded["uri"]; got != "http://xyz" {
+		t.Errorf("uri = %v; want http://xyz (payload must be the concatenation of both chunks)", got)
+	}
+}
+
+// TestDecode_ChunkedThreeChunks exercises a middle chunk (CF=1,
+// UNCHANGED) between the first and final chunks — payload split
+// "http://x" | "y" | "z".
+func TestDecode_ChunkedThreeChunks(t *testing.T) {
+	// 36 = CF=1 SR=1 TNF=Unchanged (middle chunk).
+	got, err := Decode("B1 01 02 55 03 78 36 00 01 79 56 00 01 7A")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.Count != 1 {
+		t.Fatalf("Count = %d; want 1, records=%+v", got.Count, got.Records)
+	}
+	if uri := got.Records[0].Decoded["uri"]; uri != "http://xyz" {
+		t.Errorf("uri = %v; want http://xyz", uri)
+	}
+}
+
+// TestDecode_UnterminatedChunkWarns — a CF=1 chunk with no terminating
+// UNCHANGED chunk must still emit the buffered record best-effort and
+// warn, never silently drop it.
+func TestDecode_UnterminatedChunkWarns(t *testing.T) {
+	got, err := Decode("B1 01 02 55 03 78") // first chunk only, stream ends
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.Count != 1 {
+		t.Fatalf("Count = %d; want 1", got.Count)
+	}
+	var warned bool
+	for _, w := range got.Warnings {
+		if strings.Contains(w, "unterminated chunk") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("want an unterminated-chunk warning, got %v", got.Warnings)
+	}
+}
+
+// TestDecode_OrphanUnchangedWarns — an UNCHANGED record with no open
+// chunk sequence is a protocol oddity; it must be surfaced (emitted +
+// warned), not silently reassembled into a neighbour.
+func TestDecode_OrphanUnchangedWarns(t *testing.T) {
+	// D6 = MB=1 ME=1 SR=1 TNF=Unchanged, type-length 0, payload 79 7A.
+	got, err := Decode("D6 00 02 79 7A")
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if got.Count != 1 || got.Records[0].TNFName != "Unchanged" {
+		t.Fatalf("want 1 orphan Unchanged record, got %+v", got.Records)
+	}
+	var warned bool
+	for _, w := range got.Warnings {
+		if strings.Contains(w, "orphan") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("want an orphan-continuation warning, got %v", got.Warnings)
+	}
+}
+
 // TestTNFNames pins the human-readable names for every TNF code.
 func TestTNFNames(t *testing.T) {
 	cases := map[TNF]string{
