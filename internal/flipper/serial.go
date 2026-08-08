@@ -38,6 +38,15 @@ func dbg(format string, args ...any) {
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 func stripANSI(s string) string {
+	// Fast path: every ansiEscape match begins with ESC (0x1b), so a string
+	// with no ESC byte can never match and ReplaceAllString would return it
+	// unchanged anyway. Flipper CLI output is overwhelmingly plain ASCII
+	// (key: value, scan rows) with ESC only on the coloured prompt, and this
+	// runs per line while streaming and per tool-call — skipping the regexp
+	// scan+alloc on the common case is behaviour-identical.
+	if strings.IndexByte(s, 0x1b) < 0 {
+		return s
+	}
 	return ansiEscape.ReplaceAllString(s, "")
 }
 
