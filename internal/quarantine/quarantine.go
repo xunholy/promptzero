@@ -140,6 +140,20 @@ func IsUntrustedHardwareOutput(toolName string) bool {
 // return value is safe to embed inside a tool_result block or audit row
 // without risk of terminal-control games or visual spoofing.
 func SanitizeControlChars(s string) string {
+	// Fast path: the four passes below can only match ESC-introduced escape
+	// sequences (all start with \x1b) or the control/C1 runes in
+	// otherControlsRE (U+0000-08, 0B, 0C, 0E-1F, 7F, 80-9F). needsSanitize
+	// flags a strict superset of every byte that could trigger those — any
+	// control byte <0x20 (except tab/newline/CR, which are preserved), 0x7f,
+	// or any byte >=0x80 (every C1 control is UTF-8 0xC2 0x8x, lead byte
+	// >=0x80). So if it reports nothing to do, none of the regexes can match
+	// and the input is returned byte-for-byte unchanged — but without the
+	// four full-string scans + allocations regexp.ReplaceAllString performs
+	// even on a zero-match input. This is the common case: printable tool
+	// output sanitised on every agent/MCP turn.
+	if !needsSanitize(s) {
+		return s
+	}
 	s = ansiCSIRE.ReplaceAllString(s, "")
 	// Run ansiC1RE before otherControlsRE so the leading ESC byte is still
 	// present when the C1 regex matches; otherwise the byte-stripper would
@@ -149,6 +163,25 @@ func SanitizeControlChars(s string) string {
 	s = ansiC1UntermRE.ReplaceAllString(s, "")
 	s = otherControlsRE.ReplaceAllString(s, "")
 	return s
+}
+
+// needsSanitize reports whether s contains any byte that could trigger one of
+// the SanitizeControlChars passes. It is deliberately conservative — a strict
+// superset of what those regexes match — so a false result guarantees the
+// regexes would make no change. It scans bytes (not runes) so it is O(n) with
+// no allocation; any byte >=0x80 makes it fall through to the exact regex path,
+// which is where non-ASCII / C1 runes are handled correctly.
+func needsSanitize(s string) bool {
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b >= 0x80 || b == 0x7f {
+			return true
+		}
+		if b < 0x20 && b != '\t' && b != '\n' && b != '\r' {
+			return true
+		}
+	}
+	return false
 }
 
 // Output runs SanitizeControlChars on every output and, for hardware-origin
