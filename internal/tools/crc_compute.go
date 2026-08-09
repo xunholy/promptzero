@@ -35,9 +35,10 @@ var crcComputeSpec = Spec{
 		"also give **expected** (the observed CRC as hex) and the tool reports which catalogue model(s) " +
 		"reproduce it over the data — reveng's core trick for fingerprinting an unknown frame's CRC. An " +
 		"empty identify result is an honest 'no catalogue model matches', never a guess.\n\n" +
-		"Models covered: CRC-8/SMBUS, CRC-8/MAXIM-DOW (Dallas 1-Wire), CRC-16/ARC, CRC-16/CCITT-FALSE, " +
-		"CRC-16/XMODEM, CRC-16/MODBUS, CRC-16/KERMIT, CRC-24/OPENPGP, CRC-24/BLE (Bluetooth LE PDU), " +
-		"CRC-24/FLEXRAY-A, CRC-32/ISO-HDLC (zip/Ethernet/PNG), CRC-32/BZIP2, CRC-32/MPEG-2 — each " +
+		"Models covered (25): CRC-8 (SMBUS, MAXIM-DOW/1-Wire, BLUETOOTH, AUTOSAR, DVB-S2), CRC-16 (ARC, " +
+		"CCITT-FALSE, XMODEM, MODBUS, KERMIT, USB, MAXIM-DOW, GENIBUS/EPC-RFID, DNP, CDMA2000, UMTS), " +
+		"CRC-24 (OPENPGP, BLE/Bluetooth-LE-PDU, FLEXRAY-A), CRC-32 (ISO-HDLC/zip-Ethernet-PNG, BZIP2, " +
+		"MPEG-2, ISCSI/CRC-32C, CKSUM/POSIX, JAMCRC) — each " +
 		"verified in-tree against its published check value (the CRC of " +
 		"'123456789'). Offline compute — reads hex, transmits nothing, so it is Low risk. Wrap-vs-native: " +
 		"native — parameterised bit-walk over a byte slice.",

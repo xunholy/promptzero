@@ -93,3 +93,40 @@ func TestFormat(t *testing.T) {
 		t.Errorf("CRC-32 format = %s, want 0xCBF43926", m32.Format(0xCBF43926))
 	}
 }
+
+// TestExpandedCatalogue locks in the widely-deployed models added to broaden
+// Identify's reverse-lookup coverage — each must be present, look up, and
+// self-identify on the check vector. CRC-32C (ISCSI) is the headline modern
+// addition; CRC-16/USB and CRC-8/BLUETOOTH exercise the reflected 16- and
+// 8-bit paths.
+func TestExpandedCatalogue(t *testing.T) {
+	data := []byte("123456789")
+	for _, tc := range []struct {
+		name  string
+		check uint32
+	}{
+		{"CRC-32/ISCSI", 0xE3069283}, // CRC-32C (Castagnoli)
+		{"CRC-16/USB", 0xB4C8},
+		{"CRC-16/GENIBUS", 0xD64E},
+		{"CRC-8/BLUETOOTH", 0x26},
+		{"CRC-8/AUTOSAR", 0xDF},
+	} {
+		m, ok := Lookup(tc.name)
+		if !ok {
+			t.Errorf("%s: missing from catalogue", tc.name)
+			continue
+		}
+		if got := m.Compute(data); got != tc.check {
+			t.Errorf("%s: compute = 0x%X, want 0x%X", tc.name, got, tc.check)
+		}
+		var found bool
+		for _, mt := range Identify(data, tc.check) {
+			if mt.Model == tc.name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: Identify did not surface it for its own check value", tc.name)
+		}
+	}
+}
