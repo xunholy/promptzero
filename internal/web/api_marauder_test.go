@@ -122,6 +122,14 @@ func marauderServer(t *testing.T, m marauderClient) (*Server, *httptest.Server) 
 		requestQueue:      make(chan struct{}, 64),
 	}
 	s.attachAgentCallbacks()
+	// Wire an audit log to mirror production: runWebMode always calls
+	// SetAuditLog, and High-risk device dispatch is now fail-closed on
+	// RequireOpen. Without this, High marauder commands would be refused
+	// before the confirm gate.
+	if al, err := audit.Open(filepath.Join(t.TempDir(), "audit.db")); err == nil {
+		s.SetAuditLog(al)
+		t.Cleanup(func() { _ = al.Close() })
+	}
 	if m != nil {
 		s.SetMarauder(m)
 		s.SetMarauderConnected(true)

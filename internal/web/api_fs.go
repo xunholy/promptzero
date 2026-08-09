@@ -19,6 +19,7 @@ import (
 
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/flipper"
+	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/validator"
 )
 
@@ -443,6 +444,13 @@ func (s *Server) handleFSUpload(w http.ResponseWriter, r *http.Request) {
 		if rep.Has(validator.SeverityCritical) && r.URL.Query().Get("validator_bypass") != "true" {
 			writeError(w, http.StatusUnprocessableEntity,
 				"badusb payload contains critical-severity findings — add ?validator_bypass=true to override")
+			return
+		}
+		// Fail-closed: deploying an executable BadUSB script is a High-risk
+		// action — refuse if the audit log isn't open, matching the agent/MCP
+		// surfaces (this upload is audited at "high" below).
+		if err := audit.RequireOpen(s.auditLog, risk.High); err != nil {
+			writeError(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
 	}

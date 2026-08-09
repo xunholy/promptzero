@@ -1515,6 +1515,12 @@ type WebDeps struct {
 	FlipperOnline  bool
 	MarauderOnline bool
 	Webhooks       webhook.Dispatcher
+	// AuditLog is the session audit log. Wired into the web server so its
+	// direct device-dispatch paths (marauder cmd, BadUSB upload, screen)
+	// record and fail-closed exactly like the agent and MCP surfaces —
+	// without it the --web surface ran High/Critical device actions
+	// unaudited and without RequireOpen.
+	AuditLog *audit.Log
 	// WebShare opts into the v0.22.0 copy-pasteable URL print. Refuses
 	// to print when no auth token is set (exposing an unauthenticated
 	// endpoint by URL share is the wrong default).
@@ -1540,6 +1546,12 @@ func webShareURL(addr, token string) string {
 func runWebMode(ctx context.Context, sh *signalHandler, cfg *config.Config, deps WebDeps) error {
 	addr := fmt.Sprintf("%s:%d", cfg.Web.Host, cfg.Web.Port)
 	srv := web.NewServer(addr, deps.Ai, deps.Voice)
+	// Wire the audit log so the web server's direct device paths record and
+	// fail-closed like every other surface (agent, MCP). Without this the
+	// --web surface ran High/Critical actions unaudited.
+	if deps.AuditLog != nil {
+		srv.SetAuditLog(deps.AuditLog)
+	}
 	srv.SetMetrics(deps.Rec, cfg.Observability.MetricsPath)
 	srv.SetAuthToken(cfg.Web.Token)
 	srv.SetCORSOrigins(cfg.Web.CORSOrigins)

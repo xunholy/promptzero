@@ -244,6 +244,7 @@ func run() error {
 			MarauderOnline: hasMarauder,
 			Webhooks:       wh,
 			WebShare:       f.webShare,
+			AuditLog:       auditLog,
 		})
 	}
 
