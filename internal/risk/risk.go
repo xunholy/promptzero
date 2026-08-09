@@ -598,6 +598,12 @@ var toolLevels = func() map[string]Level {
 		// Complements subghz_* coverage by extending decode to
 		// 1090 MHz airborne / aerospace traffic.
 		"adsb_mode_s_decode",
+		// ADS-B CPR global position resolver: pairs an even + odd
+		// airborne-position frame into a WGS-84 lat/lon with no
+		// reference position (the reference-free half of position that
+		// adsb_mode_s_decode leaves out). Pure offline float maths, no
+		// TX, no device — Low like its sibling decoder.
+		"adsb_cpr_decode",
 		// v0.531 (FM broadcast / SDR decode space): RDS / RBDS Radio
 		// Data System group decoder — PI + RBDS call sign, group type /
 		// TP / PTY, Programme Service name, RadioText (G0 charset).
