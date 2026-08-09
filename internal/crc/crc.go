@@ -65,6 +65,21 @@ var Catalogue = []Model{
 	{"CRC-32/ISO-HDLC", 32, 0x04C11DB7, 0xFFFFFFFF, true, true, 0xFFFFFFFF, 0xCBF43926}, // zip, Ethernet, PNG
 	{"CRC-32/BZIP2", 32, 0x04C11DB7, 0xFFFFFFFF, false, false, 0xFFFFFFFF, 0xFC891918},
 	{"CRC-32/MPEG-2", 32, 0x04C11DB7, 0xFFFFFFFF, false, false, 0x00000000, 0x0376E6E7},
+	// CRC-8 additions — embedded / RF / automotive frames.
+	{"CRC-8/BLUETOOTH", 8, 0xA7, 0x00, true, true, 0x00, 0x26}, // BLE LL control PDUs
+	{"CRC-8/AUTOSAR", 8, 0x2F, 0xFF, false, false, 0xFF, 0xDF}, // AUTOSAR E2E automotive
+	{"CRC-8/DVB-S2", 8, 0xD5, 0x00, false, false, 0x00, 0xBC},  // DVB-S2 broadcast
+	// CRC-16 additions — fieldbus / RFID / cellular / 1-Wire.
+	{"CRC-16/USB", 16, 0x8005, 0xFFFF, true, true, 0xFFFF, 0xB4C8},
+	{"CRC-16/MAXIM-DOW", 16, 0x8005, 0x0000, true, true, 0xFFFF, 0x44C2}, // Dallas/Maxim 1-Wire (iButton)
+	{"CRC-16/GENIBUS", 16, 0x1021, 0xFFFF, false, false, 0xFFFF, 0xD64E}, // EPC/RFID, I-CODE, DARC
+	{"CRC-16/DNP", 16, 0x3D65, 0x0000, true, true, 0xFFFF, 0xEA82},       // DNP3 SCADA / fieldbus
+	{"CRC-16/CDMA2000", 16, 0xC867, 0xFFFF, false, false, 0x0000, 0x4C06},
+	{"CRC-16/UMTS", 16, 0x8005, 0x0000, false, false, 0x0000, 0xFEE8}, // aka BUYPASS/VERIFONE
+	// CRC-32 additions — modern storage / network / firmware.
+	{"CRC-32/ISCSI", 32, 0x1EDC6F41, 0xFFFFFFFF, true, true, 0xFFFFFFFF, 0xE3069283},   // CRC-32C (Castagnoli): iSCSI, SSE4.2, ext4
+	{"CRC-32/CKSUM", 32, 0x04C11DB7, 0x00000000, false, false, 0xFFFFFFFF, 0x765E7680}, // POSIX cksum
+	{"CRC-32/JAMCRC", 32, 0x04C11DB7, 0xFFFFFFFF, true, true, 0x00000000, 0x340BC6D9},
 }
 
 // Compute returns the CRC of data under model m.
