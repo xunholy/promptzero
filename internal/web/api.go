@@ -50,6 +50,12 @@ func (s *Server) registerAPIRoutes(mux *http.ServeMux) {
 	// sends any credentials. Returns {"required": bool}.
 	mux.HandleFunc("GET /api/auth", s.handleAuthInfo)
 
+	// Liveness/readiness probes for headless / systemd / k8s deployment.
+	// Unauthenticated by design (a probe carries no bearer token) and cheap;
+	// both are more specific than the "/" catch-all so they win routing.
+	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
+
 	mux.HandleFunc("GET /api/personas", s.requireAuth(s.handlePersonasList))
 	mux.HandleFunc("POST /api/personas/switch", s.requireAuth(s.handlePersonasSwitch))
 

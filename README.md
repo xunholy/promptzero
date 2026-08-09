@@ -131,6 +131,8 @@ Dark-themed browser interface at `http://localhost:8080`. Includes the chat surf
 
 **Host it with Docker.** Multi-arch images (`distroless`, signed, with SBOM + provenance) are published to `ghcr.io/xunholy/promptzero` on every release — see [docs/deploy/docker.md](docs/deploy/docker.md).
 
+**Health probes.** `GET /healthz` (liveness, `200 ok`) and `GET /readyz` (readiness, JSON subsystem snapshot) are unauthenticated for headless / systemd / k8s deployment; device connectivity is reported but does not gate readiness (a Flipper/Marauder may attach after startup).
+
 ### Voice — `promptzero --voice`
 
 Push-to-talk in CLI mode. Press Enter with no text to record (requires `sox`); audio is transcribed via OpenAI Whisper, then processed as a normal command.
