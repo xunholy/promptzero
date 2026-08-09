@@ -3067,7 +3067,10 @@ func TestRegistrySize(t *testing.T) {
 	// Added adsb_cpr_decode (offline ADS-B CPR global position resolver — pairs an even + odd
 	// airborne-position frame into WGS-84 lat/lon, the reference-free half of position that
 	// adsb_mode_s_decode leaves out). Low risk, no TX. internal/tools + internal/adsb.
-	const expected = 704
+	// Added adsb_cpr_local (offline ADS-B single-frame CPR resolver — recovers lat/lon from one
+	// airborne-position frame against a caller-supplied reference position). Low risk, no TX.
+	// internal/tools + internal/adsb.
+	const expected = 705
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)
