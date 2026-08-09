@@ -60,10 +60,10 @@ var adsbModeSDecodeSpec = Spec{
 		"the ID13 4-digit octal Mode-A squawk with the reserved emergency codes flagged — 7500 " +
 		"(unlawful interference / hijack), 7600 (radio failure), 7700 (general emergency). " +
 		"Verified byte-for-byte against pyModeS altcode / idcode.\n\n" +
-		"CPR position resolution (full lat/lon) is deferred — the decoder exposes the raw 17-bit " +
-		"CPR latitude/longitude and the odd/even frame flag, but pairing an even + odd frame for " +
-		"a global solve (or applying a local reference position) is left to a higher-level Spec " +
-		"so the receiver controls when stale references should be used.\n\n" +
+		"CPR position resolution (full lat/lon) is a separate step — the decoder exposes the raw 17-bit " +
+		"CPR latitude/longitude and the odd/even frame flag; adsb_cpr_decode pairs an even + odd frame " +
+		"for a reference-free global fix, and adsb_cpr_local resolves a single frame against a " +
+		"supplied reference position, so the receiver stays in control of when a reference is trustworthy.\n\n" +
 		"Pure offline parser — operators paste a hex blob from dump1090 / readsb / any " +
 		"1090 MHz SDR feed and inspect the frame fields without re-touching the air. Complements " +
 		"the existing subghz_* coverage (UHF surveillance and decoders below 1 GHz) by extending " +
