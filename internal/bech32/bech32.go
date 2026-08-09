@@ -24,6 +24,9 @@
 //     BIP-173/350 variant rule enforced (v0 ⇒ Bech32, v1+ ⇒ Bech32m).
 //   - Nostr (npub/nsec/note) and Lightning (lnbc…) HRPs are labelled; their
 //     inner TLV / invoice structure is left to the caller (a separate surface).
+//     These deliberately exceed the BIP-173 90-char limit (a real BOLT-11
+//     invoice is a few hundred chars), so that ceiling is enforced only for
+//     SegWit addresses (bc/tb/bcrt); a generous DoS guard bounds the rest.
 //   - Base58Check (legacy 1…/3… addresses, WIF) is the other encoding — see
 //     base58check_decode.
 //
@@ -45,6 +48,20 @@ import (
 )
 
 const charset = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+// segwitMaxLen is the BIP-173 90-character ceiling. It applies ONLY to
+// SegWit addresses (HRP bc/tb/bcrt): the BCH checksum's guaranteed
+// error-detection window is why BIP-173 caps addresses there. Other
+// bech32(m) users deliberately exceed it — BOLT-11 Lightning invoices
+// (lnbc…) run to a few hundred characters, and NIP-19 Nostr TLV entities
+// (nprofile/nevent/naddr) routinely pass 90 — so the cap must not be a
+// blanket reject or those documented cases become unreachable.
+const segwitMaxLen = 90
+
+// maxBech32Len is a generous hard ceiling that bounds allocation on
+// pathological input while comfortably clearing any real Lightning
+// invoice or Nostr entity. Not a spec limit — a DoS guard.
+const maxBech32Len = 4096
 
 var charsetRev = func() [256]int {
 	var r [256]int
@@ -86,8 +103,11 @@ type Result struct {
 // reported in the Result.
 func Decode(input string) (*Result, error) {
 	s := strings.TrimSpace(input)
-	if len(s) < 8 || len(s) > 90 {
-		return nil, fmt.Errorf("bech32: length %d out of range (8-90)", len(s))
+	// Lower bound: 1 HRP char + separator + 6 checksum symbols. Upper
+	// bound here is only the DoS guard; the strict SegWit 90-char cap is
+	// applied below once the HRP is known (see segwitMaxLen).
+	if len(s) < 8 || len(s) > maxBech32Len {
+		return nil, fmt.Errorf("bech32: length %d out of range (8-%d)", len(s), maxBech32Len)
 	}
 	lower, upper := strings.ToLower(s), strings.ToUpper(s)
 	if s != lower && s != upper {
@@ -105,6 +125,13 @@ func Decode(input string) (*Result, error) {
 		if hrp[i] < 33 || hrp[i] > 126 {
 			return nil, fmt.Errorf("bech32: HRP character out of range at %d", i)
 		}
+	}
+	// The 90-char ceiling is a SegWit-address rule (BIP-173/350), so it is
+	// enforced only once the HRP identifies an address. Applying it before
+	// this point would reject the longer bech32(m) strings this package
+	// explicitly decodes — Lightning invoices and Nostr TLV entities.
+	if isSegwitHRP(hrp) && len(s) > segwitMaxLen {
+		return nil, fmt.Errorf("bech32: SegWit address length %d out of range (max %d)", len(s), segwitMaxLen)
 	}
 
 	data := make([]int, len(dataPart))
@@ -136,10 +163,20 @@ func Decode(input string) (*Result, error) {
 	return res, nil
 }
 
-// interpret labels recognised artifacts and decodes SegWit addresses.
-func interpret(res *Result, hrp string, payload []int) {
+// isSegwitHRP reports whether hrp names a SegWit-address network, for
+// which the BIP-173 90-char length ceiling and the witness-version rules
+// apply. Other HRPs (Lightning, Nostr, Cosmos…) are general bech32(m).
+func isSegwitHRP(hrp string) bool {
 	switch hrp {
 	case "bc", "tb", "bcrt":
+		return true
+	}
+	return false
+}
+
+// interpret labels recognised artifacts and decodes SegWit addresses.
+func interpret(res *Result, hrp string, payload []int) {
+	if isSegwitHRP(hrp) {
 		decodeSegwit(res, payload)
 		return
 	}
