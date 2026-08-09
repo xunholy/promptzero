@@ -9,6 +9,7 @@ import (
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/toolctx"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
+	"github.com/xunholy/promptzero/internal/toolsearch"
 )
 
 // builtToolsOnce caches the assembled tool catalog. The registry is
@@ -67,6 +68,47 @@ func filterToolsToReadOnly(in []anthropic.ToolUnionParam) []anthropic.ToolUnionP
 		}
 	}
 	return out
+}
+
+// suggestToolNames ranks the live registry against a mistyped or
+// nonexistent tool name and returns the closest real tool names, best
+// first (at most limit). It turns a bare "unknown tool" failure into an
+// actionable "did you mean" hint so the model self-corrects on its next
+// turn at ~zero cost, instead of only being told to consult the catalog.
+//
+// The ranking reuses the same offline token-overlap scorer as the
+// tool_search tool (internal/toolsearch): a mistyped name shares tokens
+// with its intended target (e.g. "subghz_transmt" tokenizes to
+// subghz/transmt, and "subghz" hits the whole subghz_* family), so the
+// right family surfaces even when the exact typo'd token misses. A name
+// that shares no token with any tool returns nil — advisory only, never
+// asserted as the answer.
+func suggestToolNames(bad string, limit int) []string {
+	bad = strings.TrimSpace(bad)
+	if bad == "" || limit <= 0 {
+		return nil
+	}
+	specs := toolsreg.All()
+	docs := make([]toolsearch.Doc, 0, len(specs))
+	for _, s := range specs {
+		docs = append(docs, toolsearch.Doc{
+			Name:        s.Name,
+			Aliases:     s.Aliases,
+			Group:       string(s.Group),
+			Description: s.Description,
+		})
+	}
+	names := make([]string, 0, limit)
+	for _, h := range toolsearch.Search(docs, bad, limit) {
+		// Defensive: an unknown tool can't exact-match a registered name,
+		// but guard anyway so a future caller passing a real name here
+		// never gets "did you mean <itself>".
+		if h.Name == bad {
+			continue
+		}
+		names = append(names, h.Name)
+	}
+	return names
 }
 
 // schemaToProps converts the "properties" object from a JSON Schema into the

@@ -1631,6 +1631,17 @@ func (a *Agent) executeTool(ctx context.Context, name string, input json.RawMess
 		// Use the dispatch result (if any) as the excerpt — some
 		// wrappers return partial output alongside an error.
 		te := newToolError(name, err, result)
+		// Turn a bare "unknown tool" into an actionable "did you mean"
+		// by ranking the live registry against the bad name — the model
+		// then self-corrects next turn instead of re-guessing blind.
+		if te.Code == "unknown_tool" {
+			if sugg := suggestToolNames(name, 3); len(sugg) > 0 {
+				te.Remediation = []string{
+					"did you mean: " + strings.Join(sugg, ", ") + "?",
+					"or call tool_search with a task description; see /tools for the full catalog",
+				}
+			}
+		}
 		// Pin device state at failure time so the report generator
 		// (P1-11) and post-hoc debugging have a forensic snapshot.
 		// State() uses the 2-second TTL cache so the probe is free
