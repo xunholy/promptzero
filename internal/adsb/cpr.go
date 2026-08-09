@@ -13,9 +13,10 @@ type GlobalPosition struct {
 	ICAOAddress string  `json:"icao_address,omitempty"`
 	Latitude    float64 `json:"latitude"`
 	Longitude   float64 `json:"longitude"`
-	// Reference names which frame's instant the coordinate belongs to
-	// ("even" or "odd") — the two frames are captured moments apart, so
-	// the reported fix is the more recent one the caller selected.
+	// Reference names how the coordinate was resolved: "even" or "odd"
+	// for a global even/odd pair (the reported fix is that frame's
+	// instant, since the two are captured moments apart), or "local" for
+	// a single-frame decode against a supplied reference position.
 	Reference  string `json:"reference"`
 	AltitudeFt *int   `json:"altitude_ft,omitempty"`
 }
@@ -195,6 +196,73 @@ func GlobalAirbornePosition(latCPREven, lonCPREven, latCPROdd, lonCPROdd int, ev
 		lon -= 360
 	}
 	return lat, lon, true
+}
+
+// LocalAirbornePosition recovers a WGS-84 latitude/longitude from a single
+// airborne-position frame's raw CPR values, disambiguated against a nearby
+// reference position (refLat/refLon) instead of an even/odd pair. odd tells
+// which CPR format the frame carries. This is what a receiver uses once it
+// has any reference — its own site location, or a prior global fix — to get
+// an immediate position from every frame without waiting to pair.
+//
+// The reference must be within ~180 NM (roughly 3°) of the true position:
+// local CPR resolves the position within one grid zone, and a reference
+// farther than half a zone away silently selects the wrong zone. The caller
+// owns that guarantee (hence the explicit reference), so this returns a
+// coordinate whenever the inputs are in range; ok is false only on an
+// out-of-range reference or CPR value.
+func LocalAirbornePosition(latCPR, lonCPR int, odd bool, refLat, refLon float64) (lat, lon float64, ok bool) {
+	const two17 = 131072.0
+	if math.Abs(refLat) > 90 || math.Abs(refLon) > 180 ||
+		latCPR < 0 || latCPR >= 131072 || lonCPR < 0 || lonCPR >= 131072 {
+		return 0, 0, false
+	}
+	latC := float64(latCPR) / two17
+	lonC := float64(lonCPR) / two17
+
+	i := 0.0
+	if odd {
+		i = 1.0
+	}
+	dLat := 360.0 / (4*cprNZ - i)
+	j := math.Floor(refLat/dLat) + math.Floor(0.5+cprMod(refLat, dLat)/dLat-latC)
+	lat = dLat * (j + latC)
+
+	nl := float64(cprNL(lat))
+	ni := nl - i
+	if ni < 1 {
+		ni = 1
+	}
+	dLon := 360.0 / ni
+	m := math.Floor(refLon/dLon) + math.Floor(0.5+cprMod(refLon, dLon)/dLon-lonC)
+	lon = dLon * (m + lonC)
+	return lat, lon, true
+}
+
+// LocalPositionFromFrame decodes a single airborne-position hex frame and
+// resolves its coordinate against refLat/refLon (see LocalAirbornePosition
+// for the reference-range contract). It errors when the frame is not an
+// airborne-position message or the reference is out of range.
+func LocalPositionFromFrame(hexFrame string, refLat, refLon float64) (*GlobalPosition, error) {
+	ap, err := airbornePositionOf(hexFrame)
+	if err != nil {
+		return nil, err
+	}
+	lat, lon, ok := LocalAirbornePosition(ap.pos.CPRLatRaw, ap.pos.CPRLonRaw, ap.pos.CPRFormat == 1, refLat, refLon)
+	if !ok {
+		return nil, fmt.Errorf("reference position out of range or CPR value invalid")
+	}
+	gp := &GlobalPosition{
+		ICAOAddress: ap.icao,
+		Latitude:    lat,
+		Longitude:   lon,
+		Reference:   "local",
+	}
+	if ap.pos.AltitudeValid {
+		alt := ap.pos.AltitudeFt
+		gp.AltitudeFt = &alt
+	}
+	return gp, nil
 }
 
 // cprMod is the CPR modulo: a floored (always-non-negative) modulus, unlike

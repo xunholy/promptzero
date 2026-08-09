@@ -604,6 +604,11 @@ var toolLevels = func() map[string]Level {
 		// adsb_mode_s_decode leaves out). Pure offline float maths, no
 		// TX, no device — Low like its sibling decoder.
 		"adsb_cpr_decode",
+		// ADS-B single-frame local CPR resolver: recovers lat/lon from
+		// one airborne-position frame against a caller-supplied reference
+		// position. Pure offline float maths, no TX — Low like its
+		// siblings.
+		"adsb_cpr_local",
 		// v0.531 (FM broadcast / SDR decode space): RDS / RBDS Radio
 		// Data System group decoder — PI + RBDS call sign, group type /
 		// TP / PTY, Programme Service name, RadioText (G0 charset).
