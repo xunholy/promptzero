@@ -41,8 +41,11 @@ These are features, not bugs:
   tools are *refused by default* in MCP mode; operators opt in per tier
   via `PROMPTZERO_MCP_ALLOW_HIGH=1` / `PROMPTZERO_MCP_ALLOW_CRITICAL=1`,
   and every call is audited. A startup banner states this explicitly.
-- The web UI not requiring authentication. It's local-first by default
-  (`127.0.0.1`), and non-loopback binds print a warning.
+- The web UI's local-first defaults. It binds `127.0.0.1` by default and
+  requires a bearer token on every `/api` route (`requireAuth`); a
+  tokenless **non-loopback** bind is *refused* (fail-closed), not merely
+  warned — the warn-only path fires only under an explicit
+  `allow_unauthed_public` opt-in.
 - Bugs in AI-generated payloads (scripts, signal files, portal HTML).
   PromptZero does not validate the correctness of what the model produces —
   review before deploying.
@@ -97,7 +100,8 @@ model is sanitised or bounded. The rails compose; none relies on another.
 
 - **Fail-closed audit gate.** When no audit log is wired, every action at
   `High` or above is *refused* (`RequireOpen`) — high-consequence
-  operations cannot run unrecorded. Low-risk reads still proceed.
+  operations cannot run unrecorded. Low- and Medium-risk actions still
+  proceed (only `>= High` is fail-closed).
 - **Tamper-evidence (v0.761).** Each audit row is hash-chained onto the
   previous (`SHA-256(prev ‖ row)`), so a post-hoc edit, mid-chain
   deletion, reorder, or forged insert made directly against the SQLite DB

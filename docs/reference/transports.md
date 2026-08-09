@@ -9,9 +9,10 @@ Every CLI command, web session, and MCP invocation talks to the Flipper through 
 | `serial://` | `serial:///dev/ttyACM0?baud=230400` | Default. USB CDC-ACM. Fastest + most reliable. |
 | `ble://`    | `ble://AA:BB:CC:DD:EE:FF` (Linux/Windows) <br> `ble://e127efc1-05ec-...` (macOS) | Wireless. No cable. Slower (~2–8 kB/s) but every tool works. |
 | `mock://`   | `mock:///dev/pts/5` | Test harness pty slave. Used by `internal/flipper/mock`. |
+| `http://` / `https://` | `https://gateway:8080/?send_path=/uart/send&recv_path=/uart/recv` | Remote / cloud. Drives a Flipper hosted behind a FlipperHTTP-compatible gateway (`POST /uart/send`, `GET /uart/recv`). Supports a `Bearer` token; endpoint paths overridable via query string. |
 
 > [!NOTE]
-> **Marauder is serial-only.** `marauder.port` is always a `/dev/ttyUSB0`-style path — upstream Marauder firmware has no wireless control surface. Only the Flipper supports BLE.
+> **Marauder supports BLE as well as serial.** Serial (`/dev/ttyUSB0`-style, CP210x) is the default. A standalone ESP32-Marauder devboard also exposes a BLE serial GATT service (Nordic UART): select it with `marauder.transport: ble` in config or `--marauder-ble <addr>` on the CLI, where `marauder.port` is reinterpreted as a BLE MAC / UUID / local name. (The Flipper-UART-bridged Marauder is a separate mode.)
 
 ## Serial (USB)
 

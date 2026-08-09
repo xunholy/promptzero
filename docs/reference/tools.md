@@ -2,7 +2,7 @@
 
 A curated reference of the **core** device, RF, NFC/RFID, and credential tools,
 grouped by subsystem — the most-used primitives, not the whole registry. The
-full set is much larger (600+ tools and growing); run `/tools` (or
+full set is much larger (700+ tools and growing); run `/tools` (or
 `tool_search <query>`) in the REPL for the complete live list with schemas and
 risk levels. Each entry below shows:
 

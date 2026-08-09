@@ -1,11 +1,10 @@
 # Configuration reference
 
-PromptZero reads configuration from (in order):
+PromptZero resolves its config path as follows:
 
-1. `--config <path>` CLI flag.
-2. `PROMPTZERO_CONFIG` environment variable.
-3. `~/.promptzero/config.yaml`.
-4. `./config.yaml`.
+1. `PROMPTZERO_CONFIG` environment variable, if set — **overrides** the `--config` flag.
+2. Otherwise the `--config <path>` flag (default: `./config.yaml`).
+3. If the resolved path is absent, fall back to `~/.promptzero/config.yaml`.
 
 A fully-commented template is in [`examples/config.yaml`](../../examples/config.yaml).
 
@@ -43,13 +42,13 @@ promptzero --read-only           # one-shot
 read_only: true                  # in config; persistent
 ```
 
-The 78 currently-Low-risk tools cover audit queries, scans, file reads, decodes, and inventory. Anything that mutates state or transmits (Medium / High / Critical) is refused.
+The 500+ currently-Low-risk tools (mostly offline decoders/parsers) cover audit queries, scans, file reads, decodes, and inventory. Anything that mutates state or transmits (Medium / High / Critical) is refused.
 
-> **Layering with `--mode`:** `--read-only` and `--mode` (`standard` / `recon` / `intel` / `stealth` / `assault`) are independent gates that compose. Dispatch consults `--read-only` first, then the per-mode group allow-list. As a defence-in-depth convenience, `--mode recon|intel|stealth` also engage `--read-only` automatically — both layers refuse on either failure.
+> **Layering with `--mode` (deprecated):** `--mode` (`standard` / `recon` / `intel` / `stealth` / `assault`) is **deprecated in favour of `--read-only`** and slated for removal in v0.20.0 (`recon`/`intel`/`stealth` alias to `--read-only`; `standard`/`assault` alias to no flag). While present it composes with `--read-only`: dispatch consults `--read-only` first, then the per-mode group allow-list, and `--mode recon|intel|stealth` also engages `--read-only` automatically. Prefer `--read-only` as the single safety rail.
 
 ## Personas
 
-Personas are YAML files that set the agent's system prompt, default risk threshold, per-tier model routing, per-tier extended-thinking budget, and (new in v0.19.0) per-tier provider override. Four templates ship in `examples/personas/`:
+Personas are YAML files that set the agent's system prompt, default risk threshold, per-tier model routing, per-tier extended-thinking budget, and (new in v0.19.0) per-tier provider override. Five templates ship in `examples/personas/`:
 
 | Persona | Use case | Risk threshold |
 |---|---|---|
@@ -57,10 +56,11 @@ Personas are YAML files that set the agent's system prompt, default risk thresho
 | [`blue-team-audit.yaml`](../../examples/personas/blue-team-audit.yaml) | Read-only forensic; **pair with `--read-only`** | Low — passive observation only |
 | [`ctf-shelf.yaml`](../../examples/personas/ctf-shelf.yaml)            | CTF puzzle solving | Medium — file-format surgery, audit replay |
 | [`hw-lab.yaml`](../../examples/personas/hw-lab.yaml)                  | Hardware bench | Medium — GPIO/I2C/OneWire/UART/SPI focus |
+| [`explorer.yaml`](../../examples/personas/explorer.yaml)             | Guided exploration / learning the toolkit | Low — inspect-and-explain |
 
 Load with `promptzero --persona <name>` or set `persona: <name>` in config. Switch at runtime with `/persona <name>`.
 
-> **Per-persona tool allowlist (`tools:` field):** Optional positive scoping that narrows the catalog the LLM sees to a specific set of tool names. Layered with `--read-only`: the safety rail handles the no-write contract, while `tools:` lets a persona declare a tighter focus (e.g. a "lecture" persona exposing only inspect-and-explain tools). Leave it empty when the persona's intent is fully covered by the system prompt + risk threshold + read-only rail (the four shipped templates take this path).
+> **Per-persona tool allowlist (`tools:` field):** Optional positive scoping that narrows the catalog the LLM sees to a specific set of tool names. Layered with `--read-only`: the safety rail handles the no-write contract, while `tools:` lets a persona declare a tighter focus (e.g. a "lecture" persona exposing only inspect-and-explain tools). Leave it empty when the persona's intent is fully covered by the system prompt + risk threshold + read-only rail (the shipped templates take this path).
 
 ### Per-tier provider override (v0.19.0+)
 
