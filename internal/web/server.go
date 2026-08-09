@@ -447,6 +447,30 @@ func (s *Server) SetFlipperRPC(p flipperRPCProvider) { s.flipperRPC = p }
 // are recorded. Safe to pass nil — operations are skipped silently without one.
 func (s *Server) SetAuditLog(l *audit.Log) { s.auditLog = l }
 
+// handleHealthz is an unauthenticated liveness probe: 200 "ok" whenever the
+// server is serving. It checks nothing external on purpose, so it never
+// flaps on a slow device or upstream — that is what /readyz is for.
+func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("ok\n"))
+}
+
+// handleReadyz is an unauthenticated readiness probe: 200 with a JSON snapshot
+// of subsystem state. The web server is ready to serve as soon as it binds, so
+// device connectivity is reported as informational rather than gating
+// readiness — a Flipper/Marauder may attach after startup, and a probe must
+// not flap when no hardware is present.
+func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]any{
+		"status":             "ready",
+		"version":            version.Version,
+		"flipper_connected":  s.flipperOn.Load(),
+		"marauder_connected": s.marauderOn.Load(),
+		"audit_log":          s.auditLog != nil,
+	})
+}
+
 // SetMaxUploadBytes sets the upload size cap for /api/fs/upload.
 // Default is 1 MiB. Must be called before Start.
 func (s *Server) SetMaxUploadBytes(n int64) { s.maxUploadBytes = n }
