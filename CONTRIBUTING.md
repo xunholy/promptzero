@@ -21,22 +21,23 @@ Requirements: Go 1.25+, [Task](https://taskfile.dev), [Pre-commit](https://pre-c
 
 ## Working without hardware
 
-You don't need a Flipper or Marauder to develop. The mock-transport harness in `cmd/pzrunner/` exercises the agent against scripted fake-device responses:
+You don't need a Flipper or Marauder to develop. The test suite runs the agent, tool dispatch, persona behaviour, and audit semantics entirely against in-memory fakes (`internal/testmocks`):
 
 ```bash
-task build:runner
-./bin/pzrunner ./examples/scenarios/basic.yaml
+task test        # quick suite (skips slow timing-sensitive tests)
+task test:full   # full suite, matches CI
+task eval        # scenario-style agent evaluations
 ```
 
-`pzrunner` is the right surface for testing tool dispatch, persona behaviour, agent flow control, audit semantics, and anything that doesn't strictly need real RF or USB.
+That covers everything that doesn't strictly need real RF or USB. (`cmd/pzrunner` is a *non-interactive harness that drives a real connected Flipper* over `serial://`, one prompt per arg — it is for on-hardware runs, not hardware-free development.)
 
 ## Package map
 
 ```
 cmd/
   promptzero/        CLI entry — REPL, config, setup wiring
-  pzrunner/          Hardware-free harness (fake transports)
-  cliprobe/          Tool-catalog inspector (`-list-tools` etc.)
+  pzrunner/          Non-interactive harness — drives a real Flipper (serial://), one prompt per arg, JSON tool-call record
+  cliprobe/          Serial-byte-dump diagnostic (pty driver; dumps raw CLI bytes for one prompt)
   flipper-validate/  End-to-end checks against a real Flipper
 internal/
   agent/             Claude agent + tool dispatch + risk/confirm gates

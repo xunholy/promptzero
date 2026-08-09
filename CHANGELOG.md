@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **Note:** per-release notes now live in the annotated git tags and the
+> [GitHub Releases](https://github.com/xunholy/promptzero/releases) page (see
+> `docs/RELEASING.md`); this file is not the complete record of recent
+> releases.
+
 ## [Unreleased]
 
 ## [0.340.0] - 2026-05-21

@@ -125,7 +125,8 @@ type Log struct {
 }
 
 // Open prepares the audit log at dbPath. It takes a non-blocking advisory
-// flock on the db file so only one PromptZero process writes to a given
+// flock on a sibling "<dbPath>.lock" file (not the db file itself — see the
+// comment at the flock call) so only one PromptZero process writes to a given
 // path at a time; if that lock is already held, Open falls back to a
 // PID-suffixed sibling path (<dbPath>.<pid>) and logs a warning. The
 // fallback keeps the REPL responsive instead of hard-erroring when a

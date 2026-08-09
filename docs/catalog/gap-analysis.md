@@ -7,6 +7,13 @@ related: [[firmware]] [[apps]] [[attacks]] [[hardware]] [[v0.8-team-audit]]
 
 # Gap analysis — catalogs vs PromptZero Specs
 
+> [!WARNING]
+> **Superseded snapshot (2026-04-25) — do not treat as current.** The registry
+> has since grown to 700+ tools and most headline gaps below (e.g. POCSAG,
+> MagSpoof, Sentry Safe) are shipped. Kept for historical context; check the
+> live registry (`/tools`, `tool_search`) and `docs/specs/roadmap.md` for the
+> current state.
+
 Synthesises the four researcher catalogs (`firmware.md`, `apps.md`,
 `attacks.md`, `hardware.md`) against the current Spec inventory and the
 existing v0.8 roadmap (`docs/refactor/v0.8-team-audit.md`). Goal: surface

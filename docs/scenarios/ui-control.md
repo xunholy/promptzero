@@ -72,7 +72,7 @@ is misbehaving and you want the firmware's own log output.
 > *"Reboot my Flipper"*
 
 Fires `device_reboot`. Serial disconnects while the unit restarts —
-in the REPL, use `/reconnect` once it's back. Classified `high`.
+in the REPL, use `/reconnect` once it's back. Classified `critical`.
 
 DFU mode (rescue / reflash):
 
