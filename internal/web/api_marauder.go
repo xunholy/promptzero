@@ -518,6 +518,14 @@ func (s *Server) handleMarauderCmd(c *sessionConn, cmdKey, action string, args m
 
 	start := time.Now()
 
+	// Fail-closed: a High+ device action must not run unless the audit log is
+	// open — the same rail the agent (agent.go), RunTool, and MCP surfaces
+	// enforce. RequireOpen is a no-op below High.
+	if err := audit.RequireOpen(s.auditLog, entry.risk); err != nil {
+		s.sendTo(c, map[string]any{"type": "marauder_error", "cmd": cmdKey, "message": err.Error()})
+		return
+	}
+
 	// Gate risk≥High behind operator consent before touching the device.
 	if entry.risk >= risk.High {
 		if !s.marauderConfirmGate(c, cmdKey, entry.risk, args, start) {

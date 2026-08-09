@@ -10,11 +10,13 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/xunholy/promptzero/internal/agent"
+	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/flipper/mock"
 )
 
@@ -25,6 +27,12 @@ func fsServer(t *testing.T, opts ...mock.Option) (*Server, *httptest.Server, *mo
 	flip := connectFlipperToMock(t, m)
 	s, ts := apiServer(t, &fakeAgent{})
 	s.SetFlipper(flip)
+	// Mirror production: runWebMode always wires an audit log, and High-risk
+	// paths (e.g. BadUSB upload) are fail-closed on RequireOpen.
+	if al, err := audit.Open(filepath.Join(t.TempDir(), "audit.db")); err == nil {
+		s.SetAuditLog(al)
+		t.Cleanup(func() { _ = al.Close() })
+	}
 	return s, ts, m
 }
 
