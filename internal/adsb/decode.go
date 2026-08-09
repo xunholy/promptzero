@@ -51,15 +51,16 @@
 //
 // # What this package does NOT cover (deliberately out of scope)
 //
-//   - CPR (Compact Position Reporting) lat/lon resolution:
-//     global resolution requires pairing an even-frame and an
-//     odd-frame from the same aircraft within ~10 seconds;
-//     this decoder exposes the raw 17-bit CPR values + the
-//     odd/even flag so a higher-level workflow / Spec can do
-//     the pairing. Local-CPR resolution (against a reference
-//     position) is intentionally deferred until the receiving
-//     side has somewhere to put the reference; otherwise the
-//     output would be misleading.
+//   - CPR (Compact Position Reporting) lat/lon resolution is not
+//     done inside Decode — it surfaces the raw 17-bit CPR values
+//     and the odd/even flag, because resolution needs state Decode
+//     does not hold (a paired even+odd frame, or a reference
+//     position). That resolution lives in cpr.go and is exposed as
+//     its own tools: GlobalPositionFromFrames pairs an even + odd
+//     frame reference-free (tool adsb_cpr_decode), and
+//     LocalPositionFromFrame resolves a single frame against a
+//     caller-supplied reference (tool adsb_cpr_local). Airborne
+//     only; surface-position CPR is still out of scope.
 //   - DF1/2/3/6-10/12-15/22/23 reserved slot bodies — the DF
 //     name is reported but no body decode is attempted
 //     because no civil aviation traffic uses these slots in
