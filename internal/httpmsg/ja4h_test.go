@@ -27,6 +27,23 @@ func TestJA4H(t *testing.T) {
 				"Accept-Language: da, en-GB;q=0.8, en;q=0.7\r\n\r\n",
 			want: "ge11cr04da00_8ddaef5d77af_280f366eaa04_c2fb0fe53442",
 		},
+		{
+			// Independently regenerated from the FoxIO python/ja4h.py reference
+			// (to_ja4h) — a GET/1.1 with Referer + 2 cookies + Accept-Language.
+			name: "referer-cookies-lang",
+			req: "GET /index.html HTTP/1.1\r\nHost: example.com\r\nUser-Agent: curl/8.0\r\n" +
+				"Accept-Language: en-US,en;q=0.9\r\nReferer: http://x/\r\n" +
+				"Cookie: sid=abc; theme=dark\r\n\r\n",
+			want: "ge11cr03enus_ea59799162d6_1777f707f29d_d88f81fbfec9",
+		},
+		{
+			// Independently regenerated from FoxIO to_ja4h — exercises the POST
+			// method, the HTTP/2 version code (20), and the no-cookie/no-lang
+			// zero-hash path, none of which the vectors above cover.
+			name: "post-http2-nocookies",
+			req:  "POST / HTTP/2\r\nHost: api.example.com\r\nContent-Type: application/json\r\n\r\n",
+			want: "po20nn020000_865e475ea83f_000000000000_000000000000",
+		},
 	}
 	for _, c := range cases {
 		m, err := Decode(c.req)
