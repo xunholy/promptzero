@@ -619,6 +619,11 @@ var toolLevels = func() map[string]Level {
 		// shear / microburst / icing / wake vortex + temp / pressure /
 		// radio height). Pure offline bit-field decode, no TX — Low.
 		"adsb_bds45_decode",
+		// ADS-B BDS 3,0 ACAS Active Resolution Advisory decode: explicit
+		// decode of a TCAS/ACAS collision-avoidance report (ARA/RAC
+		// manoeuvre state + threat identity). Pure offline bit-field
+		// decode, no TX — Low.
+		"adsb_bds30_decode",
 		// v0.531 (FM broadcast / SDR decode space): RDS / RBDS Radio
 		// Data System group decoder — PI + RBDS call sign, group type /
 		// TP / PTY, Programme Service name, RadioText (G0 charset).
