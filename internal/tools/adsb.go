@@ -43,6 +43,9 @@ var adsbModeSDecodeSpec = Spec{
 		"even/odd flag).\n" +
 		"  - TC 19: Airborne Velocity (subtypes 1/2 ground speed + track; subtypes 3/4 airspeed " +
 		"+ magnetic heading) + vertical rate with source flag (barometric vs GNSS).\n" +
+		"  - TC 28: Aircraft Status — subtype 1 emergency/priority state + Mode-A squawk (reserved " +
+		"emergency codes flagged); subtype 2 ACAS Resolution Advisory broadcast (same manoeuvre/" +
+		"threat payload as BDS 3,0).\n" +
 		"- **Comm-B (DF20/21) BDS register decode** of the 56-bit MB field (ICAO Doc 9871). " +
 		"A Comm-B reply is not self-describing, so the register is INFERRED via validity gates " +
 		"(pyModeS is10/is17/is20/is40/is50/is60): a register is only reported when its status " +

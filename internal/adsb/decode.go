@@ -45,9 +45,11 @@
 //     TC 19 (Airborne Velocity: subtype 1/2 ground speed
 //     and heading, subtype 3/4 airspeed and magnetic
 //     heading, vertical rate with source flag),
-//     TC 28 (Aircraft Status: emergency code / squawk),
-//     TC 29 (Target State and Status), TC 31 (Aircraft
-//     Operation Status).
+//     TC 28 (Aircraft Status: subtype 1 emergency/priority
+//     state + Mode-A squawk, subtype 2 ACAS RA broadcast).
+//     TC 29 (Target State and Status) and TC 31 (Aircraft
+//     Operation Status) are identified by name but not yet
+//     field-decoded.
 //
 // # What this package does NOT cover (deliberately out of scope)
 //
@@ -126,6 +128,22 @@ type ADSB struct {
 	AirbornePosition *AirbornePosition `json:"airborne_position,omitempty"`
 	AirborneVelocity *AirborneVelocity `json:"airborne_velocity,omitempty"`
 	SurfacePosition  *SurfacePosition  `json:"surface_position,omitempty"`
+	AircraftStatus   *AircraftStatus   `json:"aircraft_status,omitempty"`
+}
+
+// AircraftStatus is the decoded TC 28 Aircraft Status message. Subtype 1
+// carries an emergency/priority state + Mode-A squawk; subtype 2 carries an
+// ACAS Resolution Advisory broadcast (the same payload as BDS 3,0).
+type AircraftStatus struct {
+	Subtype     int    `json:"subtype"`
+	SubtypeName string `json:"subtype_name"`
+	// Subtype 1 — emergency/priority status.
+	EmergencyState     *int   `json:"emergency_state,omitempty"`
+	EmergencyStateName string `json:"emergency_state_name,omitempty"`
+	Squawk             string `json:"squawk,omitempty"`
+	SquawkEmergency    string `json:"squawk_emergency,omitempty"`
+	// Subtype 2 — ACAS RA broadcast.
+	ACASResolutionAdvisory *ACASRA `json:"acas_resolution_advisory,omitempty"`
 }
 
 // Identification is the decoded TC 1-4 Aircraft Identification
@@ -296,8 +314,70 @@ func decodeME(me []byte) *ADSB {
 		a.AirbornePosition = decodeAirbornePosition(me, tc)
 	case tc == 19:
 		a.AirborneVelocity = decodeAirborneVelocity(me)
+	case tc == 28:
+		a.AircraftStatus = decodeAircraftStatus(me)
 	}
 	return a
+}
+
+// decodeAircraftStatus parses TC 28 Aircraft Status. Subtype 1 (bits 6-8)
+// is emergency/priority status: the 3-bit emergency state (bits 9-11) plus
+// the 13-bit Mode-A ID code (bits 12-24, decoded to a squawk). Subtype 2 is
+// the ACAS RA broadcast, whose ARA/RAC/threat fields sit at the same
+// offsets as BDS 3,0, so it reuses decodeACASRA.
+func decodeAircraftStatus(me []byte) *AircraftStatus {
+	subtype := extractBits(me, 5, 3)
+	as := &AircraftStatus{Subtype: subtype, SubtypeName: statusSubtypeName(subtype)}
+	switch subtype {
+	case 1:
+		es := extractBits(me, 8, 3)
+		as.EmergencyState = &es
+		as.EmergencyStateName = emergencyStateName(es)
+		// 13-bit Mode-A ID code at ME bits 11-23 (0-indexed).
+		idbits := make([]int, 13)
+		for i := 0; i < 13; i++ {
+			idbits[i] = extractBits(me, 11+i, 1)
+		}
+		as.Squawk = squawk13(idbits)
+		as.SquawkEmergency = emergencyCode(as.Squawk)
+	case 2:
+		ra := decodeACASRA(me)
+		as.ACASResolutionAdvisory = &ra
+	}
+	return as
+}
+
+// statusSubtypeName labels the TC 28 subtype.
+func statusSubtypeName(sub int) string {
+	switch sub {
+	case 0:
+		return "No information"
+	case 1:
+		return "Emergency/priority status"
+	case 2:
+		return "ACAS RA broadcast"
+	}
+	return fmt.Sprintf("Reserved (subtype %d)", sub)
+}
+
+// emergencyStateName labels the TC 28 subtype-1 emergency state
+// (DO-260B / pyModeS emergency_state).
+func emergencyStateName(es int) string {
+	switch es {
+	case 0:
+		return "No emergency"
+	case 1:
+		return "General emergency"
+	case 2:
+		return "Lifeguard/medical"
+	case 3:
+		return "Minimum fuel"
+	case 4:
+		return "No communications"
+	case 5:
+		return "Unlawful interference"
+	}
+	return fmt.Sprintf("Reserved (%d)", es)
 }
 
 // decodeIdentification parses TC 1-4 Aircraft Identification.

@@ -45,8 +45,11 @@ type ResolutionAdvisoryComplement struct {
 	NoRight bool `json:"no_right"`
 }
 
-// BDS30 is the decoded ACAS Active Resolution Advisory report.
-type BDS30 struct {
+// ACASRA is the decoded ACAS Active Resolution Advisory payload — the
+// manoeuvre state and threat identity that appear identically in the BDS
+// 3,0 Comm-B register and in the ADS-B TC 28 subtype-2 broadcast (both
+// place these fields from bit 8 onward), so both decode paths share it.
+type ACASRA struct {
 	ResolutionAdvisory           ResolutionAdvisory           `json:"resolution_advisory"`
 	ResolutionAdvisoryComplement ResolutionAdvisoryComplement `json:"resolution_advisory_complement"`
 	RATerminated                 bool                         `json:"ra_terminated"`
@@ -59,9 +62,17 @@ type BDS30 struct {
 	ThreatAltitudeFt *int     `json:"threat_altitude_ft,omitempty"` // TTI=2
 	ThreatRangeNM    *float64 `json:"threat_range_nm,omitempty"`    // TTI=2
 	ThreatBearingDeg *int     `json:"threat_bearing_deg,omitempty"` // TTI=2
+}
+
+// BDS30 is the Comm-B decode of an ACAS Active Resolution Advisory: the
+// shared ACASRA payload plus the register-identity confidence flag.
+type BDS30 struct {
+	ACASRA
 	// IsBDS30 is pyModeS's is_bds30 heuristic: the fixed 0x30 identifier,
 	// the ACAS-III-reserved ARA bits below 48, and a non-reserved threat
 	// type. False means the field is unlikely to be a genuine BDS 3,0.
+	// (Only meaningful for the Comm-B path; the ADS-B TC 28 path uses the
+	// bare ACASRA, since TC/subtype already identify it.)
 	IsBDS30 bool `json:"is_bds30"`
 }
 
@@ -74,8 +85,15 @@ func DecodeBDS30(mb []byte) *BDS30 {
 	if len(mb) < 7 {
 		return nil
 	}
+	return &BDS30{ACASRA: decodeACASRA(mb), IsBDS30: is30(mb)}
+}
+
+// decodeACASRA fills the shared ACAS RA payload from a 56-bit field whose
+// ARA[0] is at bit 8 (true for both BDS 3,0 Comm-B and ADS-B TC 28 ST2).
+// Caller guarantees len(mb) >= 7.
+func decodeACASRA(mb []byte) ACASRA {
 	bit := func(k int) bool { return extractBits(mb, k, 1) == 1 }
-	b := &BDS30{
+	ra := ACASRA{
 		ResolutionAdvisory: ResolutionAdvisory{
 			Issued:           bit(8),
 			Corrective:       bit(9),
@@ -95,32 +113,30 @@ func DecodeBDS30(mb []byte) *BDS30 {
 		MultipleThreat:      bit(27),
 		ThreatTypeIndicator: extractBits(mb, 28, 2),
 	}
-	b.ThreatTypeName = threatTypeNames[b.ThreatTypeIndicator]
+	ra.ThreatTypeName = threatTypeNames[ra.ThreatTypeIndicator]
 
-	switch b.ThreatTypeIndicator {
+	switch ra.ThreatTypeIndicator {
 	case 1:
 		// 24-bit ICAO address at bits 30-53.
-		b.ThreatICAO = fmt.Sprintf("%06X", extractBits(mb, 30, 24))
+		ra.ThreatICAO = fmt.Sprintf("%06X", extractBits(mb, 30, 24))
 	case 2:
 		// Altitude: 13-bit AC13 at bits 30-42.
 		ac13 := extractBits(mb, 30, 13)
 		if alt, _, _ := altitude13(bitsOf13(ac13)); alt != nil {
-			b.ThreatAltitudeFt = alt
+			ra.ThreatAltitudeFt = alt
 		}
 		// Range: 7-bit at bits 43-49; NM = (n-1)/10, n=0 means not available.
 		if n := extractBits(mb, 43, 7); n > 0 {
 			r := float64(n-1) / 10.0
-			b.ThreatRangeNM = &r
+			ra.ThreatRangeNM = &r
 		}
 		// Bearing: 6-bit at bits 50-55; deg = 6*(n-1)+3, n=0 means not available.
 		if n := extractBits(mb, 50, 6); n > 0 {
 			deg := 6*(n-1) + 3
-			b.ThreatBearingDeg = &deg
+			ra.ThreatBearingDeg = &deg
 		}
 	}
-
-	b.IsBDS30 = is30(mb)
-	return b
+	return ra
 }
 
 // bitsOf13 expands a 13-bit AC13 value to the MSB-first []int altitude13
