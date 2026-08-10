@@ -46,6 +46,10 @@ var adsbModeSDecodeSpec = Spec{
 		"  - TC 28: Aircraft Status — subtype 1 emergency/priority state + Mode-A squawk (reserved " +
 		"emergency codes flagged); subtype 2 ACAS Resolution Advisory broadcast (same manoeuvre/" +
 		"threat payload as BDS 3,0).\n" +
+		"  - TC 29: Target State and Status (subtype 1 / ADS-B v2) — the selected altitude + source " +
+		"(MCP/FCU vs FMS), barometric pressure setting, selected heading, and engaged autoflight " +
+		"modes (autopilot, VNAV, LNAV, altitude hold, approach, TCAS operational); subtype 0 " +
+		"(ADS-B v1) is identified by name.\n" +
 		"- **Comm-B (DF20/21) BDS register decode** of the 56-bit MB field (ICAO Doc 9871). " +
 		"A Comm-B reply is not self-describing, so the register is INFERRED via validity gates " +
 		"(pyModeS is10/is17/is20/is40/is50/is60): a register is only reported when its status " +

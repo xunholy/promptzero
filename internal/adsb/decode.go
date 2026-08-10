@@ -47,9 +47,11 @@
 //     heading, vertical rate with source flag),
 //     TC 28 (Aircraft Status: subtype 1 emergency/priority
 //     state + Mode-A squawk, subtype 2 ACAS RA broadcast).
-//     TC 29 (Target State and Status) and TC 31 (Aircraft
-//     Operation Status) are identified by name but not yet
-//     field-decoded.
+//     TC 29 (Target State and Status: subtype 1 selected
+//     altitude/heading + barometric setting + autoflight
+//     mode flags; subtype 0 / ADS-B v1 name-only). TC 31
+//     (Aircraft Operation Status) is identified by name but
+//     not yet field-decoded.
 //
 // # What this package does NOT cover (deliberately out of scope)
 //
@@ -129,6 +131,33 @@ type ADSB struct {
 	AirborneVelocity *AirborneVelocity `json:"airborne_velocity,omitempty"`
 	SurfacePosition  *SurfacePosition  `json:"surface_position,omitempty"`
 	AircraftStatus   *AircraftStatus   `json:"aircraft_status,omitempty"`
+	TargetState      *TargetState      `json:"target_state,omitempty"`
+}
+
+// TargetState is the decoded TC 29 Target State and Status message
+// (subtype 1, ADS-B v2 / DO-260B): what the crew has dialled into the
+// autoflight system — selected altitude and its source, barometric
+// pressure setting, selected heading, and the engaged autopilot modes.
+// Subtype 0 (ADS-B v1) uses a different layout and is reported by name
+// only. Pointer fields are nil when the message marks them unavailable.
+type TargetState struct {
+	Subtype                int    `json:"subtype"`
+	SubtypeName            string `json:"subtype_name"`
+	SelectedAltitudeFt     *int   `json:"selected_altitude_ft,omitempty"`
+	SelectedAltitudeSource string `json:"selected_altitude_source,omitempty"` // MCP/FCU or FMS
+	// BaroPressureSettingMb is the QNH the crew set, in millibars.
+	BaroPressureSettingMb *float64 `json:"baro_pressure_setting_mb,omitempty"`
+	SelectedHeadingDeg    *float64 `json:"selected_heading_deg,omitempty"`
+	// The autoflight mode flags are meaningful only when ModeValid; nil
+	// otherwise (the message's mode-bits-valid indicator was clear).
+	ModeValid       bool   `json:"mode_valid"`
+	Autopilot       *bool  `json:"autopilot,omitempty"`
+	VNAV            *bool  `json:"vnav,omitempty"`
+	AltitudeHold    *bool  `json:"altitude_hold,omitempty"`
+	Approach        *bool  `json:"approach,omitempty"`
+	LNAV            *bool  `json:"lnav,omitempty"`
+	TCASOperational *bool  `json:"tcas_operational,omitempty"`
+	Note            string `json:"note,omitempty"`
 }
 
 // AircraftStatus is the decoded TC 28 Aircraft Status message. Subtype 1
@@ -316,8 +345,61 @@ func decodeME(me []byte) *ADSB {
 		a.AirborneVelocity = decodeAirborneVelocity(me)
 	case tc == 28:
 		a.AircraftStatus = decodeAircraftStatus(me)
+	case tc == 29:
+		a.TargetState = decodeTargetState(me)
 	}
 	return a
+}
+
+// decodeTargetState parses TC 29 Target State and Status. Only subtype 1
+// (ADS-B v2 / DO-260B) is field-decoded — its selected altitude/heading,
+// barometric setting, and autoflight mode flags. Ported from pyModeS
+// bds62; bit numbers are 0-indexed within the 56-bit ME field.
+func decodeTargetState(me []byte) *TargetState {
+	subtype := extractBits(me, 5, 2)
+	ts := &TargetState{Subtype: subtype}
+	if subtype != 1 {
+		ts.SubtypeName = "ADS-B v1 (target altitude/angle)"
+		ts.Note = "subtype 0 (ADS-B v1) target-state layout is not field-decoded"
+		return ts
+	}
+	ts.SubtypeName = "ADS-B v2 (selected altitude/heading)"
+
+	// Selected altitude: source bit 8, 11-bit value bits 9-19; 0 = N/A.
+	if raw := extractBits(me, 9, 11); raw > 0 {
+		alt := (raw - 1) * 32
+		ts.SelectedAltitudeFt = &alt
+		if extractBits(me, 8, 1) == 0 {
+			ts.SelectedAltitudeSource = "MCP/FCU"
+		} else {
+			ts.SelectedAltitudeSource = "FMS"
+		}
+	}
+	// Barometric pressure setting: 9-bit value bits 20-28; 0 = N/A.
+	if raw := extractBits(me, 20, 9); raw > 0 {
+		baro := 800 + float64(raw-1)*0.8
+		ts.BaroPressureSettingMb = &baro
+	}
+	// Selected heading: status bit 29, 9-bit value bits 30-38.
+	if extractBits(me, 29, 1) == 1 {
+		hdg := float64(extractBits(me, 30, 9)) * 360.0 / 512.0
+		ts.SelectedHeadingDeg = &hdg
+	}
+	// Autoflight modes are meaningful only when the mode-valid bit (46)
+	// is set.
+	ts.ModeValid = extractBits(me, 46, 1) == 1
+	if ts.ModeValid {
+		ap := extractBits(me, 47, 1) == 1
+		vnav := extractBits(me, 48, 1) == 1
+		hold := extractBits(me, 49, 1) == 1
+		app := extractBits(me, 51, 1) == 1
+		lnav := extractBits(me, 53, 1) == 1
+		ts.Autopilot, ts.VNAV, ts.AltitudeHold, ts.Approach, ts.LNAV = &ap, &vnav, &hold, &app, &lnav
+	}
+	// TCAS/ACAS operational (subtype 1: bit 52) is always present.
+	tcas := extractBits(me, 52, 1) == 1
+	ts.TCASOperational = &tcas
+	return ts
 }
 
 // decodeAircraftStatus parses TC 28 Aircraft Status. Subtype 1 (bits 6-8)
