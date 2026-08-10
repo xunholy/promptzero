@@ -72,8 +72,11 @@
 //     see commb.go. The surveillance AC13 altitude (DF0/4/16/20)
 //     and ID13 squawk (DF5/21) header fields — including Gillham
 //     (Mode C) gray-coded altitude and emergency-squawk flagging
-//     — are decoded in altid.go. Meteorological BDS 4,4 / 4,5
-//     registers remain deferred.
+//     — are decoded in altid.go. Meteorological BDS 4,4
+//     (Meteorological Routine Air Report) is decoded on explicit
+//     request via DecodeBDS44 / the adsb_bds44_decode tool (kept out
+//     of the automatic inference above, as meteorological registers
+//     are heuristic to identify); BDS 4,5 remains deferred.
 //   - TIS-B (DF18) imitation-of-other-format payload variants:
 //     DF18 is decoded as if it were DF17, which is correct for
 //     the most common CF=0/CF=1 case. CF=2..7 sub-formats
