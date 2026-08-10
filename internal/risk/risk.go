@@ -609,6 +609,11 @@ var toolLevels = func() map[string]Level {
 		// position. Pure offline float maths, no TX — Low like its
 		// siblings.
 		"adsb_cpr_local",
+		// ADS-B BDS 4,4 meteorological Comm-B decode: explicit-register
+		// decode of a Meteorological Routine Air Report (wind / temp /
+		// pressure / turbulence / humidity). Pure offline bit-field
+		// decode, no TX — Low like the other adsb decoders.
+		"adsb_bds44_decode",
 		// v0.531 (FM broadcast / SDR decode space): RDS / RBDS Radio
 		// Data System group decoder — PI + RBDS call sign, group type /
 		// TP / PTY, Programme Service name, RadioText (G0 charset).
