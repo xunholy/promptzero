@@ -3073,7 +3073,10 @@ func TestRegistrySize(t *testing.T) {
 	// Added adsb_bds44_decode (explicit BDS 4,4 meteorological Comm-B decode — wind/temp/pressure/
 	// turbulence/humidity from a Meteorological Routine Air Report; kept out of auto-inference,
 	// ported from pyModeS). Low risk, no TX. internal/tools + internal/adsb.
-	const expected = 706
+	// Added adsb_bds45_decode (explicit BDS 4,5 meteorological Comm-B decode — turbulence/wind-shear/
+	// microburst/icing/wake-vortex + temp/pressure/radio-height from a Meteorological Hazard Report;
+	// ported from pyModeS v3). Low risk, no TX. internal/tools + internal/adsb.
+	const expected = 707
 	if initialRegistrySize != expected {
 		t.Errorf("registry names at init = %d, want %d (wave-by-wave checked in §D of runbook)",
 			initialRegistrySize, expected)

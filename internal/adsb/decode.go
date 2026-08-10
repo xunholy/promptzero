@@ -76,7 +76,9 @@
 //     (Meteorological Routine Air Report) is decoded on explicit
 //     request via DecodeBDS44 / the adsb_bds44_decode tool (kept out
 //     of the automatic inference above, as meteorological registers
-//     are heuristic to identify); BDS 4,5 remains deferred.
+//     are heuristic to identify). BDS 4,5 (Meteorological Hazard
+//     Report) is likewise decoded on explicit request via DecodeBDS45
+//     / the adsb_bds45_decode tool.
 //   - TIS-B (DF18) imitation-of-other-format payload variants:
 //     DF18 is decoded as if it were DF17, which is correct for
 //     the most common CF=0/CF=1 case. CF=2..7 sub-formats
