@@ -8,7 +8,7 @@ payloads — the moment the Flipper starts typing on the host.
 
 > *"Run /ext/badusb/payload.txt"*
 
-Fires `badusb_run(file=…)`. Classified `critical`. The host's
+Fires `badusb_run(file=…)`. Classified `high` (dangerous payload content is flagged `critical` by the validator). The host's
 keyboard input gets driven at wire-speed until the script exits.
 
 Validate first (lint without executing):

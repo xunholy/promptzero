@@ -167,7 +167,7 @@ Runs as a [Model Context Protocol](https://modelcontextprotocol.io/) server over
 
 PromptZero is dual-use offensive tooling. The safety story is the project's social licence to exist.
 
-- **Risk classification per tool.** Every spec carries a tier — Low / Medium / High / Critical. Read-only ops are Low; destructive RF transmit, RFID write, BadUSB run, factory-reset are Critical.
+- **Risk classification per tool.** Every spec carries a tier — Low / Medium / High / Critical. Read-only ops are Low; data writes and signal emulation are Medium; active RF transmit, tag writes, and script execution are High; brute-force and destructive attacks are Critical.
 - **Consent gate.** High and Critical tools require operator confirmation. The CLI shows a boxed preview (frequency / modulation / hex) with a 2-second delay; positive consent (`y`, `all`, `confirm`) is rejected before the delay opens. Negative decisions (`n`, `r` for revise, Esc) bypass the delay.
 - **MCP refuses by default.** No MCP client can run High+ tools without explicit env-var opt-in (see above).
 - **Audit-log fail-closed.** If no audit log is initialised, the agent refuses High+ actions rather than running them silently.

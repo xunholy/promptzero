@@ -180,7 +180,7 @@ and dump the raw data (don't save to SD)"*
 protocol, frequency and whatever key data you can extract"*
 ([transcript 30](../transcripts/30-subghz-decode.json))
 
-### `subghz_transmit` · **critical** (active RF)
+### `subghz_transmit` · **high** (active RF)
 `file` (string, required).
 **Prompt that works:** *"Transmit /ext/subghz/garage.sub"* — the agent
 will ask you to confirm before firing. Only run with authorisation for
@@ -234,7 +234,7 @@ per button.
 **Prompt:** *"Try to detect an NFC tag for 8 seconds"*
 ([transcript 09](../transcripts/09-nfc-detect.json))
 
-### `nfc_emulate` · **critical** (active emission)
+### `nfc_emulate` · **high** (active emission)
 `file` (string). The Flipper acts as the tag.
 
 ### `nfc_subcommand` · high
@@ -271,7 +271,7 @@ the back of the Flipper. Give it 8 seconds max."*
 ### `rfid_emulate` · high
 `protocol`, `data` (hex).
 
-### `rfid_write` · **critical**
+### `rfid_write` · **high**
 `protocol`, `data`. Writes to a T5577 blank (or similar).
 
 ### `rfid_raw_read` · medium
@@ -326,7 +326,7 @@ GPIO header"*
 
 ## BadUSB
 
-### `badusb_run` · **critical**
+### `badusb_run` · **high**
 `file`. Types arbitrary keystrokes into the host computer.
 
 ### `badusb_validate` · low
