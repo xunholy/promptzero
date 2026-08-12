@@ -34,16 +34,19 @@ var epcDecodeSpec = Spec{
 		"filter, partition, company prefix, item reference, serial number, the canonical EPC tag URI " +
 		"(`urn:epc:tag:sgtin-96:…`) and pure-identity URI (`urn:epc:id:sgtin:…`), and the reconstructed " +
 		"**GTIN-14** (with a recomputed GS1 mod-10 check digit). The other 96-bit schemes (SSCC / SGLN / " +
-		"GRAI / GIAI / GID, headers 0x31-0x35) are identified by name.\n\n" +
+		"GRAI / GIAI / GID, headers 0x31-0x35) are fully field-decoded too (SSCC-96 also reconstructs " +
+		"the SSCC-18). Extended alphanumeric-serial forms decode as well: SGTIN-198 (0x36), GRAI-170 " +
+		"(0x37), GIAI-202 (0x38) and SGLN-195 (0x39) — the trailing serial / asset reference / extension " +
+		"is a variable-length 7-bit-ASCII string (44/50/52 hex).\n\n" +
 		"Reading a UHF tag needs a RAIN reader (hardware, out of scope) but the captured EPC decodes entirely " +
 		"offline here. Offline, deterministic, transmits nothing -> Low risk. No confidently-wrong output: " +
-		"the non-SGTIN schemes are recognised but not field-decoded (raw, with a note) rather than guessed; " +
-		"unknown headers and 198-bit variants are reported unsupported. Verified against the GS1 EPC Tag Data " +
-		"Standard canonical example. Wrap-vs-native: native — fixed bit-field extraction.",
+		"an unrecognised header (e.g. GDTI-174 0x3E) or a truncated tag is reported unsupported, not guessed. " +
+		"Verified against the GS1 EPC Tag Data Standard (canonical worked example plus the epc-tds / " +
+		"epc-encoding-utils libraries as oracles). Wrap-vs-native: native — fixed bit-field extraction.",
 	Schema: json.RawMessage(`{
 		"type":"object",
 		"properties":{
-			"hex":{"type":"string","description":"96-bit EPC, 24 hex digits (optional 0x prefix; ':' / '-' / whitespace tolerated)."}
+			"hex":{"type":"string","description":"EPC hex — 96-bit (24 hex digits) or extended GRAI-170 (44) / SGLN-195 (50) / SGTIN-198 (50/52) / GIAI-202 (52); optional 0x prefix; ':' / '-' / whitespace tolerated."}
 		},
 		"required":["hex"]
 	}`),

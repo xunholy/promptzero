@@ -27,15 +27,20 @@ var sglnPartition = map[int]struct {
 	6: {20, 6, 21, 6},
 }
 
-// SGLN is a decoded SGLN-96 EPC.
+// SGLN is a decoded SGLN EPC — the 96-bit form (numeric extension) or the
+// 195-bit form (alphanumeric extension).
 type SGLN struct {
+	TagSize           int    `json:"tag_size"` // 96 or 195
 	Filter            int    `json:"filter"`
 	Partition         int    `json:"partition"`
 	CompanyPrefix     string `json:"company_prefix"`
 	LocationReference string `json:"location_reference"`
-	Extension         uint64 `json:"extension"`
-	TagURI            string `json:"tag_uri"`
-	PureIdentityURI   string `json:"pure_identity_uri"`
+	// Extension is the numeric extension of an SGLN-96; ExtensionString is the
+	// 7-bit-ASCII extension of an SGLN-195. One is meaningful per tag size.
+	Extension       uint64 `json:"extension"`
+	ExtensionString string `json:"extension_string,omitempty"`
+	TagURI          string `json:"tag_uri"`
+	PureIdentityURI string `json:"pure_identity_uri"`
 }
 
 func decodeSGLN96(bits []int, res *Result) {
@@ -59,6 +64,7 @@ func decodeSGLN96(bits []int, res *Result) {
 		locStr = fmt.Sprintf("%0*d", pt.locDigits, loc)
 	}
 	res.SGLN = &SGLN{
+		TagSize:           96,
 		Filter:            filter,
 		Partition:         partition,
 		CompanyPrefix:     cpStr,

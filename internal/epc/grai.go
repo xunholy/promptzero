@@ -26,13 +26,18 @@ var graiPartition = map[int]struct {
 	6: {20, 6, 24, 6},
 }
 
-// GRAI is a decoded GRAI-96 EPC.
+// GRAI is a decoded GRAI EPC — the 96-bit form (numeric serial) or the 170-bit
+// form (alphanumeric serial).
 type GRAI struct {
-	Filter          int    `json:"filter"`
-	Partition       int    `json:"partition"`
-	CompanyPrefix   string `json:"company_prefix"`
-	AssetType       string `json:"asset_type"`
-	SerialNumber    uint64 `json:"serial_number"`
+	TagSize       int    `json:"tag_size"` // 96 or 170
+	Filter        int    `json:"filter"`
+	Partition     int    `json:"partition"`
+	CompanyPrefix string `json:"company_prefix"`
+	AssetType     string `json:"asset_type"`
+	// SerialNumber is the numeric serial of a GRAI-96; SerialString is the
+	// 7-bit-ASCII serial of a GRAI-170. Exactly one is meaningful per tag size.
+	SerialNumber    uint64 `json:"serial_number,omitempty"`
+	SerialString    string `json:"serial_string,omitempty"`
 	TagURI          string `json:"tag_uri"`
 	PureIdentityURI string `json:"pure_identity_uri"`
 }
@@ -58,6 +63,7 @@ func decodeGRAI96(bits []int, res *Result) {
 		atStr = fmt.Sprintf("%0*d", pt.atDigits, at)
 	}
 	res.GRAI = &GRAI{
+		TagSize:         96,
 		Filter:          filter,
 		Partition:       partition,
 		CompanyPrefix:   cpStr,

@@ -23,23 +23,15 @@ import (
 	"strings"
 )
 
-func decode198(b []byte) (*Result, error) {
-	header := b[0]
-	res := &Result{SchemeHeader: fmt.Sprintf("0x%02X", header)}
-	if header != 0x36 {
-		res.Scheme = "unsupported"
-		res.Notes = append(res.Notes, fmt.Sprintf("EPC header 0x%02X is not a supported 198-bit scheme (only SGTIN-198 0x36 is decoded; GRAI-170 / GIAI-202 / SGLN-195 are not)", header))
-		return res, nil
-	}
-	res.Scheme = "SGTIN-198"
-
-	bits := toBits(b)
+// decodeSGTIN198 decodes the SGTIN-198 fields (header 0x36) from the EPC bit
+// slice into res. The caller has set res.Scheme and validated the bit length.
+func decodeSGTIN198(bits []int, res *Result) {
 	filter := int(readMSB(bits, 8, 3))
 	partition := int(readMSB(bits, 11, 3))
 	pt, ok := sgtinPartition[partition]
 	if !ok {
 		res.Notes = append(res.Notes, fmt.Sprintf("SGTIN-198 partition value %d is reserved/invalid (valid 0-6)", partition))
-		return res, nil
+		return
 	}
 	off := 14
 	cp := readMSB(bits, off, pt.cpBits)
@@ -49,7 +41,7 @@ func decode198(b []byte) (*Result, error) {
 
 	cpStr := fmt.Sprintf("%0*d", pt.cpDigits, cp)
 	irStr := fmt.Sprintf("%0*d", pt.irDigits, ir)
-	serial := decodeSerial7(bits, off)
+	serial := decodeSerial7(bits, off, 20) // 140-bit serial field = up to 20 chars
 
 	res.SGTIN = &SGTIN{
 		TagSize:         198,
@@ -62,14 +54,16 @@ func decode198(b []byte) (*Result, error) {
 		PureIdentityURI: fmt.Sprintf("urn:epc:id:sgtin:%s.%s.%s", cpStr, irStr, serial),
 		GTIN14:          sgtinGTIN14(cpStr, irStr),
 	}
-	return res, nil
 }
 
-// decodeSerial7 reads the 198-bit SGTIN serial: up to twenty 7-bit ISO-646
-// characters starting at off, terminated by a null (0x00) or the field end.
-func decodeSerial7(bits []int, off int) string {
+// decodeSerial7 reads an EPC 7-bit-ISO-646 alphanumeric field: up to maxChars
+// characters starting at off, terminated by a null (0x00) or the field/bit-slice
+// end. Shared by every alphanumeric-serial scheme (SGTIN-198, GRAI-170,
+// GIAI-202, SGLN-195); the field width (maxChars) is the only per-scheme
+// difference.
+func decodeSerial7(bits []int, off, maxChars int) string {
 	var sb strings.Builder
-	for i := 0; i < 20 && off+(i+1)*7 <= len(bits); i++ {
+	for i := 0; i < maxChars && off+(i+1)*7 <= len(bits); i++ {
 		c := byte(readMSB(bits, off+i*7, 7))
 		if c == 0 {
 			break

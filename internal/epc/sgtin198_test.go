@@ -49,13 +49,15 @@ func TestDecode_SGTIN198(t *testing.T) {
 }
 
 func TestDecode_198UnsupportedHeader(t *testing.T) {
-	// 26-byte EPC with a non-SGTIN-198 header (GIAI-202 0x38) -> unsupported.
-	r, err := DecodeHex("38" + "00000000000000000000000000000000000000000000000000")
+	// 26-byte EPC with an extended header that is recognised but not decoded
+	// (GDTI-174 0x3E) -> unsupported. (0x37/0x38/0x39 are now decoded; see
+	// long_test.go.)
+	r, err := DecodeHex("3E" + "00000000000000000000000000000000000000000000000000")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if r.Scheme != "unsupported" || len(r.Notes) == 0 {
-		t.Errorf("non-0x36 198-bit header should be unsupported: %+v", r)
+		t.Errorf("undecoded extended header should be unsupported: %+v", r)
 	}
 }
 
