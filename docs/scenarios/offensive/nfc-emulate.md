@@ -4,7 +4,7 @@
 
 > *"Emulate /ext/nfc/office_badge.nfc"*
 
-Fires `nfc_emulate(file=…)`. Classified `critical`. The Flipper holds
+Fires `nfc_emulate(file=…)`. Classified `high`. The Flipper holds
 the tag profile in memory and responds to a reader's field. Hold the
 Flipper where the real tag would go.
 

@@ -4,7 +4,7 @@
 
 > *"Transmit /ext/subghz/garage.sub"*
 
-Fires `subghz_transmit(file=…)`. Classified `critical`. The agent
+Fires `subghz_transmit(file=…)`. Classified `high`. The agent
 will ask you to confirm before firing.
 
 When your config has a `devices:` map, use friendly names:

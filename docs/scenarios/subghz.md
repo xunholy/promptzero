@@ -69,5 +69,5 @@ See [`offensive/subghz-tx.md`](offensive/subghz-tx.md). Short version:
 
 > *"Transmit /ext/subghz/garage.sub"*
 
-Fires `subghz_transmit` — classified `critical`, confirmation-gated.
+Fires `subghz_transmit` — classified `high`, confirmation-gated.
 Only run with authorisation for the receiver.

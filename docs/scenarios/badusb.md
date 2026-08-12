@@ -71,7 +71,7 @@ auto_run=false)`. The workflow threads OS-specific constraints
 
 > *"Run /ext/badusb/payload.txt"*
 
-Fires `badusb_run`. Classified `critical`. Validator runs implicitly
+Fires `badusb_run`. Classified `high` (the BadUSB validator separately flags dangerous payload content as `critical` severity). Validator runs implicitly
 first on most firmwares — call `badusb_validate` yourself beforehand
 if you want to preview.
 
