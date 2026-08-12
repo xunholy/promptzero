@@ -149,6 +149,68 @@ func TestDecode_SGLN195(t *testing.T) {
 	}
 }
 
+// GIAI-202's individual asset reference is the alphanumeric remainder of the
+// 202-bit tag, so its field width (202 − 14 − companyPrefixBits) is the only
+// part of the extended-scheme decode that varies with the partition — the one
+// place a width miscalculation could confidently mis-decode. Sweep every
+// partition 0-6 (widest company prefix / narrowest reference through narrowest
+// prefix / widest reference) against the epc-tds oracle. Vectors carry the
+// partition index inside the reference ("R<p>xZ") so a cross-partition mixup
+// can't pass.
+func TestDecode_GIAI202AllPartitions(t *testing.T) {
+	cases := map[string]string{
+		"382072FA646852930F1680000000000000000000000000000000": "urn:epc:tag:giai-202:1.123456789012.R0xZ",
+		"38245BFB8386B498F8B400000000000000000000000000000000": "urn:epc:tag:giai-202:1.12345678901.R1xZ",
+		"3828499602D2A4CBC5A000000000000000000000000000000000": "urn:epc:tag:giai-202:1.1234567890.R2xZ",
+		"382C75BCD15A4CFC5A0000000000000000000000000000000000": "urn:epc:tag:giai-202:1.123456789.R3xZ",
+		"38305E30A75269E2D00000000000000000000000000000000000": "urn:epc:tag:giai-202:1.12345678.R4xZ",
+		"38344B5A1E935F16800000000000000000000000000000000000": "urn:epc:tag:giai-202:1.1234567.R5xZ",
+		"383878902936F168000000000000000000000000000000000000": "urn:epc:tag:giai-202:1.123456.R6xZ",
+	}
+	for hx, want := range cases {
+		r, err := DecodeHex(hx)
+		if err != nil {
+			t.Fatalf("%s: %v", hx, err)
+		}
+		if r.GIAI == nil {
+			t.Fatalf("%s: GIAI nil (scheme=%s)", hx, r.Scheme)
+		}
+		if r.GIAI.TagURI != want {
+			t.Errorf("%s:\n got %q\nwant %q", hx, r.GIAI.TagURI, want)
+		}
+	}
+}
+
+// At partition 0 the GRAI asset-type and SGLN location-reference fields have
+// zero digits. The decoder renders them EMPTY — matching the shipped 96-bit
+// siblings (GRAI-96 / SGLN-96), which is a deliberate divergence from epc-tds
+// (it renders a lone "0"). Lock the convention so a future maintainer
+// re-verifying against epc-tds doesn't "fix" it into an inconsistency.
+func TestDecode_ExtendedPartition0EmptyField(t *testing.T) {
+	// GRAI-170 p0: urn:epc:tag:grai-170:0.123456789012.<empty>.Z9
+	if r, _ := DecodeHex("370072FA6468502D3900000000000000000000000000"); r.GRAI == nil || r.GRAI.AssetType != "" {
+		t.Errorf("GRAI-170 p0 asset type = %q, want empty (GRAI-96 convention)", grAssetType(r))
+	}
+	// SGLN-195 p0: urn:epc:tag:sgln-195:0.123456789012.<empty>.Q1
+	if r, _ := DecodeHex("390072FA646851458800000000000000000000000000000000"); r.SGLN == nil || r.SGLN.LocationReference != "" {
+		t.Errorf("SGLN-195 p0 location = %q, want empty (SGLN-96 convention)", sgLoc(r))
+	}
+}
+
+func grAssetType(r *Result) string {
+	if r.GRAI == nil {
+		return "<nil>"
+	}
+	return r.GRAI.AssetType
+}
+
+func sgLoc(r *Result) string {
+	if r.SGLN == nil {
+		return "<nil>"
+	}
+	return r.SGLN.LocationReference
+}
+
 // A recognised extended header supplied with too few bits must be reported as a
 // truncated tag, not silently zero-extended into a wrong asset reference.
 func TestDecode_ExtendedTruncated(t *testing.T) {
