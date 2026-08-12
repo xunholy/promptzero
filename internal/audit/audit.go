@@ -490,10 +490,18 @@ func (l *Log) Query(limit int) ([]Entry, error) {
 	for rows.Next() {
 		var e Entry
 		var ts string
-		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &e.Success); err != nil {
+		// success is scanned as NullInt64, not a bare bool: legitimate rows
+		// always store 0/1, but success is an independent column from the hash
+		// chain, so an attacker with DB write could set it NULL (or a non-0/1
+		// value) — a bare-bool scan would then error and the row would be
+		// silently dropped from forensic results, hiding it from the operator.
+		// Mirror chain.go's VerifyChain scan: NULL/tampered -> false, row kept.
+		var success sql.NullInt64
+		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &success); err != nil {
 			obs.Default().Warn("audit_row_scan_failed", "where", "Query", "err", err)
 			continue
 		}
+		e.Success = success.Int64 == 1
 		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
 		entries = append(entries, e)
 	}
@@ -516,10 +524,13 @@ func (l *Log) QueryBySession(sessionID string) ([]Entry, error) {
 	for rows.Next() {
 		var e Entry
 		var ts string
-		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &e.Success); err != nil {
+		// success as NullInt64 — see Query: a NULL/tampered value must not drop the row.
+		var success sql.NullInt64
+		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &success); err != nil {
 			obs.Default().Warn("audit_row_scan_failed", "where", "QueryBySession", "session_id", sessionID, "err", err)
 			continue
 		}
+		e.Success = success.Int64 == 1
 		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
 		entries = append(entries, e)
 	}
@@ -640,10 +651,13 @@ func (l *Log) QueryFiltered(f Filter) ([]Entry, error) {
 	for rows.Next() {
 		var e Entry
 		var ts string
-		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &e.Success); err != nil {
+		// success as NullInt64 — see Query: a NULL/tampered value must not drop the row.
+		var success sql.NullInt64
+		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &success); err != nil {
 			obs.Default().Warn("audit_row_scan_failed", "where", "QueryFiltered", "err", err)
 			continue
 		}
+		e.Success = success.Int64 == 1
 		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
 		entries = append(entries, e)
 	}
@@ -744,10 +758,13 @@ func (l *Log) QuerySince(afterID int64) ([]Entry, error) {
 	for rows.Next() {
 		var e Entry
 		var ts string
-		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &e.Success); err != nil {
+		// success as NullInt64 — see Query: a NULL/tampered value must not drop the row.
+		var success sql.NullInt64
+		if err := rows.Scan(&e.ID, &ts, &e.Tool, &e.Input, &e.Output, &e.Risk, &e.Level, &e.SessionID, &e.Duration, &success); err != nil {
 			obs.Default().Warn("audit_row_scan_failed", "where", "QuerySince", "after_id", afterID, "err", err)
 			continue
 		}
+		e.Success = success.Int64 == 1
 		e.Timestamp, _ = time.Parse(time.RFC3339, ts)
 		entries = append(entries, e)
 	}
