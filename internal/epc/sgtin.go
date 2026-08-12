@@ -28,10 +28,11 @@
 // against a worked vector (SGTIN/SSCC additionally reconstruct the GTIN-14 /
 // SSCC-18 with a recomputed mod-10 check digit; the partition-based schemes are
 // anchored against the epc-encoding-utils library used as an oracle).
-// Plus SGTIN-198 (header 0x36): the 198-bit SGTIN whose serial is an
-// alphanumeric 7-bit-ASCII string rather than a numeric value (internal/
-// sgtin198.go). Unsupported (reported, not guessed): the other 198-bit
-// variants (GRAI-170 / GIAI-202 / SGLN-195) and any header outside 0x30-0x36.
+// Plus the extended (>96-bit) schemes whose trailing field is an alphanumeric
+// 7-bit-ASCII string rather than a numeric value: SGTIN-198 (0x36, internal/
+// sgtin198.go) and GRAI-170 (0x37) / GIAI-202 (0x38) / SGLN-195 (0x39)
+// (internal/long.go). Unsupported (reported, not guessed): GDTI-174 (0x3E) and
+// any header outside 0x30-0x39.
 package epc
 
 import (
@@ -95,9 +96,10 @@ type Result struct {
 	Notes        []string `json:"notes,omitempty"`
 }
 
-// DecodeHex decodes a hex-encoded EPC: a 96-bit EPC (24 hex digits) or a
-// 198-bit SGTIN-198 (the word-aligned 50/52 hex-digit form). ':' / '-' / '_' /
-// whitespace separators and an optional 0x prefix are tolerated.
+// DecodeHex decodes a hex-encoded EPC: a 96-bit EPC (24 hex digits) or one of
+// the word-aligned extended forms — GRAI-170 (44 hex), SGLN-195 (50 hex),
+// SGTIN-198 (50/52 hex) or GIAI-202 (52 hex). ':' / '-' / '_' / whitespace
+// separators and an optional 0x prefix are tolerated.
 func DecodeHex(s string) (*Result, error) {
 	clean := strings.NewReplacer(":", "", "-", "", "_", "", " ", "", "\n", "", "\t", "").Replace(s)
 	clean = strings.TrimPrefix(strings.TrimPrefix(clean, "0x"), "0X")
@@ -111,16 +113,17 @@ func DecodeHex(s string) (*Result, error) {
 	return Decode(b)
 }
 
-// Decode decodes an EPC binary: a 96-bit (12-byte) EPC, or a 198-bit EPC
-// (the word-aligned 25/26-byte form a RAIN reader emits) for SGTIN-198.
+// Decode decodes an EPC binary: a 96-bit (12-byte) EPC, or an extended EPC in
+// the word-aligned form a RAIN reader emits — 22 bytes (GRAI-170) or 25/26
+// bytes (SGLN-195 / SGTIN-198 / GIAI-202). The header byte selects the scheme.
 func Decode(b []byte) (*Result, error) {
 	switch len(b) {
 	case 12:
 		return decode96(b)
-	case 25, 26:
-		return decode198(b)
+	case 22, 25, 26:
+		return decodeExtended(b)
 	default:
-		return nil, fmt.Errorf("epc: expected 12 bytes (96-bit EPC) or 25-26 bytes (198-bit EPC), got %d bytes", len(b))
+		return nil, fmt.Errorf("epc: expected 12 bytes (96-bit EPC) or 22/25/26 bytes (extended GRAI-170/SGLN-195/SGTIN-198/GIAI-202), got %d bytes", len(b))
 	}
 }
 

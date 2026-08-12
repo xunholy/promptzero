@@ -27,14 +27,19 @@ var giaiPartition = map[int]struct {
 	6: {20, 6, 62},
 }
 
-// GIAI is a decoded GIAI-96 EPC.
+// GIAI is a decoded GIAI EPC — the 96-bit form (numeric asset reference) or the
+// 202-bit form (alphanumeric asset reference).
 type GIAI struct {
-	Filter          int    `json:"filter"`
-	Partition       int    `json:"partition"`
-	CompanyPrefix   string `json:"company_prefix"`
-	AssetReference  uint64 `json:"asset_reference"`
-	TagURI          string `json:"tag_uri"`
-	PureIdentityURI string `json:"pure_identity_uri"`
+	TagSize       int    `json:"tag_size"` // 96 or 202
+	Filter        int    `json:"filter"`
+	Partition     int    `json:"partition"`
+	CompanyPrefix string `json:"company_prefix"`
+	// AssetReference is the numeric reference of a GIAI-96; AssetReferenceString
+	// is the 7-bit-ASCII reference of a GIAI-202. One is meaningful per tag size.
+	AssetReference       uint64 `json:"asset_reference,omitempty"`
+	AssetReferenceString string `json:"asset_reference_string,omitempty"`
+	TagURI               string `json:"tag_uri"`
+	PureIdentityURI      string `json:"pure_identity_uri"`
 }
 
 func decodeGIAI96(bits []int, res *Result) {
@@ -51,6 +56,7 @@ func decodeGIAI96(bits []int, res *Result) {
 	ref := readMSB(bits, off, pt.refBits)
 	cpStr := fmt.Sprintf("%0*d", pt.cpDigits, cp)
 	res.GIAI = &GIAI{
+		TagSize:         96,
 		Filter:          filter,
 		Partition:       partition,
 		CompanyPrefix:   cpStr,
