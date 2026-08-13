@@ -68,6 +68,33 @@ func TestTOTPHandler_URIOverridesDefaults(t *testing.T) {
 	}
 }
 
+// TestTOTPHandler_URISHA256_512RFCVector is the end-to-end correctness gate for
+// the SHA-256 / SHA-512 enrolment path: an otpauth URI carrying algorithm=SHA256
+// (or SHA512) + digits=8 must yield the exact RFC 6238 Appendix B code, not just
+// "a different code than SHA1". The prior URIOverridesDefaults test only proved
+// the algorithm changed the output; a wiring bug producing a wrong-but-different
+// code would pass it. Seeds are the RFC's per-algorithm ASCII seeds (32 / 64
+// bytes) base32-encoded; codes cross-checked against an independent hmac oracle
+// and pyotp.
+func TestTOTPHandler_URISHA256_512RFCVector(t *testing.T) {
+	const (
+		sha256SeedB32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA===="
+		sha512SeedB32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA="
+	)
+	for _, c := range []struct{ algo, seed, want string }{
+		{"SHA256", sha256SeedB32, "46119246"},
+		{"SHA512", sha512SeedB32, "90693936"},
+	} {
+		m := runTOTP(t, map[string]any{
+			"secret":    "otpauth://totp/x?secret=" + c.seed + "&algorithm=" + c.algo + "&digits=8",
+			"timestamp": 59,
+		})
+		if m["code"] != c.want {
+			t.Errorf("%s URI (T=59) code = %v, want %s", c.algo, m["code"], c.want)
+		}
+	}
+}
+
 // TestTOTPHandler_OtpauthHOTP exercises the hotp URI path (counter from the URI).
 func TestTOTPHandler_OtpauthHOTP(t *testing.T) {
 	m := runTOTP(t, map[string]any{

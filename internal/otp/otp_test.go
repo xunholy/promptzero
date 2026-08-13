@@ -4,6 +4,9 @@ package otp
 
 import (
 	"crypto/sha1" //nolint:gosec // RFC test vectors are HMAC-SHA1.
+	"crypto/sha256"
+	"crypto/sha512"
+	"hash"
 	"testing"
 	"time"
 )
@@ -42,6 +45,45 @@ func TestTOTP_RFC6238(t *testing.T) {
 		got := TOTP(rfcSeed, time.Unix(c.unix, 0), 30, 8, sha1.New)
 		if got != c.want {
 			t.Errorf("TOTP(T=%d) = %s, want %s", c.unix, got, c.want)
+		}
+	}
+}
+
+// TestTOTP_RFC6238_SHA256_SHA512 is the verification gate for the SHA-256 and
+// SHA-512 TOTP paths — reachable whenever an otpauth URI sets algorithm=SHA256
+// or SHA512 (ParseURI -> HashFor). RFC 6238 Appendix B uses a DIFFERENT seed
+// per algorithm (the ASCII "12345678..." repeated to the hash's block-ish
+// width): 20 bytes for SHA-1, 32 for SHA-256, 64 for SHA-512 — a classic
+// implementation trap is reusing the 20-byte SHA-1 seed for all three. Both the
+// codes and the per-algorithm seeds were cross-checked byte-for-byte against an
+// independent hmac/hashlib implementation of RFC 6238 AND the pyotp library.
+func TestTOTP_RFC6238_SHA256_SHA512(t *testing.T) {
+	times := []int64{59, 1111111109, 1111111111, 1234567890, 2000000000, 20000000000}
+	cases := []struct {
+		algo  string
+		seed  []byte
+		newH  func() hash.Hash
+		codes []string
+	}{
+		{
+			"SHA256",
+			[]byte("12345678901234567890123456789012"),
+			sha256.New,
+			[]string{"46119246", "68084774", "67062674", "91819424", "90698825", "77737706"},
+		},
+		{
+			"SHA512",
+			[]byte("1234567890123456789012345678901234567890123456789012345678901234"),
+			sha512.New,
+			[]string{"90693936", "25091201", "99943326", "93441116", "38618901", "47863826"},
+		},
+	}
+	for _, c := range cases {
+		for i, unix := range times {
+			got := TOTP(c.seed, time.Unix(unix, 0), 30, 8, c.newH)
+			if got != c.codes[i] {
+				t.Errorf("TOTP-%s(T=%d) = %s, want %s", c.algo, unix, got, c.codes[i])
+			}
 		}
 	}
 }
