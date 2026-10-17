@@ -20,6 +20,10 @@ PromptZero is a natural-language operator for the [Flipper Zero](https://flipper
 >
 > *Built end-to-end with [Claude](https://claude.ai). Review generated payloads before deployment.*
 
+<p align="center">
+  <img src=".github/assets/web.png" alt="PromptZero web UI — chat, live Flipper viewport, file browser, audit log" width="900">
+</p>
+
 ```
 promptzero> make me a Starbucks WiFi captive portal
   Generated and deployed evil_portal to /ext/apps_data/evil_portal/index.html
@@ -121,10 +125,6 @@ Keystrokes during a turn:
 ### Web UI — `promptzero --web`
 
 Dark-themed browser interface at `http://localhost:8080`. Includes the chat surface, a live Flipper viewport, file browser, audit log, report builder, and (when a Marauder is connected) a TFT display panel.
-
-<p align="center">
-  <img src=".github/assets/web.png" alt="PromptZero web UI — chat, live Flipper viewport, file browser, audit log" width="900">
-</p>
 
 > [!IMPORTANT]
 > **Auth.** Set `web.token` in your config or `PROMPTZERO_WEB_TOKEN` in env. The browser picks up `#token=…` from the URL fragment on first load and caches it in `sessionStorage`. Empty token + non-loopback bind → server prints a red warning. PromptZero speaks plain HTTP — terminate TLS at a reverse proxy (Caddy / Traefik / nginx) or a Tailscale / Cloudflare tunnel.
