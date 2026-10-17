@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.25.12']
+        go-version: ['1.26.9']
 
     steps:
       - uses: actions/checkout@v5
@@ -66,13 +66,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.12'
+          go-version: '1.26.9'
           cache: true
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11.4
+          version: v2.12.2
 
   vuln:
     runs-on: ubuntu-latest
@@ -82,7 +82,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.25.12'
+          go-version: '1.26.9'
           cache: true
 
       # Pinned (not @latest) so the tool version is reproducible and the

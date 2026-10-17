@@ -20,7 +20,7 @@
 #     --build-arg VERSION=$(git describe --tags --always) \
 #     --build-arg COMMIT=$(git rev-parse --short HEAD) -t promptzero:dev .
 
-ARG GO_VERSION=1.25.11
+ARG GO_VERSION=1.26.9
 
 # --- builder ----------------------------------------------------------------
 # Pinned to the same Go toolchain as the Taskfile / release workflow. Built on

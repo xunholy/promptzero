@@ -17,7 +17,7 @@ Make a change. Run `task test` and `task lint` while iterating, then `task ci` b
 
 ## Development setup
 
-Requirements: Go 1.25+, [Task](https://taskfile.dev), [Pre-commit](https://pre-commit.com) (optional but recommended — same hooks CI runs).
+Requirements: Go 1.26+, [Task](https://taskfile.dev), [Pre-commit](https://pre-commit.com) (optional but recommended — same hooks CI runs).
 
 ## Working without hardware
 

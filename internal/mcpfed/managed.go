@@ -180,7 +180,10 @@ func (m *managedClient) runHealthLoop(ctx context.Context) {
 				continue
 			}
 			pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			err := cli.Ping(pingCtx)
+			// Ping is a real liveness probe on pre-SEP-2575 MCP servers; on
+			// 2026-07-28+ servers it is a no-op that returns nil (liveness is a
+			// transport concern there), so this stays a best-effort health check.
+			err := cli.Ping(pingCtx) //nolint:staticcheck // SA1019: retained for pre-SEP-2575 server liveness
 			cancel()
 			if err != nil {
 				m.healthy.Store(false)

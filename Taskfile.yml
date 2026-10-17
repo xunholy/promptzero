@@ -10,7 +10,7 @@ vars:
   PKG: github.com/xunholy/promptzero
   BIN: bin/{{.APP}}
   VERSION_PKG: "{{.PKG}}/internal/version"
-  GOLANGCI_LINT_VERSION: v2.11.4
+  GOLANGCI_LINT_VERSION: v2.12.2
 
 env:
   CGO_ENABLED: "0"

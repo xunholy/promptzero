@@ -66,7 +66,7 @@ func TestJWKToPEM_EC(t *testing.T) {
 			t.Fatalf("%s: %v", c.crv, err)
 		}
 		pub, ok := parsePEMPub(t, keys[0].PEM).(*ecdsa.PublicKey)
-		if !ok || pub.X.Cmp(priv.X) != 0 || pub.Y.Cmp(priv.Y) != 0 {
+		if !ok || !pub.Equal(&priv.PublicKey) {
 			t.Errorf("%s EC round-trip mismatch", c.crv)
 		}
 	}
