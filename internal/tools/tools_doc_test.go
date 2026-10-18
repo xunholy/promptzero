@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+
+	"github.com/xunholy/promptzero/internal/risk"
 )
 
 // TestToolsDocHeadingsAreRegistered guards docs/reference/tools.md — the
@@ -23,16 +25,19 @@ func TestToolsDocHeadingsAreRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read tools.md: %v", err)
 	}
-	// The per-tool entry headings: "### `tool_name` ·" (the middle dot
-	// precedes the risk tier). A format change fails this loudly, which
-	// is the intended prompt to update the matcher.
-	re := regexp.MustCompile("(?m)^### `([a-z][a-z0-9_]+)` ·")
+	// The per-tool entry headings: "### `tool_name` · tier" (the middle
+	// dot precedes the risk tier). We capture both the name and the tier
+	// so a single pass can validate each. A format change that breaks the
+	// match fails this loudly, which is the intended prompt to update the
+	// matcher.
+	re := regexp.MustCompile("(?m)^### `([a-z][a-z0-9_]+)` · ([a-z]+)")
 	matches := re.FindAllSubmatch(data, -1)
 	if len(matches) == 0 {
 		t.Fatal("no tool-entry headings found in tools.md — heading format changed?")
 	}
 	for _, m := range matches {
 		name := string(m[1])
+		docTier := string(m[2])
 		spec, ok := Get(name)
 		if !ok {
 			t.Errorf("tools.md documents %q but no tool/alias is registered under that name", name)
@@ -40,6 +45,14 @@ func TestToolsDocHeadingsAreRegistered(t *testing.T) {
 		}
 		if spec.Name != name {
 			t.Errorf("tools.md heading %q is a legacy alias of %q — use the canonical name in the reference catalog", name, spec.Name)
+		}
+		// The tier printed in the heading must equal the tier the code
+		// actually enforces via risk.Classify. This closes the drift class
+		// that previously required manual re-syncing (PRs #211/#212): a
+		// doc that over- or under-states a tool's gate now fails the build
+		// instead of silently misleading an operator.
+		if want := risk.Classify(name).String(); docTier != want {
+			t.Errorf("tools.md heading for %q says risk %q but risk.Classify enforces %q — update the doc tier to match the code", name, docTier, want)
 		}
 	}
 }
