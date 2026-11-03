@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/xunholy/promptzero/internal/agent"
 	"github.com/xunholy/promptzero/internal/session"
 )
@@ -122,7 +122,11 @@ func (f *fakeSessionDriver) seed(t *testing.T) (alphaID, betaID string) {
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
 		}
-		out = append(out, session.Message{Role: string(m.Role), Raw: raw})
+		role := "user"
+		if m.OfAssistant != nil {
+			role = "assistant"
+		}
+		out = append(out, session.Message{Role: role, Raw: raw})
 	}
 	beta := &session.State{
 		ID:        "beta",
@@ -190,7 +194,7 @@ func TestSessionList_DerivesTitleForLegacyState(t *testing.T) {
 	state := &session.State{
 		ID: "legacy",
 		Messages: []session.Message{
-			{Role: string(user.Role), Raw: raw},
+			{Role: "user", Raw: raw},
 		},
 	}
 	if err := driver.store.Save(state); err != nil {

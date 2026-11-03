@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/xunholy/promptzero/internal/flipper"
 	"github.com/xunholy/promptzero/internal/session"
 )
@@ -104,12 +104,12 @@ func TestResumeSession_InjectsHandoffArtifact(t *testing.T) {
 	// The injected block must be a user-role message containing the
 	// <handoff-resume> sentinel + the persisted JSON.
 	msg := a.history[0]
-	if len(msg.Content) == 0 {
+	if len(paramContent(msg)) == 0 {
 		t.Fatal("handoff message has no content")
 	}
 	text := ""
-	if msg.Content[0].OfText != nil {
-		text = msg.Content[0].OfText.Text
+	if paramContent(msg)[0].OfText != nil {
+		text = paramContent(msg)[0].OfText.Text
 	}
 	if !strings.Contains(text, "<handoff-resume>") {
 		t.Errorf("injected message missing sentinel: %q", text)

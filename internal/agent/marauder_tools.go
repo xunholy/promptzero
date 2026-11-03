@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/anthropics/anthropic-sdk-go"
+import "github.com/anthropics/anthropic-sdk-go/v2"
 
 // buildMarauderTools is a stub retained for the tools_examples_test.go
 // harness. All WiFi/Marauder tools were migrated to the central registry

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 )
 
 func TestRenderExamples_EmptyPassThrough(t *testing.T) {

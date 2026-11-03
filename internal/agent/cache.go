@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/anthropics/anthropic-sdk-go"
+import "github.com/anthropics/anthropic-sdk-go/v2"
 
 // buildCachedRequest assembles the MessageNewParams sent to Claude and
 // installs cache-control breakpoints on the system prompt and the tool

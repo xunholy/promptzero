@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/xunholy/promptzero/internal/risk"
 	"github.com/xunholy/promptzero/internal/toolctx"
 	toolsreg "github.com/xunholy/promptzero/internal/tools"
