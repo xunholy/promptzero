@@ -51,10 +51,10 @@ func agentForModelTest(base string, p *persona.Persona) *Agent {
 func TestModelFor_NoPersona_UsesTierDefaults(t *testing.T) {
 	a := agentForModelTest("claude-sonnet-4-6", nil)
 	cases := map[string]string{
-		TierClassify:   "claude-haiku-4-5",
-		TierGenerate:   "claude-sonnet-4-6",
-		TierPlan:       "claude-sonnet-4-6",
-		TierExploit:    "claude-opus-4-8",
+		TierClassify:   "claude-haiku-5-5",
+		TierGenerate:   "claude-sonnet-5-5",
+		TierPlan:       "claude-sonnet-5-5",
+		TierExploit:    "claude-opus-5-5",
 		"unknown-tier": "claude-sonnet-4-6", // base model fallback
 	}
 	for tier, want := range cases {
@@ -80,7 +80,7 @@ func TestModelFor_PersonaOverrideWins(t *testing.T) {
 	cases := map[string]string{
 		TierClassify: "claude-haiku-4-5",  // persona override
 		TierGenerate: "claude-haiku-4-5",  // persona override
-		TierPlan:     "claude-sonnet-4-6", // tier default (Sonnet)
+		TierPlan:     "claude-sonnet-5-5", // tier default (Sonnet)
 		TierExploit:  "claude-opus-4-7",   // persona override
 		"unknown":    "claude-sonnet-4-6", // base model fallback
 	}
@@ -99,7 +99,7 @@ func TestModelFor_EmptyPersonaEntryFallsBack(t *testing.T) {
 	// answer for cheap calls.
 	p := &persona.Persona{Models: map[string]string{TierClassify: ""}}
 	a := agentForModelTest("claude-sonnet-4-6", p)
-	if got := a.ModelFor(TierClassify); got != "claude-haiku-4-5" {
+	if got := a.ModelFor(TierClassify); got != "claude-haiku-5-5" {
 		t.Fatalf("empty map entry should fall back to tier default Haiku; got %q", got)
 	}
 }

@@ -100,22 +100,55 @@ func TestThinkingBudgetFor_AcceptsExactMaximum(t *testing.T) {
 	}
 }
 
+// TestBuildCachedRequestWithThinking_PopulatesConfig pins the Claude 5.x
+// thinking shape: a configured per-tier budget turns on adaptive
+// thinking plus an output-effort level (effortForBudget), and the
+// legacy budget_tokens field is gone — it is rejected with a 400 on
+// every 5.x model.
 func TestBuildCachedRequestWithThinking_PopulatesConfig(t *testing.T) {
-	params := buildCachedRequestWithThinking("claude-sonnet-4-6", "sys", nil, nil, 4096)
+	// 4096 maps to the lowest effort tier (<= 8 Ki) via effortForBudget.
+	params := buildCachedRequestWithThinking("claude-sonnet-5-5", "sys", nil, nil, 4096)
 	body, err := json.Marshal(params)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 	s := string(body)
-	if !strings.Contains(s, `"thinking"`) {
-		t.Errorf("thinking config missing: %s", s)
+	if !strings.Contains(s, `"thinking"`) || !strings.Contains(s, `"adaptive"`) {
+		t.Errorf("adaptive thinking config missing: %s", s)
 	}
-	if !strings.Contains(s, `"budget_tokens":4096`) {
-		t.Errorf("budget_tokens missing: %s", s)
+	if !strings.Contains(s, `"effort":"low"`) {
+		t.Errorf("output effort missing/wrong (want low for a 4096 budget): %s", s)
 	}
-	// MaxTokens must cover thinking + response budget.
+	if strings.Contains(s, "budget_tokens") {
+		t.Errorf("budget_tokens must not be sent on 5.x models: %s", s)
+	}
+	// MaxTokens must leave room for adaptive reasoning + the response.
 	if params.MaxTokens < 4096 {
-		t.Errorf("MaxTokens = %d, want >= thinking budget", params.MaxTokens)
+		t.Errorf("MaxTokens = %d, want headroom for thinking + response", params.MaxTokens)
+	}
+}
+
+// TestEffortForBudget pins the legacy-budget → 5.x-effort translation at
+// each tier boundary so a persona's historical `thinking:` token knob
+// keeps producing a predictable effort level.
+func TestEffortForBudget(t *testing.T) {
+	cases := []struct {
+		budget int64
+		want   anthropic.OutputConfigEffort
+	}{
+		{1024, anthropic.OutputConfigEffortLow},
+		{8 * 1024, anthropic.OutputConfigEffortLow},
+		{8*1024 + 1, anthropic.OutputConfigEffortMedium},
+		{24 * 1024, anthropic.OutputConfigEffortMedium},
+		{24*1024 + 1, anthropic.OutputConfigEffortHigh},
+		{48 * 1024, anthropic.OutputConfigEffortHigh},
+		{48*1024 + 1, anthropic.OutputConfigEffortXhigh},
+		{64 * 1024, anthropic.OutputConfigEffortXhigh},
+	}
+	for _, c := range cases {
+		if got := effortForBudget(c.budget); got != c.want {
+			t.Errorf("effortForBudget(%d) = %q, want %q", c.budget, got, c.want)
+		}
 	}
 }
 

@@ -47,15 +47,19 @@ const (
 // Models map and the session's base model take precedence over this
 // table. The table only fires when nothing more specific is set.
 //
-// Bumped together when Anthropic releases new generations. As of v0.20.0
-// the Claude 4.x family is current.
+// Bumped together when Anthropic releases new generations. As of the
+// Claude 5.x migration the current family is Opus 5.5 / Sonnet 5.5 /
+// Haiku 5.5 (classify→Haiku 5.5, generate+plan→Sonnet 5.5,
+// exploit→Opus 5.5). Every model named here must have a matching
+// cost.DefaultRates row — TestDefaultModelsByTier_HaveCostRates guards
+// that invariant.
 //
 //nolint:gochecknoglobals
 var defaultModelsByTier = map[string]string{
-	TierClassify: "claude-haiku-4-5",
-	TierGenerate: "claude-sonnet-4-6",
-	TierPlan:     "claude-sonnet-4-6",
-	TierExploit:  "claude-opus-4-8",
+	TierClassify: "claude-haiku-5-5",
+	TierGenerate: "claude-sonnet-5-5",
+	TierPlan:     "claude-sonnet-5-5",
+	TierExploit:  "claude-opus-5-5",
 }
 
 // ModelFor returns the model name the agent should use for the given

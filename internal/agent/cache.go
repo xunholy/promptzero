@@ -30,26 +30,35 @@ func buildCachedRequest(model, sysPrompt string, tools []anthropic.ToolUnionPara
 	return buildCachedRequestWithThinking(model, sysPrompt, tools, history, 0)
 }
 
-// buildCachedRequestWithThinking is buildCachedRequest plus an
-// optional extended-thinking budget. When thinkingBudget > 0, the
-// request enables Claude's interleaved thinking mode with that
-// budget; MaxTokens is raised to cover the thinking allocation plus
-// the response body so the API doesn't reject the request with a
-// "thinking budget exceeds max_tokens" error.
+// buildCachedRequestWithThinking is buildCachedRequest plus optional
+// extended thinking. When thinkingBudget > 0 the request runs Claude's
+// adaptive thinking mode with an effort level mapped from the persona's
+// legacy per-tier token budget (see effortForBudget).
 //
-// Thinking-enabled requests are billed at the standard input-token
-// rate for thinking tokens (per Anthropic's pricing), so callers
-// should gate this on a tier that actually benefits from extended
-// reasoning — plan + exploit, not classify.
+// The Claude 5.x family replaced the fixed budget_tokens knob with
+// adaptive thinking + output effort: a budget_tokens request is rejected
+// with a 400 on every 5.x model. Rather than break the persona
+// `thinking:` YAML contract, the historical token budget is translated
+// to the nearest effort tier here, so existing personas keep working and
+// the model self-allocates its reasoning within MaxTokens.
+//
+// MaxTokens is raised when thinking is on so adaptive reasoning plus the
+// final answer and any tool_use blocks all fit (thinking tokens are
+// drawn from MaxTokens). The request is always streamed, so a generous
+// ceiling carries no HTTP-timeout risk.
+//
+// Thinking tokens bill at the standard input/output rate (per Anthropic
+// pricing), so callers should gate this on a tier that benefits from
+// extended reasoning — plan + exploit, not classify.
 func buildCachedRequestWithThinking(model, sysPrompt string, tools []anthropic.ToolUnionParam, history []anthropic.MessageParam, thinkingBudget int64) anthropic.MessageNewParams {
-	// Response budget: enough for a final answer + any tool_use
-	// blocks the model wants to emit. Scales with the thinking
-	// budget so a 16K-thinking plan-tier turn still has 4K of
-	// headroom for structured output.
+	// Response budget: enough for a final answer + any tool_use blocks
+	// the model wants to emit. Raised when thinking is on so adaptive
+	// reasoning has room alongside the structured output.
 	const responseBudget = 4096
+	const thinkingResponseBudget = 32768
 	maxTokens := int64(responseBudget)
 	if thinkingBudget > 0 {
-		maxTokens = thinkingBudget + responseBudget
+		maxTokens = thinkingResponseBudget
 	}
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
@@ -61,7 +70,12 @@ func buildCachedRequestWithThinking(model, sysPrompt string, tools []anthropic.T
 		Messages: history,
 	}
 	if thinkingBudget > 0 {
-		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(thinkingBudget)
+		params.Thinking = anthropic.ThinkingConfigParamUnion{
+			OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+		}
+		params.OutputConfig = anthropic.OutputConfigParam{
+			Effort: effortForBudget(thinkingBudget),
+		}
 	}
 
 	// Attach a second cache breakpoint to the last tool. The SDK's
@@ -83,4 +97,32 @@ func buildCachedRequestWithThinking(model, sysPrompt string, tools []anthropic.T
 	}
 	params.Tools = cached
 	return params
+}
+
+// effortForBudget maps a persona's legacy extended-thinking token budget
+// (the pre-5.x `thinking:` YAML knob, expressed in tokens and clamped by
+// ThinkingBudgetFor to [1024, 65536]) onto the Claude 5.x output-effort
+// level that best preserves its intent. The old knob was a hard token
+// ceiling; effort is a qualitative depth dial, so the mapping is a
+// best-effort translation rather than an exact equivalence:
+//
+//	<=  8 Ki  → low     (a light reasoning nudge)
+//	<= 24 Ki  → medium  (the 5.x default depth)
+//	<= 48 Ki  → high    (deliberate multi-step reasoning)
+//	>  48 Ki  → xhigh   (maximum practical depth for agentic turns)
+//
+// `max` is intentionally never auto-selected — it is reserved for
+// operators who set it explicitly, since it trades substantial cost for
+// marginal gains outside the hardest problems.
+func effortForBudget(budget int64) anthropic.OutputConfigEffort {
+	switch {
+	case budget <= 8*1024:
+		return anthropic.OutputConfigEffortLow
+	case budget <= 24*1024:
+		return anthropic.OutputConfigEffortMedium
+	case budget <= 48*1024:
+		return anthropic.OutputConfigEffortHigh
+	default:
+		return anthropic.OutputConfigEffortXhigh
+	}
 }

@@ -31,7 +31,7 @@ import (
 )
 
 // Verdict is one model's risk classification. Model is the provider/
-// model identifier ("claude-haiku-4-5"); Risk is the classifier's
+// model identifier ("claude-haiku-5-5"); Risk is the classifier's
 // graded judgement (one of `ok`, `unclear`, `risky` as defined by
 // internal/agent's ProspectiveCritique). Critique is the raw JSON or
 // prose the model returned, preserved so the operator-facing

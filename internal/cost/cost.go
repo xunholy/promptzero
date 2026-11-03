@@ -35,13 +35,28 @@ type Pricer struct {
 }
 
 // DefaultRates returns a copy of the built-in rate table. Base
-// input/output USD per million tokens, verified against Anthropic's
-// public pricing page (platform.claude.com/docs/en/about-claude/pricing):
-// Opus 4.x (4.6/4.7/4.8) $5/$25, Sonnet 4.6 $3/$15, Haiku 4.5 $1/$5, Fable 5 $10/$50.
-// Values should track that page; adjust via config override when it
-// drifts.
+// input/output USD per million tokens, verified against the Claude API
+// reference (claude-api skill cache 2026-10-06, tracking
+// platform.claude.com/docs/en/about-claude/pricing). Current 5.x family:
+// Opus 5.5 $4/$20, Opus 5 $5/$25, Sonnet 5.5 / Sonnet 5 $2/$10,
+// Haiku 5.5 $0.10/$0.50, Fable 5.1 / Fable 5 $10/$50. Prior 4.x rows are
+// retained so sessions and personas still pinned to those models price
+// correctly. Values should track that page; adjust via config override
+// when they drift.
 func DefaultRates() map[string]Rate {
 	return map[string]Rate{
+		// Current generation (Claude 5.x). Haiku 5.5's $0.10/$0.50 is the
+		// <=100K-token prompt rate (it steps to $0.50/$2.50 beyond 100K —
+		// not modelled here; the vast majority of PromptZero turns sit
+		// well under 100K input).
+		"claude-opus-5-5":   {InputPerMTok: 4.0, OutputPerMTok: 20.0},
+		"claude-opus-5":     {InputPerMTok: 5.0, OutputPerMTok: 25.0},
+		"claude-sonnet-5-5": {InputPerMTok: 2.0, OutputPerMTok: 10.0},
+		"claude-sonnet-5":   {InputPerMTok: 2.0, OutputPerMTok: 10.0},
+		"claude-haiku-5-5":  {InputPerMTok: 0.10, OutputPerMTok: 0.50},
+		"claude-fable-5-1":  {InputPerMTok: 10.0, OutputPerMTok: 50.0},
+
+		// Prior generation (Claude 4.x) — retained for pinned sessions.
 		// All Opus 4.x tiers share $5 / $25 per Mtok. claude-opus-4-6 was
 		// previously omitted despite the comment above listing it, so
 		// opus-4-6 usage priced at $0 (Rate miss -> zero rates),
@@ -52,10 +67,7 @@ func DefaultRates() map[string]Rate {
 		"claude-opus-4-6":   {InputPerMTok: 5.0, OutputPerMTok: 25.0},
 		"claude-sonnet-4-6": {InputPerMTok: 3.0, OutputPerMTok: 15.0},
 		"claude-haiku-4-5":  {InputPerMTok: 1.0, OutputPerMTok: 5.0},
-		// Fable 5 — a current model that was unpriced (-> $0). Rate per the
-		// 2026-06-24 verification against the official pricing page; re-fetch
-		// if it drifts.
-		"claude-fable-5": {InputPerMTok: 10.0, OutputPerMTok: 50.0},
+		"claude-fable-5":    {InputPerMTok: 10.0, OutputPerMTok: 50.0},
 	}
 }
 

@@ -10,7 +10,7 @@
 // (gen_ai.*). The set we emit:
 //
 //	gen_ai.system                 = "anthropic"
-//	gen_ai.request.model          = "claude-sonnet-4-6" (etc.)
+//	gen_ai.request.model          = "claude-sonnet-5-5" (etc.)
 //	gen_ai.usage.input_tokens     = int
 //	gen_ai.usage.output_tokens    = int
 //	gen_ai.usage.cache_read_input_tokens     = int
