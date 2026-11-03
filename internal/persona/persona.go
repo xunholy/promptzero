@@ -18,7 +18,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"gopkg.in/yaml.v3"
 
 	"github.com/xunholy/promptzero/internal/obs"

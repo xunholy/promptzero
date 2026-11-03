@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/confidence"
 	"github.com/xunholy/promptzero/internal/obs"

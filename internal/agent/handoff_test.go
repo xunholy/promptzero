@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 )
 
 // stubHistory builds a small synthetic history exercising every
@@ -24,16 +24,13 @@ func stubHistory() []anthropic.MessageParam {
 	return []anthropic.MessageParam{
 		// Turn 1: user asks to scan wifi, assistant calls wifi_scan_ap
 		anthropic.NewUserMessage(anthropic.NewTextBlock("scan the nearest AP")),
-		{
-			Role: anthropic.MessageParamRoleAssistant,
-			Content: []anthropic.ContentBlockParamUnion{{
-				OfToolUse: &anthropic.ToolUseBlockParam{
-					ID:    "toolu_1",
-					Name:  "wifi_scan_ap",
-					Input: json.RawMessage(`{"duration_seconds":10}`),
-				},
-			}},
-		},
+		anthropic.NewAssistantMessage(anthropic.ContentBlockParamUnion{
+			OfToolUse: &anthropic.ToolUseBlockParam{
+				ID:    "toolu_1",
+				Name:  "wifi_scan_ap",
+				Input: json.RawMessage(`{"duration_seconds":10}`),
+			},
+		}),
 		// Tool result: successful.
 		anthropic.NewUserMessage(anthropic.NewToolResultBlock("toolu_1", "found 3 APs: home, guest, office", false)),
 		// Assistant replies with text ("thread resolved").
@@ -41,16 +38,13 @@ func stubHistory() []anthropic.MessageParam {
 
 		// Turn 2: user asks for NFC read; assistant tries nfc_detect.
 		anthropic.NewUserMessage(anthropic.NewTextBlock("now read the access badge")),
-		{
-			Role: anthropic.MessageParamRoleAssistant,
-			Content: []anthropic.ContentBlockParamUnion{{
-				OfToolUse: &anthropic.ToolUseBlockParam{
-					ID:    "toolu_2",
-					Name:  "nfc_detect",
-					Input: json.RawMessage(`{"timeout_seconds":30}`),
-				},
-			}},
-		},
+		anthropic.NewAssistantMessage(anthropic.ContentBlockParamUnion{
+			OfToolUse: &anthropic.ToolUseBlockParam{
+				ID:    "toolu_2",
+				Name:  "nfc_detect",
+				Input: json.RawMessage(`{"timeout_seconds":30}`),
+			},
+		}),
 		// Tool result: structured error.
 		anthropic.NewUserMessage(anthropic.NewToolResultBlock("toolu_2", failingBody, true)),
 	}
@@ -196,9 +190,9 @@ func TestBuildHandoff_StripsUIContextPrefixFromOpenThread(t *testing.T) {
 		anthropic.NewUserMessage(anthropic.NewTextBlock(
 			"<ui-context>{\"view\":\"fs\",\"path\":\"/ext/nfc\"}</ui-context>\n\n" + userTyped)),
 		// No assistant text reply — the user turn stays open.
-		{Role: anthropic.MessageParamRoleAssistant, Content: []anthropic.ContentBlockParamUnion{{
+		anthropic.NewAssistantMessage(anthropic.ContentBlockParamUnion{
 			OfToolUse: &anthropic.ToolUseBlockParam{ID: "toolu_x", Name: "nfc_detect"},
-		}}},
+		}),
 	}
 	h := BuildHandoff(hist)
 	if len(h.OpenThreads) != 1 {
@@ -225,9 +219,9 @@ func TestBuildHandoff_IgnoresHandoffResumePrefix(t *testing.T) {
 			HandoffResumeSentinel + "\n{\"findings\":[]}")),
 		// Tool-use only assistant reply — user turn would normally
 		// stay open under the heuristic.
-		{Role: anthropic.MessageParamRoleAssistant, Content: []anthropic.ContentBlockParamUnion{{
+		anthropic.NewAssistantMessage(anthropic.ContentBlockParamUnion{
 			OfToolUse: &anthropic.ToolUseBlockParam{ID: "toolu_y", Name: "device_info"},
-		}}},
+		}),
 	}
 	h := BuildHandoff(hist)
 	if len(h.OpenThreads) != 0 {

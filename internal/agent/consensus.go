@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/xunholy/promptzero/internal/consensus"
 	"github.com/xunholy/promptzero/internal/obs"
 )

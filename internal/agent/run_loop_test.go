@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 )
 
 // textTurn builds a scripted assistant message that returns only text

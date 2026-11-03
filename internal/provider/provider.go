@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 )
 
 // Message is a provider-agnostic chat message.

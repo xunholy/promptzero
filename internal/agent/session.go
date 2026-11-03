@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/xunholy/promptzero/internal/obs"
 	"github.com/xunholy/promptzero/internal/session"
 )
@@ -134,7 +134,7 @@ func SessionTranscript(state *session.State) []TranscriptEvent {
 	for _, m := range state.Messages {
 		if len(m.Raw) == 0 {
 			// Legacy / hand-edited entries fall back to plain text.
-			isUser := m.Role != string(anthropic.MessageParamRoleAssistant)
+			isUser := m.Role != roleAssistant
 			var text string
 			if isUser {
 				text = extractUserContent(m.Content)
@@ -155,8 +155,8 @@ func SessionTranscript(state *session.State) []TranscriptEvent {
 		if err := json.Unmarshal(m.Raw, &param); err != nil {
 			continue
 		}
-		isUser := param.Role == anthropic.MessageParamRoleUser
-		for _, block := range param.Content {
+		isUser := paramRole(param) == roleUser
+		for _, block := range paramContent(param) {
 			switch {
 			case block.OfText != nil:
 				text := block.OfText.Text
@@ -579,10 +579,10 @@ func buildTitlePrompt(history []anthropic.MessageParam) string {
 	var sb strings.Builder
 	for _, m := range history {
 		role := "user"
-		if m.Role == anthropic.MessageParamRoleAssistant {
+		if paramRole(m) == roleAssistant {
 			role = "assistant"
 		}
-		for _, block := range m.Content {
+		for _, block := range paramContent(m) {
 			if block.OfText == nil {
 				continue
 			}
@@ -613,10 +613,10 @@ func buildTitlePrompt(history []anthropic.MessageParam) string {
 func hasFirstAssistantTurn(history []anthropic.MessageParam) bool {
 	sawUser := false
 	for _, m := range history {
-		switch m.Role {
-		case anthropic.MessageParamRoleUser:
+		switch paramRole(m) {
+		case roleUser:
 			sawUser = true
-		case anthropic.MessageParamRoleAssistant:
+		case roleAssistant:
 			if sawUser {
 				return true
 			}
@@ -633,14 +633,14 @@ func hasFirstAssistantTurn(history []anthropic.MessageParam) bool {
 // somehow reached the wire without a title).
 func DeriveTitleFromMessages(msgs []session.Message) string {
 	for _, m := range msgs {
-		if m.Role != string(anthropic.MessageParamRoleUser) {
+		if m.Role != roleUser {
 			continue
 		}
 		var text string
 		if len(m.Raw) > 0 {
 			var param anthropic.MessageParam
 			if err := json.Unmarshal(m.Raw, &param); err == nil {
-				for _, block := range param.Content {
+				for _, block := range paramContent(param) {
 					if block.OfText != nil {
 						text = block.OfText.Text
 						break
@@ -759,11 +759,11 @@ func stripContextPrefixes(text string) string {
 // user content yet (a brand-new session before its first turn).
 func deriveTitle(history []anthropic.MessageParam) string {
 	for _, m := range history {
-		if m.Role != anthropic.MessageParamRoleUser {
+		if paramRole(m) != roleUser {
 			continue
 		}
 		var text string
-		for _, block := range m.Content {
+		for _, block := range paramContent(m) {
 			if block.OfText != nil {
 				text = block.OfText.Text
 				break
@@ -790,7 +790,7 @@ func toSessionMessages(history []anthropic.MessageParam) ([]session.Message, err
 			return nil, fmt.Errorf("marshaling message: %w", err)
 		}
 		out = append(out, session.Message{
-			Role:    string(m.Role),
+			Role:    paramRole(m),
 			Content: previewText(m),
 			Raw:     raw,
 		})
@@ -814,7 +814,7 @@ func fromSessionMessages(msgs []session.Message) ([]anthropic.MessageParam, erro
 			continue
 		}
 		switch m.Role {
-		case string(anthropic.MessageParamRoleAssistant):
+		case roleAssistant:
 			out = append(out, anthropic.NewAssistantMessage(anthropic.NewTextBlock(m.Content)))
 		default:
 			out = append(out, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
@@ -828,7 +828,7 @@ func fromSessionMessages(msgs []session.Message) ([]anthropic.MessageParam, erro
 // session JSON stays skimmable.
 func previewText(m anthropic.MessageParam) string {
 	var preview string
-	for _, block := range m.Content {
+	for _, block := range paramContent(m) {
 		switch {
 		case block.OfText != nil:
 			preview += block.OfText.Text

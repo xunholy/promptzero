@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 )
 
 // makeToolPair appends a matched assistant tool_use + user tool_result pair to h.
@@ -56,10 +56,10 @@ func TestCompactHistoryLocked_BasicTrim(t *testing.T) {
 	if len(a.history) < 2 {
 		t.Fatal("history has fewer than 2 entries after compaction")
 	}
-	if a.history[0].Content[0].OfText == nil || a.history[0].Content[0].OfText.Text != "anchor-0" {
+	if paramContent(a.history[0])[0].OfText == nil || paramContent(a.history[0])[0].OfText.Text != "anchor-0" {
 		t.Errorf("anchor entry 0 was clobbered: %+v", a.history[0])
 	}
-	if a.history[1].Content[0].OfText == nil || a.history[1].Content[0].OfText.Text != "anchor-1" {
+	if paramContent(a.history[1])[0].OfText == nil || paramContent(a.history[1])[0].OfText.Text != "anchor-1" {
 		t.Errorf("anchor entry 1 was clobbered: %+v", a.history[1])
 	}
 }
@@ -83,10 +83,10 @@ func TestCompactHistoryLocked_NoPairSplit(t *testing.T) {
 	// Scan for orphaned tool_use (an assistant message with tool_use not
 	// immediately followed by a user message containing only tool_result blocks).
 	for i, msg := range a.history {
-		if msg.Role != anthropic.MessageParamRoleAssistant {
+		if paramRole(msg) != roleAssistant {
 			continue
 		}
-		for _, b := range msg.Content {
+		for _, b := range paramContent(msg) {
 			if b.OfToolUse == nil {
 				continue
 			}
@@ -96,7 +96,7 @@ func TestCompactHistoryLocked_NoPairSplit(t *testing.T) {
 				break
 			}
 			next := a.history[i+1]
-			if next.Role != anthropic.MessageParamRoleUser || !allToolResults(next) {
+			if paramRole(next) != roleUser || !allToolResults(next) {
 				t.Errorf("tool_use at index %d is not followed by a tool_result user message", i)
 			}
 			break
@@ -134,10 +134,10 @@ func TestCompactHistoryLocked_AnchorWithToolUseExtended(t *testing.T) {
 	// followed by its matching tool_result. The bug previously failed
 	// at index 1.
 	for i, msg := range a.history {
-		if msg.Role != anthropic.MessageParamRoleAssistant {
+		if paramRole(msg) != roleAssistant {
 			continue
 		}
-		for _, b := range msg.Content {
+		for _, b := range paramContent(msg) {
 			if b.OfToolUse == nil {
 				continue
 			}
@@ -145,13 +145,13 @@ func TestCompactHistoryLocked_AnchorWithToolUseExtended(t *testing.T) {
 				t.Fatalf("tool_use at index %d has no following message", i)
 			}
 			next := a.history[i+1]
-			if next.Role != anthropic.MessageParamRoleUser || !allToolResults(next) {
+			if paramRole(next) != roleUser || !allToolResults(next) {
 				t.Errorf("tool_use at index %d not followed by tool_result message: %+v", i, next)
 			}
 			// Also verify the tool_use_id at next matches the one at this
 			// index — order matters for the API check.
 			if b.OfToolUse.ID == "anchor-tool-id" {
-				if next.Content[0].OfToolResult == nil || next.Content[0].OfToolResult.ToolUseID != "anchor-tool-id" {
+				if paramContent(next)[0].OfToolResult == nil || paramContent(next)[0].OfToolResult.ToolUseID != "anchor-tool-id" {
 					t.Errorf("anchor's tool_use_id %q not matched by the next user message", b.OfToolUse.ID)
 				}
 			}
@@ -164,8 +164,8 @@ func TestCompactHistoryLocked_AnchorWithToolUseExtended(t *testing.T) {
 	if len(a.history) < 1 {
 		t.Fatal("history empty after compaction")
 	}
-	if a.history[0].Content[0].OfText == nil ||
-		a.history[0].Content[0].OfText.Text != "Get the Flipper device info." {
+	if paramContent(a.history[0])[0].OfText == nil ||
+		paramContent(a.history[0])[0].OfText.Text != "Get the Flipper device info." {
 		t.Errorf("first anchor entry was clobbered: %+v", a.history[0])
 	}
 }
@@ -199,10 +199,10 @@ func TestCompactHistoryLocked_AnchorMalformedDropsAnchor(t *testing.T) {
 
 	// The kept history must NOT begin with the orphan tool_use.
 	for i, msg := range a.history {
-		if msg.Role != anthropic.MessageParamRoleAssistant {
+		if paramRole(msg) != roleAssistant {
 			continue
 		}
-		for _, b := range msg.Content {
+		for _, b := range paramContent(msg) {
 			if b.OfToolUse != nil && b.OfToolUse.ID == "orphan-tool" {
 				t.Errorf("orphan tool_use %q kept in compacted history at index %d", b.OfToolUse.ID, i)
 			}

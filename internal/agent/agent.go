@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/xunholy/promptzero/internal/attack"
 	"github.com/xunholy/promptzero/internal/audit"
 	"github.com/xunholy/promptzero/internal/breaker"
@@ -755,7 +755,7 @@ func (a *Agent) compactHistoryLocked() {
 	}
 	for ext := 0; ext < maxAnchorExtension; ext++ {
 		last := a.history[anchorEnd-1]
-		if last.Role != anthropic.MessageParamRoleAssistant || !hasToolUse(last) {
+		if paramRole(last) != roleAssistant || !hasToolUse(last) {
 			break // anchor ends cleanly
 		}
 		// Anchor's last entry has a tool_use; extend by 1 to include
@@ -768,7 +768,7 @@ func (a *Agent) compactHistoryLocked() {
 			break
 		}
 		next := a.history[anchorEnd]
-		if next.Role != anthropic.MessageParamRoleUser || !allToolResults(next) {
+		if paramRole(next) != roleUser || !allToolResults(next) {
 			// The next entry isn't the matching tool_result. Drop anchor.
 			anchorEnd = 0
 			break
@@ -792,12 +792,12 @@ func (a *Agent) compactHistoryLocked() {
 			return
 		}
 		msg := a.history[idx]
-		if msg.Role == anthropic.MessageParamRoleUser && allToolResults(msg) {
+		if paramRole(msg) == roleUser && allToolResults(msg) {
 			// Check the message just before: if it is an assistant message
 			// containing tool_use blocks, both must be kept together.
 			if idx > 0 {
 				prev := a.history[idx-1]
-				if prev.Role == anthropic.MessageParamRoleAssistant && hasToolUse(prev) {
+				if paramRole(prev) == roleAssistant && hasToolUse(prev) {
 					// This pair must not be split; try shifting further.
 					continue
 				}
@@ -817,10 +817,10 @@ func (a *Agent) compactHistoryLocked() {
 // Used by compactHistoryLocked to identify user messages that are paired with
 // a preceding assistant tool_use message.
 func allToolResults(msg anthropic.MessageParam) bool {
-	if len(msg.Content) == 0 {
+	if len(paramContent(msg)) == 0 {
 		return false
 	}
-	for _, b := range msg.Content {
+	for _, b := range paramContent(msg) {
 		if b.OfToolResult == nil {
 			return false
 		}
@@ -830,7 +830,7 @@ func allToolResults(msg anthropic.MessageParam) bool {
 
 // hasToolUse reports whether msg contains at least one tool_use content block.
 func hasToolUse(msg anthropic.MessageParam) bool {
-	for _, b := range msg.Content {
+	for _, b := range paramContent(msg) {
 		if b.OfToolUse != nil {
 			return true
 		}
@@ -1578,7 +1578,7 @@ func HistorySnapshot(a *Agent) string {
 	defer a.mu.Unlock()
 	var b strings.Builder
 	for _, m := range a.history {
-		for _, block := range m.Content {
+		for _, block := range paramContent(m) {
 			if block.OfText != nil {
 				b.WriteString(block.OfText.Text)
 				b.WriteByte('\n')
