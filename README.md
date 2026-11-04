@@ -1,19 +1,31 @@
+<!-- Translated copies: README.zh-CN.md, README.ja.md, README.de.md, README.fr.md, README.es.md, README.pt-BR.md. Update them in the same change. -->
 <p align="center">
   <img src=".github/assets/banner.png" alt="PromptZero — natural-language operator for the Flipper Zero" width="560">
 </p>
 
+<p align="center"><b>English</b>&emsp;<a href="README.zh-CN.md">简体中文</a>&emsp;<a href="README.ja.md">日本語</a>&emsp;<a href="README.de.md">Deutsch</a>&emsp;<a href="README.fr.md">Français</a>&emsp;<a href="README.es.md">Español</a>&emsp;<a href="README.pt-BR.md">Português</a></p>
+
+<h3 align="center">Talk to your Flipper Zero like a person — it builds the payload, deploys it, and runs it</h3>
+
+<p align="center">A natural-language operator for the Flipper Zero and ESP32 Marauder.<br>
+Sub-GHz, NFC, RFID, IR, BadUSB and WiFi — driven by Claude, gated by a risk engine.</p>
+
 <p align="center">
-  <a href="https://github.com/xunholy/promptzero/releases/latest"><img src="https://img.shields.io/github/v/release/xunholy/promptzero?label=release" alt="Latest release"></a>
-  <a href="https://github.com/xunholy/promptzero/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0"></a>
+  <a href="https://github.com/xunholy/promptzero/releases/latest"><img src="https://img.shields.io/github/v/release/xunholy/promptzero?label=release&color=7b5fd0" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPL--3.0-3f6fd1" alt="Licence: AGPL-3.0"></a>
   <a href="https://github.com/xunholy/promptzero/actions/workflows/ci.yaml"><img src="https://github.com/xunholy/promptzero/actions/workflows/ci.yaml/badge.svg" alt="CI"></a>
+  <a href="go.mod"><img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white" alt="Go 1.26"></a>
+  <a href="docs/reference/transports.md"><img src="https://img.shields.io/badge/platforms-Linux%2C_macOS%2C_Windows-2f9a5a" alt="Platforms: Linux, macOS, Windows"></a>
   <a href="scripts/claude-usage.py"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/xunholy/promptzero/main/.github/claude-usage.json" alt="Claude usage"></a>
 </p>
 
-<sub align="center">_Claude usage/cost is an estimate aggregated from the maintainer's local Claude Code transcripts (`task claude-usage`); it reflects this machine's sessions only._</sub>
-
-> **Describe it. Generate it. Deploy it. Run it.**
-
-PromptZero is a natural-language operator for the [Flipper Zero](https://flipperzero.one). Talk to it like you'd talk to a person — it generates payloads, deploys them, and runs them, all from a single sentence.
+<p align="center">
+  <a href="#quick-start"><b>Quick&nbsp;start</b></a>&emsp;
+  <a href="#what-it-does"><b>What&nbsp;it&nbsp;does</b></a>&emsp;
+  <a href="#modes"><b>Modes</b></a>&emsp;
+  <a href="#safety-model"><b>Safety</b></a>&emsp;
+  <a href="docs/"><b>Docs</b></a>
+</p>
 
 > [!CAUTION]
 > **Authorised use only.** PromptZero generates and runs RF, NFC, RFID, and HID payloads — illegal outside contexts you own or have written authorisation to test. Read [`SECURITY.md`](SECURITY.md) for the safety model and threat boundary. The project is under active development; APIs and tools change between minor versions.
@@ -23,6 +35,8 @@ PromptZero is a natural-language operator for the [Flipper Zero](https://flipper
 <p align="center">
   <img src=".github/assets/web.png" alt="PromptZero web UI — chat, live Flipper viewport, file browser, audit log" width="900">
 </p>
+
+Describe what you want in a sentence. PromptZero talks to your Flipper Zero (and an optional ESP32 Marauder WiFi devboard) over USB serial or BLE, generates the payload, deploys it to the SD card, and runs it — every risky action passing a consent gate and landing in an audit log on the way.
 
 ```
 promptzero> make me a Starbucks WiFi captive portal
@@ -42,11 +56,9 @@ promptzero> identify this device: /tmp/remote.jpg
   I can generate a complete remote file. Want me to create it?
 ```
 
----
-
 ## Quick start
 
-**Prerequisites** — Flipper Zero with modded firmware (Momentum / Unleashed / RogueMaster), an Anthropic API key, and a USB cable.
+**Prerequisites** — a Flipper Zero on modded firmware (Momentum / Unleashed / RogueMaster), an Anthropic API key, and a USB cable.
 
 ```bash
 # 1. Install (Linux/macOS, amd64/arm64) — pinned to release artifacts (immutable per tag)
@@ -67,7 +79,8 @@ promptzero> what's connected?
 
 That's the whole onboarding. From here, type natural-language instructions or `/help` to see slash commands.
 
-> **Defensive posture (one-flag safety rail):** add `--read-only` to refuse any tool that writes, transmits, or executes. Pure reads / scans / queries still dispatch; anything risk-Medium or above is refused at the boundary. See [Read-only safety rail](docs/reference/configuration.md#read-only-safety-rail) for the full rule.
+> [!TIP]
+> **Defensive posture (one-flag safety rail):** add `--read-only` to refuse any tool that writes, transmits, or executes. Pure reads / scans / queries still dispatch; anything risk-Medium or above is refused at the boundary.
 >
 > ```bash
 > promptzero --read-only          # blue-team / forensics / training
@@ -75,31 +88,33 @@ That's the whole onboarding. From here, type natural-language instructions or `/
 
 **Other paths:** Windows users grab the `.zip` from the [releases page](https://github.com/xunholy/promptzero/releases). WSL2 needs USB passthrough — see [Transports → WSL2](docs/reference/transports.md#wsl2-usb-passthrough). For wireless BLE, config files, personas, environment variables, and self-upgrade: [Configuration reference](docs/reference/configuration.md).
 
----
-
 ## What it does
 
-PromptZero connects to your Flipper Zero (and optional ESP32 Marauder WiFi devboard) over USB serial or BLE, then lets you control everything through natural language.
+PromptZero controls everything through natural language — one agent, a live tool registry that grows release-over-release, and a risk gate in front of anything that touches the world.
 
 | Subsystem | Capabilities |
 |---|---|
 | **Flipper Zero** | Sub-GHz TX/RX, IR TX/RX, NFC detect/emulate, RFID read/write/emulate, iButton, GPIO, BadUSB, storage, app launcher |
 | **ESP32 Marauder** | WiFi scan, deauth, beacon spam, probe flood, PMKID capture, evil portal, BLE spam, BT scanning, skimmer detection, wardriving, MAC spoofing |
-| **AI Generation** | Evil portal HTML, BadUSB DuckyScript, Sub-GHz `.sub`, IR `.ir`, NFC `.nfc` from natural language — plus parametric builders for typed parameters |
+| **AI generation** | Evil portal HTML, BadUSB DuckyScript, Sub-GHz `.sub`, IR `.ir`, NFC `.nfc` from natural language — plus parametric builders for typed parameters |
 | **Intelligence** | Image analysis via Claude vision (file path → device ID + attack vector), SD card discovery |
 | **Audit** | SQLite audit log with MITRE ATT&CK technique tags, session export, statistics |
 
-Run `promptzero` and type `/tools` for the live registry. Tool count grows release-over-release.
+Run `promptzero` and type `/tools` for the live registry.
 
-The **agent layer** ships prompt caching, cost-tier model routing (recon on Haiku / exploit on Opus), prompt-injection quarantine, reflexion-on-error with structured `ToolError`, a `<device-state>` oracle injected each turn, and OpenTelemetry GenAI spans. See [`docs/`](docs/) for architecture details.
+<details>
+<summary><b>Under the hood — the agent layer</b></summary>
+<br>
 
----
+PromptZero's agent ships prompt caching, cost-tier model routing (recon on Haiku, exploit on Opus), prompt-injection quarantine, reflexion-on-error with structured `ToolError`, a `<device-state>` oracle injected each turn, and OpenTelemetry GenAI spans. The LLM is a component, not a library: model and provider swaps are first-class, and no prompt is load-bearing. See [`docs/`](docs/) for architecture details.
+
+</details>
 
 ## Modes
 
 ### CLI — `promptzero`
 
-Default. Interactive REPL.
+The default. An interactive REPL.
 
 ```
 promptzero> scan the SD card and show me what signals I have saved
@@ -109,25 +124,25 @@ promptzero> read the NFC tag on my desk
 
 Slash commands (run `/help` for the full list with descriptions):
 
-- **Conversation**: `/help`, `/reset`, `/quit`
-- **Session**: `/sessions`, `/save <name>`, `/resume <id>`, `/forget <id>`
-- **Info**: `/status`, `/tools [query|page <n>]`, `/history [N]`, `/audit {stats|find|tail|top|session|query|export}`, `/stats [section]`, `/cost`, `/budget [set <USD>|off]`, `/debug`
-- **Operator**: `/persona [name]`, `/mode [name]`, `/watch [pause|resume]`, `/webhooks [test <name>]`, `/validate <path>`, `/attack {set|clear} <techniques>`, `/campaign {validate|run} <file>`, `/rewind [snapshot]`, `/report [session] [json] [save]`, `/rules [list|pause|resume|test]`
-- **Device**: `/reconnect`
+- **Conversation** — `/help`, `/reset`, `/quit`
+- **Session** — `/sessions`, `/save <name>`, `/resume <id>`, `/forget <id>`
+- **Info** — `/status`, `/tools [query|page <n>]`, `/history [N]`, `/audit {stats|find|tail|top|session|query|export}`, `/stats [section]`, `/cost`, `/budget [set <USD>|off]`, `/debug`
+- **Operator** — `/persona [name]`, `/mode [name]`, `/watch [pause|resume]`, `/webhooks [test <name>]`, `/validate <path>`, `/attack {set|clear} <techniques>`, `/campaign {validate|run} <file>`, `/rewind [snapshot]`, `/report [session] [json] [save]`, `/rules [list|pause|resume|test]`
+- **Device** — `/reconnect`
 
 Keystrokes during a turn:
 
 - **Ctrl+C** — cancel the current turn entirely.
-- **Ctrl+G** — abort the current streaming tool (e.g. `subghz_receive`, `wifi_scan_ap`) but let the agent continue with the partial result. Use this when you've seen what you needed and don't want to wait out the full duration.
+- **Ctrl+G** — abort the current streaming tool (e.g. `subghz_receive`, `wifi_scan_ap`) but let the agent continue with the partial result.
 - **Ctrl+R** — reverse-incremental history search.
 - **Ctrl+L** — clear screen.
 
 ### Web UI — `promptzero --web`
 
-Dark-themed browser interface at `http://localhost:8080`. Includes the chat surface, a live Flipper viewport, file browser, audit log, report builder, and (when a Marauder is connected) a TFT display panel.
+A dark-themed browser interface at `http://localhost:8080`: the chat surface, a live Flipper viewport, a file browser, the audit log, a report builder, and — when a Marauder is connected — a TFT display panel.
 
 > [!IMPORTANT]
-> **Auth.** Set `web.token` in your config or `PROMPTZERO_WEB_TOKEN` in env. The browser picks up `#token=…` from the URL fragment on first load and caches it in `sessionStorage`. Empty token + non-loopback bind → server prints a red warning. PromptZero speaks plain HTTP — terminate TLS at a reverse proxy (Caddy / Traefik / nginx) or a Tailscale / Cloudflare tunnel.
+> **Auth.** Set `web.token` in your config or `PROMPTZERO_WEB_TOKEN` in env. The browser picks up `#token=…` from the URL fragment on first load and caches it in `sessionStorage`. Empty token + non-loopback bind → the server prints a red warning. PromptZero speaks plain HTTP — terminate TLS at a reverse proxy (Caddy / Traefik / nginx) or a Tailscale / Cloudflare tunnel.
 
 **Host it with Docker.** Multi-arch images (`distroless`, signed, with SBOM + provenance) are published to `ghcr.io/xunholy/promptzero` on every release — see [docs/deploy/docker.md](docs/deploy/docker.md).
 
@@ -161,13 +176,15 @@ Runs as a [Model Context Protocol](https://modelcontextprotocol.io/) server over
 > [!IMPORTANT]
 > **MCP risk gate.** Risk-High and Risk-Critical tools are refused by default — set `PROMPTZERO_MCP_ALLOW_HIGH=1` and / or `PROMPTZERO_MCP_ALLOW_CRITICAL=1` to allow them. All MCP calls (allowed or denied) are recorded in the audit log. See [Safety model](#safety-model) below.
 
----
-
 ## Safety model
 
-PromptZero is dual-use offensive tooling. The safety story is the project's social licence to exist.
+PromptZero is dual-use offensive tooling. The safety story is the project's social licence to exist — every spec carries a risk tier, and the tier decides what dispatches freely and what has to be confirmed.
 
-- **Risk classification per tool.** Every spec carries a tier — Low / Medium / High / Critical. Read-only ops are Low; data writes and signal emulation are Medium; active RF transmit, tag writes, and script execution are High; brute-force and destructive attacks are Critical.
+<img src="https://img.shields.io/badge/Low-read--only-2f9a5a" alt="Low"> &nbsp;scans, reads and queries — dispatched freely.<br>
+<img src="https://img.shields.io/badge/Medium-writes_%2F_emulation-c9a227" alt="Medium"> &nbsp;data writes and signal emulation.<br>
+<img src="https://img.shields.io/badge/High-TX_%2F_write_%2F_exec-e8702a" alt="High"> &nbsp;active RF transmit, tag writes and script execution — **operator confirmation required.**<br>
+<img src="https://img.shields.io/badge/Critical-brute--force_%2F_destructive-c03030" alt="Critical"> &nbsp;brute-force and destructive attacks — **operator confirmation required.**
+
 - **Consent gate.** High and Critical tools require operator confirmation. The CLI shows a boxed preview (frequency / modulation / hex) with a 2-second delay; positive consent (`y`, `all`, `confirm`) is rejected before the delay opens. Negative decisions (`n`, `r` for revise, Esc) bypass the delay.
 - **MCP refuses by default.** No MCP client can run High+ tools without explicit env-var opt-in (see above).
 - **Audit-log fail-closed.** If no audit log is initialised, the agent refuses High+ actions rather than running them silently.
@@ -176,25 +193,25 @@ PromptZero is dual-use offensive tooling. The safety story is the project's soci
 
 Read [`SECURITY.md`](SECURITY.md) for the full threat model, scope / out-of-scope, and how to report a vulnerability.
 
----
-
 ## Compatibility
+
+<details open>
+<summary><b>Firmware support</b></summary>
+<br>
 
 | Firmware | Status |
 |---|---|
 | **Momentum** (formerly Xtreme) | Primary target |
 | **Unleashed** | Supported |
 | **RogueMaster** | Supported |
-| **Official (OFW) 1.x** | Supported with reduced feature set — region-locked Sub-GHz, no rolling code |
+| **Official (OFW) 1.x** | Supported with a reduced feature set — region-locked Sub-GHz, no rolling code |
+
+</details>
 
 > [!NOTE]
 > Official firmware locks Sub-GHz TX to region-specific ISM bands and blocks rolling-code protocols. Modded firmware unlocks the full CC1101 range (300–348 / 387–464 / 779–928 MHz) and enables TX for all 52 supported protocols.
 
-ESP32 Marauder devboard requires firmware **v1.11.1+** over USB CDC ACM (`/dev/ttyACM1` for the official Flipper WiFi devboard, baud 115200).
-
-For BLE wireless (no cable, all tools work, ~10× slower than USB) and per-platform pairing: see [Transports reference](docs/reference/transports.md).
-
----
+The ESP32 Marauder devboard requires firmware **v1.11.1+** over USB CDC ACM (`/dev/ttyACM1` for the official Flipper WiFi devboard, baud 115200). For BLE wireless (no cable, all tools work, ~10× slower than USB) and per-platform pairing, see the [Transports reference](docs/reference/transports.md).
 
 ## Documentation
 
@@ -205,8 +222,6 @@ For BLE wireless (no cable, all tools work, ~10× slower than USB) and per-platf
 - [`SECURITY.md`](SECURITY.md) — threat model and disclosure policy.
 - [`examples/`](examples/) — copy-paste templates: config, rules, four operator personas (red team / blue team / CTF / hardware lab).
 - [`CHANGELOG.md`](CHANGELOG.md) — what's in each release.
-
----
 
 ## Build & contribute
 
@@ -220,12 +235,12 @@ task build
 task test
 ```
 
----
+## Licence
 
-## License
+[AGPL-3.0-or-later](LICENSE). Hosting a modified PromptZero as a network service requires publishing source changes under the same licence.
 
-[AGPL-3.0-or-later](LICENSE). Hosting a modified PromptZero as a network service requires publishing source changes under the same license.
+<br>
 
----
+<sub align="center">The Claude usage/cost badge is an estimate aggregated from the maintainer's local Claude Code transcripts (`task claude-usage`); it reflects that machine's sessions only.</sub>
 
-<sub>Built with [Claude](https://claude.ai) by [xunholy](https://github.com/xunholy).</sub>
+<p align="center"><sub>Built with <a href="https://claude.ai">Claude</a> by <a href="https://github.com/xunholy">xunholy</a>.</sub></p>
