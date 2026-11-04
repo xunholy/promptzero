@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/xunholy/promptzero/internal/obs"
 )
 
@@ -118,7 +118,7 @@ func BuildHandoff(history []anthropic.MessageParam) HandoffArtifact {
 
 	for _, msg := range history {
 		out.TurnsCovered++
-		for _, block := range msg.Content {
+		for _, block := range paramContent(msg) {
 			switch {
 			case block.OfToolUse != nil:
 				name := block.OfToolUse.Name
@@ -157,12 +157,12 @@ func BuildHandoff(history []anthropic.MessageParam) HandoffArtifact {
 				// prefix is "<handoff-resume>" not "<handoff>". The
 				// resume summary surfaced the noise instead of the
 				// operator-typed text.
-				switch msg.Role {
-				case anthropic.MessageParamRoleUser:
+				switch paramRole(msg) {
+				case roleUser:
 					if user := extractUserContent(block.OfText.Text); user != "" {
 						lastUserText = user
 					}
-				case anthropic.MessageParamRoleAssistant:
+				case roleAssistant:
 					if strings.TrimSpace(block.OfText.Text) != "" {
 						// Assistant produced a final text reply — clear
 						// the open-thread candidate. Tool-use-only turns

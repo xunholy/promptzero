@@ -3,7 +3,7 @@ package agent
 import (
 	"sync"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/v2"
 )
 
 // ToolNames returns the names of every tool currently registered with the
