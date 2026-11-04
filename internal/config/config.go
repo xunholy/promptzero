@@ -426,7 +426,7 @@ func (d *Device) UnmarshalYAML(value *yaml.Node) error {
 
 func Load(path string) (*Config, error) {
 	cfg := &Config{
-		Model: "claude-opus-4-8",
+		Model: "claude-opus-5-5",
 		Serial: SerialConfig{
 			Port:     "/dev/ttyACM0",
 			BaudRate: 230400,

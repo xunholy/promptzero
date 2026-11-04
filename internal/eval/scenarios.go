@@ -22,7 +22,7 @@ import (
 // Anthropic client, no Flipper — scenarios wire up whatever they
 // need.
 func newHeadlessAgent() *agent.Agent {
-	return agent.NewForTest("claude-sonnet-4-6")
+	return agent.NewForTest("claude-sonnet-5-5")
 }
 
 // Default returns the canonical scenario suite used by CI and
@@ -85,7 +85,7 @@ func handoffRoundTripScenario(t *testing.T) Scenario {
 			}
 			st := &session.State{
 				ID:      "eval-handoff",
-				Model:   "claude-sonnet-4-6",
+				Model:   "claude-sonnet-5-5",
 				Handoff: json.RawMessage(h.JSON()),
 			}
 			if err := store.Save(st); err != nil {

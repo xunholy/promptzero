@@ -8,11 +8,11 @@
 api_key: ""
 # Optional OpenAI key for Whisper voice transcription.
 openai_api_key: ""
-# Claude model. Defaults to claude-opus-4-8 if omitted.
-# Options: claude-opus-4-8 (most capable, $5/$25 per M tok),
-#          claude-sonnet-4-6 (fast + cheap, $3/$15),
-#          claude-haiku-4-5  (cheapest, $1/$5).
-model: "claude-opus-4-8"
+# Claude model. Defaults to claude-opus-5-5 if omitted.
+# Options: claude-opus-5-5   (most capable, $4/$20 per M tok),
+#          claude-sonnet-5-5 (fast + cheap, $2/$10),
+#          claude-haiku-5-5  (cheapest, $0.10/$0.50 up to 100K tok).
+model: "claude-opus-5-5"
 
 # --- Flipper Zero connection ---------------------------------------------
 serial:
